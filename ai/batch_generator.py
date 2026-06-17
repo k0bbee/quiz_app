@@ -6,6 +6,7 @@ import threading
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from ai.llm_client import LLMClient
+from ai.generation_config import GenerationConfig
 from ai.prompt_templates import PromptBuilder
 from core.course_index import retrieve_course_context
 from models.question import Question
@@ -21,7 +22,8 @@ class GenerationWorker(QThread):
     finished = pyqtSignal()
 
     def __init__(self, llm_client: LLMClient, course_content: str,
-                 topics: list, count: int, difficulty: str, course_project=None):
+                 topics: list, count: int, difficulty: str, course_project=None,
+                 generation_config: GenerationConfig | None = None):
         super().__init__()
         self.client = llm_client
         self.course_content = course_content
@@ -29,6 +31,7 @@ class GenerationWorker(QThread):
         self.count = count
         self.difficulty = difficulty
         self.course_project = course_project
+        self.generation_config = generation_config or GenerationConfig()
         self._cancelled = threading.Event()
         self._cached_context: str | None = None
 
@@ -55,6 +58,7 @@ class GenerationWorker(QThread):
                     self.topics,
                     batch_count,
                     self.difficulty,
+                    self.generation_config,
                 )
 
                 data = self.client.generate_with_json(messages, max_retries=3)

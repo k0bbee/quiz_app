@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QComboBox, QSpinBox,
     QProgressBar, QTextEdit, QMessageBox, QGroupBox, QCheckBox,
-    QAbstractItemView, QScrollArea, QFrame, QWidget
+    QAbstractItemView, QScrollArea, QFrame, QWidget, QSlider, QFormLayout
 )
 from PyQt6.QtCore import Qt
 
@@ -12,6 +12,7 @@ from utils.constants import topic_label, topic_value
 from core.language_manager import LanguageManager
 from ai.llm_client import LLMClient
 from ai.batch_generator import GenerationWorker
+from ai.generation_config import GenerationConfig, QUESTION_TYPE_DEFAULTS, DIFFICULTY_DEFAULTS
 from models.question import Question
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
 from ai.course_context import extract_relevant_course_context
@@ -112,6 +113,34 @@ class AIGenerationDialog(QDialog):
         config_layout.addStretch()
         layout.addLayout(config_layout)
 
+        # Structure controls
+        self.structure_group = QGroupBox(self.lang_manager.get_text("题目结构", "Question Structure"))
+        structure_layout = QFormLayout(self.structure_group)
+
+        self.template_combo = QComboBox()
+        self.template_combo.addItem(self.lang_manager.get_text("快速复习", "Quick Review"), "quick_review")
+        self.template_combo.addItem(self.lang_manager.get_text("期末模拟", "Final Exam Style"), "final_exam")
+        self.template_combo.addItem(self.lang_manager.get_text("计算训练", "Calculation Practice"), "calculation_practice")
+        structure_layout.addRow(self.lang_manager.get_text("模板:", "Template:"), self.template_combo)
+
+        self.mc_slider = self._make_slider(QUESTION_TYPE_DEFAULTS["multiple_choice"])
+        self.scenario_slider = self._make_slider(QUESTION_TYPE_DEFAULTS["scenario_choice"])
+        self.true_false_slider = self._make_slider(QUESTION_TYPE_DEFAULTS["true_false"])
+        self.fill_blank_slider = self._make_slider(QUESTION_TYPE_DEFAULTS["fill_in_blank"])
+        structure_layout.addRow("multiple_choice", self._slider_row(self.mc_slider))
+        structure_layout.addRow("scenario_choice", self._slider_row(self.scenario_slider))
+        structure_layout.addRow("true_false", self._slider_row(self.true_false_slider))
+        structure_layout.addRow("fill_in_blank", self._slider_row(self.fill_blank_slider))
+
+        self.easy_slider = self._make_slider(DIFFICULTY_DEFAULTS["easy"])
+        self.medium_slider = self._make_slider(DIFFICULTY_DEFAULTS["medium"])
+        self.hard_slider = self._make_slider(DIFFICULTY_DEFAULTS["hard"])
+        structure_layout.addRow("easy", self._slider_row(self.easy_slider))
+        structure_layout.addRow("medium", self._slider_row(self.medium_slider))
+        structure_layout.addRow("hard", self._slider_row(self.hard_slider))
+
+        layout.addWidget(self.structure_group)
+
         # Prompt preview (optional)
         self.prompt_group = QGroupBox(self.lang_manager.get_text("课程内容预览", "Course Content Preview"))
         prompt_layout = QVBoxLayout(self.prompt_group)
@@ -158,6 +187,26 @@ class AIGenerationDialog(QDialog):
         bottom_layout.addLayout(btn_layout)
         outer.addWidget(bottom)
 
+    def _make_slider(self, value: int) -> QSlider:
+        slider = QSlider(Qt.Orientation.Horizontal)
+        slider.setRange(0, 100)
+        slider.setSingleStep(5)
+        slider.setPageStep(10)
+        slider.setValue(value)
+        return slider
+
+    def _slider_row(self, slider: QSlider) -> QWidget:
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 0, 0, 0)
+        label = QLabel(f"{slider.value()}%")
+        label.setMinimumWidth(40)
+        label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        slider.valueChanged.connect(lambda value, target=label: target.setText(f"{value}%"))
+        layout.addWidget(slider, 1)
+        layout.addWidget(label)
+        return row
+
     def _on_language_changed(self, lang):
         """Update all UI strings when language changes."""
         self.setWindowTitle(self.lang_manager.get_text("AI 出题", "AI Question Generation"))
@@ -191,6 +240,7 @@ class AIGenerationDialog(QDialog):
                 break
 
         self.prompt_group.setTitle(self.lang_manager.get_text("课程内容预览", "Course Content Preview"))
+        self.structure_group.setTitle(self.lang_manager.get_text("题目结构", "Question Structure"))
         self._update_preview()
 
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
@@ -273,6 +323,7 @@ class AIGenerationDialog(QDialog):
         model = self.settings.get("ai_model", "claude-sonnet-4-6")
         count = self.count_spin.value()
         difficulty = self.diff_combo.currentData()
+        generation_config = self._build_generation_config()
 
         # Disable UI during generation
         self.generate_btn.setEnabled(False)
@@ -282,13 +333,37 @@ class AIGenerationDialog(QDialog):
         # Create client and worker
         client = LLMClient(api_key=api_key, base_url=base_url, model=model)
         self.worker = GenerationWorker(
-            client, self.course_content, topics, count, difficulty, course_project=self.course_project
+            client, self.course_content, topics, count, difficulty,
+            course_project=self.course_project,
+            generation_config=generation_config,
         )
         self.worker.progress.connect(self._on_progress)
         self.worker.batch_done.connect(self._on_batch_done)
         self.worker.error.connect(self._on_error)
         self.worker.finished.connect(self._on_finished)
         self.worker.start()
+
+    def _build_generation_config(self) -> GenerationConfig:
+        topics = self._get_selected_topics()
+        topic_weight = 100 // len(topics) if topics else 0
+        topic_weights = {topic_value(topic): topic_weight for topic in topics}
+        if topics:
+            topic_weights[topic_value(topics[-1])] += 100 - sum(topic_weights.values())
+        return GenerationConfig(
+            question_type_weights={
+                "multiple_choice": self.mc_slider.value(),
+                "scenario_choice": self.scenario_slider.value(),
+                "true_false": self.true_false_slider.value(),
+                "fill_in_blank": self.fill_blank_slider.value(),
+            },
+            difficulty_weights={
+                "easy": self.easy_slider.value(),
+                "medium": self.medium_slider.value(),
+                "hard": self.hard_slider.value(),
+            },
+            topic_weights=topic_weights,
+            template=self.template_combo.currentData() or "quick_review",
+        )
 
     def _on_progress(self, message: str):
         self.status_label.setText(message)
