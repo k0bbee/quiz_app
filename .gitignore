@@ -1,0 +1,47 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments and local tooling
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# IDE/editor local state
+.vscode/
+.idea/
+.claude/
+
+# Application runtime data
+data/
+!data/.gitkeep
+
+# Logs and generated exports
+*.log
+logs/
+exports/
+generated/
+
+# Local course materials and generated study artifacts
+courses/
+*.pptx
+*.pdf
+*.docx
+~$*
+课程内容.md
+quiz备选清单.md
+模拟卷_*.md
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

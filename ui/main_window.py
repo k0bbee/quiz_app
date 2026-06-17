@@ -1,0 +1,442 @@
+"""Main window — application shell with QStackedWidget navigation."""
+
+from PyQt6.QtWidgets import (
+    QMainWindow, QStackedWidget, QMenuBar, QMenu, QDialog,
+    QToolBar, QMessageBox, QWidget, QVBoxLayout, QPushButton
+)
+from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt, pyqtSignal
+
+from core.language_manager import LanguageManager
+from models.question import QuestionBank
+from models.question_set import QuestionSet, SetManager
+from core.progress_tracker import ProgressManager
+from models.course_project import CourseProjectManager
+from config import QUESTIONS_DIR, QUESTION_SETS_DIR, PROGRESS_DIR, APP_NAME
+
+from ui.screens.home_screen import HomeScreen
+from ui.screens.topic_selection_screen import TopicSelectionScreen
+from ui.screens.quiz_screen import QuizScreen
+from ui.screens.results_screen import ResultsScreen
+from ui.screens.progress_dashboard import ProgressDashboard
+from ui.screens.settings_screen import SettingsScreen
+from utils.constants import Difficulty, topic_label, topic_value
+
+
+def _provider_requires_api_key(settings: dict) -> bool:
+    """Return whether the selected AI provider needs a configured API key."""
+    return settings.get("ai_provider", "") != "local_agent"
+
+
+class MainWindow(QMainWindow):
+    """Main application window with QStackedWidget navigation."""
+
+    # Screen indices
+    SCREEN_HOME = 0
+    SCREEN_TOPIC_SELECTION = 1
+    SCREEN_QUIZ = 2
+    SCREEN_RESULTS = 3
+    SCREEN_PROGRESS = 4
+    SCREEN_SETTINGS = 5
+    SCREEN_COURSES = 6
+    SCREEN_QUESTION_BANK = 7
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle(APP_NAME)
+        self.resize(900, 680)
+
+        # Data managers
+        self.question_bank = QuestionBank(QUESTIONS_DIR)
+        self.set_manager = SetManager(QUESTION_SETS_DIR)
+        self.progress_manager = ProgressManager(PROGRESS_DIR)
+        self.course_manager = CourseProjectManager()
+        self.lang_manager = LanguageManager.instance()
+
+        # Central stacked widget
+        self.stack = QStackedWidget()
+
+        # Create screens
+        self.home_screen = HomeScreen(self.progress_manager, self.question_bank)
+        self.topic_screen = TopicSelectionScreen(self.set_manager, self.progress_manager)
+        self.quiz_screen = QuizScreen(self.question_bank, self.progress_manager)
+        self.results_screen = ResultsScreen()
+        self.progress_screen = ProgressDashboard(self.progress_manager, self.question_bank)
+        self.settings_screen = SettingsScreen()
+        self._course_screen = None
+        self._question_bank_screen = None
+        self._active_questions: dict = {}
+
+        # Screens 6-7 are lazily created on first access (see properties below)
+        self.stack.addWidget(self.home_screen)       # 0
+        self.stack.addWidget(self.topic_screen)       # 1
+        self.stack.addWidget(self.quiz_screen)        # 2
+        self.stack.addWidget(self.results_screen)     # 3
+        self.stack.addWidget(self.progress_screen)    # 4
+        self.stack.addWidget(self.settings_screen)    # 5
+
+        self.setCentralWidget(self.stack)
+
+        # Menu bar
+        self._create_menus()
+
+        # Toolbar
+        self._create_toolbar()
+
+        # Connect screen navigation signals
+        self._connect_signals()
+
+        # Apply initial language
+        self._on_language_changed()
+
+        # Start on home screen
+        self.stack.setCurrentIndex(self.SCREEN_HOME)
+
+    def _get_course_screen(self):
+        """Lazy-init the course screen on first access."""
+        if self._course_screen is None:
+            from ui.screens.course_screen import CourseScreen
+            self._course_screen = CourseScreen(self.course_manager)
+            self.stack.insertWidget(self.SCREEN_COURSES, self._course_screen)
+        return self._course_screen
+
+    def _get_question_bank_screen(self):
+        """Lazy-init the question bank screen on first access."""
+        if self._question_bank_screen is None:
+            from ui.screens.question_bank_screen import QuestionBankScreen
+            self._question_bank_screen = QuestionBankScreen(self.question_bank)
+            self.stack.insertWidget(self.SCREEN_QUESTION_BANK, self._question_bank_screen)
+        return self._question_bank_screen
+
+    def _create_menus(self):
+        menubar = self.menuBar()
+
+        # File menu
+        self.file_menu = menubar.addMenu("")
+        self.home_action = QAction("", self)
+        self.home_action.triggered.connect(lambda: self.navigate_to(self.SCREEN_HOME))
+        self.file_menu.addAction(self.home_action)
+        self.file_menu.addSeparator()
+        self.exit_action = QAction("", self)
+        self.exit_action.triggered.connect(self.close)
+        self.file_menu.addAction(self.exit_action)
+
+        # Tools menu
+        self.tools_menu = menubar.addMenu("")
+        self.topics_action = QAction("", self)
+        self.topics_action.triggered.connect(lambda: self.navigate_to(self.SCREEN_TOPIC_SELECTION))
+        self.tools_menu.addAction(self.topics_action)
+        self.progress_action = QAction("", self)
+        self.progress_action.triggered.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
+        self.tools_menu.addAction(self.progress_action)
+        self.settings_action = QAction("", self)
+        self.settings_action.triggered.connect(lambda: self.navigate_to(self.SCREEN_SETTINGS))
+        self.tools_menu.addAction(self.settings_action)
+        self.courses_action = QAction("", self)
+        self.courses_action.triggered.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
+        self.tools_menu.addAction(self.courses_action)
+        self.bank_action = QAction("", self)
+        self.bank_action.triggered.connect(lambda: self.navigate_to(self.SCREEN_QUESTION_BANK))
+        self.tools_menu.addAction(self.bank_action)
+
+        # Help menu
+        self.help_menu = menubar.addMenu("")
+        self.about_action = QAction("", self)
+        self.about_action.triggered.connect(self._show_about)
+        self.help_menu.addAction(self.about_action)
+
+    def _create_toolbar(self):
+        self.toolbar = QToolBar("")
+        self.toolbar.setMovable(False)
+        self.addToolBar(self.toolbar)
+
+        self.topics_btn = QPushButton("")
+        self.topics_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_TOPIC_SELECTION))
+        self.progress_btn = QPushButton("")
+        self.progress_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
+        self.courses_btn = QPushButton("")
+        self.courses_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
+
+        self.toolbar.addWidget(self.topics_btn)
+        self.toolbar.addWidget(self.progress_btn)
+        self.toolbar.addWidget(self.courses_btn)
+
+    def _connect_signals(self):
+        # Home screen
+        self.home_screen.start_practice.connect(self._on_start_practice)
+        self.home_screen.practice_incorrect.connect(self._on_practice_incorrect)
+        self.home_screen.ai_generate.connect(self._on_ai_generate)
+        self.home_screen.view_progress.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
+        self.home_screen.open_settings.connect(lambda: self.navigate_to(self.SCREEN_SETTINGS))
+        self._get_course_screen().current_course_changed.connect(self._on_course_changed)
+        self._get_question_bank_screen().question_bank_changed.connect(self._on_question_bank_changed)
+
+        # Topic selection
+        self.topic_screen.quiz_start.connect(self._on_quiz_start)
+        self.topic_screen.back_to_home.connect(lambda: self.navigate_to(self.SCREEN_HOME))
+
+        # Quiz screen
+        self.quiz_screen.quiz_finished.connect(self._on_quiz_finished)
+        self.quiz_screen.return_home.connect(lambda: self.navigate_to(self.SCREEN_HOME))
+
+        # Results screen
+        self.results_screen.retry_incorrect.connect(self._on_retry_incorrect)
+        self.results_screen.retry_all.connect(self._on_retry_all)
+        self.results_screen.back_to_topics.connect(
+            lambda: self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+        )
+
+        # Language manager
+        self.lang_manager.language_changed.connect(self._on_language_changed)
+
+    def _on_language_changed(self, lang: str = None):
+        """Update all UI text based on current language."""
+        lang = lang or self.lang_manager.current
+        gm = self.lang_manager.get_text
+
+        # Update menu titles
+        self.file_menu.setTitle(gm("文件", "File"))
+        self.tools_menu.setTitle(gm("工具", "Tools"))
+        self.help_menu.setTitle(gm("帮助", "Help"))
+
+        # Update menu action texts
+        self.home_action.setText(gm("首页", "Home"))
+        self.exit_action.setText(gm("退出", "Exit"))
+        self.topics_action.setText(gm("题目集", "Question Sets"))
+        self.progress_action.setText(gm("进度", "Progress"))
+        self.settings_action.setText(gm("设置", "Settings"))
+        self.courses_action.setText(gm("课件管理", "Course Materials"))
+        self.bank_action.setText(gm("题库", "Question Bank"))
+        self.about_action.setText(gm("关于", "About"))
+
+        # Update toolbar title
+        self.toolbar.setWindowTitle(gm("快捷导航", "Quick Nav"))
+
+        # Update toolbar button texts (core 3 only)
+        self.topics_btn.setText(gm("📋 题目集", "📋 Topics"))
+        self.progress_btn.setText(gm("📊 进度", "📊 Progress"))
+        self.courses_btn.setText(gm("📚 课件", "📚 Course"))
+
+    def navigate_to(self, screen_index: int):
+        """Switch to a screen by index."""
+        self.stack.setCurrentIndex(screen_index)
+        # Refresh data on certain screens
+        if screen_index == self.SCREEN_TOPIC_SELECTION:
+            self.topic_screen.refresh()
+        elif screen_index == self.SCREEN_PROGRESS:
+            self.progress_screen.refresh()
+        elif screen_index == self.SCREEN_HOME:
+            self.home_screen.refresh()
+        elif screen_index == self.SCREEN_COURSES:
+            self._get_course_screen().refresh()
+        elif screen_index == self.SCREEN_QUESTION_BANK:
+            self._get_question_bank_screen().refresh()
+
+    # --- Slot handlers ---
+
+    def _on_start_practice(self):
+        self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+
+    def _on_quiz_start(self, set_id: str, question_ids: list[str]):
+        """Start a quiz session with the given question set."""
+        gm = self.lang_manager.get_text
+        question_set = self.set_manager.get(set_id)
+        if not question_set:
+            QMessageBox.warning(self, gm("错误", "Error"), gm("未找到题目集。", "Question set not found."))
+            return
+
+        questions = self.question_bank.get_many(question_ids)
+        if not questions:
+            QMessageBox.warning(self, gm("错误", "Error"), gm("未找到该题目集的题目。", "No questions found for this set."))
+            return
+
+        self._active_questions = {q.question_id: q for q in questions}
+        self.quiz_screen.start_quiz(question_set, questions)
+        self.navigate_to(self.SCREEN_QUIZ)
+
+    def _on_quiz_finished(self, progress_record):
+        """Show results screen after quiz completion."""
+        # Save progress
+        if progress_record:
+            self.progress_manager.save(progress_record)
+
+        self.results_screen.set_results(
+            progress_record,
+            questions=self._active_questions,
+            lang=self.lang_manager.current,
+        )
+        self.navigate_to(self.SCREEN_RESULTS)
+
+    def _on_retry_incorrect(self):
+        """Retry only incorrectly answered questions."""
+        gm = self.lang_manager.get_text
+        record = self.results_screen.current_record
+        if not record:
+            return
+
+        incorrect_ids = [a.question_id for a in record.answers if not a.is_correct]
+        if not incorrect_ids:
+            QMessageBox.information(
+                self,
+                gm("全部正确！", "All Correct!"),
+                gm("你答对了所有题目！🎉", "You answered all questions correctly! 🎉"),
+            )
+            return
+
+        questions = self.question_bank.get_many(incorrect_ids)
+        if questions:
+            self._active_questions = {q.question_id: q for q in questions}
+            self.quiz_screen.start_quiz_custom(questions, gm("重做：错题", "Retry: Incorrect Questions"))
+            self.navigate_to(self.SCREEN_QUIZ)
+
+    def _on_practice_incorrect(self):
+        """Start a quiz session from all historical incorrect questions."""
+        gm = self.lang_manager.get_text
+        incorrect_ids = self.progress_manager.get_incorrect_question_ids()
+        if not incorrect_ids:
+            QMessageBox.information(
+                self,
+                gm("没有错题", "No Incorrect Questions"),
+                gm("还没有错题记录。", "No incorrect questions recorded yet."),
+            )
+            return
+
+        questions = self.question_bank.get_many(incorrect_ids)
+        if not questions:
+            QMessageBox.warning(
+                self,
+                gm("没有题目", "No Questions"),
+                gm("存在错题记录，但题目文件缺失。", "Incorrect records exist, but the question files are missing."),
+            )
+            return
+
+        self._active_questions = {q.question_id: q for q in questions}
+        label = gm("历史错题复习", "Incorrect Review")
+        self.quiz_screen.start_quiz_custom(questions, label)
+        self.navigate_to(self.SCREEN_QUIZ)
+
+    def _on_ai_generate(self):
+        """Open the AI question generation dialog."""
+        gm = self.lang_manager.get_text
+
+        # Read settings directly — don't trigger save dialog
+        settings = self.settings_screen._settings
+
+        # Check course content first
+        course_content, available_topics, course_project = self._load_generation_context()
+        if not course_content:
+            QMessageBox.warning(
+                self,
+                gm("缺少课程内容", "No Course Content"),
+                gm("尚未导入任何课程资料。请先通过「课程资料」页面导入课件文件夹（支持 pptx/pdf/docx/md/txt），\n系统将自动解析并生成课程摘要，之后即可使用 AI 出题功能。",
+                   "No course materials imported yet. Please go to Course Materials to import a folder\n(pptx/pdf/docx/md/txt). The system will parse and generate a summary for AI generation."),
+            )
+            return
+
+        # Check API key unless a local CLI agent is selected.
+        from core.secrets_manager import SecretsManager
+        api_key = SecretsManager.instance().get_key()
+        if _provider_requires_api_key(settings) and not api_key:
+            QMessageBox.warning(
+                self,
+                gm("未配置 API Key", "No API Key"),
+                gm("请在设置中配置 API Key 后再使用 AI 出题功能。", "Please configure an API key in Settings before using AI generation."),
+            )
+            return
+
+        # Lazy import — avoid loading AI deps until actually needed
+        from ui.dialogs.ai_generation_dialog import AIGenerationDialog
+        dialog = AIGenerationDialog(
+            course_content,
+            settings,
+            self,
+            available_topics=available_topics,
+            course_project=course_project,
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            questions = dialog.generated_questions
+            if questions:
+                saved = self.question_bank.save_many(questions)
+                topics = sorted({q.topic for q in questions}, key=topic_value)
+                lang = self.lang_manager.current
+                topic_names = ", ".join(topic_label(t, lang) for t in topics)
+                qset = QuestionSet.create_new(
+                    title={
+                        "zh": f"AI生成练习：{topic_names or '综合'}",
+                        "en": f"AI Practice: {topic_names or 'Mixed'}",
+                    },
+                    description={
+                        "zh": "由当前课程项目生成，已通过本地结构校验。",
+                        "en": "Generated from the active course project and local validation rules.",
+                    },
+                    topics=topics,
+                    question_ids=[q.question_id for q in questions],
+                    difficulty=Difficulty.MEDIUM,
+                    estimated_minutes=max(5, len(questions) * 2),
+                    source="ai_generated",
+                )
+                self.set_manager.save(qset)
+                QMessageBox.information(
+                    self,
+                    gm("已保存", "Saved"),
+                    gm(f"已保存 {saved} 道题目并创建了题目集：\n{qset.get_title(lang)}",
+                       f"Saved {saved} questions and created a question set:\n{qset.get_title(lang)}"),
+                )
+                self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+
+    def _on_retry_all(self):
+        """Retry the entire question set."""
+        record = self.results_screen.current_record
+        if not record or not record.set_id:
+            return
+
+        question_set = self.set_manager.get(record.set_id)
+        if question_set:
+            questions = self.question_bank.get_many(question_set.questions)
+            if questions:
+                self._active_questions = {q.question_id: q for q in questions}
+                self.quiz_screen.start_quiz(question_set, questions)
+                self.navigate_to(self.SCREEN_QUIZ)
+
+    def _on_course_changed(self):
+        """Refresh app state after switching/importing course projects."""
+        self._on_language_changed()
+
+    def _on_question_bank_changed(self):
+        """Refresh views affected by question CRUD."""
+        self.question_bank.clear_cache()
+        self.home_screen.refresh()
+        self.topic_screen.refresh()
+
+    def _load_generation_context(self) -> tuple[str, list, object]:
+        """Load active course summary and topics for AI generation.
+        Returns (content, topics, project). Caller should check for empty content
+        and show a message if needed."""
+        gm = self.lang_manager.get_text
+        course = self.course_manager.current()
+        if course:
+            topics = [topic.title for topic in course.topics] or [gm("综合", "General")]
+            return course.summary_markdown, topics, course
+        return "", [], None
+
+    def _show_about(self):
+        """Show the About dialog."""
+        gm = self.lang_manager.get_text
+        QMessageBox.about(
+            self,
+            gm("关于", "About"),
+            f"<b>{APP_NAME}</b><br><br>"
+            f"{gm('一个基于PyQt的课件导入与刷题工具。', 'A PyQt-based course-material ingestion and quiz practice tool.')}<br><br>"
+            f"{gm('功能特性：', 'Features:')}<br>"
+            f"{gm('• 导入PPTX/PDF/DOCX/TXT/Markdown课件', '• Import PPTX/PDF/DOCX/TXT/Markdown course materials')}<br>"
+            f"{gm('• 生成可复用的课件摘要', '• Generate reusable course summaries')}<br>"
+            f"{gm('• AI生成双语题目', '• AI-generated bilingual questions')}<br>"
+            f"{gm('• 选择题/判断题自动评分', '• Auto-grading for multiple choice / true-false')}<br>"
+            f"{gm('• 进度追踪', '• Progress tracking')}<br>"
+            f"{gm('• 可复用的本地JSON题目集', '• Reusable local JSON question sets')}"
+        )
+
+    def closeEvent(self, event):
+        """Save settings before closing."""
+        self.settings_screen.save_settings(silent=True)
+        super().closeEvent(event)
