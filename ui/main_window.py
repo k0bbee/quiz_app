@@ -2,7 +2,7 @@
 
 from PyQt6.QtWidgets import (
     QMainWindow, QStackedWidget, QMenuBar, QMenu, QDialog,
-    QToolBar, QMessageBox, QWidget, QVBoxLayout, QPushButton
+    QToolBar, QMessageBox, QWidget, QVBoxLayout, QPushButton, QFileDialog
 )
 from PyQt6.QtGui import QAction
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -173,6 +173,7 @@ class MainWindow(QMainWindow):
 
         # Topic selection
         self.topic_screen.quiz_start.connect(self._on_quiz_start)
+        self.topic_screen.export_mock_exam.connect(self._on_export_mock_exam)
         self.topic_screen.back_to_home.connect(lambda: self.navigate_to(self.SCREEN_HOME))
 
         # Quiz screen
@@ -253,6 +254,49 @@ class MainWindow(QMainWindow):
         self._active_questions = {q.question_id: q for q in questions}
         self.quiz_screen.start_quiz(question_set, questions)
         self.navigate_to(self.SCREEN_QUIZ)
+
+    def _on_export_mock_exam(self, set_id: str):
+        """Export a selected question set as a Markdown mock exam."""
+        gm = self.lang_manager.get_text
+        question_set = self.set_manager.get(set_id)
+        if not question_set:
+            QMessageBox.warning(self, gm("Error", "Error"), gm("Question set not found.", "Question set not found."))
+            return
+
+        questions = self.question_bank.get_many(question_set.questions)
+        if not questions:
+            QMessageBox.warning(self, gm("Error", "Error"), gm("No questions found for this set.", "No questions found for this set."))
+            return
+
+        default_name = f"{question_set.set_id}_mock_exam.md"
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            gm("Export Mock Exam", "Export Mock Exam"),
+            default_name,
+            "Markdown Files (*.md);;All Files (*)",
+        )
+        if not filepath:
+            return
+
+        from core.mock_exam_exporter import MockExamExporter
+
+        try:
+            written = MockExamExporter.write_markdown(
+                filepath,
+                question_set,
+                questions,
+                lang=self.lang_manager.current,
+                include_answers=True,
+            )
+        except OSError as exc:
+            QMessageBox.critical(self, gm("Export Failed", "Export Failed"), str(exc))
+            return
+
+        QMessageBox.information(
+            self,
+            gm("Export Complete", "Export Complete"),
+            gm(f"Mock exam exported to:\n{written}", f"Mock exam exported to:\n{written}"),
+        )
 
     def _on_quiz_finished(self, progress_record):
         """Show results screen after quiz completion."""

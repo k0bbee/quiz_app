@@ -16,6 +16,7 @@ class TopicSelectionScreen(QWidget):
     """Screen for selecting a question set and configuring quiz parameters."""
 
     quiz_start = pyqtSignal(str, list)  # set_id, question_ids
+    export_mock_exam = pyqtSignal(str)  # set_id
     back_to_home = pyqtSignal()
 
     def __init__(self, set_manager: SetManager, progress_manager=None, parent=None):
@@ -77,11 +78,18 @@ class TopicSelectionScreen(QWidget):
         self.back_btn.clicked.connect(self.back_to_home.emit)
         btn_layout.addWidget(self.back_btn)
 
+        self.export_btn = QPushButton(self.lang_manager.get_text("Export Mock Exam", "Export Mock Exam"))
+        self.export_btn.setMinimumHeight(40)
+        self.export_btn.clicked.connect(self._export_selected_set)
+        self.export_btn.setEnabled(False)
+        btn_layout.addWidget(self.export_btn)
+
         self.start_btn = QPushButton(self.lang_manager.get_text("▶ 开始答题", "▶ Start Quiz"))
         self.start_btn.setMinimumHeight(40)
         self.start_btn.setStyleSheet("font-size: 15px; font-weight: bold;")
         self.start_btn.clicked.connect(self._start_quiz)
         self.start_btn.setEnabled(False)
+        self.export_btn.setEnabled(False)
         btn_layout.addWidget(self.start_btn)
 
         layout.addLayout(btn_layout)
@@ -92,6 +100,7 @@ class TopicSelectionScreen(QWidget):
         self.search_input.setPlaceholderText(self.lang_manager.get_text("搜索...", "Search..."))
         self.list_label.setText(self.lang_manager.get_text("可用的题目集:", "Available question sets:"))
         self.back_btn.setText(self.lang_manager.get_text("← 返回", "← Back"))
+        self.export_btn.setText(self.lang_manager.get_text("Export Mock Exam", "Export Mock Exam"))
         self.start_btn.setText(self.lang_manager.get_text("▶ 开始答题", "▶ Start Quiz"))
         self.refresh()
 
@@ -100,6 +109,7 @@ class TopicSelectionScreen(QWidget):
         if current is None:
             self.info_label.clear()
             self.start_btn.setEnabled(False)
+            self.export_btn.setEnabled(False)
             return
 
         set_id = current.data(Qt.ItemDataRole.UserRole)
@@ -124,6 +134,7 @@ class TopicSelectionScreen(QWidget):
                 f"{self.lang_manager.get_text('最佳:', 'Best:')} {best_score}"
             )
             self.start_btn.setEnabled(True)
+            self.export_btn.setEnabled(True)
 
     def _start_quiz(self):
         """Emit signal to start the quiz with selected set."""
@@ -135,6 +146,14 @@ class TopicSelectionScreen(QWidget):
         qset = self.set_manager.get(set_id)
         if qset:
             self.quiz_start.emit(set_id, qset.questions)
+
+
+    def _export_selected_set(self):
+        """Emit signal to export the selected question set as a mock exam."""
+        current = self.set_list.currentItem()
+        if not current:
+            return
+        self.export_mock_exam.emit(current.data(Qt.ItemDataRole.UserRole))
 
     def refresh(self):
         """Reload the question set list."""
@@ -173,6 +192,7 @@ class TopicSelectionScreen(QWidget):
         self._render_sets()
 
         self.start_btn.setEnabled(False)
+        self.export_btn.setEnabled(False)
         self.info_label.clear()
 
     def _render_sets(self):
@@ -217,6 +237,7 @@ class TopicSelectionScreen(QWidget):
                 )
             )
             self.start_btn.setEnabled(False)
+            self.export_btn.setEnabled(False)
 
     def _matches_filters(self, qset, query: str, topic_filter, diff_filter, lang: str) -> bool:
         """Return True if a question set should be shown."""
