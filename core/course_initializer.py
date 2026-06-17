@@ -84,9 +84,10 @@ def _is_generic_title(title: str) -> bool:
 class CourseInitializer:
     """Create a reusable course project from a folder of documents."""
 
-    def __init__(self, manager: CourseProjectManager | None = None):
+    def __init__(self, manager: CourseProjectManager | None = None, summary_generator=None):
         self.parser = DocumentParser()
         self.manager = manager or CourseProjectManager()
+        self.summary_generator = summary_generator
 
     def initialize(self, folder: str, title: str = "", make_current: bool = True) -> CourseProject:
         """Parse a folder and save a course project."""
@@ -97,6 +98,8 @@ class CourseInitializer:
         course_title = title.strip() or Path(folder).name
         topics = infer_topics(docs)
         summary = build_summary_markdown(course_title, docs, topics)
+        if self.summary_generator is not None:
+            summary = self.summary_generator.generate(course_title, docs, topics, summary)
         now = datetime.now(timezone.utc).isoformat()
         project = CourseProject(
             course_id=CourseProjectManager.new_id(),
