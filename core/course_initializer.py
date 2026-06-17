@@ -108,23 +108,53 @@ class CourseInitializer:
             summary_markdown=summary,
             summary_path="",
             topics=topics,
-            documents=[
-                {
-                    "path": doc.path,
-                    "title": doc.title,
-                    "extension": doc.extension,
-                    "word_count": doc.word_count,
-                    "page_count": len(doc.pages),
-                    "warnings": doc.warnings,
-                }
-                for doc in docs
-            ],
+            documents=_document_records(docs),
             created_at=now,
             updated_at=now,
         )
         project = attach_index_to_project(project)
         self.manager.save(project, make_current=make_current)
         return project
+
+    def regenerate_summary(self, project: CourseProject, make_current: bool = True) -> CourseProject:
+        """Re-parse an existing course's source folder and update its reusable summary."""
+        docs = self.parser.parse_folder(project.source_folder)
+        if not docs:
+            raise ValueError("No supported course files found. Supported: docx, pptx, pdf, txt, md.")
+
+        topics = infer_topics(docs)
+        summary = build_summary_markdown(project.title, docs, topics)
+        if self.summary_generator is not None:
+            summary = self.summary_generator.generate(project.title, docs, topics, summary)
+
+        updated = CourseProject(
+            course_id=project.course_id,
+            title=project.title,
+            source_folder=project.source_folder,
+            summary_markdown=summary,
+            summary_path=project.summary_path,
+            topics=topics,
+            documents=_document_records(docs),
+            created_at=project.created_at,
+            updated_at=datetime.now(timezone.utc).isoformat(),
+        )
+        updated = attach_index_to_project(updated)
+        self.manager.save(updated, make_current=make_current)
+        return updated
+
+
+def _document_records(docs: list[ExtractedDocument]) -> list[dict]:
+    return [
+        {
+            "path": doc.path,
+            "title": doc.title,
+            "extension": doc.extension,
+            "word_count": doc.word_count,
+            "page_count": len(doc.pages),
+            "warnings": doc.warnings,
+        }
+        for doc in docs
+    ]
 
 
 def infer_topics(docs: list[ExtractedDocument]) -> list[CourseTopic]:

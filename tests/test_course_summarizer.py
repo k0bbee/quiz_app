@@ -1,11 +1,20 @@
 import tempfile
 import unittest
 from pathlib import Path
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+from PyQt6.QtWidgets import QApplication
 
 from ai.course_summarizer import CourseSummaryGenerator
 from core.course_initializer import CourseInitializer
 from core.document_parser import ExtractedDocument
 from models.course_project import CourseProjectManager, CourseTopic
+from ui.screens.course_screen import CourseScreen
+
+
+_APP = QApplication.instance() or QApplication([])
 
 
 class FakeLLMClient:
@@ -83,6 +92,44 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
 
             self.assertIn("# LLM Summary", project.summary_markdown)
             self.assertTrue(Path(project.summary_path).read_text(encoding="utf-8").startswith("# LLM Summary"))
+
+    def test_initializer_can_regenerate_existing_project_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source"
+            source.mkdir()
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            initializer = CourseInitializer(manager=manager)
+            initializer.parser = FakeParser(self._docs())
+            project = initializer.initialize(str(source), title="Systems", make_current=False)
+            original_id = project.course_id
+            original_created_at = project.created_at
+
+            initializer.summary_generator = FakeSummaryGenerator()
+            updated = initializer.regenerate_summary(project, make_current=False)
+
+            self.assertEqual(original_id, updated.course_id)
+            self.assertEqual(original_created_at, updated.created_at)
+            self.assertIn("# LLM Summary", updated.summary_markdown)
+            self.assertGreaterEqual(len(updated.topics), 1)
+            self.assertGreaterEqual(len(updated.documents), 1)
+            self.assertNotEqual(project.updated_at, updated.updated_at)
+            self.assertTrue(Path(updated.summary_path).read_text(encoding="utf-8").startswith("# LLM Summary"))
+
+    def test_course_screen_enables_regenerate_button_for_selected_project(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source"
+            source.mkdir()
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            initializer = CourseInitializer(manager=manager)
+            initializer.parser = FakeParser(self._docs())
+            initializer.initialize(str(source), title="Systems", make_current=False)
+
+            screen = CourseScreen(manager)
+            screen.refresh()
+
+            self.assertFalse(screen.regenerate_btn.isEnabled())
+            screen.project_list.setCurrentRow(0)
+            self.assertTrue(screen.regenerate_btn.isEnabled())
 
 
 if __name__ == "__main__":
