@@ -12,6 +12,8 @@ from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from core.course_initializer import CourseInitializer
 from models.course_project import CourseProjectManager
 from core.language_manager import LanguageManager
+from config import SETTINGS_FILE
+from utils.json_io import read_json
 
 
 class CourseScreen(QWidget):
@@ -171,10 +173,20 @@ class CourseScreen(QWidget):
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # indeterminate
 
-        self._init_worker = CourseScreen._InitWorker(folder, self.title_input.text(), self.initializer)
+        self._init_worker = CourseScreen._InitWorker(folder, self.title_input.text(), self._build_initializer())
         self._init_worker.finished.connect(self._on_init_done)
         self._init_worker.error.connect(self._on_init_error)
         self._init_worker.start()
+
+    def _build_initializer(self):
+        """Build an initializer using current AI settings when available."""
+        from ai.course_summary_factory import create_course_summary_generator
+        from core.secrets_manager import SecretsManager
+
+        settings = read_json(SETTINGS_FILE) or {}
+        api_key = SecretsManager.instance().get_key()
+        summary_generator = create_course_summary_generator(settings, api_key=api_key)
+        return CourseInitializer(self.manager, summary_generator=summary_generator)
 
     def _on_init_done(self, project):
         self.progress_bar.setVisible(False)
