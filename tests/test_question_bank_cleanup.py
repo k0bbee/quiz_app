@@ -13,6 +13,7 @@ from core.question_bank_maintenance import remove_question_from_sets
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
 from ui.screens.question_bank_screen import QuestionBankScreen
+from utils.json_io import read_json
 from utils.constants import Difficulty, QuestionType
 
 
@@ -67,6 +68,27 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertEqual(["q3"], manager.get("set-c").questions)
             self.assertEqual("question_deleted", manager.get("set-a").metadata["source"])
             self.assertIn("updated_at", manager.get("set-a").metadata)
+
+    def test_question_bank_search_reuses_loaded_questions_until_mutation(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            question_bank.save_many([self._question("q1"), self._question("q2")])
+
+            with patch("models.question.read_json", wraps=read_json) as read:
+                first_page, first_total = question_bank.search(query="cache", limit=1)
+                reads_after_first_search = read.call_count
+                second_page, second_total = question_bank.search(query="cache", limit=1)
+
+                self.assertEqual(2, first_total)
+                self.assertEqual(2, second_total)
+                self.assertEqual([q.question_id for q in first_page], [q.question_id for q in second_page])
+                self.assertEqual(reads_after_first_search, read.call_count)
+
+                question_bank.save(self._question("q3"))
+                _page, updated_total = question_bank.search(query="cache", limit=5)
+
+                self.assertEqual(3, updated_total)
+                self.assertGreater(read.call_count, reads_after_first_search)
 
     def test_question_bank_screen_delete_prunes_question_sets(self):
         with tempfile.TemporaryDirectory() as tmpdir:

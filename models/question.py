@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -165,6 +166,8 @@ class QuestionBank:
     def __init__(self, questions_dir: str):
         self._dir = questions_dir
         self._cache: dict[str, Question] = {}
+        self._load_cache: list[Question] | None = None
+        self._load_cache_signature: tuple[tuple[str, int, int], ...] | None = None
 
     @property
     def directory(self) -> str:
@@ -174,6 +177,10 @@ class QuestionBank:
         """Load all questions from the questions directory."""
         from utils.json_io import list_json_files
 
+        signature = self._directory_signature()
+        if self._load_cache is not None and signature == self._load_cache_signature:
+            return [copy.deepcopy(q) for q in self._load_cache]
+
         questions = []
         for filename in list_json_files(self._dir):
             filepath = f"{self._dir}/{filename}"
@@ -182,6 +189,8 @@ class QuestionBank:
                 q = Question.from_dict(data)
                 self._cache[q.question_id] = q
                 questions.append(q)
+        self._load_cache = [copy.deepcopy(q) for q in questions]
+        self._load_cache_signature = signature
         return questions
 
     def get(self, question_id: str) -> Optional[Question]:
@@ -210,7 +219,10 @@ class QuestionBank:
         """Save a question to its JSON file."""
         filepath = f"{self._dir}/{question.question_id}.json"
         self._cache[question.question_id] = question
-        return write_json(filepath, question.to_dict())
+        ok = write_json(filepath, question.to_dict())
+        if ok:
+            self._invalidate_load_cache()
+        return ok
 
     def save_many(self, questions: list[Question]) -> int:
         """Save multiple questions. Returns count of successful saves."""
@@ -225,7 +237,10 @@ class QuestionBank:
         from utils.json_io import delete_json
 
         self._cache.pop(question_id, None)
-        return delete_json(f"{self._dir}/{sanitize_filename_part(question_id)}.json")
+        ok = delete_json(f"{self._dir}/{sanitize_filename_part(question_id)}.json")
+        if ok:
+            self._invalidate_load_cache()
+        return ok
 
     def filter_by_topic(self, topic: object) -> list[Question]:
         """Get all questions for a specific topic."""
@@ -277,6 +292,24 @@ class QuestionBank:
     def clear_cache(self):
         """Clear the in-memory cache."""
         self._cache.clear()
+        self._invalidate_load_cache()
 
     def __len__(self) -> int:
         return len(self.load_all())
+
+    def _directory_signature(self) -> tuple[tuple[str, int, int], ...]:
+        directory = Path(self._dir)
+        if not directory.exists():
+            return ()
+        signature = []
+        for path in sorted(directory.glob("*.json"), key=lambda item: item.name):
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            signature.append((path.name, stat.st_mtime_ns, stat.st_size))
+        return tuple(signature)
+
+    def _invalidate_load_cache(self) -> None:
+        self._load_cache = None
+        self._load_cache_signature = None
