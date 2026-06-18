@@ -26,6 +26,7 @@ class TopicSelectionScreen(QWidget):
         self.progress_manager = progress_manager
         self.lang_manager = LanguageManager.instance()
         self._all_sets = []
+        self._current_course_id = ""
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -172,10 +173,22 @@ class TopicSelectionScreen(QWidget):
             return
         self.regenerate_questions.emit(current.data(Qt.ItemDataRole.UserRole))
 
+    def set_current_course(self, course_id: str | None):
+        """Restrict generated question sets to the active course."""
+        course_id = course_id or ""
+        if course_id == self._current_course_id:
+            return
+        self._current_course_id = course_id
+        if hasattr(self, "set_list"):
+            self.refresh()
+
     def refresh(self):
         """Reload the question set list."""
         lang = self.lang_manager.current
-        self._all_sets = self.set_manager.load_all()
+        self._all_sets = [
+            qset for qset in self.set_manager.load_all()
+            if self._matches_current_course(qset)
+        ]
 
         self.topic_filter.blockSignals(True)
         current_topic = self.topic_filter.currentData()
@@ -279,3 +292,11 @@ class TopicSelectionScreen(QWidget):
             topic_text,
         ]).lower()
         return query in haystack
+
+    def _matches_current_course(self, qset) -> bool:
+        source_course_id = (qset.metadata or {}).get("course_id", "")
+        if not source_course_id:
+            return True
+        if not self._current_course_id:
+            return True
+        return source_course_id == self._current_course_id

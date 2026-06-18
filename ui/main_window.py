@@ -104,6 +104,7 @@ class MainWindow(QMainWindow):
 
         # Connect screen navigation signals
         self._connect_signals()
+        self._sync_topic_screen_course()
 
         # Apply initial language
         self._on_language_changed()
@@ -243,6 +244,7 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(screen_index)
         # Refresh data on certain screens
         if screen_index == self.SCREEN_TOPIC_SELECTION:
+            self._sync_topic_screen_course()
             self.topic_screen.refresh()
         elif screen_index == self.SCREEN_PROGRESS:
             self.progress_screen.refresh()
@@ -518,6 +520,7 @@ class MainWindow(QMainWindow):
 
     def _on_course_changed(self):
         """Refresh app state after switching/importing course projects."""
+        self._sync_topic_screen_course()
         self._on_language_changed()
 
     def _on_question_bank_changed(self):
@@ -536,6 +539,10 @@ class MainWindow(QMainWindow):
             topics = [topic.title for topic in course.topics] or [gm("综合", "General")]
             return course.summary_markdown, topics, course
         return "", [], None
+
+    def _sync_topic_screen_course(self):
+        course = self.course_manager.current()
+        self.topic_screen.set_current_course(course.course_id if course else "")
 
     def _show_about(self):
         """Show the About dialog."""

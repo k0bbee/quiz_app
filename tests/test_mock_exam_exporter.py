@@ -7,6 +7,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
 
 from core.mock_exam_exporter import MockExamExporter, render_mock_exam_markdown
 from models.question import Question
@@ -156,6 +157,33 @@ class MockExamExporterTests(unittest.TestCase):
             screen.regenerate_btn.click()
 
             self.assertEqual([qset.set_id], emitted)
+
+    def test_topic_selection_screen_filters_generated_sets_by_current_course(self):
+        from models.question_set import SetManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SetManager(tmpdir)
+            course_a = self._make_question_set()
+            course_a.set_id = "set-course-a"
+            course_a.metadata["course_id"] = "course-a"
+            course_b = self._make_question_set()
+            course_b.set_id = "set-course-b"
+            course_b.metadata["course_id"] = "course-b"
+            manual = self._make_question_set()
+            manual.set_id = "set-manual"
+            manager.save(course_a)
+            manager.save(course_b)
+            manager.save(manual)
+
+            screen = TopicSelectionScreen(manager)
+            screen.set_current_course("course-a")
+            screen.refresh()
+
+            visible_ids = {
+                screen.set_list.item(row).data(Qt.ItemDataRole.UserRole)
+                for row in range(screen.set_list.count())
+            }
+            self.assertEqual({"set-course-a", "set-manual"}, visible_ids)
 
 
 if __name__ == "__main__":
