@@ -13,6 +13,7 @@ from core.language_manager import LanguageManager
 from ai.llm_client import LLMClient
 from ai.batch_generator import GenerationWorker
 from ai.generation_config import GenerationConfig, QUESTION_TYPE_DEFAULTS, DIFFICULTY_DEFAULTS
+from ai.course_summary_factory import provider_requires_api_key
 from models.question import Question
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
 from ai.course_context import extract_relevant_course_context
@@ -324,10 +325,9 @@ class AIGenerationDialog(QDialog):
             )
             return
 
-        provider = self.settings.get("ai_provider", "")
         from core.secrets_manager import SecretsManager
         api_key = SecretsManager.instance().get_key()
-        if provider != "local_agent" and not api_key:
+        if provider_requires_api_key(self.settings) and not api_key:
             QMessageBox.warning(
                 self,
                 self.lang_manager.get_text("未配置 API Key", "No API Key"),

@@ -24,6 +24,8 @@ class LocalAgentTests(unittest.TestCase):
         from ui.main_window import _provider_requires_api_key
 
         self.assertFalse(_provider_requires_api_key({"ai_provider": "local_agent"}))
+        self.assertFalse(_provider_requires_api_key({"ai_base_url": "local-agent://auto"}))
+        self.assertFalse(_provider_requires_api_key({"ai_provider": "custom", "ai_base_url": "local-agent://codex"}))
         self.assertTrue(_provider_requires_api_key({"ai_provider": "custom"}))
 
     def test_local_agent_accepts_course_prompt_characters_without_shell_rejection(self):

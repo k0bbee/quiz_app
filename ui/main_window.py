@@ -21,11 +21,12 @@ from ui.screens.results_screen import ResultsScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.settings_screen import SettingsScreen
 from utils.constants import Difficulty, topic_label, topic_value
+from ai.course_summary_factory import provider_requires_api_key
 
 
 def _provider_requires_api_key(settings: dict) -> bool:
     """Return whether the selected AI provider needs a configured API key."""
-    return settings.get("ai_provider", "") != "local_agent"
+    return provider_requires_api_key(settings)
 
 
 class MainWindow(QMainWindow):
