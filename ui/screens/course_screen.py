@@ -48,6 +48,7 @@ class CourseScreen(QWidget):
         self.list_label.setText(self.lang_manager.get_text("已导入的课程:", "Imported courses:"))
         self.set_current_btn.setText(self.lang_manager.get_text("设为当前", "Set Current"))
         self.regenerate_btn.setText(self.lang_manager.get_text("Regenerate Summary", "Regenerate Summary"))
+        self.delete_btn.setText(self.lang_manager.get_text("删除课程", "Delete Course"))
         self.refresh_btn.setText(self.lang_manager.get_text("刷新", "Refresh"))
         self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
         self.refresh()
@@ -114,6 +115,10 @@ class CourseScreen(QWidget):
         self.regenerate_btn = QPushButton(self.lang_manager.get_text("Regenerate Summary", "Regenerate Summary"))
         self.regenerate_btn.clicked.connect(self._regenerate_selected_project)
         btn_row.addWidget(self.regenerate_btn)
+        self.delete_btn = QPushButton(self.lang_manager.get_text("删除课程", "Delete Course"))
+        self.delete_btn.setObjectName("danger")
+        self.delete_btn.clicked.connect(self._delete_selected_project)
+        btn_row.addWidget(self.delete_btn)
         self.refresh_btn = QPushButton(self.lang_manager.get_text("刷新", "Refresh"))
         self.refresh_btn.clicked.connect(self.refresh)
         btn_row.addWidget(self.refresh_btn)
@@ -148,10 +153,14 @@ class CourseScreen(QWidget):
             self.project_list.addItem(item)
         self.set_current_btn.setEnabled(False)
         self.regenerate_btn.setEnabled(False)
+        self.delete_btn.setEnabled(False)
         if current:
             current_label = self.lang_manager.get_text("当前:", "Current:")
             self.summary_label.setText(f"{current_label} {current.title}")
             self.summary_preview.setPlainText(current.summary_markdown[:20000])
+        else:
+            self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
+            self.summary_preview.clear()
 
     def _browse_folder(self):
         folder = QFileDialog.getExistingDirectory(
@@ -262,6 +271,7 @@ class CourseScreen(QWidget):
         if current is None:
             self.set_current_btn.setEnabled(False)
             self.regenerate_btn.setEnabled(False)
+            self.delete_btn.setEnabled(False)
             return
         course_id = current.data(Qt.ItemDataRole.UserRole)
         project = self.manager.get(course_id)
@@ -269,6 +279,7 @@ class CourseScreen(QWidget):
             return
         self.set_current_btn.setEnabled(True)
         self.regenerate_btn.setEnabled(True)
+        self.delete_btn.setEnabled(True)
         self.summary_label.setText(project.title)
         self.summary_preview.setPlainText(project.summary_markdown[:20000])
 
@@ -283,6 +294,7 @@ class CourseScreen(QWidget):
             return
 
         self.regenerate_btn.setEnabled(False)
+        self.delete_btn.setEnabled(False)
         self.init_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
@@ -292,10 +304,42 @@ class CourseScreen(QWidget):
         self._regen_worker.error.connect(self._on_regen_error)
         self._regen_worker.start()
 
+    def _delete_selected_project(self):
+        current = self.project_list.currentItem()
+        if not current:
+            return
+        course_id = current.data(Qt.ItemDataRole.UserRole)
+        project = self.manager.get(course_id)
+        if not project:
+            return
+        reply = QMessageBox.question(
+            self,
+            self.lang_manager.get_text("删除课程", "Delete Course"),
+            self.lang_manager.get_text(
+                f"确定删除课程“{project.title}”吗？这会删除生成的课程摘要，但不会删除原始课件文件夹。",
+                f"Delete course '{project.title}'? This removes the generated summary but not the original material folder.",
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        if not self.manager.delete(course_id):
+            QMessageBox.critical(
+                self,
+                self.lang_manager.get_text("删除失败", "Delete Failed"),
+                self.lang_manager.get_text("课程项目删除失败。", "Failed to delete the course project."),
+            )
+            return
+        self.summary_preview.clear()
+        self.current_course_changed.emit()
+        self.refresh()
+
     def _on_regen_done(self, project):
         self.progress_bar.setVisible(False)
         self.init_btn.setEnabled(True)
         self.regenerate_btn.setEnabled(True)
+        self.delete_btn.setEnabled(True)
         self.refresh()
         self.summary_label.setText(project.title)
         self.summary_preview.setPlainText(project.summary_markdown[:20000])
@@ -310,6 +354,7 @@ class CourseScreen(QWidget):
         self.progress_bar.setVisible(False)
         self.init_btn.setEnabled(True)
         self.regenerate_btn.setEnabled(self.project_list.currentItem() is not None)
+        self.delete_btn.setEnabled(self.project_list.currentItem() is not None)
         QMessageBox.critical(
             self,
             self.lang_manager.get_text("Regeneration Failed", "Regeneration Failed"),

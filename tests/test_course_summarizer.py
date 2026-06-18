@@ -2,10 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 import os
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from ai.course_summarizer import CourseSummaryGenerator
 from core.course_initializer import CourseInitializer
@@ -130,6 +131,49 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertFalse(screen.regenerate_btn.isEnabled())
             screen.project_list.setCurrentRow(0)
             self.assertTrue(screen.regenerate_btn.isEnabled())
+
+    def test_project_manager_delete_removes_project_summary_and_current_pointer(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            current_file = str(Path(tmpdir) / "current.json")
+            source = Path(tmpdir) / "source"
+            source.mkdir()
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            initializer = CourseInitializer(manager=manager)
+            initializer.parser = FakeParser(self._docs())
+
+            with patch("models.course_project.CURRENT_COURSE_FILE", current_file):
+                kept = initializer.initialize(str(source), title="Keep", make_current=True)
+                deleted = initializer.initialize(str(source), title="Delete", make_current=True)
+                deleted_json = Path(manager.directory) / f"{deleted.course_id}.json"
+                deleted_summary = Path(deleted.summary_path)
+
+                self.assertTrue(manager.delete(deleted.course_id))
+
+                self.assertFalse(deleted_json.exists())
+                self.assertFalse(deleted_summary.exists())
+                self.assertEqual(kept.course_id, manager.current().course_id)
+
+    def test_course_screen_can_delete_selected_project(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            current_file = str(Path(tmpdir) / "current.json")
+            source = Path(tmpdir) / "source"
+            source.mkdir()
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            initializer = CourseInitializer(manager=manager)
+            initializer.parser = FakeParser(self._docs())
+
+            with patch("models.course_project.CURRENT_COURSE_FILE", current_file):
+                project = initializer.initialize(str(source), title="Systems", make_current=True)
+                screen = CourseScreen(manager)
+                screen.refresh()
+                screen.project_list.setCurrentRow(0)
+
+                with patch("ui.screens.course_screen.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
+                    screen.delete_btn.click()
+
+                self.assertIsNone(manager.get(project.course_id))
+                self.assertEqual(0, screen.project_list.count())
+                self.assertNotIn("Systems", screen.summary_label.text())
 
 
 if __name__ == "__main__":

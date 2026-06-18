@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
 from config import COURSE_PROJECTS_DIR, CURRENT_COURSE_FILE
-from utils.json_io import read_json, write_json, list_json_files
+from utils.json_io import read_json, write_json, list_json_files, delete_json, sanitize_filename_part
 
 
 @dataclass
@@ -88,8 +89,11 @@ class CourseProjectManager:
         self._dir = projects_dir
         os.makedirs(self._dir, exist_ok=True)
 
+    @property
+    def directory(self) -> str:
+        return self._dir
+
     def save(self, project: CourseProject, make_current: bool = True) -> bool:
-        from utils.json_io import sanitize_filename_part
         safe_id = sanitize_filename_part(project.course_id)
         path = os.path.join(self._dir, f"{safe_id}.json")
         if not project.summary_path:
@@ -118,12 +122,35 @@ class CourseProjectManager:
         if not data:
             projects = self.load_all()
             return projects[0] if projects else None
-        return self.get(data.get("course_id", ""))
+        project = self.get(data.get("course_id", ""))
+        if project:
+            return project
+        projects = self.load_all()
+        return projects[0] if projects else None
 
     def set_current(self, course_id: str) -> bool:
         if not self.get(course_id):
             return False
         return write_json(CURRENT_COURSE_FILE, {"course_id": course_id})
+
+    def delete(self, course_id: str) -> bool:
+        """Delete a course project and its generated summary file."""
+        project = self.get(course_id)
+        safe_id = sanitize_filename_part(course_id)
+        ok = delete_json(os.path.join(self._dir, f"{safe_id}.json"))
+        if project and project.summary_path:
+            summary_path = Path(project.summary_path).resolve()
+            project_dir = Path(self._dir).resolve()
+            if summary_path == project_dir or project_dir in summary_path.parents:
+                try:
+                    if summary_path.exists():
+                        summary_path.unlink()
+                except OSError:
+                    ok = False
+        current = read_json(CURRENT_COURSE_FILE) or {}
+        if current.get("course_id") == course_id:
+            delete_json(CURRENT_COURSE_FILE)
+        return ok
 
     @staticmethod
     def new_id() -> str:
