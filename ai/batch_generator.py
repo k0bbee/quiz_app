@@ -97,6 +97,7 @@ class GenerationWorker(QThread):
                         )
                         # Set AI model in metadata
                         q.metadata["ai_model"] = self.client.model
+                        q.metadata.update(self._course_metadata())
                         errors = q.validate()
                         if not errors:
                             batch_questions.append(q)
@@ -135,6 +136,15 @@ class GenerationWorker(QThread):
                 max_chars=30000,
             )
         return self.course_content
+
+    def _course_metadata(self) -> dict:
+        if self.course_project is None:
+            return {}
+        return {
+            "course_id": getattr(self.course_project, "course_id", ""),
+            "course_title": getattr(self.course_project, "title", ""),
+            "course_updated_at": getattr(self.course_project, "updated_at", ""),
+        }
 
     def _validate_raw_question(self, qdata: dict) -> tuple[bool, str]:
         """Validate raw model output before converting it to a Question."""

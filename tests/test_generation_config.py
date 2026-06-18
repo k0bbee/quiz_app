@@ -1,5 +1,7 @@
 import os
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -61,6 +63,61 @@ class GenerationConfigTests(unittest.TestCase):
         )
 
         self.assertIs(worker.generation_config, config)
+
+    def test_worker_records_source_course_metadata_on_generated_questions(self):
+        class FakeClient:
+            model = "test-model"
+            last_error = ""
+
+            def generate_with_json(self, *_args, **_kwargs):
+                return {
+                    "questions": [
+                        {
+                            "type": "multiple_choice",
+                            "difficulty": "medium",
+                            "topic": "cache",
+                            "subtopic": "mapping",
+                            "correct_answer": "A",
+                            "bilingual": {
+                                "zh": {
+                                    "stem": "哪一个说法正确？",
+                                    "options": ["A. 正确", "B. 错误", "C. 错误", "D. 错误"],
+                                    "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
+                                },
+                                "en": {
+                                    "stem": "Which statement is correct?",
+                                    "options": ["A. Right", "B. Wrong", "C. Wrong", "D. Wrong"],
+                                    "explanation": "This is a sufficiently detailed English explanation for the answer.",
+                                },
+                            },
+                        }
+                    ]
+                }
+
+        course = SimpleNamespace(
+            course_id="course-20260618-demo",
+            title="Systems 2B",
+            updated_at="2026-06-18T12:00:00+00:00",
+        )
+        worker = GenerationWorker(
+            FakeClient(),
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="medium",
+            course_project=course,
+        )
+        batches = []
+        worker.batch_done.connect(batches.append)
+
+        with patch("ai.batch_generator.retrieve_course_context", return_value="Cache context"):
+            worker.run()
+
+        question = batches[0][0]
+        self.assertEqual("course-20260618-demo", question.metadata["course_id"])
+        self.assertEqual("Systems 2B", question.metadata["course_title"])
+        self.assertEqual("2026-06-18T12:00:00+00:00", question.metadata["course_updated_at"])
+        self.assertEqual("test-model", question.metadata["ai_model"])
 
     def test_dialog_returns_generation_config_from_controls(self):
         dialog = AIGenerationDialog(
