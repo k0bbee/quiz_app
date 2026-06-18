@@ -26,6 +26,7 @@ from ai.provider_presets import (
     provider_from_base_url,
     detect_local_agents,
 )
+from ai.settings_validation import validate_ai_settings
 
 
 class SettingsScreen(QWidget):
@@ -129,6 +130,10 @@ class SettingsScreen(QWidget):
         # Save button
         save_row = QHBoxLayout()
         save_row.addStretch()
+        self.test_ai_btn = QPushButton(self.lang_manager.get_text("测试 AI 设置", "Test AI Settings"))
+        self.test_ai_btn.setMinimumHeight(40)
+        self.test_ai_btn.clicked.connect(self._test_ai_settings)
+        save_row.addWidget(self.test_ai_btn)
         self.save_btn = QPushButton(self.lang_manager.get_text("💾 保存设置", "💾 Save Settings"))
         self.save_btn.setMinimumHeight(40)
         self.save_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
@@ -185,6 +190,7 @@ class SettingsScreen(QWidget):
         self.export_btn.setText(self.lang_manager.get_text("📤 导出进度", "📤 Export Progress"))
         self.import_btn.setText(self.lang_manager.get_text("📥 导入进度", "📥 Import Progress"))
         self.reset_progress_btn.setText(self.lang_manager.get_text("🗑 重置全部进度", "🗑 Reset All Progress"))
+        self.test_ai_btn.setText(self.lang_manager.get_text("测试 AI 设置", "Test AI Settings"))
         self.save_btn.setText(self.lang_manager.get_text("💾 保存设置", "💾 Save Settings"))
         self.api_key_input.setPlaceholderText(
             self.lang_manager.get_text("输入 API 密钥...", "Enter API key..."))
@@ -335,6 +341,29 @@ class SettingsScreen(QWidget):
             self.local_agent_status.setText(self.lang_manager.get_text(
                 "未检测到本地 CLI。需要 API Key 或安装 claude/codex CLI。",
                 "No local CLI detected. API key required, or install claude/codex CLI."))
+
+    def _test_ai_settings(self):
+        from core.secrets_manager import SecretsManager
+
+        settings = {
+            "ai_provider": self.provider_combo.currentData() or "",
+            "ai_base_url": self.api_base_url.text().strip(),
+            "ai_model": self.model_combo.currentText().strip(),
+        }
+        api_key = self.api_key_input.text() or SecretsManager.instance().get_key()
+        result = validate_ai_settings(settings, api_key=api_key, detected_agents=detect_local_agents())
+        if result.ok:
+            QMessageBox.information(
+                self,
+                self.lang_manager.get_text("AI 设置可用", "AI Settings Ready"),
+                result.message,
+            )
+            return
+        QMessageBox.warning(
+            self,
+            self.lang_manager.get_text("AI 设置需要处理", "AI Settings Need Attention"),
+            result.message,
+        )
 
     # ── Public ────────────────────────────────────────────────
 
