@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 from ai.course_summarizer import CourseSummaryGenerator
 from core.course_initializer import CourseInitializer
 from core.document_parser import ExtractedDocument
-from models.course_project import CourseProjectManager, CourseTopic
+from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from ui.screens.course_screen import CourseScreen
 
 
@@ -115,6 +115,29 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertGreaterEqual(len(updated.documents), 1)
             self.assertNotEqual(project.updated_at, updated.updated_at)
             self.assertTrue(Path(updated.summary_path).read_text(encoding="utf-8").startswith("# LLM Summary"))
+
+    def test_project_manager_repairs_stale_summary_path_on_save(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            stale_summary = Path(tmpdir) / "old-cwd" / "quiz_app" / "data" / "courses" / "course-stale_summary.md"
+            project = CourseProject(
+                course_id="course-stale",
+                title="Systems",
+                source_folder=str(Path(tmpdir) / "source"),
+                summary_markdown="# Repaired Summary\n",
+                summary_path=str(stale_summary),
+                topics=self._topics(),
+                documents=[],
+                created_at="2026-06-18T00:00:00+00:00",
+                updated_at="2026-06-18T00:00:00+00:00",
+            )
+
+            self.assertTrue(manager.save(project, make_current=False))
+
+            repaired_summary = Path(manager.directory) / "course-stale_summary.md"
+            self.assertEqual(repaired_summary, Path(project.summary_path))
+            self.assertEqual("# Repaired Summary\n", repaired_summary.read_text(encoding="utf-8"))
+            self.assertFalse(stale_summary.exists())
 
     def test_course_screen_enables_regenerate_button_for_selected_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:

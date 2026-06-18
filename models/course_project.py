@@ -93,11 +93,31 @@ class CourseProjectManager:
     def directory(self) -> str:
         return self._dir
 
+    def _summary_path_for(self, safe_id: str) -> Path:
+        return Path(self._dir) / f"{safe_id}_summary.md"
+
+    def _normalize_summary_path(self, project: CourseProject, safe_id: str) -> Path:
+        expected_path = self._summary_path_for(safe_id)
+        if not project.summary_path:
+            return expected_path
+
+        summary_path = Path(project.summary_path)
+        project_dir = Path(self._dir).resolve()
+        try:
+            resolved_summary = summary_path.resolve()
+        except OSError:
+            resolved_summary = summary_path.absolute()
+
+        if resolved_summary == project_dir or project_dir in resolved_summary.parents:
+            return summary_path
+        return expected_path
+
     def save(self, project: CourseProject, make_current: bool = True) -> bool:
         safe_id = sanitize_filename_part(project.course_id)
         path = os.path.join(self._dir, f"{safe_id}.json")
-        if not project.summary_path:
-            project.summary_path = os.path.join(self._dir, f"{safe_id}_summary.md")
+        summary_path = self._normalize_summary_path(project, safe_id)
+        os.makedirs(summary_path.parent, exist_ok=True)
+        project.summary_path = str(summary_path)
         with open(project.summary_path, "w", encoding="utf-8") as f:
             f.write(project.summary_markdown)
         ok = write_json(path, project.to_dict())
