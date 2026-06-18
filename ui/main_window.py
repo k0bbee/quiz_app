@@ -428,6 +428,7 @@ class MainWindow(QMainWindow):
                     selected_difficulty=dialog.diff_combo.currentData(),
                     generation_config=dialog._build_generation_config(),
                     lang=lang,
+                    course_project=course_project,
                 )
                 self.set_manager.save(qset)
                 QMessageBox.information(
@@ -490,7 +491,7 @@ class MainWindow(QMainWindow):
         difficulty = qset.difficulty
         if selected_diff in {d.value for d in Difficulty}:
             difficulty = Difficulty(selected_diff)
-        apply_regenerated_questions(qset, questions, difficulty=difficulty)
+        apply_regenerated_questions(qset, questions, difficulty=difficulty, course_project=course_project)
         self.set_manager.save(qset)
         self.topic_screen.refresh()
         QMessageBox.information(

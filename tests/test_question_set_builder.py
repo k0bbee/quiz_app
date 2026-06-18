@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 
 from ai.generation_config import GenerationConfig
 from core.question_set_builder import build_ai_question_set
@@ -62,6 +63,25 @@ class QuestionSetBuilderTests(unittest.TestCase):
 
         self.assertEqual(Difficulty.MEDIUM, qset.difficulty)
         self.assertEqual("mixed", qset.metadata["difficulty_mode"])
+
+    def test_build_ai_question_set_records_source_course_metadata(self):
+        course = SimpleNamespace(
+            course_id="course-20260618-demo",
+            title="Systems 2B",
+            updated_at="2026-06-18T12:00:00+00:00",
+        )
+
+        qset = build_ai_question_set(
+            [self._question("q1", "cache")],
+            selected_difficulty="medium",
+            generation_config=GenerationConfig(template="quick_review"),
+            lang="en",
+            course_project=course,
+        )
+
+        self.assertEqual("course-20260618-demo", qset.metadata["course_id"])
+        self.assertEqual("Systems 2B", qset.metadata["course_title"])
+        self.assertEqual("2026-06-18T12:00:00+00:00", qset.metadata["course_updated_at"])
 
 
 if __name__ == "__main__":

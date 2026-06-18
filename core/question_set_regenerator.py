@@ -13,6 +13,7 @@ def apply_regenerated_questions(
     question_set: QuestionSet,
     questions: list[Question],
     difficulty: Difficulty | None = None,
+    course_project=None,
 ) -> QuestionSet:
     """Replace a question set's question references with regenerated questions."""
     now = datetime.now(timezone.utc).isoformat()
@@ -24,4 +25,8 @@ def apply_regenerated_questions(
     question_set.metadata["updated_at"] = now
     question_set.metadata["regenerated_at"] = now
     question_set.metadata["source"] = "ai_regenerated"
+    if course_project is not None:
+        question_set.metadata["course_id"] = getattr(course_project, "course_id", "")
+        question_set.metadata["course_title"] = getattr(course_project, "title", "")
+        question_set.metadata["course_updated_at"] = getattr(course_project, "updated_at", "")
     return question_set

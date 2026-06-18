@@ -13,6 +13,7 @@ def build_ai_question_set(
     selected_difficulty: str,
     generation_config: GenerationConfig,
     lang: str = "en",
+    course_project=None,
 ) -> QuestionSet:
     """Create a question set that preserves the user's AI generation choices."""
     topics = sorted({topic_value(question.topic) for question in questions})
@@ -34,6 +35,7 @@ def build_ai_question_set(
         source="ai_generated",
     )
     qset.metadata.update(_generation_metadata(selected_difficulty, generation_config))
+    qset.metadata.update(_course_metadata(course_project))
     return qset
 
 
@@ -51,4 +53,14 @@ def _generation_metadata(selected_difficulty: str, generation_config: Generation
         "question_type_weights": dict(generation_config.question_type_weights),
         "difficulty_weights": dict(generation_config.difficulty_weights),
         "topic_weights": dict(generation_config.topic_weights),
+    }
+
+
+def _course_metadata(course_project) -> dict:
+    if course_project is None:
+        return {}
+    return {
+        "course_id": getattr(course_project, "course_id", ""),
+        "course_title": getattr(course_project, "title", ""),
+        "course_updated_at": getattr(course_project, "updated_at", ""),
     }

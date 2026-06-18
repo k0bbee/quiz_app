@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 
 from core.question_set_regenerator import apply_regenerated_questions
 from models.question import Question
@@ -53,6 +54,37 @@ class QuestionSetRegenerationTests(unittest.TestCase):
         self.assertEqual("ai_regenerated", updated.metadata["source"])
         self.assertIn("updated_at", updated.metadata)
         self.assertIn("regenerated_at", updated.metadata)
+
+    def test_apply_regenerated_questions_updates_source_course_metadata(self):
+        qset = QuestionSet(
+            set_id="set-review",
+            title={"zh": "复习", "en": "Review"},
+            description={"zh": "", "en": ""},
+            topics=["old"],
+            difficulty=Difficulty.EASY,
+            estimated_minutes=10,
+            questions=["old1"],
+            metadata={
+                "course_id": "old-course",
+                "course_title": "Old Course",
+                "source": "ai_generated",
+            },
+        )
+        course = SimpleNamespace(
+            course_id="course-new",
+            title="New Course",
+            updated_at="2026-06-18T12:00:00+00:00",
+        )
+
+        updated = apply_regenerated_questions(
+            qset,
+            [self._question("new1", "cache")],
+            course_project=course,
+        )
+
+        self.assertEqual("course-new", updated.metadata["course_id"])
+        self.assertEqual("New Course", updated.metadata["course_title"])
+        self.assertEqual("2026-06-18T12:00:00+00:00", updated.metadata["course_updated_at"])
 
 
 if __name__ == "__main__":
