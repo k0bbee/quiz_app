@@ -24,11 +24,27 @@ from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.settings_screen import SettingsScreen
 from utils.constants import Difficulty
 from ai.course_summary_factory import provider_requires_api_key
+from ai.provider_presets import detect_local_agents
+from ai.settings_validation import validate_ai_settings
 
 
 def _provider_requires_api_key(settings: dict) -> bool:
     """Return whether the selected AI provider needs a configured API key."""
     return provider_requires_api_key(settings)
+
+
+def _ai_generation_settings_error(
+    settings: dict,
+    api_key: str,
+    detected_agents: list[str] | None = None,
+) -> str:
+    """Return a blocking AI settings error for generation, or an empty string."""
+    result = validate_ai_settings(
+        settings,
+        api_key=api_key,
+        detected_agents=detect_local_agents() if detected_agents is None else detected_agents,
+    )
+    return "" if result.ok else result.message
 
 
 class MainWindow(QMainWindow):
@@ -384,11 +400,12 @@ class MainWindow(QMainWindow):
         # Check API key unless a local CLI agent is selected.
         from core.secrets_manager import SecretsManager
         api_key = SecretsManager.instance().get_key()
-        if _provider_requires_api_key(settings) and not api_key:
+        settings_error = _ai_generation_settings_error(settings, api_key)
+        if settings_error:
             QMessageBox.warning(
                 self,
-                gm("未配置 API Key", "No API Key"),
-                gm("请在设置中配置 API Key 后再使用 AI 出题功能。", "Please configure an API key in Settings before using AI generation."),
+                gm("AI 设置需要处理", "AI Settings Need Attention"),
+                settings_error,
             )
             return
 
@@ -442,12 +459,12 @@ class MainWindow(QMainWindow):
 
         from core.secrets_manager import SecretsManager
         api_key = SecretsManager.instance().get_key()
-        if _provider_requires_api_key(settings) and not api_key:
+        settings_error = _ai_generation_settings_error(settings, api_key)
+        if settings_error:
             QMessageBox.warning(
                 self,
-                gm("未配置 API Key", "No API Key"),
-                gm("请在设置中配置 API Key，或选择本地 Agent。",
-                   "Please configure an API key or choose a local agent."),
+                gm("AI 设置需要处理", "AI Settings Need Attention"),
+                settings_error,
             )
             return
 

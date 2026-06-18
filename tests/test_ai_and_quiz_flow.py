@@ -28,6 +28,28 @@ class LocalAgentTests(unittest.TestCase):
         self.assertFalse(_provider_requires_api_key({"ai_provider": "custom", "ai_base_url": "local-agent://codex"}))
         self.assertTrue(_provider_requires_api_key({"ai_provider": "custom"}))
 
+    def test_ai_generation_preflight_reports_missing_remote_key(self):
+        from ui.main_window import _ai_generation_settings_error
+
+        message = _ai_generation_settings_error(
+            {"ai_provider": "openai", "ai_base_url": "https://api.openai.com/v1", "ai_model": "gpt-4.1-mini"},
+            api_key="",
+            detected_agents=[],
+        )
+
+        self.assertIn("API key", message)
+
+    def test_ai_generation_preflight_accepts_detected_local_agent(self):
+        from ui.main_window import _ai_generation_settings_error
+
+        message = _ai_generation_settings_error(
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            api_key="",
+            detected_agents=["codex"],
+        )
+
+        self.assertEqual("", message)
+
     def test_local_agent_accepts_course_prompt_characters_without_shell_rejection(self):
         client = LLMClient(api_key="", base_url="local-agent://auto", model="codex")
         result = types.SimpleNamespace(returncode=0, stdout='{"questions":[]}', stderr="")
