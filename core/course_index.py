@@ -9,6 +9,9 @@ from functools import lru_cache
 
 from models.course_project import CourseProject
 
+_MAX_PAYLOAD_CACHE_SIZE = 24
+_PAYLOAD_CACHE: dict[tuple[str, str], str] = {}
+
 
 @dataclass
 class CourseChunk:
@@ -67,7 +70,11 @@ def retrieve_course_context(
 ) -> str:
     """Retrieve relevant context from a project, using cached scoring."""
     topic_key = tuple(sorted(str(t) for t in selected_topics))
-    return _retrieve_cached(project.course_id, project.updated_at, topic_key, max_chars, _project_payload(project))
+    payload_key = (project.course_id, project.updated_at)
+    if payload_key not in _PAYLOAD_CACHE:
+        _PAYLOAD_CACHE[payload_key] = _project_payload(project)
+        _trim_payload_cache()
+    return _retrieve_cached(project.course_id, project.updated_at, topic_key, max_chars)
 
 
 @lru_cache(maxsize=128)
@@ -76,11 +83,11 @@ def _retrieve_cached(
     updated_at: str,
     topic_key: tuple[str, ...],
     max_chars: int,
-    payload: str,
 ) -> str:
     """Cached retrieval; payload is a compact serialized index/summary string."""
     import json
 
+    payload = _PAYLOAD_CACHE.get((course_id, updated_at), "")
     try:
         data = json.loads(payload)
     except (json.JSONDecodeError, TypeError):
@@ -141,6 +148,13 @@ def _project_payload(project: CourseProject) -> str:
         ensure_ascii=False,
         sort_keys=True,
     )
+
+
+def _trim_payload_cache() -> None:
+    """Keep only recent course payloads; retrieval results are separately LRU-cached."""
+    while len(_PAYLOAD_CACHE) > _MAX_PAYLOAD_CACHE_SIZE:
+        oldest_key = next(iter(_PAYLOAD_CACHE))
+        _PAYLOAD_CACHE.pop(oldest_key, None)
 
 
 def attach_index_to_project(project: CourseProject) -> CourseProject:
