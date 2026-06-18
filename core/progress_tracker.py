@@ -68,12 +68,23 @@ class ProgressManager:
 
     # --- Aggregation ---
 
-    def get_aggregated_stats(self) -> dict:
+    def get_aggregated_stats(self, question_ids: set[str] | None = None) -> dict:
         """Compute overall statistics across all sessions."""
         records = self.load_all()
         completed = [r for r in records if r.status == "completed" and r.summary]
+        if question_ids is not None:
+            filtered = []
+            for record in completed:
+                answers = [answer for answer in record.answers if answer.question_id in question_ids]
+                if not answers:
+                    continue
+                filtered.append((record, SessionSummary.compute(answers, len(answers), sum(
+                    answer.time_spent_seconds for answer in answers
+                ))))
+        else:
+            filtered = [(record, record.summary) for record in completed if record.summary]
 
-        total_sessions = len(completed)
+        total_sessions = len(filtered)
         if total_sessions == 0:
             return {
                 "total_sessions": 0,
@@ -84,22 +95,22 @@ class ProgressManager:
                 "recent_sessions": [],
             }
 
-        total_questions = sum(r.summary.total_questions for r in completed)
-        total_correct = sum(r.summary.correct for r in completed)
+        total_questions = sum(summary.total_questions for _record, summary in filtered)
+        total_correct = sum(summary.correct for _record, summary in filtered)
         overall_accuracy = (total_correct / total_questions * 100) if total_questions > 0 else 0.0
 
         # Recent sessions (last 20)
-        recent = completed[:20]
+        recent = filtered[:20]
         recent_sessions = [
             {
                 "progress_id": r.progress_id,
                 "set_id": r.set_id,
                 "started_at": r.started_at,
-                "score": r.summary.score_percentage if r.summary else 0,
-                "total": r.summary.total_questions if r.summary else 0,
-                "correct": r.summary.correct if r.summary else 0,
+                "score": summary.score_percentage,
+                "total": summary.total_questions,
+                "correct": summary.correct,
             }
-            for r in recent
+            for r, summary in recent
         ]
 
         return {

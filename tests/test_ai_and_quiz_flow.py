@@ -143,8 +143,28 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen.set_current_course("course-a")
             screen.refresh()
 
+            self.assertIn("累计 1 题", screen.stats_label.text())
             self.assertIn("历史错题 1 题", screen.stats_label.text())
             self.assertIn("题库总量 1 题", screen.stats_label.text())
+
+    def test_progress_stats_can_filter_by_question_ids(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            progress_manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            record = ProgressRecord.create_new("set-any")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(question_id="q1", index_in_session=0, user_answer="A", is_correct=True),
+                AnswerRecord(question_id="q2", index_in_session=1, user_answer="B", is_correct=False),
+            ]
+            record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
+            progress_manager.save(record)
+
+            stats = progress_manager.get_aggregated_stats({"q1"})
+
+            self.assertEqual(1, stats["total_sessions"])
+            self.assertEqual(1, stats["total_questions"])
+            self.assertEqual(1, stats["total_correct"])
+            self.assertEqual(100.0, stats["overall_accuracy"])
 
 
 if __name__ == "__main__":
