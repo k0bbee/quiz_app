@@ -18,6 +18,7 @@ class LLMClient:
         self._api_key = api_key
         self.base_url = (base_url or "https://api.anthropic.com/v1").rstrip("/")
         self.model = model
+        self.last_error = ""
 
     def __repr__(self) -> str:
         return f"LLMClient(model={self.model!r}, base_url={self.base_url!r})"
@@ -29,6 +30,7 @@ class LLMClient:
         max_tokens: int = 8000,
     ) -> Optional[str]:
         """Send chat completion request. Returns response text or None on failure."""
+        self.last_error = ""
         if self.base_url.startswith("local-agent://"):
             return self._generate_local_agent(messages, max_tokens)
         if "anthropic" in self.base_url:
@@ -50,8 +52,10 @@ class LLMClient:
         if preferred in {"auto", "codex"}:
             candidates.append(("codex", ["codex", "exec", prompt]))
 
+        missing = []
         for name, command in candidates:
             if shutil.which(command[0]) is None:
+                missing.append(command[0])
                 continue
             try:
                 result = subprocess.run(
@@ -65,9 +69,15 @@ class LLMClient:
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     return result.stdout.strip()
-                debug(f"Local agent {name} failed ({result.returncode}): {result.stderr[:500]}")
+                detail = (result.stderr or result.stdout or "").strip()[:500]
+                self.last_error = f"Local agent {name} failed with exit code {result.returncode}: {detail}"
+                debug(self.last_error)
             except (OSError, subprocess.SubprocessError) as exc:
-                debug(f"Local agent {name} request failed: {exc}")
+                self.last_error = f"Local agent {name} request failed: {exc}"
+                debug(self.last_error)
+        if not self.last_error:
+            wanted = ", ".join(missing or [name for name, _ in candidates])
+            self.last_error = f"No supported local agent CLI found for model '{self.model}'. Tried: {wanted}."
         return None
 
     def _generate_anthropic(
@@ -100,18 +110,22 @@ class LLMClient:
                 try:
                     data = resp.json()
                 except (json.JSONDecodeError, ValueError):
-                    debug("LLM API returned non-JSON response")
+                    self.last_error = "Anthropic API returned a non-JSON response."
+                    debug(self.last_error)
                     return None
                 # Extract from Anthropic response format
                 for block in data.get("content", []):
                     if block.get("type") == "text":
                         return block["text"]
+                self.last_error = "Anthropic API response did not contain a text block."
                 return None
             else:
-                debug(f"LLM API error ({resp.status_code}): {resp.text[:500]}")
+                self.last_error = f"Anthropic API error {resp.status_code}: {resp.text[:500]}"
+                debug(self.last_error)
                 return None
         except requests.RequestException as e:
-            debug(f"LLM API request failed: {e}")
+            self.last_error = f"Anthropic API request failed: {e}"
+            debug(self.last_error)
             return None
 
     def _generate_openai_compatible(
@@ -140,16 +154,20 @@ class LLMClient:
                 try:
                     data = resp.json()
                 except (json.JSONDecodeError, ValueError):
-                    debug("LLM API returned non-JSON response (openai-compatible)")
+                    self.last_error = "OpenAI-compatible API returned a non-JSON response."
+                    debug(self.last_error)
                     return None
                 choices = data.get("choices", [])
                 if not choices:
+                    self.last_error = "OpenAI-compatible API response did not include choices."
                     return None
                 return choices[0].get("message", {}).get("content")
-            debug(f"LLM API error ({resp.status_code}): {resp.text[:500]}")
+            self.last_error = f"OpenAI-compatible API error {resp.status_code}: {resp.text[:500]}"
+            debug(self.last_error)
             return None
         except requests.RequestException as e:
-            debug(f"LLM API request failed: {e}")
+            self.last_error = f"OpenAI-compatible API request failed: {e}"
+            debug(self.last_error)
             return None
 
     def generate_with_json(
@@ -171,7 +189,8 @@ class LLMClient:
 
                 return json.loads(json_text)
             except (json.JSONDecodeError, ValueError) as e:
-                debug(f"JSON parse error (attempt {attempt + 1}/{max_retries}): {e}")
+                self.last_error = f"JSON parse error (attempt {attempt + 1}/{max_retries}): {e}"
+                debug(self.last_error)
                 if attempt < max_retries - 1:
                     time.sleep(2 ** attempt)  # Exponential backoff
 

@@ -64,7 +64,8 @@ class GenerationWorker(QThread):
                 data = self.client.generate_with_json(messages, max_retries=3)
 
                 if data is None:
-                    self.error.emit("Failed to generate questions. Check your API key and connection.")
+                    detail = getattr(self.client, "last_error", "") or "Check your API key, model, provider, and network connection."
+                    self.error.emit(detail)
                     return
 
                 # Parse questions from response
