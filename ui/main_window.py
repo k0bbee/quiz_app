@@ -107,7 +107,7 @@ class MainWindow(QMainWindow):
         """Lazy-init the question bank screen on first access."""
         if self._question_bank_screen is None:
             from ui.screens.question_bank_screen import QuestionBankScreen
-            self._question_bank_screen = QuestionBankScreen(self.question_bank)
+            self._question_bank_screen = QuestionBankScreen(self.question_bank, set_manager=self.set_manager)
             self.stack.insertWidget(self.SCREEN_QUESTION_BANK, self._question_bank_screen)
         return self._question_bank_screen
 

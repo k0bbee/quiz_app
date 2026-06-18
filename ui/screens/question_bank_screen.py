@@ -12,7 +12,9 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from core.language_manager import LanguageManager
+from core.question_bank_maintenance import remove_question_from_sets
 from models.question import Question, QuestionBank
+from models.question_set import SetManager
 from utils.constants import Difficulty, QuestionType, topic_value
 
 
@@ -21,9 +23,10 @@ class QuestionBankScreen(QWidget):
 
     question_bank_changed = pyqtSignal()
 
-    def __init__(self, question_bank: QuestionBank, parent=None):
+    def __init__(self, question_bank: QuestionBank, set_manager: SetManager | None = None, parent=None):
         super().__init__(parent)
         self.question_bank = question_bank
+        self.set_manager = set_manager
         self.lang_manager = LanguageManager.instance()
         self.page_size = 25
         self.page = 0
@@ -272,7 +275,10 @@ class QuestionBankScreen(QWidget):
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        self.question_bank.delete(self.current_question_id)
+        deleted_question_id = self.current_question_id
+        self.question_bank.delete(deleted_question_id)
+        if self.set_manager is not None:
+            remove_question_from_sets(self.set_manager, deleted_question_id)
         self.current_question_id = ""
         self.editor.clear()
         self.question_bank_changed.emit()
