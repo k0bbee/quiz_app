@@ -129,7 +129,8 @@ class SetManager:
         return None
 
     def save(self, question_set: QuestionSet) -> bool:
-        filepath = f"{self._dir}/{question_set.set_id}.json"
+        safe_id = sanitize_filename_part(question_set.set_id)
+        filepath = f"{self._dir}/{safe_id}.json"
         self._cache[question_set.set_id] = question_set
         return write_json(filepath, question_set.to_dict())
 

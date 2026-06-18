@@ -217,7 +217,8 @@ class QuestionBank:
 
     def save(self, question: Question) -> bool:
         """Save a question to its JSON file."""
-        filepath = f"{self._dir}/{question.question_id}.json"
+        safe_id = sanitize_filename_part(question.question_id)
+        filepath = f"{self._dir}/{safe_id}.json"
         self._cache[question.question_id] = question
         ok = write_json(filepath, question.to_dict())
         if ok:

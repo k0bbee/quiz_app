@@ -48,7 +48,8 @@ class ProgressManager:
 
     def save(self, record: ProgressRecord) -> bool:
         """Save a progress record to JSON."""
-        filepath = f"{self._dir}/{record.progress_id}.json"
+        safe_id = sanitize_filename_part(record.progress_id)
+        filepath = f"{self._dir}/{safe_id}.json"
         return write_json(filepath, record.to_dict())
 
     def delete(self, progress_id: str) -> bool:

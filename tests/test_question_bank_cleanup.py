@@ -9,7 +9,9 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
+from core.progress_tracker import ProgressManager
 from core.question_bank_maintenance import remove_question_from_sets
+from models.progress import ProgressRecord
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
 from ui.screens.question_bank_screen import QuestionBankScreen
@@ -89,6 +91,37 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
                 self.assertEqual(3, updated_total)
                 self.assertGreater(read.call_count, reads_after_first_search)
+
+    def test_question_and_set_save_reject_path_traversal_ids(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            unsafe_question = self._question("../outside")
+
+            with self.assertRaises(ValueError):
+                question_bank.save(unsafe_question)
+
+            self.assertFalse((root / "outside.json").exists())
+
+            set_manager = SetManager(str(root / "sets"))
+            unsafe_set = self._set("../outside-set", ["q1"])
+
+            with self.assertRaises(ValueError):
+                set_manager.save(unsafe_set)
+
+            self.assertFalse((root / "outside-set.json").exists())
+
+    def test_progress_save_rejects_path_traversal_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            manager = ProgressManager(str(root / "progress"))
+            record = ProgressRecord.create_new("set-a")
+            record.progress_id = "../outside-progress"
+
+            with self.assertRaises(ValueError):
+                manager.save(record)
+
+            self.assertFalse((root / "outside-progress.json").exists())
 
     def test_question_bank_screen_delete_prunes_question_sets(self):
         with tempfile.TemporaryDirectory() as tmpdir:
