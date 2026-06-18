@@ -260,6 +260,7 @@ class QuestionBank:
         query: str = "",
         topic: object = None,
         difficulty: Difficulty | str | None = None,
+        course_id: str | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[list[Question], int]:
@@ -267,6 +268,7 @@ class QuestionBank:
         query = query.strip().lower()
         topic_filter = topic_value(topic) if topic is not None else None
         difficulty_filter = difficulty.value if isinstance(difficulty, Difficulty) else difficulty
+        course_filter = (course_id or "").strip()
 
         matches: list[Question] = []
         for q in self.load_all():
@@ -274,6 +276,10 @@ class QuestionBank:
                 continue
             if difficulty_filter and q.difficulty.value != difficulty_filter:
                 continue
+            if course_filter:
+                source_course_id = (q.metadata or {}).get("course_id", "")
+                if source_course_id and source_course_id != course_filter:
+                    continue
             if query:
                 haystack = " ".join([
                     q.get_stem("zh"),

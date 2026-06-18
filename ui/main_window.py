@@ -125,6 +125,7 @@ class MainWindow(QMainWindow):
         if self._question_bank_screen is None:
             from ui.screens.question_bank_screen import QuestionBankScreen
             self._question_bank_screen = QuestionBankScreen(self.question_bank, set_manager=self.set_manager)
+            self._sync_question_bank_screen_course()
             self.stack.insertWidget(self.SCREEN_QUESTION_BANK, self._question_bank_screen)
         return self._question_bank_screen
 
@@ -253,6 +254,7 @@ class MainWindow(QMainWindow):
         elif screen_index == self.SCREEN_COURSES:
             self._get_course_screen().refresh()
         elif screen_index == self.SCREEN_QUESTION_BANK:
+            self._sync_question_bank_screen_course()
             self._get_question_bank_screen().refresh()
 
     # --- Slot handlers ---
@@ -521,6 +523,7 @@ class MainWindow(QMainWindow):
     def _on_course_changed(self):
         """Refresh app state after switching/importing course projects."""
         self._sync_topic_screen_course()
+        self._sync_question_bank_screen_course()
         self._on_language_changed()
 
     def _on_question_bank_changed(self):
@@ -543,6 +546,12 @@ class MainWindow(QMainWindow):
     def _sync_topic_screen_course(self):
         course = self.course_manager.current()
         self.topic_screen.set_current_course(course.course_id if course else "")
+
+    def _sync_question_bank_screen_course(self):
+        if self._question_bank_screen is None:
+            return
+        course = self.course_manager.current()
+        self._question_bank_screen.set_current_course(course.course_id if course else "")
 
     def _show_about(self):
         """Show the About dialog."""

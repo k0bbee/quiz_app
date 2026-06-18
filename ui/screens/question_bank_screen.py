@@ -32,6 +32,7 @@ class QuestionBankScreen(QWidget):
         self.page = 0
         self.total = 0
         self.current_question_id = ""
+        self._current_course_id = ""
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self.refresh()
@@ -146,6 +147,7 @@ class QuestionBankScreen(QWidget):
         items, self.total = self.question_bank.search(
             query=query,
             difficulty=difficulty,
+            course_id=self._current_course_id,
             offset=self.page * self.page_size,
             limit=self.page_size,
         )
@@ -166,6 +168,17 @@ class QuestionBankScreen(QWidget):
         self.prev_btn.setEnabled(self.page > 0)
         self.next_btn.setEnabled((self.page + 1) * self.page_size < self.total)
         self.delete_btn.setEnabled(bool(self.current_question_id))
+
+    def set_current_course(self, course_id: str | None):
+        """Restrict generated questions to the active course."""
+        course_id = course_id or ""
+        if course_id == self._current_course_id:
+            return
+        self._current_course_id = course_id
+        self.page = 0
+        self.current_question_id = ""
+        if hasattr(self, "question_list"):
+            self.refresh()
 
     def _reset_and_refresh(self):
         self.page = 0
