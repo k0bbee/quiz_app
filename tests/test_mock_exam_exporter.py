@@ -137,6 +137,26 @@ class MockExamExporterTests(unittest.TestCase):
 
             self.assertEqual([qset.set_id], emitted)
 
+    def test_topic_selection_screen_emits_regenerate_request_for_selected_set(self):
+        from models.question_set import SetManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SetManager(tmpdir)
+            qset = self._make_question_set()
+            manager.save(qset)
+            screen = TopicSelectionScreen(manager)
+            emitted = []
+            screen.regenerate_questions.connect(emitted.append)
+
+            screen.refresh()
+            self.assertFalse(screen.regenerate_btn.isEnabled())
+
+            screen.set_list.setCurrentRow(0)
+            self.assertTrue(screen.regenerate_btn.isEnabled())
+            screen.regenerate_btn.click()
+
+            self.assertEqual([qset.set_id], emitted)
+
 
 if __name__ == "__main__":
     unittest.main()

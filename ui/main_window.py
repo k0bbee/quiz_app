@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from core.language_manager import LanguageManager
 from models.question import QuestionBank
 from models.question_set import QuestionSet, SetManager
+from core.question_set_regenerator import apply_regenerated_questions
 from core.progress_tracker import ProgressManager
 from models.course_project import CourseProjectManager
 from config import QUESTIONS_DIR, QUESTION_SETS_DIR, PROGRESS_DIR, APP_NAME
@@ -175,6 +176,7 @@ class MainWindow(QMainWindow):
         # Topic selection
         self.topic_screen.quiz_start.connect(self._on_quiz_start)
         self.topic_screen.export_mock_exam.connect(self._on_export_mock_exam)
+        self.topic_screen.regenerate_questions.connect(self._on_regenerate_question_set)
         self.topic_screen.back_to_home.connect(lambda: self.navigate_to(self.SCREEN_HOME))
 
         # Quiz screen
@@ -428,6 +430,69 @@ class MainWindow(QMainWindow):
                        f"Saved {saved} questions and created a question set:\n{qset.get_title(lang)}"),
                 )
                 self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+
+    def _on_regenerate_question_set(self, set_id: str):
+        """Regenerate questions for an existing question set in place."""
+        gm = self.lang_manager.get_text
+        qset = self.set_manager.get(set_id)
+        if not qset:
+            QMessageBox.warning(self, gm("错误", "Error"), gm("未找到题目集。", "Question set not found."))
+            return
+
+        settings = self.settings_screen._settings
+        course_content, available_topics, course_project = self._load_generation_context()
+        if not course_content:
+            QMessageBox.warning(
+                self,
+                gm("缺少课程内容", "No Course Content"),
+                gm("请先导入课程资料并生成课程总结，然后再重新生成题目。",
+                   "Import course materials and generate a course summary before regenerating questions."),
+            )
+            return
+
+        from core.secrets_manager import SecretsManager
+        api_key = SecretsManager.instance().get_key()
+        if _provider_requires_api_key(settings) and not api_key:
+            QMessageBox.warning(
+                self,
+                gm("未配置 API Key", "No API Key"),
+                gm("请在设置中配置 API Key，或选择本地 Agent。",
+                   "Please configure an API key or choose a local agent."),
+            )
+            return
+
+        from ui.dialogs.ai_generation_dialog import AIGenerationDialog
+        dialog = AIGenerationDialog(
+            course_content,
+            settings,
+            self,
+            available_topics=available_topics,
+            course_project=course_project,
+        )
+        dialog.configure_from_question_set(qset)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        questions = dialog.generated_questions
+        if not questions:
+            QMessageBox.warning(self, gm("没有题目", "No Questions"), gm("未生成可保存的题目。", "No generated questions to save."))
+            return
+
+        saved = self.question_bank.save_many(questions)
+        selected_diff = dialog.diff_combo.currentData()
+        difficulty = qset.difficulty
+        if selected_diff in {d.value for d in Difficulty}:
+            difficulty = Difficulty(selected_diff)
+        apply_regenerated_questions(qset, questions, difficulty=difficulty)
+        self.set_manager.save(qset)
+        self.topic_screen.refresh()
+        QMessageBox.information(
+            self,
+            gm("已重新生成", "Regenerated"),
+            gm(f"已保存 {saved} 道新题，并更新题目集：\n{qset.get_title(self.lang_manager.current)}",
+               f"Saved {saved} new questions and updated question set:\n{qset.get_title(self.lang_manager.current)}"),
+        )
+        self.navigate_to(self.SCREEN_TOPIC_SELECTION)
 
     def _on_retry_all(self):
         """Retry the entire question set."""

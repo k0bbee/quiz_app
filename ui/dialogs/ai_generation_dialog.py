@@ -278,6 +278,22 @@ class AIGenerationDialog(QDialog):
                 topics.append(item.data(Qt.ItemDataRole.UserRole))
         return topics
 
+    def configure_from_question_set(self, question_set):
+        """Pre-fill generation controls from an existing question set."""
+        self.count_spin.setValue(
+            max(self.count_spin.minimum(), min(self.count_spin.maximum(), question_set.question_count))
+        )
+        difficulty_index = self.diff_combo.findData(question_set.difficulty.value)
+        if difficulty_index >= 0:
+            self.diff_combo.setCurrentIndex(difficulty_index)
+
+        wanted_topics = {topic_value(topic) for topic in question_set.topics}
+        for i in range(self.topic_list.count()):
+            item = self.topic_list.item(i)
+            key = topic_value(item.data(Qt.ItemDataRole.UserRole))
+            item.setCheckState(Qt.CheckState.Checked if key in wanted_topics else Qt.CheckState.Unchecked)
+        self._update_preview()
+
     def _update_preview(self):
         """Show a brief preview of relevant course content."""
         topics = self._get_selected_topics()

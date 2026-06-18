@@ -11,6 +11,8 @@ from ai.generation_config import GenerationConfig
 from ai.llm_client import LLMClient
 from ai.prompt_templates import PromptBuilder
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
+from models.question_set import QuestionSet
+from utils.constants import Difficulty
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -87,6 +89,33 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(config.topic_weights["cache"], 80)
         self.assertEqual(config.topic_weights["process"], 20)
         self.assertEqual(config.template, "final_exam")
+
+    def test_dialog_can_prefill_from_existing_question_set(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache", "process", "gpu"],
+        )
+        qset = QuestionSet(
+            set_id="set-review",
+            title={"zh": "复习", "en": "Review"},
+            description={"zh": "", "en": ""},
+            topics=["cache", "gpu"],
+            difficulty=Difficulty.HARD,
+            estimated_minutes=20,
+            questions=["q1", "q2", "q3", "q4", "q5"],
+        )
+
+        dialog.configure_from_question_set(qset)
+
+        self.assertEqual(dialog.count_spin.value(), 5)
+        self.assertEqual(dialog.diff_combo.currentData(), "hard")
+        checked = {
+            dialog.topic_list.item(index).data(Qt.ItemDataRole.UserRole)
+            for index in range(dialog.topic_list.count())
+            if dialog.topic_list.item(index).checkState() == Qt.CheckState.Checked
+        }
+        self.assertEqual({"cache", "gpu"}, checked)
 
 
 if __name__ == "__main__":
