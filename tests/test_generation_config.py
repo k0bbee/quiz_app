@@ -4,6 +4,7 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
 
 from ai.batch_generator import GenerationWorker
 from ai.generation_config import GenerationConfig
@@ -72,13 +73,19 @@ class GenerationConfigTests(unittest.TestCase):
         dialog.easy_slider.setValue(10)
         dialog.medium_slider.setValue(60)
         dialog.hard_slider.setValue(30)
+        dialog.topic_weight_sliders["cache"].setValue(80)
+        dialog.topic_weight_sliders["process"].setValue(20)
         dialog.template_combo.setCurrentIndex(dialog.template_combo.findData("final_exam"))
+        for index in range(dialog.topic_list.count()):
+            dialog.topic_list.item(index).setCheckState(Qt.CheckState.Checked)
 
         config = dialog._build_generation_config()
 
         self.assertEqual(config.question_type_weights["multiple_choice"], 40)
         self.assertEqual(config.question_type_weights["scenario_choice"], 30)
         self.assertEqual(config.difficulty_weights["medium"], 60)
+        self.assertEqual(config.topic_weights["cache"], 80)
+        self.assertEqual(config.topic_weights["process"], 20)
         self.assertEqual(config.template, "final_exam")
 
 

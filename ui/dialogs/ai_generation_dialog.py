@@ -80,6 +80,18 @@ class AIGenerationDialog(QDialog):
         self.topic_list.itemChanged.connect(lambda _item: self._update_preview())
         topic_layout.addWidget(self.topic_list)
 
+        self.topic_weight_sliders: dict[str, QSlider] = {}
+        if self.available_topics:
+            self.topic_weight_group = QGroupBox(self.lang_manager.get_text("Topic Weights", "Topic Weights"))
+            topic_weight_layout = QFormLayout(self.topic_weight_group)
+            default_weight = max(1, 100 // len(self.available_topics))
+            for topic in self.available_topics:
+                key = topic_value(topic)
+                slider = self._make_slider(default_weight)
+                self.topic_weight_sliders[key] = slider
+                topic_weight_layout.addRow(topic_label(topic, lang), self._slider_row(slider))
+            topic_layout.addWidget(self.topic_weight_group)
+
         layout.addWidget(self.topic_group)
 
         # Configuration row
@@ -150,6 +162,8 @@ class AIGenerationDialog(QDialog):
         prompt_layout.addWidget(self.prompt_preview)
         layout.addWidget(self.prompt_group)
 
+        if hasattr(self, "topic_weight_group"):
+            self.topic_weight_group.setTitle(self.lang_manager.get_text("Topic Weights", "Topic Weights"))
         self._update_preview()
 
         scroll.setWidget(content)
@@ -241,6 +255,8 @@ class AIGenerationDialog(QDialog):
 
         self.prompt_group.setTitle(self.lang_manager.get_text("课程内容预览", "Course Content Preview"))
         self.structure_group.setTitle(self.lang_manager.get_text("题目结构", "Question Structure"))
+        if hasattr(self, "topic_weight_group"):
+            self.topic_weight_group.setTitle(self.lang_manager.get_text("Topic Weights", "Topic Weights"))
         self._update_preview()
 
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
@@ -345,10 +361,17 @@ class AIGenerationDialog(QDialog):
 
     def _build_generation_config(self) -> GenerationConfig:
         topics = self._get_selected_topics()
-        topic_weight = 100 // len(topics) if topics else 0
-        topic_weights = {topic_value(topic): topic_weight for topic in topics}
-        if topics:
-            topic_weights[topic_value(topics[-1])] += 100 - sum(topic_weights.values())
+        topic_weights = {}
+        for topic in topics:
+            key = topic_value(topic)
+            slider = self.topic_weight_sliders.get(key)
+            if slider is not None:
+                topic_weights[key] = slider.value()
+        if not topic_weights:
+            topic_weight = 100 // len(topics) if topics else 0
+            topic_weights = {topic_value(topic): topic_weight for topic in topics}
+            if topics:
+                topic_weights[topic_value(topics[-1])] += 100 - sum(topic_weights.values())
         return GenerationConfig(
             question_type_weights={
                 "multiple_choice": self.mc_slider.value(),
