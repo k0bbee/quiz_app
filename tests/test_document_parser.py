@@ -8,6 +8,26 @@ from core.document_parser import DocumentParser
 
 
 class DocumentParserQualityTests(unittest.TestCase):
+    def test_parse_file_caches_unchanged_files_without_returning_shared_document(self):
+        class CountingParser(DocumentParser):
+            calls = 0
+
+            def _parse_text(self, path):
+                CountingParser.calls += 1
+                return super()._parse_text(path)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "cache.md"
+            path.write_text("Cache mapping content with enough text to parse.", encoding="utf-8")
+
+            first = CountingParser().parse_file(path)
+            first.warnings.append("caller mutation")
+            second = CountingParser().parse_file(path)
+
+        self.assertEqual(1, CountingParser.calls)
+        self.assertEqual("Cache mapping content with enough text to parse.", second.text)
+        self.assertNotIn("caller mutation", second.warnings)
+
     def test_parse_folder_skips_generated_noise_and_duplicate_text(self):
         repeated = (
             "Cache mapping explains how a byte address is split into tag, set, "

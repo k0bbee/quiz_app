@@ -11,7 +11,7 @@ import os
 import re
 import hashlib
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -37,6 +37,9 @@ class ExtractedDocument:
 
 class DocumentParser:
     """Parse a folder of course files into plain text documents."""
+
+    _MAX_FILE_CACHE_SIZE = 128
+    _FILE_CACHE: dict[tuple[str, int, int], ExtractedDocument] = {}
 
     # Directories to skip during recursive scan (generated output, not source)
     _SKIP_DIRS = {"__pycache__", ".git", ".claude", "node_modules",
@@ -96,17 +99,28 @@ class DocumentParser:
 
     def parse_file(self, path: Path) -> ExtractedDocument:
         """Parse one supported file."""
+        path = Path(path)
         ext = path.suffix.lower()
         title = path.stem
+        cache_key = _file_cache_key(path)
+        if cache_key in self._FILE_CACHE:
+            return _clone_document(self._FILE_CACHE[cache_key])
+
         if ext in {".txt", ".md"}:
-            return self._parse_text(path)
-        if ext == ".pptx":
-            return self._parse_pptx(path)
-        if ext == ".docx":
-            return self._parse_docx(path)
-        if ext == ".pdf":
-            return self._parse_pdf(path)
-        return ExtractedDocument(str(path), title, ext, warnings=[f"Unsupported file type: {ext}"])
+            doc = self._parse_text(path)
+        elif ext == ".pptx":
+            doc = self._parse_pptx(path)
+        elif ext == ".docx":
+            doc = self._parse_docx(path)
+        elif ext == ".pdf":
+            doc = self._parse_pdf(path)
+        else:
+            doc = ExtractedDocument(str(path), title, ext, warnings=[f"Unsupported file type: {ext}"])
+
+        if ext in SUPPORTED_EXTENSIONS:
+            self._FILE_CACHE[cache_key] = _clone_document(doc)
+            _trim_file_cache(self._FILE_CACHE, self._MAX_FILE_CACHE_SIZE)
+        return doc
 
     def _parse_text(self, path: Path) -> ExtractedDocument:
         text = path.read_text(encoding="utf-8", errors="ignore")
@@ -210,6 +224,21 @@ def _source_sort_key(path: Path) -> tuple[int, str, str]:
     normalized = re.sub(r"\s*(copy|副本|duplicate)\s*", " ", lower)
     normalized = re.sub(r"\s+", " ", normalized).strip()
     return duplicate_hint, normalized, lower
+
+
+def _file_cache_key(path: Path) -> tuple[str, int, int]:
+    stat = path.stat()
+    return str(path.resolve()), stat.st_mtime_ns, stat.st_size
+
+
+def _clone_document(doc: ExtractedDocument) -> ExtractedDocument:
+    return replace(doc, pages=list(doc.pages), warnings=list(doc.warnings))
+
+
+def _trim_file_cache(cache: dict[tuple[str, int, int], ExtractedDocument], max_size: int) -> None:
+    while len(cache) > max_size:
+        oldest_key = next(iter(cache))
+        cache.pop(oldest_key, None)
 
 
 def _content_fingerprint(text: str) -> str:
