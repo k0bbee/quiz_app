@@ -23,6 +23,7 @@ class HomeScreen(QWidget):
         self.progress_manager = progress_manager
         self.question_bank = question_bank
         self.lang_manager = LanguageManager.instance()
+        self._current_course_id = ""
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -134,8 +135,11 @@ class HomeScreen(QWidget):
             return
 
         stats = self.progress_manager.get_aggregated_stats()
-        total_questions = len(self.question_bank.load_all())
-        incorrect_count = len(self.progress_manager.get_incorrect_question_ids())
+        _visible_questions, total_questions = self.question_bank.search(course_id=self._current_course_id, limit=0)
+        incorrect_count = len(self.question_bank.get_many(
+            self.progress_manager.get_incorrect_question_ids(),
+            course_id=self._current_course_id,
+        ))
         self.incorrect_btn.setEnabled(incorrect_count > 0)
 
         if stats["total_sessions"] == 0:
@@ -158,3 +162,11 @@ class HomeScreen(QWidget):
                 f"{total_questions} total questions"
             )
         )
+
+    def set_current_course(self, course_id: str | None):
+        """Restrict home quick stats to the active course."""
+        course_id = course_id or ""
+        if course_id == self._current_course_id:
+            return
+        self._current_course_id = course_id
+        self.refresh()

@@ -206,13 +206,14 @@ class QuestionBank:
             return q
         return None
 
-    def get_many(self, question_ids: list[str]) -> list[Question]:
+    def get_many(self, question_ids: list[str], course_id: str | None = None) -> list[Question]:
         """Get multiple questions by ID. Skips missing ones."""
         questions = []
         for qid in question_ids:
             q = self.get(qid)
             if q:
-                questions.append(q)
+                if self._matches_course(q, course_id):
+                    questions.append(q)
         return questions
 
     def save(self, question: Question) -> bool:
@@ -277,8 +278,7 @@ class QuestionBank:
             if difficulty_filter and q.difficulty.value != difficulty_filter:
                 continue
             if course_filter:
-                source_course_id = (q.metadata or {}).get("course_id", "")
-                if source_course_id and source_course_id != course_filter:
+                if not self._matches_course(q, course_filter):
                     continue
             if query:
                 haystack = " ".join([
@@ -320,3 +320,11 @@ class QuestionBank:
     def _invalidate_load_cache(self) -> None:
         self._load_cache = None
         self._load_cache_signature = None
+
+    @staticmethod
+    def _matches_course(question: Question, course_id: str | None) -> bool:
+        course_filter = (course_id or "").strip()
+        if not course_filter:
+            return True
+        source_course_id = (question.metadata or {}).get("course_id", "")
+        return not source_course_id or source_course_id == course_filter

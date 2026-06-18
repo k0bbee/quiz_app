@@ -1,6 +1,8 @@
 import os
+import tempfile
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -8,10 +10,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication
 
 from ai.llm_client import LLMClient
-from models.progress import ProgressRecord
+from models.progress import AnswerRecord, ProgressRecord, SessionSummary
 from models.question import Question
+from models.question import QuestionBank
 from models.question_set import QuestionSet
 from core.quiz_engine import QuizSession
+from core.progress_tracker import ProgressManager
+from ui.screens.home_screen import HomeScreen
 from ui.widgets.answer_area import MatchingWidget
 from utils.constants import Difficulty, QuestionType
 
@@ -97,6 +102,49 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertIsInstance(record, ProgressRecord)
         self.assertEqual(record.status, "abandoned")
         self.assertEqual(record.set_id, qset.set_id)
+
+    def test_home_screen_counts_incorrect_questions_for_current_course(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            progress_manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            course_a = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "A", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "A", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            course_a.metadata["course_id"] = "course-a"
+            course_b = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "B", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "B", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            course_b.metadata["course_id"] = "course-b"
+            question_bank.save_many([course_a, course_b])
+            record = ProgressRecord.create_new("set-any")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(question_id=course_a.question_id, index_in_session=0, user_answer="B", is_correct=False),
+                AnswerRecord(question_id=course_b.question_id, index_in_session=1, user_answer="B", is_correct=False),
+            ]
+            record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
+            progress_manager.save(record)
+
+            screen = HomeScreen(progress_manager, question_bank)
+            screen.set_current_course("course-a")
+            screen.refresh()
+
+            self.assertIn("历史错题 1 题", screen.stats_label.text())
+            self.assertIn("题库总量 1 题", screen.stats_label.text())
 
 
 if __name__ == "__main__":

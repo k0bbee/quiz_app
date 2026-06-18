@@ -107,6 +107,23 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertEqual(2, total)
             self.assertEqual({"q-course-a", "q-manual"}, {question.question_id for question in items})
 
+    def test_question_bank_get_many_filters_generated_questions_by_course(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            course_a = self._question("q-course-a")
+            course_a.metadata["course_id"] = "course-a"
+            course_b = self._question("q-course-b")
+            course_b.metadata["course_id"] = "course-b"
+            manual = self._question("q-manual")
+            question_bank.save_many([course_a, course_b, manual])
+
+            questions = question_bank.get_many(
+                ["q-course-a", "q-course-b", "q-manual"],
+                course_id="course-a",
+            )
+
+            self.assertEqual({"q-course-a", "q-manual"}, {question.question_id for question in questions})
+
     def test_question_bank_screen_filters_generated_questions_by_current_course(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))

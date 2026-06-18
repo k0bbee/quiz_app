@@ -104,6 +104,7 @@ class MainWindow(QMainWindow):
 
         # Connect screen navigation signals
         self._connect_signals()
+        self._sync_home_screen_course()
         self._sync_topic_screen_course()
 
         # Apply initial language
@@ -250,6 +251,7 @@ class MainWindow(QMainWindow):
         elif screen_index == self.SCREEN_PROGRESS:
             self.progress_screen.refresh()
         elif screen_index == self.SCREEN_HOME:
+            self._sync_home_screen_course()
             self.home_screen.refresh()
         elif screen_index == self.SCREEN_COURSES:
             self._get_course_screen().refresh()
@@ -351,7 +353,7 @@ class MainWindow(QMainWindow):
             )
             return
 
-        questions = self.question_bank.get_many(incorrect_ids)
+        questions = self.question_bank.get_many(incorrect_ids, course_id=self._current_course_id())
         if questions:
             self._active_questions = {q.question_id: q for q in questions}
             self.quiz_screen.start_quiz_custom(questions, gm("重做：错题", "Retry: Incorrect Questions"))
@@ -522,6 +524,7 @@ class MainWindow(QMainWindow):
 
     def _on_course_changed(self):
         """Refresh app state after switching/importing course projects."""
+        self._sync_home_screen_course()
         self._sync_topic_screen_course()
         self._sync_question_bank_screen_course()
         self._on_language_changed()
@@ -544,14 +547,19 @@ class MainWindow(QMainWindow):
         return "", [], None
 
     def _sync_topic_screen_course(self):
-        course = self.course_manager.current()
-        self.topic_screen.set_current_course(course.course_id if course else "")
+        self.topic_screen.set_current_course(self._current_course_id())
 
     def _sync_question_bank_screen_course(self):
         if self._question_bank_screen is None:
             return
+        self._question_bank_screen.set_current_course(self._current_course_id())
+
+    def _sync_home_screen_course(self):
+        self.home_screen.set_current_course(self._current_course_id())
+
+    def _current_course_id(self) -> str:
         course = self.course_manager.current()
-        self._question_bank_screen.set_current_course(course.course_id if course else "")
+        return course.course_id if course else ""
 
     def _show_about(self):
         """Show the About dialog."""
