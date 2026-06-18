@@ -9,8 +9,9 @@ from PyQt6.QtCore import Qt, pyqtSignal
 
 from core.language_manager import LanguageManager
 from models.question import QuestionBank
-from models.question_set import QuestionSet, SetManager
+from models.question_set import SetManager
 from core.question_set_regenerator import apply_regenerated_questions
+from core.question_set_builder import build_ai_question_set
 from core.progress_tracker import ProgressManager
 from models.course_project import CourseProjectManager
 from config import QUESTIONS_DIR, QUESTION_SETS_DIR, PROGRESS_DIR, APP_NAME
@@ -21,7 +22,7 @@ from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.settings_screen import SettingsScreen
-from utils.constants import Difficulty, topic_label, topic_value
+from utils.constants import Difficulty
 from ai.course_summary_factory import provider_requires_api_key
 
 
@@ -404,23 +405,12 @@ class MainWindow(QMainWindow):
             questions = dialog.generated_questions
             if questions:
                 saved = self.question_bank.save_many(questions)
-                topics = sorted({q.topic for q in questions}, key=topic_value)
                 lang = self.lang_manager.current
-                topic_names = ", ".join(topic_label(t, lang) for t in topics)
-                qset = QuestionSet.create_new(
-                    title={
-                        "zh": f"AI生成练习：{topic_names or '综合'}",
-                        "en": f"AI Practice: {topic_names or 'Mixed'}",
-                    },
-                    description={
-                        "zh": "由当前课程项目生成，已通过本地结构校验。",
-                        "en": "Generated from the active course project and local validation rules.",
-                    },
-                    topics=topics,
-                    question_ids=[q.question_id for q in questions],
-                    difficulty=Difficulty.MEDIUM,
-                    estimated_minutes=max(5, len(questions) * 2),
-                    source="ai_generated",
+                qset = build_ai_question_set(
+                    questions,
+                    selected_difficulty=dialog.diff_combo.currentData(),
+                    generation_config=dialog._build_generation_config(),
+                    lang=lang,
                 )
                 self.set_manager.save(qset)
                 QMessageBox.information(
