@@ -106,6 +106,7 @@ class MainWindow(QMainWindow):
         self._connect_signals()
         self._sync_home_screen_course()
         self._sync_topic_screen_course()
+        self._sync_progress_screen_course()
 
         # Apply initial language
         self._on_language_changed()
@@ -249,6 +250,7 @@ class MainWindow(QMainWindow):
             self._sync_topic_screen_course()
             self.topic_screen.refresh()
         elif screen_index == self.SCREEN_PROGRESS:
+            self._sync_progress_screen_course()
             self.progress_screen.refresh()
         elif screen_index == self.SCREEN_HOME:
             self._sync_home_screen_course()
@@ -371,7 +373,10 @@ class MainWindow(QMainWindow):
             )
             return
 
-        questions = self.question_bank.get_many(incorrect_ids)
+        questions = self.question_bank.get_many(
+            incorrect_ids,
+            course_id=self._current_course_id(),
+        )
         if not questions:
             QMessageBox.warning(
                 self,
@@ -527,6 +532,7 @@ class MainWindow(QMainWindow):
         self._sync_home_screen_course()
         self._sync_topic_screen_course()
         self._sync_question_bank_screen_course()
+        self._sync_progress_screen_course()
         self._on_language_changed()
 
     def _on_question_bank_changed(self):
@@ -556,6 +562,9 @@ class MainWindow(QMainWindow):
 
     def _sync_home_screen_course(self):
         self.home_screen.set_current_course(self._current_course_id())
+
+    def _sync_progress_screen_course(self):
+        self.progress_screen.set_current_course(self._current_course_id())
 
     def _current_course_id(self) -> str:
         course = self.course_manager.current()

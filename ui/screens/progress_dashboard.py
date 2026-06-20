@@ -24,6 +24,7 @@ class ProgressDashboard(QWidget):
         self.question_bank = question_bank
         self.set_manager = SetManager(QUESTION_SETS_DIR)
         self.lang_manager = LanguageManager.instance()
+        self._current_course_id = ""
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -114,7 +115,8 @@ class ProgressDashboard(QWidget):
 
     def refresh(self):
         """Reload and display progress data."""
-        stats = self.progress_manager.get_aggregated_stats()
+        visible_question_ids = self._visible_question_ids()
+        stats = self.progress_manager.get_aggregated_stats(visible_question_ids)
         lang = self.lang_manager.current
 
         # Overall
@@ -135,7 +137,7 @@ class ProgressDashboard(QWidget):
             ))
 
         # Per-topic breakdown
-        self._populate_topic_table(lang)
+        self._populate_topic_table(lang, visible_question_ids)
 
         # Recent sessions
         self.recent_list.clear()
@@ -155,7 +157,21 @@ class ProgressDashboard(QWidget):
             )
             self.recent_list.addItem(item)
 
-    def _populate_topic_table(self, lang: str):
+    def set_current_course(self, course_id: str | None):
+        """Scope displayed progress to the active course when one is selected."""
+        self._current_course_id = (course_id or "").strip()
+
+    def _visible_question_ids(self) -> set[str] | None:
+        """Return question IDs visible for the current course, or None for global mode."""
+        if not self._current_course_id:
+            return None
+        questions, _total = self.question_bank.search(
+            course_id=self._current_course_id,
+            limit=1_000_000,
+        )
+        return {question.question_id for question in questions}
+
+    def _populate_topic_table(self, lang: str, visible_question_ids: set[str] | None):
         """Fill the per-topic breakdown table."""
         # Build per-topic stats from all completed sessions
         all_records = self.progress_manager.load_all()
@@ -163,7 +179,10 @@ class ProgressDashboard(QWidget):
 
         # Map question_id -> topic
         qid_to_topic = {}
-        for q in self.question_bank.load_all():
+        questions = self.question_bank.load_all()
+        if visible_question_ids is not None:
+            questions = [q for q in questions if q.question_id in visible_question_ids]
+        for q in questions:
             qid_to_topic[q.question_id] = q.topic
 
         # Aggregate by topic

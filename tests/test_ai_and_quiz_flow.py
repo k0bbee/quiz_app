@@ -16,7 +16,9 @@ from models.question import QuestionBank
 from models.question_set import QuestionSet
 from core.quiz_engine import QuizSession
 from core.progress_tracker import ProgressManager
+from core.language_manager import LanguageManager
 from ui.screens.home_screen import HomeScreen
+from ui.screens.progress_dashboard import ProgressDashboard
 from ui.widgets.answer_area import MatchingWidget
 from utils.constants import Difficulty, QuestionType
 
@@ -165,6 +167,117 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual(1, stats["total_questions"])
             self.assertEqual(1, stats["total_correct"])
             self.assertEqual(100.0, stats["overall_accuracy"])
+
+    def test_progress_dashboard_filters_stats_and_topics_by_current_course(self):
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("en")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            progress_manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            course_a = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "A", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "A", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            course_a.metadata["course_id"] = "course-a"
+            course_b = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "B", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "B", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="process_scheduling",
+            )
+            course_b.metadata["course_id"] = "course-b"
+            question_bank.save_many([course_a, course_b])
+            record = ProgressRecord.create_new("set-any")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(question_id=course_a.question_id, index_in_session=0, user_answer="A", is_correct=True),
+                AnswerRecord(question_id=course_b.question_id, index_in_session=1, user_answer="B", is_correct=False),
+            ]
+            record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
+            progress_manager.save(record)
+
+            screen = ProgressDashboard(progress_manager, question_bank)
+            screen.set_current_course("course-a")
+            screen.refresh()
+
+            self.assertIn("Questions: 1", screen.overall_label.text())
+            self.assertIn("Correct: 1 / 1", screen.detail_label.text())
+            self.assertEqual(1, screen.topic_table.rowCount())
+            self.assertEqual("1/1", screen.topic_table.item(0, 3).text())
+
+    def test_incorrect_review_uses_current_course_filter(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            progress_manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            course_a = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "A", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "A", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            course_a.metadata["course_id"] = "course-a"
+            course_b = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "B", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "B", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            course_b.metadata["course_id"] = "course-b"
+            question_bank.save_many([course_a, course_b])
+
+            record = ProgressRecord.create_new("set-any")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(question_id=course_a.question_id, index_in_session=0, user_answer="B", is_correct=False),
+                AnswerRecord(question_id=course_b.question_id, index_in_session=1, user_answer="B", is_correct=False),
+            ]
+            record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
+            progress_manager.save(record)
+
+            started = {}
+
+            class FakeQuizScreen:
+                def start_quiz_custom(self, questions, label):
+                    started["questions"] = questions
+                    started["label"] = label
+
+            shell = types.SimpleNamespace(
+                progress_manager=progress_manager,
+                question_bank=question_bank,
+                lang_manager=LanguageManager.instance(),
+                quiz_screen=FakeQuizScreen(),
+                _active_questions={},
+                SCREEN_QUIZ=2,
+                _current_course_id=lambda: "course-a",
+                navigate_to=lambda screen: started.setdefault("screen", screen),
+            )
+
+            MainWindow._on_practice_incorrect(shell)
+
+            self.assertEqual({course_a.question_id}, set(shell._active_questions))
+            self.assertEqual([course_a.question_id], [q.question_id for q in started["questions"]])
 
 
 if __name__ == "__main__":
