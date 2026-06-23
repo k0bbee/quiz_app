@@ -161,6 +161,7 @@ class DocumentParser:
     def _parse_pdf(self, path: Path) -> ExtractedDocument:
         warnings: list[str] = []
         pages: list[str] = []
+        numbered_pages: list[tuple[int, str]] = []
         try:
             import fitz  # type: ignore
 
@@ -168,17 +169,24 @@ class DocumentParser:
                 for i, page in enumerate(doc):
                     text = page.get_text("text").strip()
                     if text:
-                        pages.append(_normalize_text(text))
+                        normalized = _normalize_text(text)
+                        pages.append(normalized)
+                        numbered_pages.append((i + 1, normalized))
                     else:
                         warnings.append(f"Page {i + 1} has no extractable text")
                         ocr_text = _ocr_pdf_page(page, i + 1, warnings)
                         if ocr_text:
-                            pages.append(_normalize_text(ocr_text))
+                            normalized = _normalize_text(ocr_text)
+                            pages.append(normalized)
+                            numbered_pages.append((i + 1, normalized))
         except ImportError:
             warnings.append("PyMuPDF is not installed; PDF text extraction is unavailable.")
         except Exception as exc:
             warnings.append(f"Failed to parse PDF: {exc}")
-        text = "\n\n".join(f"[Page {i + 1}]\n{page}" for i, page in enumerate(pages))
+        text = "\n\n".join(
+            f"[Page {page_number}]\n{page_text}"
+            for page_number, page_text in numbered_pages
+        )
         return ExtractedDocument(str(path), path.stem, ".pdf", _normalize_text(text), pages, warnings)
 
 

@@ -71,6 +71,33 @@ class DocumentParserQualityTests(unittest.TestCase):
         self.assertIn("Page 1 has no extractable text", "\n".join(doc.warnings))
         self.assertIn("OCR fallback unavailable", "\n".join(doc.warnings))
 
+    def test_pdf_page_labels_preserve_original_page_numbers_when_empty_pages_are_skipped(self):
+        class EmptyPage:
+            def get_text(self, _kind):
+                return ""
+
+        class TextPage:
+            def get_text(self, _kind):
+                return "Second page content"
+
+        class FakeDoc:
+            def __enter__(self):
+                return [EmptyPage(), TextPage()]
+
+            def __exit__(self, *_args):
+                return False
+
+        fake_fitz = types.SimpleNamespace(open=lambda _path: FakeDoc())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_path = Path(tmp) / "partial.pdf"
+            pdf_path.write_bytes(b"%PDF-1.4 fake")
+            with patch.dict("sys.modules", {"fitz": fake_fitz, "pytesseract": None}):
+                doc = DocumentParser().parse_file(pdf_path)
+
+        self.assertIn("[Page 2]\nSecond page content", doc.text)
+        self.assertNotIn("[Page 1]\nSecond page content", doc.text)
+
 
 if __name__ == "__main__":
     unittest.main()
