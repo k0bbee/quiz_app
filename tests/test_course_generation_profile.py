@@ -54,8 +54,8 @@ class CourseGenerationProfileTests(unittest.TestCase):
                 "question_count": 24,
                 "difficulty": "hard",
                 "template": "final_exam",
-                "selected_topics": ["Topic 0", "Topic 2"],
-                "topic_weights": {"Topic 0": 60, "Topic 2": 40},
+                "selected_topics": ["topic 0", "topic 2"],
+                "topic_weights": {"topic 0": 60, "topic 2": 40},
             }
         )
         generator = CourseGenerationProfileGenerator(client)
@@ -65,7 +65,7 @@ class CourseGenerationProfileTests(unittest.TestCase):
         self.assertEqual("llm", generator.profile_source)
         self.assertEqual("", generator.profile_warning)
         self.assertEqual(24, plan.question_count)
-        self.assertEqual(("Topic 0", "Topic 2"), plan.selected_topics)
+        self.assertEqual(("topic 0", "topic 2"), plan.selected_topics)
         messages, kwargs = client.calls[0]
         prompt = "\n".join(message["content"] for message in messages)
         self.assertIn("STRICT_JSON_PROFILE", prompt)

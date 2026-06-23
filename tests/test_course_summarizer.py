@@ -49,7 +49,7 @@ class FakeProfileGenerator:
     profile_warning = ""
 
     def generate(self, title, topics, summary_markdown):
-        selected = tuple(topic.title for topic in topics)
+        selected = tuple(topic.title.lower() for topic in topics)
         return ExamGenerationPlan(
             question_count=24,
             difficulty="hard",

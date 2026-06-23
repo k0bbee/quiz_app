@@ -429,6 +429,7 @@ class MainWindow(QMainWindow):
             available_topics=available_topics,
             course_project=course_project,
         )
+        dialog.configure_from_course_profile(course_project)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             questions = dialog.generated_questions
             if questions:
@@ -488,6 +489,7 @@ class MainWindow(QMainWindow):
             available_topics=available_topics,
             course_project=course_project,
         )
+        dialog.configure_from_course_profile(course_project)
         dialog.configure_from_question_set(qset)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return

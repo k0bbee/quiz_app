@@ -14,7 +14,12 @@ from core.language_manager import LanguageManager
 from ai.llm_client import LLMClient
 from ai.batch_generator import GenerationWorker
 from ai.generation_config import GenerationConfig, QUESTION_TYPE_DEFAULTS, DIFFICULTY_DEFAULTS
-from ai.exam_plan import ExamGenerationPlan
+from ai.exam_plan import (
+    ExamGenerationPlan,
+    ExamPlanPatch,
+    ExamPlanValidationError,
+    apply_exam_plan_patch,
+)
 from ai.course_summary_factory import provider_requires_api_key
 from models.question import Question
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
@@ -385,20 +390,96 @@ class AIGenerationDialog(QDialog):
         return topics
 
     def configure_from_question_set(self, question_set):
-        """Pre-fill generation controls from an existing question set."""
-        self.count_spin.setValue(
-            max(self.count_spin.minimum(), min(self.count_spin.maximum(), question_set.question_count))
-        )
-        difficulty_index = self.diff_combo.findData(question_set.difficulty.value)
-        if difficulty_index >= 0:
-            self.diff_combo.setCurrentIndex(difficulty_index)
+        """Pre-fill controls from a set, including its persisted generation history."""
+        metadata = question_set.metadata or {}
+        payload = {
+            "question_count": max(
+                self.count_spin.minimum(),
+                min(self.count_spin.maximum(), question_set.question_count),
+            ),
+            "difficulty": metadata.get("difficulty_mode", question_set.difficulty.value),
+            "template": metadata.get("generation_template", self.template_combo.currentData()),
+            "selected_topics": [topic_value(topic) for topic in question_set.topics],
+        }
+        for field in (
+            "question_type_weights",
+            "difficulty_weights",
+            "topic_weights",
+        ):
+            value = metadata.get(field)
+            if isinstance(value, dict):
+                payload[field] = value
+        try:
+            patch = ExamPlanPatch.from_mapping(payload)
+            plan = apply_exam_plan_patch(
+                self.build_exam_plan(),
+                patch,
+                self._available_topic_keys(),
+            )
+            self.apply_exam_plan(plan)
+        except ExamPlanValidationError:
+            # Legacy or partially corrupted sets still retain their basic fields.
+            self.count_spin.setValue(payload["question_count"])
+            difficulty_index = self.diff_combo.findData(question_set.difficulty.value)
+            if difficulty_index >= 0:
+                self.diff_combo.setCurrentIndex(difficulty_index)
+            wanted_topics = set(payload["selected_topics"])
+            for i in range(self.topic_list.count()):
+                item = self.topic_list.item(i)
+                key = topic_value(item.data(Qt.ItemDataRole.UserRole))
+                item.setCheckState(
+                    Qt.CheckState.Checked if key in wanted_topics else Qt.CheckState.Unchecked
+                )
+            self._update_preview()
 
-        wanted_topics = {topic_value(topic) for topic in question_set.topics}
-        for i in range(self.topic_list.count()):
-            item = self.topic_list.item(i)
-            key = topic_value(item.data(Qt.ItemDataRole.UserRole))
-            item.setCheckState(Qt.CheckState.Checked if key in wanted_topics else Qt.CheckState.Unchecked)
-        self._update_preview()
+    def configure_from_course_profile(self, course_project) -> bool:
+        """Apply persisted course defaults, rejecting malformed legacy data safely."""
+        profile = getattr(course_project, "generation_profile", None)
+        if not profile:
+            return False
+        try:
+            patch = ExamPlanPatch.from_mapping(profile)
+            plan = apply_exam_plan_patch(
+                self.build_exam_plan(),
+                patch,
+                self._available_topic_keys(),
+            )
+            self.apply_exam_plan(plan)
+        except (ExamPlanValidationError, TypeError, ValueError) as exc:
+            self.status_label.setObjectName("errorLabel")
+            self.status_label.setText(
+                self.lang_manager.get_text(
+                    f"课程默认配置无效，已保留系统默认值：{exc}",
+                    f"Invalid course defaults; system defaults were kept: {exc}",
+                )
+            )
+            self.status_label.style().unpolish(self.status_label)
+            self.status_label.style().polish(self.status_label)
+            return False
+
+        source = getattr(course_project, "generation_profile_source", "local")
+        warning = str(getattr(course_project, "generation_profile_warning", "") or "").strip()
+        source_text = self.lang_manager.get_text(
+            "LLM 建议" if source == "llm" else "本地回退",
+            "LLM suggestion" if source == "llm" else "local fallback",
+        )
+        message = self.lang_manager.get_text(
+            f"已应用本课程默认出题配置（{source_text}）。",
+            f"Applied this course's quiz defaults ({source_text}).",
+        )
+        if warning:
+            message = f"{message} {warning}"
+        self.status_label.setObjectName("")
+        self.status_label.setText(message)
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+        return True
+
+    def _available_topic_keys(self) -> list[str]:
+        return [
+            topic_value(self.topic_list.item(index).data(Qt.ItemDataRole.UserRole))
+            for index in range(self.topic_list.count())
+        ]
 
     def build_exam_plan(self) -> ExamGenerationPlan:
         """Capture the current controls as an immutable assistant draft."""

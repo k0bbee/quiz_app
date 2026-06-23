@@ -229,6 +229,120 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(30, dialog.count_spin.value())
         assistant_class.assert_called_once()
 
+    def test_dialog_prefills_all_controls_from_course_generation_profile(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache", "process"],
+        )
+        profile = ExamGenerationPlan(
+            question_count=26,
+            difficulty="mixed",
+            template="calculation_practice",
+            selected_topics=("cache", "process"),
+            question_type_weights={
+                "multiple_choice": 30,
+                "scenario_choice": 30,
+                "true_false": 10,
+                "fill_in_blank": 30,
+            },
+            difficulty_weights={"easy": 10, "medium": 40, "hard": 50},
+            topic_weights={"cache": 70, "process": 30},
+        )
+        course = SimpleNamespace(generation_profile=profile.to_dict())
+
+        applied = dialog.configure_from_course_profile(course)
+
+        self.assertTrue(applied)
+        self.assertEqual(profile.to_dict(), dialog.build_exam_plan().to_dict())
+
+    def test_malformed_course_profile_keeps_current_controls_and_shows_error(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        before = dialog.build_exam_plan().to_dict()
+        course = SimpleNamespace(
+            generation_profile={"selected_topics": ["invented topic"]}
+        )
+
+        applied = dialog.configure_from_course_profile(course)
+
+        self.assertFalse(applied)
+        self.assertEqual(before, dialog.build_exam_plan().to_dict())
+        self.assertIn("invented topic", dialog.status_label.text())
+
+    def test_question_set_history_overrides_course_profile_on_regeneration(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache", "process"],
+        )
+        course_profile = ExamGenerationPlan(
+            question_count=20,
+            selected_topics=("cache",),
+            topic_weights={"cache": 100},
+        )
+        dialog.configure_from_course_profile(
+            SimpleNamespace(generation_profile=course_profile.to_dict())
+        )
+        question_set = QuestionSet(
+            set_id="set-history",
+            title={"zh": "历史", "en": "History"},
+            description={"zh": "", "en": ""},
+            topics=["process"],
+            difficulty=Difficulty.HARD,
+            estimated_minutes=30,
+            questions=[f"q-{index}" for index in range(18)],
+            metadata={
+                "difficulty_mode": "hard",
+                "generation_template": "final_exam",
+                "question_type_weights": {
+                    "multiple_choice": 40,
+                    "scenario_choice": 40,
+                    "true_false": 10,
+                    "fill_in_blank": 10,
+                },
+                "difficulty_weights": {"easy": 10, "medium": 30, "hard": 60},
+                "topic_weights": {"process": 100},
+            },
+        )
+
+        dialog.configure_from_question_set(question_set)
+        rebuilt = dialog.build_exam_plan()
+
+        self.assertEqual(18, rebuilt.question_count)
+        self.assertEqual("final_exam", rebuilt.template)
+        self.assertEqual(("process",), rebuilt.selected_topics)
+        self.assertEqual(60, rebuilt.difficulty_weights["hard"])
+
+    def test_main_generation_flow_applies_active_course_profile_before_opening(self):
+        from core.language_manager import LanguageManager
+        from ui.main_window import MainWindow
+
+        settings = {
+            "ai_provider": "local_agent",
+            "ai_base_url": "local-agent://auto",
+            "ai_model": "codex",
+        }
+        course = SimpleNamespace(generation_profile={"question_count": 20})
+        shell = SimpleNamespace(
+            settings_screen=SimpleNamespace(_settings=settings),
+            lang_manager=LanguageManager.instance(),
+            _load_generation_context=lambda: ("summary", ["cache"], course),
+        )
+
+        with patch("ui.main_window._ai_generation_settings_error", return_value=""), \
+             patch("core.secrets_manager.SecretsManager.instance") as secrets_instance, \
+             patch("ui.dialogs.ai_generation_dialog.AIGenerationDialog") as dialog_class:
+            secrets_instance.return_value.get_key.return_value = ""
+            dialog_class.return_value.exec.return_value = QDialog.DialogCode.Rejected
+
+            MainWindow._on_ai_generate(shell)
+
+        dialog_class.return_value.configure_from_course_profile.assert_called_once_with(course)
+
 
 if __name__ == "__main__":
     unittest.main()

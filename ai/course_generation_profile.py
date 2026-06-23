@@ -14,6 +14,7 @@ from ai.exam_plan import (
     apply_exam_plan_patch,
 )
 from models.course_project import CourseTopic
+from utils.constants import topic_value
 
 
 class CourseGenerationProfileGenerator:
@@ -65,7 +66,7 @@ class CourseGenerationProfileGenerator:
             plan = apply_exam_plan_patch(
                 local_plan,
                 patch,
-                [topic.title for topic in topics],
+                [topic_value(topic.title) for topic in topics],
             )
         except ExamPlanValidationError as exc:
             self.profile_warning = f"Course profile LLM returned invalid configuration: {exc}"
@@ -80,7 +81,7 @@ class CourseGenerationProfileGenerator:
         summary_markdown: str,
         local_plan: ExamGenerationPlan,
     ) -> list[dict]:
-        allowed_topics = [topic.title for topic in topics]
+        allowed_topics = [topic_value(topic.title) for topic in topics]
         schema = {
             "question_count": "integer 3..60",
             "difficulty": "easy|medium|hard|mixed",
@@ -92,6 +93,7 @@ class CourseGenerationProfileGenerator:
         }
         topic_context = [
             {
+                "topic_id": topic_value(topic.title),
                 "title": topic.title,
                 "keywords": topic.keywords[:8],
                 "source_file_count": len(set(topic.source_files)),
@@ -121,9 +123,9 @@ def build_local_course_profile(
     summary_markdown: str,
 ) -> ExamGenerationPlan:
     """Build deterministic defaults that remain useful without an LLM."""
-    selected = tuple(topic.title for topic in topics[:6])
+    selected = tuple(topic_value(topic.title) for topic in topics[:6])
     scores = {
-        topic.title: max(1, len(set(topic.source_files)) * 3 + len(set(topic.keywords)))
+        topic_value(topic.title): max(1, len(set(topic.source_files)) * 3 + len(set(topic.keywords)))
         for topic in topics[:6]
     }
     calculation_markers = re.compile(
