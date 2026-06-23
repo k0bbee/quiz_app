@@ -3,7 +3,7 @@
 Priority chain:
   1. Environment variable QUIZ_APP_API_KEY
   2. System keychain (via keyring library)
-  3. settings.json (plaintext fallback, warns user)
+  3. Legacy settings.json plaintext value (read-only migration compatibility)
 
 All code that needs the API key should call SecretsManager.get_key().
 """
@@ -38,6 +38,7 @@ class SecretsManager:
         if SecretsManager._instance is not None:
             raise RuntimeError("Use SecretsManager.instance() instead of direct construction")
         SecretsManager._instance = self
+        self._last_storage_location = ""
 
     @classmethod
     def instance(cls) -> SecretsManager:
@@ -69,8 +70,12 @@ class SecretsManager:
         settings = read_json(SETTINGS_FILE) or {}
         return settings.get("ai_api_key", "")
 
-    def set_key(self, key: str):
-        """Store the API key. Prefers keychain; falls back to settings.json with warning."""
+    def set_key(self, key: str) -> str:
+        """Store a key in-session and, when available, in the system keychain.
+
+        Plaintext settings fallback is intentionally not used. Passing an empty
+        value explicitly clears every managed storage location.
+        """
         key = key.strip()
 
         # Always set environment variable for current session
@@ -94,17 +99,21 @@ class SecretsManager:
             except Exception:
                 pass  # keychain write failed, fall through
 
-        # Fallback: settings.json
+        # Always remove legacy plaintext material from settings.json. If the
+        # keychain is unavailable, the environment value remains session-only.
         settings = read_json(SETTINGS_FILE) or {}
-        if stored_in_keychain:
-            # Clear plaintext from settings.json if it was there
-            settings.pop("ai_api_key", None)
-            settings["ai_api_key_stored_in_plaintext"] = False
-        else:
-            settings["ai_api_key"] = key
-            settings["ai_api_key_stored_in_plaintext"] = True
-
+        settings.pop("ai_api_key", None)
+        settings.pop("ai_api_key_stored_in_plaintext", None)
         write_json(SETTINGS_FILE, settings)
+
+        if not key:
+            location = "not set"
+        elif stored_in_keychain:
+            location = "system keychain"
+        else:
+            location = "environment variable (current session only)"
+        self._last_storage_location = location
+        return location
 
     def is_keychain_available(self) -> bool:
         return KEYRING_AVAILABLE
@@ -116,6 +125,9 @@ class SecretsManager:
 
     def get_storage_location(self) -> str:
         """Return a human-readable description of where the key is stored."""
+        recent = getattr(self, "_last_storage_location", "")
+        if recent:
+            return recent
         if os.environ.get("QUIZ_APP_API_KEY"):
             return "environment variable"
         if KEYRING_AVAILABLE:
