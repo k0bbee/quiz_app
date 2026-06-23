@@ -2,6 +2,7 @@
 from utils.logger import debug, warning, error
 
 import threading
+from math import floor
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -11,6 +12,88 @@ from ai.prompt_templates import PromptBuilder
 from core.course_index import retrieve_course_context
 from models.question import Question
 from utils.constants import QuestionType, Difficulty, topic_value
+
+
+def allocate_weighted_counts(weights: dict[str, int], count: int) -> dict[str, int]:
+    """Convert percentages/relative weights into exact deterministic counts."""
+    keys = list(weights)
+    if count < 0:
+        raise ValueError("count must not be negative")
+    source = {key: max(0, int(weights[key])) for key in keys}
+    total = sum(source.values())
+    if not keys:
+        return {}
+    if total <= 0:
+        return {key: count if index == 0 else 0 for index, key in enumerate(keys)}
+    raw = {key: source[key] * count / total for key in keys}
+    allocated = {key: floor(raw[key]) for key in keys}
+    remainder = count - sum(allocated.values())
+    ranked = sorted(
+        keys,
+        key=lambda key: (-(raw[key] - allocated[key]), keys.index(key)),
+    )
+    for key in ranked[:remainder]:
+        allocated[key] += 1
+    return allocated
+
+
+class GenerationQuotaTracker:
+    """Track exact marginal quotas for accepted generated questions."""
+
+    def __init__(self, config: GenerationConfig, topics: list, count: int):
+        self.template = config.template
+        self.remaining_types = allocate_weighted_counts(
+            config.normalized_type_weights(), count
+        )
+        self.remaining_difficulties = allocate_weighted_counts(
+            config.normalized_difficulty_weights(), count
+        )
+        topic_keys = [topic_value(topic) for topic in topics]
+        self.remaining_topics = allocate_weighted_counts(
+            config.normalized_topic_weights(topic_keys), count
+        )
+
+    def rejection_reason(self, qtype: str, difficulty: str, topic: str) -> str:
+        filled = []
+        if self.remaining_types.get(qtype, 0) <= 0:
+            filled.append(f"question type {qtype}")
+        if self.remaining_difficulties.get(difficulty, 0) <= 0:
+            filled.append(f"difficulty {difficulty}")
+        if self.remaining_topics.get(topic, 0) <= 0:
+            filled.append(f"topic {topic}")
+        return f"quota already filled for {', '.join(filled)}" if filled else ""
+
+    def accept(self, qtype: str, difficulty: str, topic: str):
+        self.remaining_types[qtype] -= 1
+        self.remaining_difficulties[difficulty] -= 1
+        self.remaining_topics[topic] -= 1
+
+    def remaining_config(self) -> GenerationConfig:
+        return GenerationConfig(
+            question_type_weights=dict(self.remaining_types),
+            difficulty_weights=dict(self.remaining_difficulties),
+            topic_weights=dict(self.remaining_topics),
+            template=self.template,
+        )
+
+    def shortfall_message(self, accepted: int, requested: int) -> str:
+        groups = []
+        for label, values in (
+            ("question types", self.remaining_types),
+            ("difficulties", self.remaining_difficulties),
+            ("topics", self.remaining_topics),
+        ):
+            missing = ", ".join(
+                f"{key}: {value}" for key, value in values.items() if value > 0
+            )
+            if missing:
+                groups.append(f"{label} [{missing}]")
+        detail = "; ".join(groups) or "unknown quota"
+        return (
+            "Generation stopped before satisfying the requested distribution "
+            f"({accepted}/{requested} accepted). Missing: {detail}. "
+            "Try again, reduce the requested count, or relax the weights."
+        )
 
 
 class GenerationWorker(QThread):
@@ -44,6 +127,11 @@ class GenerationWorker(QThread):
             all_questions = []
             attempts = 0
             max_attempts = max(3, (self.count // batch_size + 1) * 3)
+            quotas = GenerationQuotaTracker(
+                self.generation_config,
+                self.topics,
+                self.count,
+            )
 
             # Cache context once — it doesn't change between batches
             course_context = self._build_course_context()
@@ -58,7 +146,7 @@ class GenerationWorker(QThread):
                     self.topics,
                     batch_count,
                     self.difficulty,
-                    self.generation_config,
+                    quotas.remaining_config(),
                 )
 
                 data = self.client.generate_with_json(messages, max_retries=3)
@@ -100,6 +188,20 @@ class GenerationWorker(QThread):
                         q.metadata.update(self._course_metadata())
                         errors = q.validate()
                         if not errors:
+                            quota_reason = quotas.rejection_reason(
+                                q.type.value,
+                                q.difficulty.value,
+                                topic_value(q.topic),
+                            )
+                            if quota_reason:
+                                rejected += 1
+                                debug(f"Skipping generated question: {quota_reason}")
+                                continue
+                            quotas.accept(
+                                q.type.value,
+                                q.difficulty.value,
+                                topic_value(q.topic),
+                            )
                             batch_questions.append(q)
                         else:
                             rejected += 1
@@ -116,7 +218,10 @@ class GenerationWorker(QThread):
                 )
 
             if not self._cancelled.is_set():
-                self.batch_done.emit(all_questions[:self.count])
+                if len(all_questions) != self.count:
+                    self.error.emit(quotas.shortfall_message(len(all_questions), self.count))
+                    return
+                self.batch_done.emit(all_questions)
 
         except Exception as e:
             self.error.emit(f"Unexpected error: {str(e)}")
