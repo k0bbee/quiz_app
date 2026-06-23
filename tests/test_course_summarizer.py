@@ -195,7 +195,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 summary_markdown="# Local Summary\n",
                 summary_path="",
                 topics=self._topics(),
-                documents=[],
+                documents=[{"path": "scan.pdf", "warnings": ["OCR unavailable"]}],
                 created_at="2026-06-23T00:00:00+00:00",
                 updated_at="2026-06-23T00:00:00+00:00",
                 summary_source="local",
@@ -213,6 +213,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             message = information.call_args.args[2]
             self.assertIn("local summary", message.lower())
             self.assertIn("API request failed", message)
+            self.assertIn("OCR unavailable", message)
 
     def test_course_screen_reports_llm_fallback_after_regeneration(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -224,7 +225,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 summary_markdown="# Local Summary\n",
                 summary_path="",
                 topics=self._topics(),
-                documents=[],
+                documents=[{"path": "scan.pdf", "warnings": ["OCR unavailable"]}],
                 created_at="2026-06-23T00:00:00+00:00",
                 updated_at="2026-06-23T00:00:00+00:00",
                 summary_source="local",
@@ -242,6 +243,59 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             message = information.call_args.args[2]
             self.assertIn("local summary", message.lower())
             self.assertIn("API request failed", message)
+            self.assertIn("OCR unavailable", message)
+
+    def test_course_screen_limits_document_warning_details(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            screen = CourseScreen(manager)
+            language_manager = LanguageManager.instance()
+            previous_language = language_manager.current
+            self.addCleanup(language_manager.set_language, previous_language)
+            language_manager.set_language("en")
+            project = CourseProject(
+                course_id="course-warnings",
+                title="Systems",
+                source_folder=str(Path(tmpdir) / "source"),
+                summary_markdown="# Summary\n",
+                summary_path="",
+                topics=self._topics(),
+                documents=[{
+                    "path": str(Path(tmpdir) / "scan.pdf"),
+                    "warnings": ["warning one", "warning two", "warning three", "warning four"],
+                }],
+                created_at="2026-06-23T00:00:00+00:00",
+                updated_at="2026-06-23T00:00:00+00:00",
+            )
+
+            message = screen._with_document_warnings("Course ready.", project)
+
+            self.assertIn("scan.pdf", message)
+            self.assertIn("warning one", message)
+            self.assertIn("warning three", message)
+            self.assertNotIn("warning four", message)
+            self.assertIn("1 more", message)
+
+    def test_course_screen_leaves_message_unchanged_without_document_warnings(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            screen = CourseScreen(manager)
+            project = CourseProject(
+                course_id="course-clean",
+                title="Systems",
+                source_folder=str(Path(tmpdir) / "source"),
+                summary_markdown="# Summary\n",
+                summary_path="",
+                topics=self._topics(),
+                documents=[{"path": "notes.pdf", "warnings": []}],
+                created_at="2026-06-23T00:00:00+00:00",
+                updated_at="2026-06-23T00:00:00+00:00",
+            )
+
+            self.assertEqual(
+                "Course ready.",
+                screen._with_document_warnings("Course ready.", project),
+            )
 
     def test_project_manager_delete_removes_project_summary_and_current_pointer(self):
         with tempfile.TemporaryDirectory() as tmpdir:

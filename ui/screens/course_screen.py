@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QTextEdit,
@@ -213,6 +215,7 @@ class CourseScreen(QWidget):
         else:
             msg = f"Initialized '{project.title}' with {len(project.documents)} files and {len(project.topics)} topics."
         msg = self._with_summary_warning(msg, project)
+        msg = self._with_document_warnings(msg, project)
         QMessageBox.information(
             self,
             self.lang_manager.get_text("课程就绪", "Course Ready"),
@@ -347,6 +350,7 @@ class CourseScreen(QWidget):
         self.current_course_changed.emit()
         msg = self.lang_manager.get_text("课程总结已重新生成。", "Course summary regenerated.")
         msg = self._with_summary_warning(msg, project)
+        msg = self._with_document_warnings(msg, project)
         QMessageBox.information(
             self,
             self.lang_manager.get_text("Summary Updated", "Summary Updated"),
@@ -363,6 +367,34 @@ class CourseScreen(QWidget):
             "LLM summary generation failed; a local summary was saved. Reason:",
         )
         return f"{message}\n\n{fallback} {warning}"
+
+    def _with_document_warnings(self, message, project):
+        """Append a bounded, localized summary of document extraction warnings."""
+        warnings = []
+        for document in getattr(project, "documents", []) or []:
+            source = Path(str(document.get("path", ""))).name
+            source = source or str(document.get("title", "")) or "unknown"
+            for warning in document.get("warnings", []) or []:
+                warning_text = str(warning).strip()
+                if warning_text:
+                    warnings.append((source, warning_text))
+        if not warnings:
+            return message
+
+        lines = [
+            self.lang_manager.get_text(
+                "资料解析警告：",
+                "Course material extraction warnings:",
+            )
+        ]
+        lines.extend(f"- {source}: {warning}" for source, warning in warnings[:3])
+        remaining = len(warnings) - 3
+        if remaining > 0:
+            lines.append(self.lang_manager.get_text(
+                f"- 另有 {remaining} 条警告未显示。",
+                f"- {remaining} more warning(s) not shown.",
+            ))
+        return f"{message}\n\n" + "\n".join(lines)
 
     def _on_regen_error(self, error_msg):
         self.progress_bar.setVisible(False)
