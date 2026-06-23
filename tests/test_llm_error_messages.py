@@ -45,6 +45,20 @@ class LLMErrorMessageTests(unittest.TestCase):
 
         self.assertEqual(["OpenAI-compatible API error 401: invalid API key"], errors)
 
+    def test_client_blocks_unsafe_remote_endpoint_before_network_request(self):
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="http://llm.example.com/v1",
+            model="model",
+        )
+
+        with patch("ai.llm_client.requests.post") as post:
+            result = client.generate([{"role": "user", "content": "Return JSON."}])
+
+        self.assertIsNone(result)
+        self.assertFalse(post.called)
+        self.assertIn("HTTPS", client.last_error)
+
 
 if __name__ == "__main__":
     unittest.main()

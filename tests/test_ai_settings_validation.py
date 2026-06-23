@@ -35,6 +35,38 @@ class AISettingsValidationTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertIn("API key", result.message)
 
+    def test_remote_endpoints_require_https_except_for_loopback(self):
+        secure = validate_ai_settings(
+            {"ai_provider": "custom", "ai_base_url": "https://llm.example.com/v1", "ai_model": "model"},
+            api_key="sk-test",
+        )
+        loopback = validate_ai_settings(
+            {"ai_provider": "custom", "ai_base_url": "http://127.0.0.1:11434/v1", "ai_model": "model"},
+            api_key="sk-test",
+        )
+        insecure = validate_ai_settings(
+            {"ai_provider": "custom", "ai_base_url": "http://llm.example.com/v1", "ai_model": "model"},
+            api_key="sk-test",
+        )
+
+        self.assertTrue(secure.ok)
+        self.assertTrue(loopback.ok)
+        self.assertFalse(insecure.ok)
+        self.assertIn("HTTPS", insecure.message)
+
+    def test_remote_endpoint_rejects_embedded_credentials_and_invalid_scheme(self):
+        for base_url in (
+            "https://user:password@llm.example.com/v1",
+            "ftp://llm.example.com/v1",
+            "https://",
+        ):
+            with self.subTest(base_url=base_url):
+                result = validate_ai_settings(
+                    {"ai_provider": "custom", "ai_base_url": base_url, "ai_model": "model"},
+                    api_key="sk-test",
+                )
+                self.assertFalse(result.ok)
+
     def test_settings_screen_test_button_reports_current_configuration(self):
         screen = SettingsScreen()
         screen.provider_combo.setCurrentIndex(screen.provider_combo.findData("local_agent"))

@@ -33,6 +33,13 @@ class LLMClient:
         self.last_error = ""
         if self.base_url.startswith("local-agent://"):
             return self._generate_local_agent(messages, max_tokens)
+        from ai.settings_validation import validate_remote_endpoint
+
+        endpoint_result = validate_remote_endpoint(self.base_url)
+        if not endpoint_result.ok:
+            self.last_error = endpoint_result.message
+            warning(self.last_error)
+            return None
         if "anthropic" in self.base_url:
             return self._generate_anthropic(messages, temperature, max_tokens)
         return self._generate_openai_compatible(messages, temperature, max_tokens)
