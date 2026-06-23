@@ -55,12 +55,16 @@ class SettingsScreen(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.settings_scroll = QScrollArea()
+        self.settings_scroll.setWidgetResizable(True)
+        self.settings_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.settings_scroll.setAlignment(
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
+        )
 
-        content = QWidget()
-        layout = QVBoxLayout(content)
+        self.settings_content = QWidget()
+        self.settings_content.setMaximumWidth(960)
+        layout = QVBoxLayout(self.settings_content)
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(12)
 
@@ -71,6 +75,11 @@ class SettingsScreen(QWidget):
         # ── Language ──
         self.lang_group = QGroupBox(self.lang_manager.get_text("显示语言", "Language"))
         lang_layout = QFormLayout(self.lang_group)
+        lang_layout.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        lang_layout.setHorizontalSpacing(16)
+        lang_layout.setVerticalSpacing(10)
         self.lang_combo = QComboBox()
         self.lang_combo.addItem("中文", "zh")
         self.lang_combo.addItem("English", "en")
@@ -81,7 +90,12 @@ class SettingsScreen(QWidget):
 
         # ── AI Generation ──
         self.ai_group = QGroupBox(self.lang_manager.get_text("AI 出题", "AI Question Generation"))
-        ai_layout = QFormLayout(self.ai_group)
+        self.ai_form_layout = QFormLayout(self.ai_group)
+        self.ai_form_layout.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.ai_form_layout.setHorizontalSpacing(16)
+        self.ai_form_layout.setVerticalSpacing(10)
 
         # Provider
         self.provider_combo = QComboBox()
@@ -89,7 +103,7 @@ class SettingsScreen(QWidget):
             self.provider_combo.addItem(preset["label"], key)
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
         self.provider_label = QLabel(self.lang_manager.get_text("提供商:", "Provider:"))
-        ai_layout.addRow(self.provider_label, self.provider_combo)
+        self.ai_form_layout.addRow(self.provider_label, self.provider_combo)
 
         # API key
         self.api_key_input = QLineEdit()
@@ -97,7 +111,7 @@ class SettingsScreen(QWidget):
         self.api_key_input.setPlaceholderText(
             self.lang_manager.get_text("输入 API 密钥...", "Enter API key..."))
         self.api_key_label = QLabel(self.lang_manager.get_text("API 密钥:", "API Key:"))
-        ai_layout.addRow(self.api_key_label, self.api_key_input)
+        self.ai_form_layout.addRow(self.api_key_label, self.api_key_input)
 
         # Base URL
         self.api_base_url = QLineEdit()
@@ -107,65 +121,66 @@ class SettingsScreen(QWidget):
                 "e.g. https://api.anthropic.com/v1"))
         self.api_base_url.textChanged.connect(self._on_base_url_edited)
         self.api_base_url_label = QLabel(self.lang_manager.get_text("API 地址:", "API Base URL:"))
-        ai_layout.addRow(self.api_base_url_label, self.api_base_url)
+        self.ai_form_layout.addRow(self.api_base_url_label, self.api_base_url)
 
         # Model
         self.model_combo = QComboBox()
         self.model_combo.setEditable(True)
         self.model_label = QLabel(self.lang_manager.get_text("模型:", "Model:"))
-        ai_layout.addRow(self.model_label, self.model_combo)
+        self.ai_form_layout.addRow(self.model_label, self.model_combo)
 
         # Help / local agent status
         self.provider_help = QLabel()
         self.provider_help.setWordWrap(True)
         self.provider_help.setObjectName("settingsProviderHelp")
-        ai_layout.addRow("", self.provider_help)
+        self.ai_form_layout.addRow("", self.provider_help)
 
         self.local_agent_status = QLabel()
         self.local_agent_status.setWordWrap(True)
         self.local_agent_status.setObjectName("settingsLocalAgentStatus")
         self.local_agent_label = QLabel(self.lang_manager.get_text("本地代理:", "Local agent:"))
-        ai_layout.addRow(self.local_agent_label, self.local_agent_status)
+        self.ai_form_layout.addRow(self.local_agent_label, self.local_agent_status)
 
         # Save button
-        save_row = QHBoxLayout()
-        save_row.addStretch()
+        self.ai_action_layout = QHBoxLayout()
+        self.ai_action_layout.addStretch()
         self.test_ai_btn = QPushButton(self.lang_manager.get_text("测试 AI 设置", "Test AI Settings"))
         self.test_ai_btn.setObjectName("secondaryButton")
-        self.test_ai_btn.setMinimumHeight(40)
+        self.test_ai_btn.setMinimumHeight(34)
         self.test_ai_btn.clicked.connect(self._test_ai_settings)
-        save_row.addWidget(self.test_ai_btn)
+        self.ai_action_layout.addWidget(self.test_ai_btn)
         self.save_btn = QPushButton(self.lang_manager.get_text("保存设置", "Save Settings"))
         self.save_btn.setObjectName("primaryButton")
-        self.save_btn.setMinimumHeight(40)
+        self.save_btn.setMinimumHeight(34)
         self.save_btn.clicked.connect(self.save_settings)
-        save_row.addWidget(self.save_btn)
-        ai_layout.addRow("", save_row)
+        self.ai_action_layout.addWidget(self.save_btn)
+        self.ai_form_layout.addRow("", self.ai_action_layout)
 
         layout.addWidget(self.ai_group)
 
         # ── Data Management ──
         self.data_group = QGroupBox(self.lang_manager.get_text("数据管理", "Data Management"))
         data_layout = QVBoxLayout(self.data_group)
+        self.data_action_layout = QHBoxLayout()
+        self.data_action_layout.setSpacing(8)
 
         self.export_btn = QPushButton(self.lang_manager.get_text("导出进度", "Export Progress"))
         self.export_btn.setObjectName("secondaryButton")
         self.export_btn.clicked.connect(self._export_progress)
-        data_layout.addWidget(self.export_btn)
+        self.data_action_layout.addWidget(self.export_btn)
 
         self.import_btn = QPushButton(self.lang_manager.get_text("导入进度", "Import Progress"))
         self.import_btn.setObjectName("secondaryButton")
         self.import_btn.clicked.connect(self._import_progress)
-        data_layout.addWidget(self.import_btn)
+        self.data_action_layout.addWidget(self.import_btn)
 
-        reset_row = QHBoxLayout()
         self.reset_progress_btn = QPushButton(
             self.lang_manager.get_text("重置全部进度", "Reset All Progress"))
         self.reset_progress_btn.setObjectName("dangerButton")
         self.reset_progress_btn.clicked.connect(self._reset_progress)
-        reset_row.addWidget(self.reset_progress_btn)
-        reset_row.addStretch()
-        data_layout.addLayout(reset_row)
+        self.data_action_layout.addStretch()
+        self.data_action_layout.addWidget(self.reset_progress_btn)
+        data_layout.addLayout(self.data_action_layout)
 
         layout.addWidget(self.data_group)
         layout.addStretch()
@@ -175,8 +190,8 @@ class SettingsScreen(QWidget):
         version_label.setObjectName("settingsVersionLabel")
         layout.addWidget(version_label)
 
-        scroll.setWidget(content)
-        outer.addWidget(scroll)
+        self.settings_scroll.setWidget(self.settings_content)
+        outer.addWidget(self.settings_scroll)
 
     # ── Language ──────────────────────────────────────────────
 

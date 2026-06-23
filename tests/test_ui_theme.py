@@ -7,6 +7,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QPalette
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QGridLayout
 
 from core.progress_tracker import ProgressManager
@@ -111,6 +112,27 @@ class UiThemeTests(unittest.TestCase):
             self.assertEqual((1, 1, 1, 1), position(home.ai_btn))
             self.assertEqual((2, 0, 1, 1), position(home.progress_btn))
             self.assertEqual((2, 1, 1, 1), position(home.settings_btn))
+
+    def test_settings_content_and_actions_follow_desktop_form_layout(self):
+        settings = SettingsScreen()
+
+        self.assertEqual(960, settings.settings_content.maximumWidth())
+        self.assertEqual(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            settings.ai_form_layout.labelAlignment(),
+        )
+        self.assertLess(
+            settings.ai_action_layout.indexOf(settings.test_ai_btn),
+            settings.ai_action_layout.indexOf(settings.save_btn),
+        )
+        self.assertLess(
+            settings.data_action_layout.indexOf(settings.export_btn),
+            settings.data_action_layout.indexOf(settings.import_btn),
+        )
+        self.assertLess(
+            settings.data_action_layout.indexOf(settings.import_btn),
+            settings.data_action_layout.indexOf(settings.reset_progress_btn),
+        )
 
 
 if __name__ == "__main__":
