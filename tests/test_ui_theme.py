@@ -7,7 +7,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QPalette
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QGridLayout
 
 from core.progress_tracker import ProgressManager
 from models.course_project import CourseProjectManager
@@ -92,6 +92,25 @@ class UiThemeTests(unittest.TestCase):
             self.assertEqual("primaryButton", dialog.generate_btn.objectName())
             for button in (dialog.cancel_btn, dialog.select_all_btn, dialog.deselect_btn):
                 self.assertEqual("secondaryButton", button.objectName())
+
+    def test_home_actions_use_a_balanced_two_column_grid(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = HomeScreen(
+                ProgressManager(str(Path(tmpdir) / "progress")),
+                QuestionBank(str(Path(tmpdir) / "questions")),
+            )
+
+            self.assertIsInstance(home.action_layout, QGridLayout)
+            self.assertLessEqual(home.action_frame.maximumWidth(), 640)
+
+            def position(button):
+                return home.action_layout.getItemPosition(home.action_layout.indexOf(button))
+
+            self.assertEqual((0, 0, 1, 2), position(home.start_btn))
+            self.assertEqual((1, 0, 1, 1), position(home.incorrect_btn))
+            self.assertEqual((1, 1, 1, 1), position(home.ai_btn))
+            self.assertEqual((2, 0, 1, 1), position(home.progress_btn))
+            self.assertEqual((2, 1, 1, 1), position(home.settings_btn))
 
 
 if __name__ == "__main__":

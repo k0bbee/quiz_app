@@ -1,7 +1,7 @@
 """Home screen — welcome view with quick actions."""
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QFont
@@ -56,46 +56,50 @@ class HomeScreen(QWidget):
 
         main_layout.addSpacing(20)
 
-        # Action buttons (max-width + centered for elastic layout)
-        btn_frame = QWidget()
-        btn_frame.setMaximumWidth(500)
-        btn_layout = QVBoxLayout(btn_frame)
-        btn_layout.setSpacing(12)
+        # Action area: one primary action plus a balanced 2x2 secondary grid.
+        self.action_frame = QWidget()
+        self.action_frame.setMaximumWidth(640)
+        self.action_layout = QGridLayout(self.action_frame)
+        self.action_layout.setContentsMargins(0, 0, 0, 0)
+        self.action_layout.setHorizontalSpacing(12)
+        self.action_layout.setVerticalSpacing(12)
+        self.action_layout.setColumnStretch(0, 1)
+        self.action_layout.setColumnStretch(1, 1)
 
         self.start_btn = QPushButton(self.lang_manager.get_text("开始练习", "Start Practice"))
         self.start_btn.setObjectName("primaryButton")
-        self.start_btn.setMinimumHeight(50)
+        self.start_btn.setMinimumHeight(44)
         self.start_btn.clicked.connect(self.start_practice.emit)
-        btn_layout.addWidget(self.start_btn)
+        self.action_layout.addWidget(self.start_btn, 0, 0, 1, 2)
 
         self.incorrect_btn = QPushButton(self.lang_manager.get_text("练习历史错题", "Practice Incorrect"))
         self.incorrect_btn.setObjectName("secondaryButton")
-        self.incorrect_btn.setMinimumHeight(45)
+        self.incorrect_btn.setMinimumHeight(40)
         self.incorrect_btn.clicked.connect(self.practice_incorrect.emit)
-        btn_layout.addWidget(self.incorrect_btn)
+        self.action_layout.addWidget(self.incorrect_btn, 1, 0)
 
         self.ai_btn = QPushButton(self.lang_manager.get_text("AI 生成题目", "Generate Questions"))
         self.ai_btn.setObjectName("secondaryButton")
-        self.ai_btn.setMinimumHeight(45)
+        self.ai_btn.setMinimumHeight(40)
         self.ai_btn.clicked.connect(self.ai_generate.emit)
-        btn_layout.addWidget(self.ai_btn)
+        self.action_layout.addWidget(self.ai_btn, 1, 1)
 
         self.progress_btn = QPushButton(self.lang_manager.get_text("查看进度", "View Progress"))
         self.progress_btn.setObjectName("secondaryButton")
-        self.progress_btn.setMinimumHeight(45)
+        self.progress_btn.setMinimumHeight(40)
         self.progress_btn.clicked.connect(self.view_progress.emit)
-        btn_layout.addWidget(self.progress_btn)
+        self.action_layout.addWidget(self.progress_btn, 2, 0)
 
         self.settings_btn = QPushButton(self.lang_manager.get_text("设置", "Settings"))
         self.settings_btn.setObjectName("secondaryButton")
-        self.settings_btn.setMinimumHeight(45)
+        self.settings_btn.setMinimumHeight(40)
         self.settings_btn.clicked.connect(self.open_settings.emit)
-        btn_layout.addWidget(self.settings_btn)
+        self.action_layout.addWidget(self.settings_btn, 2, 1)
 
         # Center the button frame horizontally
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        btn_row.addWidget(btn_frame)
+        btn_row.addWidget(self.action_frame)
         btn_row.addStretch()
         main_layout.addLayout(btn_row)
 
