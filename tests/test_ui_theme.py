@@ -66,7 +66,12 @@ class UiThemeTests(unittest.TestCase):
             for button in (home.incorrect_btn, home.ai_btn, home.progress_btn, home.settings_btn):
                 self.assertEqual("secondaryButton", button.objectName())
             self.assertEqual("primaryButton", settings.save_btn.objectName())
-            for button in (settings.test_ai_btn, settings.export_btn, settings.import_btn):
+            for button in (
+                settings.test_ai_btn,
+                settings.export_btn,
+                settings.import_btn,
+                settings.clear_api_key_btn,
+            ):
                 self.assertEqual("secondaryButton", button.objectName())
             self.assertEqual("dangerButton", settings.reset_progress_btn.objectName())
 

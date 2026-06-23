@@ -106,12 +106,21 @@ class SettingsScreen(QWidget):
         self.ai_form_layout.addRow(self.provider_label, self.provider_combo)
 
         # API key
+        self.api_key_row = QWidget()
+        api_key_row_layout = QHBoxLayout(self.api_key_row)
+        api_key_row_layout.setContentsMargins(0, 0, 0, 0)
+        api_key_row_layout.setSpacing(8)
         self.api_key_input = QLineEdit()
         self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_key_input.setPlaceholderText(
-            self.lang_manager.get_text("输入 API 密钥...", "Enter API key..."))
+        api_key_row_layout.addWidget(self.api_key_input, 1)
+        self.clear_api_key_btn = QPushButton(
+            self.lang_manager.get_text("清除", "Clear")
+        )
+        self.clear_api_key_btn.setObjectName("secondaryButton")
+        self.clear_api_key_btn.clicked.connect(self._clear_api_key)
+        api_key_row_layout.addWidget(self.clear_api_key_btn)
         self.api_key_label = QLabel(self.lang_manager.get_text("API 密钥:", "API Key:"))
-        self.ai_form_layout.addRow(self.api_key_label, self.api_key_input)
+        self.ai_form_layout.addRow(self.api_key_label, self.api_key_row)
 
         # Base URL
         self.api_base_url = QLineEdit()
@@ -211,8 +220,8 @@ class SettingsScreen(QWidget):
         self.reset_progress_btn.setText(self.lang_manager.get_text("重置全部进度", "Reset All Progress"))
         self.test_ai_btn.setText(self.lang_manager.get_text("测试 AI 设置", "Test AI Settings"))
         self.save_btn.setText(self.lang_manager.get_text("保存设置", "Save Settings"))
-        self.api_key_input.setPlaceholderText(
-            self.lang_manager.get_text("输入 API 密钥...", "Enter API key..."))
+        self.clear_api_key_btn.setText(self.lang_manager.get_text("清除", "Clear"))
+        self._update_api_key_placeholder()
         self.api_base_url.setPlaceholderText(
             self.lang_manager.get_text("例如: https://api.anthropic.com/v1", "e.g. https://api.anthropic.com/v1"))
         self._refresh_local_agent_status()
@@ -250,7 +259,11 @@ class SettingsScreen(QWidget):
         self._populate_provider_models(provider, keep_existing=True)
 
         from core.secrets_manager import SecretsManager
-        self.api_key_input.setText(SecretsManager.instance().get_key())
+        secrets = SecretsManager.instance()
+        self._has_existing_api_key = bool(secrets.get_key())
+        self._key_storage_location = secrets.get_storage_location()
+        self.api_key_input.clear()
+        self._update_api_key_placeholder()
         self.api_base_url.setText(self._settings.get("ai_base_url", ""))
 
         model = self._settings.get("ai_model", "claude-sonnet-4-6")
@@ -275,9 +288,16 @@ class SettingsScreen(QWidget):
             self._settings["ai_base_url"] = self.api_base_url.text().strip()
             self._settings["ai_model"] = self.model_combo.currentText().strip()
 
-            # Delegate API key storage to SecretsManager (env → keychain → file)
+            # A blank field means "keep the existing key". Only explicit new
+            # input changes secret storage; the actual key is never re-rendered.
             from core.secrets_manager import SecretsManager
-            SecretsManager.instance().set_key(self.api_key_input.text())
+            secrets = SecretsManager.instance()
+            new_key = self.api_key_input.text().strip()
+            if new_key:
+                self._key_storage_location = secrets.set_key(new_key)
+                self._has_existing_api_key = True
+                self.api_key_input.clear()
+                self._update_api_key_placeholder()
 
             # Do NOT store ai_api_key in settings dict — SecretsManager owns it.
             self._settings.pop("ai_api_key", None)
@@ -299,6 +319,49 @@ class SettingsScreen(QWidget):
             if not silent:
                 QMessageBox.critical(
                     self, self.lang_manager.get_text("保存失败", "Save Failed"), str(e))
+
+    def _update_api_key_placeholder(self):
+        if not hasattr(self, "api_key_input"):
+            return
+        has_key = bool(getattr(self, "_has_existing_api_key", False))
+        storage = str(getattr(self, "_key_storage_location", "") or "")
+        if has_key:
+            placeholder = self.lang_manager.get_text(
+                f"已配置（{storage}）；留空保持不变",
+                f"Configured ({storage}); leave blank to keep it",
+            )
+        else:
+            placeholder = self.lang_manager.get_text(
+                "输入新密钥（不会回显）",
+                "Enter a new key (it will not be displayed again)",
+            )
+        self.api_key_input.setPlaceholderText(placeholder)
+        self.clear_api_key_btn.setEnabled(has_key)
+
+    def _clear_api_key(self):
+        reply = QMessageBox.question(
+            self,
+            self.lang_manager.get_text("清除 API 密钥", "Clear API Key"),
+            self.lang_manager.get_text(
+                "确定清除当前 API 密钥吗？之后远程 LLM 将不可用，直到输入新密钥。",
+                "Clear the current API key? Remote LLMs will be unavailable until a new key is entered.",
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        from core.secrets_manager import SecretsManager
+
+        self._key_storage_location = SecretsManager.instance().set_key("")
+        self._has_existing_api_key = False
+        self.api_key_input.clear()
+        self._update_api_key_placeholder()
+        QMessageBox.information(
+            self,
+            self.lang_manager.get_text("已清除", "Cleared"),
+            self.lang_manager.get_text("API 密钥已清除。", "The API key was cleared."),
+        )
 
     # ── Provider change ──────────────────────────────────────
 
