@@ -5,11 +5,12 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QDialog
 from PyQt6.QtCore import Qt
 
 from ai.batch_generator import GenerationWorker
 from ai.generation_config import GenerationConfig
+from ai.exam_plan import ExamGenerationPlan
 from ai.llm_client import LLMClient
 from ai.prompt_templates import PromptBuilder
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
@@ -173,6 +174,60 @@ class GenerationConfigTests(unittest.TestCase):
             if dialog.topic_list.item(index).checkState() == Qt.CheckState.Checked
         }
         self.assertEqual({"cache", "gpu"}, checked)
+
+    def test_dialog_exam_plan_round_trip_applies_all_controls(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache", "process"],
+        )
+        target = ExamGenerationPlan(
+            question_count=22,
+            difficulty="mixed",
+            template="final_exam",
+            selected_topics=("process",),
+            question_type_weights={
+                "multiple_choice": 40,
+                "scenario_choice": 30,
+                "true_false": 20,
+                "fill_in_blank": 10,
+            },
+            difficulty_weights={"easy": 10, "medium": 50, "hard": 40},
+            topic_weights={"process": 100},
+        )
+
+        dialog.apply_exam_plan(target)
+        rebuilt = dialog.build_exam_plan()
+
+        self.assertEqual(target.to_dict(), rebuilt.to_dict())
+        checked = {
+            dialog.topic_list.item(index).data(Qt.ItemDataRole.UserRole)
+            for index in range(dialog.topic_list.count())
+            if dialog.topic_list.item(index).checkState() == Qt.CheckState.Checked
+        }
+        self.assertEqual({"process"}, checked)
+
+    def test_accepted_exam_assistant_plan_is_applied(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        target = ExamGenerationPlan(
+            question_count=30,
+            selected_topics=("cache",),
+            topic_weights={"cache": 100},
+        )
+
+        with patch("ui.dialogs.exam_assistant_dialog.ExamAssistantDialog") as assistant_class:
+            assistant = assistant_class.return_value
+            assistant.exec.return_value = QDialog.DialogCode.Accepted
+            assistant.get_confirmed_plan.return_value = target
+
+            dialog._open_exam_assistant()
+
+        self.assertEqual(30, dialog.count_spin.value())
+        assistant_class.assert_called_once()
 
 
 if __name__ == "__main__":

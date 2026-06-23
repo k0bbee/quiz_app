@@ -14,6 +14,7 @@ from core.language_manager import LanguageManager
 from ai.llm_client import LLMClient
 from ai.batch_generator import GenerationWorker
 from ai.generation_config import GenerationConfig, QUESTION_TYPE_DEFAULTS, DIFFICULTY_DEFAULTS
+from ai.exam_plan import ExamGenerationPlan
 from ai.course_summary_factory import provider_requires_api_key
 from models.question import Question
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
@@ -154,6 +155,16 @@ class AIGenerationDialog(QDialog):
         self.template_combo.addItem(self.lang_manager.get_text("期末模拟", "Final Exam Style"), "final_exam")
         self.template_combo.addItem(self.lang_manager.get_text("计算训练", "Calculation Practice"), "calculation_practice")
         config_layout.addRow(self.template_label, self.template_combo)
+
+        self.assistant_action_layout = QHBoxLayout()
+        self.assistant_action_layout.addStretch()
+        self.exam_assistant_btn = QPushButton(
+            self.lang_manager.get_text("试卷助手…", "Exam Assistant…")
+        )
+        self.exam_assistant_btn.setObjectName("secondaryButton")
+        self.exam_assistant_btn.clicked.connect(self._open_exam_assistant)
+        self.assistant_action_layout.addWidget(self.exam_assistant_btn)
+        config_layout.addRow("", self.assistant_action_layout)
         right_layout.addWidget(self.config_group)
 
         self.topic_weight_sliders: dict[str, QSlider] = {}
@@ -354,6 +365,9 @@ class AIGenerationDialog(QDialog):
 
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
         self.generate_btn.setText(self.lang_manager.get_text("生成题目", "Generate Questions"))
+        self.exam_assistant_btn.setText(
+            self.lang_manager.get_text("试卷助手…", "Exam Assistant…")
+        )
 
     def _toggle_all(self, selected: bool):
         """Select/deselect all topics."""
@@ -385,6 +399,96 @@ class AIGenerationDialog(QDialog):
             key = topic_value(item.data(Qt.ItemDataRole.UserRole))
             item.setCheckState(Qt.CheckState.Checked if key in wanted_topics else Qt.CheckState.Unchecked)
         self._update_preview()
+
+    def build_exam_plan(self) -> ExamGenerationPlan:
+        """Capture the current controls as an immutable assistant draft."""
+        topics = tuple(topic_value(topic) for topic in self._get_selected_topics())
+        topic_weights = {
+            topic: self.topic_weight_sliders[topic].value()
+            for topic in topics
+            if topic in self.topic_weight_sliders
+        }
+        return ExamGenerationPlan(
+            question_count=self.count_spin.value(),
+            difficulty=self.diff_combo.currentData() or "medium",
+            template=self.template_combo.currentData() or "quick_review",
+            selected_topics=topics,
+            question_type_weights={
+                "multiple_choice": self.mc_slider.value(),
+                "scenario_choice": self.scenario_slider.value(),
+                "true_false": self.true_false_slider.value(),
+                "fill_in_blank": self.fill_blank_slider.value(),
+            },
+            difficulty_weights={
+                "easy": self.easy_slider.value(),
+                "medium": self.medium_slider.value(),
+                "hard": self.hard_slider.value(),
+            },
+            topic_weights=topic_weights,
+        )
+
+    def apply_exam_plan(self, plan: ExamGenerationPlan):
+        """Apply one confirmed assistant plan to every generation control."""
+        available = {
+            topic_value(self.topic_list.item(index).data(Qt.ItemDataRole.UserRole))
+            for index in range(self.topic_list.count())
+        }
+        unknown = sorted(set(plan.selected_topics) - available)
+        if unknown:
+            raise ValueError(f"Exam plan contains unavailable topics: {', '.join(unknown)}")
+
+        self.count_spin.setValue(plan.question_count)
+        difficulty_index = self.diff_combo.findData(plan.difficulty)
+        if difficulty_index >= 0:
+            self.diff_combo.setCurrentIndex(difficulty_index)
+        template_index = self.template_combo.findData(plan.template)
+        if template_index >= 0:
+            self.template_combo.setCurrentIndex(template_index)
+
+        wanted = set(plan.selected_topics)
+        self.topic_list.blockSignals(True)
+        try:
+            for index in range(self.topic_list.count()):
+                item = self.topic_list.item(index)
+                key = topic_value(item.data(Qt.ItemDataRole.UserRole))
+                item.setCheckState(
+                    Qt.CheckState.Checked if key in wanted else Qt.CheckState.Unchecked
+                )
+        finally:
+            self.topic_list.blockSignals(False)
+
+        slider_values = {
+            self.mc_slider: plan.question_type_weights["multiple_choice"],
+            self.scenario_slider: plan.question_type_weights["scenario_choice"],
+            self.true_false_slider: plan.question_type_weights["true_false"],
+            self.fill_blank_slider: plan.question_type_weights["fill_in_blank"],
+            self.easy_slider: plan.difficulty_weights["easy"],
+            self.medium_slider: plan.difficulty_weights["medium"],
+            self.hard_slider: plan.difficulty_weights["hard"],
+        }
+        for slider, value in slider_values.items():
+            slider.setValue(value)
+        for topic, slider in self.topic_weight_sliders.items():
+            if topic in plan.topic_weights:
+                slider.setValue(plan.topic_weights[topic])
+        self._update_preview()
+
+    def _open_exam_assistant(self):
+        """Open a reviewable dialogue and apply only its confirmed plan."""
+        from ui.dialogs.exam_assistant_dialog import ExamAssistantDialog
+
+        available = [topic_value(topic) for topic in self.available_topics]
+        assistant = ExamAssistantDialog(
+            self.build_exam_plan(),
+            available,
+            settings=self.settings,
+            parent=self,
+        )
+        if assistant.exec() != QDialog.DialogCode.Accepted:
+            return
+        plan = assistant.get_confirmed_plan()
+        if plan is not None:
+            self.apply_exam_plan(plan)
 
     def _update_preview(self):
         """Show a brief preview of relevant course content."""

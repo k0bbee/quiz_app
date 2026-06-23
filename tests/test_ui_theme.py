@@ -91,7 +91,12 @@ class UiThemeTests(unittest.TestCase):
                 self.assertEqual("secondaryButton", button.objectName())
 
             self.assertEqual("primaryButton", dialog.generate_btn.objectName())
-            for button in (dialog.cancel_btn, dialog.select_all_btn, dialog.deselect_btn):
+            for button in (
+                dialog.cancel_btn,
+                dialog.select_all_btn,
+                dialog.deselect_btn,
+                dialog.exam_assistant_btn,
+            ):
                 self.assertEqual("secondaryButton", button.objectName())
 
     def test_home_actions_use_a_balanced_two_column_grid(self):
