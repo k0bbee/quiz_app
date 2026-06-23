@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -143,6 +144,26 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 for row in range(screen.question_list.count())
             }
             self.assertEqual({"q-course-a", "q-manual"}, visible_ids)
+
+    def test_question_bank_screen_assigns_new_manual_question_to_current_course(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            screen = QuestionBankScreen(question_bank)
+            screen.set_current_course("course-a")
+            screen._new_question()
+
+            payload = json.loads(screen.editor.toPlainText())
+            for language in ("zh", "en"):
+                payload["bilingual"][language]["stem"] = "Which answer is correct?"
+                payload["bilingual"][language]["explanation"] = "A is the correct answer."
+            screen.editor.setPlainText(json.dumps(payload, ensure_ascii=False))
+
+            with patch("ui.screens.question_bank_screen.QMessageBox.information"):
+                screen._save_question()
+
+            saved = question_bank.load_all()
+            self.assertEqual(1, len(saved))
+            self.assertEqual("course-a", saved[0].metadata.get("course_id"))
 
     def test_question_and_set_save_reject_path_traversal_ids(self):
         with tempfile.TemporaryDirectory() as tmpdir:

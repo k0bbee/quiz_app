@@ -245,6 +245,8 @@ class QuestionBankScreen(QWidget):
                     source=data.get("metadata", {}).get("source", "manual"),
                 )
                 q.metadata.update(data.get("metadata") or {})
+                if self._current_course_id:
+                    q.metadata["course_id"] = self._current_course_id
             else:
                 q = Question.from_dict(data)
         except Exception as exc:
