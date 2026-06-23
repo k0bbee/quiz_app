@@ -132,6 +132,14 @@ QLabel#sectionLabel {
     padding-top: 4px;
 }
 
+QLabel#mutedLabel {
+    color: #9d9d9d;
+}
+
+QLabel#errorLabel {
+    color: #f48771;
+}
+
 QSplitter::handle {
     background-color: transparent;
 }
