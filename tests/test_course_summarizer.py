@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 from ai.course_summarizer import CourseSummaryGenerator
 from core.course_initializer import CourseInitializer
 from core.document_parser import ExtractedDocument
+from core.language_manager import LanguageManager
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from ui.screens.course_screen import CourseScreen
 
@@ -183,6 +184,64 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertFalse(screen.regenerate_btn.isEnabled())
             screen.project_list.setCurrentRow(0)
             self.assertTrue(screen.regenerate_btn.isEnabled())
+
+    def test_course_screen_reports_llm_fallback_after_initialization(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            project = CourseProject(
+                course_id="course-fallback",
+                title="Systems",
+                source_folder=str(Path(tmpdir) / "source"),
+                summary_markdown="# Local Summary\n",
+                summary_path="",
+                topics=self._topics(),
+                documents=[],
+                created_at="2026-06-23T00:00:00+00:00",
+                updated_at="2026-06-23T00:00:00+00:00",
+                summary_source="local",
+                summary_warning="API request failed",
+            )
+            screen = CourseScreen(manager)
+            language_manager = LanguageManager.instance()
+            previous_language = language_manager.current
+            self.addCleanup(language_manager.set_language, previous_language)
+            language_manager.set_language("en")
+
+            with patch("ui.screens.course_screen.QMessageBox.information") as information:
+                screen._on_init_done(project)
+
+            message = information.call_args.args[2]
+            self.assertIn("local summary", message.lower())
+            self.assertIn("API request failed", message)
+
+    def test_course_screen_reports_llm_fallback_after_regeneration(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            project = CourseProject(
+                course_id="course-fallback",
+                title="Systems",
+                source_folder=str(Path(tmpdir) / "source"),
+                summary_markdown="# Local Summary\n",
+                summary_path="",
+                topics=self._topics(),
+                documents=[],
+                created_at="2026-06-23T00:00:00+00:00",
+                updated_at="2026-06-23T00:00:00+00:00",
+                summary_source="local",
+                summary_warning="API request failed",
+            )
+            screen = CourseScreen(manager)
+            language_manager = LanguageManager.instance()
+            previous_language = language_manager.current
+            self.addCleanup(language_manager.set_language, previous_language)
+            language_manager.set_language("en")
+
+            with patch("ui.screens.course_screen.QMessageBox.information") as information:
+                screen._on_regen_done(project)
+
+            message = information.call_args.args[2]
+            self.assertIn("local summary", message.lower())
+            self.assertIn("API request failed", message)
 
     def test_project_manager_delete_removes_project_summary_and_current_pointer(self):
         with tempfile.TemporaryDirectory() as tmpdir:

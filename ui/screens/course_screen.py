@@ -212,6 +212,7 @@ class CourseScreen(QWidget):
             msg = f"已初始化 '{project.title}'，包含 {len(project.documents)} 个文件和 {len(project.topics)} 个主题。"
         else:
             msg = f"Initialized '{project.title}' with {len(project.documents)} files and {len(project.topics)} topics."
+        msg = self._with_summary_warning(msg, project)
         QMessageBox.information(
             self,
             self.lang_manager.get_text("课程就绪", "Course Ready"),
@@ -344,11 +345,24 @@ class CourseScreen(QWidget):
         self.summary_label.setText(project.title)
         self.summary_preview.setPlainText(project.summary_markdown[:20000])
         self.current_course_changed.emit()
+        msg = self.lang_manager.get_text("课程总结已重新生成。", "Course summary regenerated.")
+        msg = self._with_summary_warning(msg, project)
         QMessageBox.information(
             self,
             self.lang_manager.get_text("Summary Updated", "Summary Updated"),
-            self.lang_manager.get_text("Course summary regenerated.", "Course summary regenerated."),
+            msg,
         )
+
+    def _with_summary_warning(self, message, project):
+        """Append a localized notice when LLM generation used the local fallback."""
+        warning = str(getattr(project, "summary_warning", "") or "").strip()
+        if not warning:
+            return message
+        fallback = self.lang_manager.get_text(
+            "LLM 总结生成失败，已保存本地总结。原因：",
+            "LLM summary generation failed; a local summary was saved. Reason:",
+        )
+        return f"{message}\n\n{fallback} {warning}"
 
     def _on_regen_error(self, error_msg):
         self.progress_bar.setVisible(False)
