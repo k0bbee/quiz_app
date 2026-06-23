@@ -4,7 +4,8 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QComboBox, QSpinBox,
     QProgressBar, QTextEdit, QMessageBox, QGroupBox, QCheckBox,
-    QAbstractItemView, QScrollArea, QFrame, QWidget, QSlider, QFormLayout
+    QAbstractItemView, QScrollArea, QFrame, QWidget, QSlider, QFormLayout,
+    QSplitter
 )
 from PyQt6.QtCore import Qt
 
@@ -34,28 +35,35 @@ class AIGenerationDialog(QDialog):
         self.worker: GenerationWorker = None
 
         self.setWindowTitle(self.lang_manager.get_text("AI 出题", "AI Question Generation"))
-        self.resize(700, 550)
+        self.resize(1000, 700)
+        self.setMinimumSize(820, 600)
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
     def _setup_ui(self):
-        # Outer layout: scroll area + fixed bottom bar
+        # Desktop layout: two-pane work area + fixed status/action footer.
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        body_layout.setContentsMargins(16, 12, 16, 8)
+        body_layout.setSpacing(0)
 
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setSpacing(12)
-        layout.setContentsMargins(16, 12, 16, 4)
+        self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.content_splitter.setChildrenCollapsible(False)
+        self.content_splitter.setHandleWidth(8)
+
+        self.left_pane = QWidget()
+        left_layout = QVBoxLayout(self.left_pane)
+        left_layout.setContentsMargins(0, 0, 4, 0)
+        left_layout.setSpacing(12)
 
         # Topic selection
         self.topic_group = QGroupBox(self.lang_manager.get_text("选择主题", "Select Topics"))
         topic_layout = QVBoxLayout(self.topic_group)
+        topic_layout.setSpacing(8)
 
         # Select all / deselect all
         btn_row = QHBoxLayout()
@@ -83,32 +91,48 @@ class AIGenerationDialog(QDialog):
         self.topic_list.itemChanged.connect(lambda _item: self._update_preview())
         topic_layout.addWidget(self.topic_list)
 
-        self.topic_weight_sliders: dict[str, QSlider] = {}
-        if self.available_topics:
-            self.topic_weight_group = QGroupBox(self.lang_manager.get_text("Topic Weights", "Topic Weights"))
-            topic_weight_layout = QFormLayout(self.topic_weight_group)
-            default_weight = max(1, 100 // len(self.available_topics))
-            for topic in self.available_topics:
-                key = topic_value(topic)
-                slider = self._make_slider(default_weight)
-                self.topic_weight_sliders[key] = slider
-                topic_weight_layout.addRow(topic_label(topic, lang), self._slider_row(slider))
-            topic_layout.addWidget(self.topic_weight_group)
+        left_layout.addWidget(self.topic_group, 3)
 
-        layout.addWidget(self.topic_group)
+        # Prompt preview stays beside the controls instead of below all of them.
+        self.prompt_group = QGroupBox(self.lang_manager.get_text("课程内容预览", "Course Content Preview"))
+        prompt_layout = QVBoxLayout(self.prompt_group)
+        self.prompt_preview = QTextEdit()
+        self.prompt_preview.setReadOnly(True)
+        prompt_layout.addWidget(self.prompt_preview)
+        left_layout.addWidget(self.prompt_group, 2)
 
-        # Configuration row
-        config_layout = QHBoxLayout()
+        self.content_splitter.addWidget(self.left_pane)
+
+        # Configuration is independently scrollable when the window is short.
+        self.right_scroll = QScrollArea()
+        self.right_scroll.setWidgetResizable(True)
+        self.right_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.right_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+
+        self.right_content = QWidget()
+        right_layout = QVBoxLayout(self.right_content)
+        right_layout.setContentsMargins(4, 0, 4, 0)
+        right_layout.setSpacing(12)
+
+        self.config_group = QGroupBox(
+            self.lang_manager.get_text("生成参数", "Generation Settings")
+        )
+        config_layout = QFormLayout(self.config_group)
+        config_layout.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        config_layout.setHorizontalSpacing(16)
+        config_layout.setVerticalSpacing(10)
 
         self.count_label = QLabel(self.lang_manager.get_text("数量:", "Count:"))
-        config_layout.addWidget(self.count_label)
         self.count_spin = QSpinBox()
         self.count_spin.setRange(3, 60)
         self.count_spin.setValue(15)
-        config_layout.addWidget(self.count_spin)
+        config_layout.addRow(self.count_label, self.count_spin)
 
-        self.diff_label = QLabel(self.lang_manager.get_text("难度:", "Difficulty:"))
-        config_layout.addWidget(self.diff_label)
+        self.diff_label = QLabel(self.lang_manager.get_text("整体难度:", "Overall difficulty:"))
         self.diff_combo = QComboBox()
         difficulties = [
             (self.lang_manager.get_text("简单", "easy"), "easy"),
@@ -118,59 +142,97 @@ class AIGenerationDialog(QDialog):
         ]
         for display, value in difficulties:
             self.diff_combo.addItem(display, value)
-        # Default to medium
         for i in range(self.diff_combo.count()):
             if self.diff_combo.itemData(i) == "medium":
                 self.diff_combo.setCurrentIndex(i)
                 break
-        config_layout.addWidget(self.diff_combo)
+        config_layout.addRow(self.diff_label, self.diff_combo)
 
-        config_layout.addStretch()
-        layout.addLayout(config_layout)
-
-        # Structure controls
-        self.structure_group = QGroupBox(self.lang_manager.get_text("题目结构", "Question Structure"))
-        structure_layout = QFormLayout(self.structure_group)
-
+        self.template_label = QLabel(self.lang_manager.get_text("模板:", "Template:"))
         self.template_combo = QComboBox()
         self.template_combo.addItem(self.lang_manager.get_text("快速复习", "Quick Review"), "quick_review")
         self.template_combo.addItem(self.lang_manager.get_text("期末模拟", "Final Exam Style"), "final_exam")
         self.template_combo.addItem(self.lang_manager.get_text("计算训练", "Calculation Practice"), "calculation_practice")
-        structure_layout.addRow(self.lang_manager.get_text("模板:", "Template:"), self.template_combo)
+        config_layout.addRow(self.template_label, self.template_combo)
+        right_layout.addWidget(self.config_group)
+
+        self.topic_weight_sliders: dict[str, QSlider] = {}
+        if self.available_topics:
+            self.topic_weight_group = QGroupBox(
+                self.lang_manager.get_text("知识点权重", "Topic Weights")
+            )
+            topic_weight_layout = QFormLayout(self.topic_weight_group)
+            topic_weight_layout.setLabelAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+            topic_weight_layout.setHorizontalSpacing(12)
+            topic_weight_layout.setVerticalSpacing(8)
+            default_weight = max(1, 100 // len(self.available_topics))
+            for topic in self.available_topics:
+                key = topic_value(topic)
+                slider = self._make_slider(default_weight)
+                self.topic_weight_sliders[key] = slider
+                topic_weight_layout.addRow(topic_label(topic, lang), self._slider_row(slider))
+            right_layout.addWidget(self.topic_weight_group)
+
+        # Structure controls
+        self.structure_group = QGroupBox(self.lang_manager.get_text("题目结构", "Question Structure"))
+        structure_layout = QFormLayout(self.structure_group)
+        structure_layout.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        structure_layout.setHorizontalSpacing(12)
+        structure_layout.setVerticalSpacing(8)
+
+        self.question_type_heading = QLabel(
+            self.lang_manager.get_text("题型权重", "Question type weights")
+        )
+        self.question_type_heading.setObjectName("sectionLabel")
+        structure_layout.addRow(self.question_type_heading)
 
         self.mc_slider = self._make_slider(QUESTION_TYPE_DEFAULTS["multiple_choice"])
         self.scenario_slider = self._make_slider(QUESTION_TYPE_DEFAULTS["scenario_choice"])
         self.true_false_slider = self._make_slider(QUESTION_TYPE_DEFAULTS["true_false"])
         self.fill_blank_slider = self._make_slider(QUESTION_TYPE_DEFAULTS["fill_in_blank"])
-        structure_layout.addRow("multiple_choice", self._slider_row(self.mc_slider))
-        structure_layout.addRow("scenario_choice", self._slider_row(self.scenario_slider))
-        structure_layout.addRow("true_false", self._slider_row(self.true_false_slider))
-        structure_layout.addRow("fill_in_blank", self._slider_row(self.fill_blank_slider))
+        self.mc_label = QLabel(self.lang_manager.get_text("选择题", "Multiple choice"))
+        self.scenario_label = QLabel(self.lang_manager.get_text("情境选择题", "Scenario choice"))
+        self.true_false_label = QLabel(self.lang_manager.get_text("判断题", "True / false"))
+        self.fill_blank_label = QLabel(self.lang_manager.get_text("填空题", "Fill in the blank"))
+        structure_layout.addRow(self.mc_label, self._slider_row(self.mc_slider))
+        structure_layout.addRow(self.scenario_label, self._slider_row(self.scenario_slider))
+        structure_layout.addRow(self.true_false_label, self._slider_row(self.true_false_slider))
+        structure_layout.addRow(self.fill_blank_label, self._slider_row(self.fill_blank_slider))
+
+        self.difficulty_weight_heading = QLabel(
+            self.lang_manager.get_text("难度权重", "Difficulty weights")
+        )
+        self.difficulty_weight_heading.setObjectName("sectionLabel")
+        structure_layout.addRow(self.difficulty_weight_heading)
 
         self.easy_slider = self._make_slider(DIFFICULTY_DEFAULTS["easy"])
         self.medium_slider = self._make_slider(DIFFICULTY_DEFAULTS["medium"])
         self.hard_slider = self._make_slider(DIFFICULTY_DEFAULTS["hard"])
-        structure_layout.addRow("easy", self._slider_row(self.easy_slider))
-        structure_layout.addRow("medium", self._slider_row(self.medium_slider))
-        structure_layout.addRow("hard", self._slider_row(self.hard_slider))
+        self.easy_label = QLabel(self.lang_manager.get_text("简单", "Easy"))
+        self.medium_label = QLabel(self.lang_manager.get_text("中等", "Medium"))
+        self.hard_label = QLabel(self.lang_manager.get_text("困难", "Hard"))
+        structure_layout.addRow(self.easy_label, self._slider_row(self.easy_slider))
+        structure_layout.addRow(self.medium_label, self._slider_row(self.medium_slider))
+        structure_layout.addRow(self.hard_label, self._slider_row(self.hard_slider))
 
-        layout.addWidget(self.structure_group)
-
-        # Prompt preview (optional)
-        self.prompt_group = QGroupBox(self.lang_manager.get_text("课程内容预览", "Course Content Preview"))
-        prompt_layout = QVBoxLayout(self.prompt_group)
-        self.prompt_preview = QTextEdit()
-        self.prompt_preview.setReadOnly(True)
-        self.prompt_preview.setMaximumHeight(120)
-        prompt_layout.addWidget(self.prompt_preview)
-        layout.addWidget(self.prompt_group)
+        right_layout.addWidget(self.structure_group)
+        right_layout.addStretch()
 
         if hasattr(self, "topic_weight_group"):
-            self.topic_weight_group.setTitle(self.lang_manager.get_text("Topic Weights", "Topic Weights"))
+            self.topic_weight_group.setTitle(self.lang_manager.get_text("知识点权重", "Topic Weights"))
         self._update_preview()
 
-        scroll.setWidget(content)
-        outer.addWidget(scroll, 1)
+        self.right_scroll.setWidget(self.right_content)
+        self.content_splitter.addWidget(self.right_scroll)
+        self.content_splitter.setStretchFactor(0, 5)
+        self.content_splitter.setStretchFactor(1, 4)
+        self.content_splitter.setSizes([540, 440])
+        body_layout.addWidget(self.content_splitter)
+        outer.addWidget(body, 1)
 
         # Fixed bottom bar (always visible)
         bottom = QWidget()
@@ -187,22 +249,22 @@ class AIGenerationDialog(QDialog):
         bottom_layout.addWidget(self.status_label)
 
         # Action buttons
-        btn_layout = QHBoxLayout()
+        self.footer_action_layout = QHBoxLayout()
 
         self.cancel_btn = QPushButton(self.lang_manager.get_text("取消", "Cancel"))
         self.cancel_btn.setObjectName("secondaryButton")
         self.cancel_btn.clicked.connect(self.reject)
-        btn_layout.addWidget(self.cancel_btn)
+        self.footer_action_layout.addWidget(self.cancel_btn)
 
-        btn_layout.addStretch()
+        self.footer_action_layout.addStretch()
 
         self.generate_btn = QPushButton(self.lang_manager.get_text("生成题目", "Generate Questions"))
         self.generate_btn.setObjectName("primaryButton")
-        self.generate_btn.setMinimumHeight(40)
+        self.generate_btn.setMinimumHeight(34)
         self.generate_btn.clicked.connect(self._start_generation)
-        btn_layout.addWidget(self.generate_btn)
+        self.footer_action_layout.addWidget(self.generate_btn)
 
-        bottom_layout.addLayout(btn_layout)
+        bottom_layout.addLayout(self.footer_action_layout)
         outer.addWidget(bottom)
 
     def _make_slider(self, value: int) -> QSlider:
@@ -239,7 +301,21 @@ class AIGenerationDialog(QDialog):
             item.setText(topic_label(topic, lang))
 
         self.count_label.setText(self.lang_manager.get_text("数量:", "Count:"))
-        self.diff_label.setText(self.lang_manager.get_text("难度:", "Difficulty:"))
+        self.diff_label.setText(self.lang_manager.get_text("整体难度:", "Overall difficulty:"))
+        self.config_group.setTitle(self.lang_manager.get_text("生成参数", "Generation Settings"))
+        self.template_label.setText(self.lang_manager.get_text("模板:", "Template:"))
+
+        current_template = self.template_combo.currentData()
+        template_labels = (
+            ("快速复习", "Quick Review"),
+            ("期末模拟", "Final Exam Style"),
+            ("计算训练", "Calculation Practice"),
+        )
+        for index, (zh, en) in enumerate(template_labels):
+            self.template_combo.setItemText(index, self.lang_manager.get_text(zh, en))
+        template_index = self.template_combo.findData(current_template)
+        if template_index >= 0:
+            self.template_combo.setCurrentIndex(template_index)
 
         # Rebuild difficulty combo items preserving the selected value
         current_diff = self.diff_combo.currentData()
@@ -259,8 +335,21 @@ class AIGenerationDialog(QDialog):
 
         self.prompt_group.setTitle(self.lang_manager.get_text("课程内容预览", "Course Content Preview"))
         self.structure_group.setTitle(self.lang_manager.get_text("题目结构", "Question Structure"))
+        self.question_type_heading.setText(
+            self.lang_manager.get_text("题型权重", "Question type weights")
+        )
+        self.mc_label.setText(self.lang_manager.get_text("选择题", "Multiple choice"))
+        self.scenario_label.setText(self.lang_manager.get_text("情境选择题", "Scenario choice"))
+        self.true_false_label.setText(self.lang_manager.get_text("判断题", "True / false"))
+        self.fill_blank_label.setText(self.lang_manager.get_text("填空题", "Fill in the blank"))
+        self.difficulty_weight_heading.setText(
+            self.lang_manager.get_text("难度权重", "Difficulty weights")
+        )
+        self.easy_label.setText(self.lang_manager.get_text("简单", "Easy"))
+        self.medium_label.setText(self.lang_manager.get_text("中等", "Medium"))
+        self.hard_label.setText(self.lang_manager.get_text("困难", "Hard"))
         if hasattr(self, "topic_weight_group"):
-            self.topic_weight_group.setTitle(self.lang_manager.get_text("Topic Weights", "Topic Weights"))
+            self.topic_weight_group.setTitle(self.lang_manager.get_text("知识点权重", "Topic Weights"))
         self._update_preview()
 
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))

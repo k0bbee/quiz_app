@@ -125,6 +125,21 @@ QGroupBox::title {
     background-color: #1f1f1f;
 }
 
+QLabel#sectionLabel {
+    color: #9d9d9d;
+    font-size: 12px;
+    font-weight: 600;
+    padding-top: 4px;
+}
+
+QSplitter::handle {
+    background-color: transparent;
+}
+
+QSplitter::handle:hover {
+    background-color: #3c3c3c;
+}
+
 QFrame#questionCard,
 QFrame#reviewCard,
 QFrame#feedbackFrame {

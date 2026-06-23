@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QPalette
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QGridLayout
+from PyQt6.QtWidgets import QApplication, QGridLayout, QSplitter
 
 from core.progress_tracker import ProgressManager
 from models.course_project import CourseProjectManager
@@ -132,6 +132,30 @@ class UiThemeTests(unittest.TestCase):
         self.assertLess(
             settings.data_action_layout.indexOf(settings.import_btn),
             settings.data_action_layout.indexOf(settings.reset_progress_btn),
+        )
+
+    def test_generation_dialog_uses_two_pane_desktop_layout(self):
+        dialog = AIGenerationDialog(
+            "# Course\nCache content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=["cache", "process"],
+        )
+
+        self.assertIsInstance(dialog.content_splitter, QSplitter)
+        self.assertEqual(Qt.Orientation.Horizontal, dialog.content_splitter.orientation())
+        self.assertEqual(dialog.left_pane, dialog.content_splitter.widget(0))
+        self.assertEqual(dialog.right_scroll, dialog.content_splitter.widget(1))
+        self.assertTrue(dialog.left_pane.isAncestorOf(dialog.topic_group))
+        self.assertTrue(dialog.left_pane.isAncestorOf(dialog.prompt_group))
+        self.assertTrue(dialog.right_content.isAncestorOf(dialog.config_group))
+        self.assertTrue(dialog.right_content.isAncestorOf(dialog.structure_group))
+        self.assertLess(
+            dialog.footer_action_layout.indexOf(dialog.cancel_btn),
+            dialog.footer_action_layout.indexOf(dialog.generate_btn),
         )
 
 
