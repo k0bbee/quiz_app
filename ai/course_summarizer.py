@@ -77,7 +77,7 @@ Requirements:
 - Output Markdown only.
 - Prefer Chinese explanation, with key terms as 中文术语(English Term) where useful.
 - Organize by knowledge point, not by file dump.
-- Include for each major topic: 核心概念, 机制流程, 易错点, 可考方向.
+- Include for each major topic: 核心概念, 推演流程, 实际例子, 易错点, 可考方向, 答题要点.
 - Keep concrete formulas, examples, state models, scheduling comparisons, and diagrams if the source material supports them.
 - Preserve source semantics. Do not add unrelated textbook content.
 - If a source page has OCR/extraction warnings, mention the coverage limitation briefly.

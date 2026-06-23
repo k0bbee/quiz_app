@@ -173,7 +173,8 @@ def extract_terms(text: str, limit: int = 20) -> list[str]:
         "the", "and", "for", "with", "from", "that", "this", "which", "when",
         "what", "how", "why", "are", "was", "were", "can", "will", "page",
         "slide", "课程", "内容", "问题", "答案", "解析", "核心概念", "可考方向",
-        "机制流程", "易错点", "根据", "需要", "可以", "一个", "一种",
+        "机制流程", "推演流程", "实际例子", "答题要点", "易错点",
+        "根据", "需要", "可以", "一个", "一种",
     }
     counts = Counter(t.lower() for t in tokens if t.lower() not in stop)
     return [term for term, _ in counts.most_common(limit)]

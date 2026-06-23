@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from ai.course_summarizer import CourseSummaryGenerator
-from core.course_initializer import CourseInitializer
+from core.course_initializer import CourseInitializer, build_summary_markdown
 from core.document_parser import ExtractedDocument
 from core.language_manager import LanguageManager
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
@@ -76,6 +76,24 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
         self.assertIn("Cache line, byte offset", client.messages[1]["content"])
         self.assertEqual("llm", generator.summary_source)
         self.assertEqual("", generator.summary_warning)
+
+    def test_llm_prompt_requires_complete_study_sections(self):
+        messages = CourseSummaryGenerator.build_messages(
+            "Systems",
+            self._docs(),
+            self._topics(),
+            "# Local Summary",
+        )
+
+        prompt = messages[1]["content"]
+        for section in ("核心概念", "推演流程", "实际例子", "可考方向", "答题要点"):
+            self.assertIn(section, prompt)
+
+    def test_local_summary_contains_complete_study_sections(self):
+        summary = build_summary_markdown("Systems", self._docs(), self._topics())
+
+        for section in ("#### 核心概念", "#### 推演流程", "#### 实际例子", "#### 可考方向", "#### 答题要点"):
+            self.assertIn(section, summary)
 
     def test_generate_falls_back_to_local_summary_when_llm_returns_empty(self):
         client = FakeLLMClient("")

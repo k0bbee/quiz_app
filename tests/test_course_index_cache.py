@@ -48,6 +48,16 @@ class CourseIndexCacheTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(1, build_payload.call_count)
 
+    def test_summary_section_labels_are_not_retrieval_terms(self):
+        terms = course_index.extract_terms(
+            "核心概念 推演流程 实际例子 可考方向 答题要点 cache mapping",
+            limit=20,
+        )
+
+        self.assertIn("cache", terms)
+        for label in ("推演流程", "实际例子", "答题要点"):
+            self.assertNotIn(label, terms)
+
 
 if __name__ == "__main__":
     unittest.main()
