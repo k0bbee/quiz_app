@@ -1,6 +1,11 @@
 import unittest
 
-from ai.course_summary_factory import create_course_summary_generator, provider_requires_api_key
+from ai.course_summary_factory import (
+    create_course_generation_profile_generator,
+    create_course_summary_generator,
+    provider_requires_api_key,
+)
+from ai.course_generation_profile import CourseGenerationProfileGenerator
 from ai.course_summarizer import CourseSummaryGenerator
 
 
@@ -47,6 +52,31 @@ class CourseSummaryFactoryTests(unittest.TestCase):
     def test_provider_requires_api_key_rule(self):
         self.assertFalse(provider_requires_api_key({"ai_provider": "local_agent"}))
         self.assertTrue(provider_requires_api_key({"ai_provider": "custom"}))
+
+    def test_profile_factory_uses_remote_client_when_key_is_available(self):
+        generator = create_course_generation_profile_generator(
+            {
+                "ai_provider": "openai",
+                "ai_base_url": "https://api.openai.com/v1",
+                "ai_model": "gpt-4.1-mini",
+            },
+            api_key="sk-test",
+        )
+
+        self.assertIsInstance(generator, CourseGenerationProfileGenerator)
+        self.assertEqual("https://api.openai.com/v1", generator.llm_client.base_url)
+
+    def test_profile_factory_without_remote_key_still_returns_local_generator(self):
+        generator = create_course_generation_profile_generator(
+            {
+                "ai_provider": "anthropic",
+                "ai_base_url": "https://api.anthropic.com/v1",
+            },
+            api_key="",
+        )
+
+        self.assertIsInstance(generator, CourseGenerationProfileGenerator)
+        self.assertIsNone(generator.llm_client)
 
 
 if __name__ == "__main__":

@@ -55,6 +55,9 @@ class CourseProject:
     updated_at: str
     summary_source: str = "local"
     summary_warning: str = ""
+    generation_profile: dict = field(default_factory=dict)
+    generation_profile_source: str = "local"
+    generation_profile_warning: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -69,6 +72,9 @@ class CourseProject:
             "updated_at": self.updated_at,
             "summary_source": self.summary_source,
             "summary_warning": self.summary_warning,
+            "generation_profile": self.generation_profile,
+            "generation_profile_source": self.generation_profile_source,
+            "generation_profile_warning": self.generation_profile_warning,
         }
 
     @classmethod
@@ -85,6 +91,9 @@ class CourseProject:
             updated_at=data.get("updated_at", ""),
             summary_source=data.get("summary_source", "local"),
             summary_warning=data.get("summary_warning", ""),
+            generation_profile=data.get("generation_profile", {}),
+            generation_profile_source=data.get("generation_profile_source", "local"),
+            generation_profile_warning=data.get("generation_profile_warning", ""),
         )
 
 

@@ -10,6 +10,10 @@ from pathlib import Path
 from core.document_parser import DocumentParser, ExtractedDocument
 from core.course_index import attach_index_to_project
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
+from ai.course_generation_profile import (
+    CourseGenerationProfileGenerator,
+    build_local_course_profile,
+)
 
 
 STOP_WORDS = {
@@ -84,10 +88,16 @@ def _is_generic_title(title: str) -> bool:
 class CourseInitializer:
     """Create a reusable course project from a folder of documents."""
 
-    def __init__(self, manager: CourseProjectManager | None = None, summary_generator=None):
+    def __init__(
+        self,
+        manager: CourseProjectManager | None = None,
+        summary_generator=None,
+        profile_generator=None,
+    ):
         self.parser = DocumentParser()
         self.manager = manager or CourseProjectManager()
         self.summary_generator = summary_generator
+        self.profile_generator = profile_generator or CourseGenerationProfileGenerator()
 
     def initialize(self, folder: str, title: str = "", make_current: bool = True) -> CourseProject:
         """Parse a folder and save a course project."""
@@ -104,6 +114,9 @@ class CourseInitializer:
             summary = self.summary_generator.generate(course_title, docs, topics, summary)
             summary_source = getattr(self.summary_generator, "summary_source", "llm")
             summary_warning = getattr(self.summary_generator, "summary_warning", "")
+        generation_profile, profile_source, profile_warning = self._generate_profile(
+            course_title, topics, summary
+        )
         now = datetime.now(timezone.utc).isoformat()
         project = CourseProject(
             course_id=CourseProjectManager.new_id(),
@@ -117,6 +130,9 @@ class CourseInitializer:
             updated_at=now,
             summary_source=summary_source,
             summary_warning=summary_warning,
+            generation_profile=generation_profile,
+            generation_profile_source=profile_source,
+            generation_profile_warning=profile_warning,
         )
         project = attach_index_to_project(project)
         self.manager.save(project, make_current=make_current)
@@ -136,6 +152,9 @@ class CourseInitializer:
             summary = self.summary_generator.generate(project.title, docs, topics, summary)
             summary_source = getattr(self.summary_generator, "summary_source", "llm")
             summary_warning = getattr(self.summary_generator, "summary_warning", "")
+        generation_profile, profile_source, profile_warning = self._generate_profile(
+            project.title, topics, summary
+        )
 
         updated = CourseProject(
             course_id=project.course_id,
@@ -149,10 +168,25 @@ class CourseInitializer:
             updated_at=datetime.now(timezone.utc).isoformat(),
             summary_source=summary_source,
             summary_warning=summary_warning,
+            generation_profile=generation_profile,
+            generation_profile_source=profile_source,
+            generation_profile_warning=profile_warning,
         )
         updated = attach_index_to_project(updated)
         self.manager.save(updated, make_current=make_current)
         return updated
+
+    def _generate_profile(self, title, topics, summary) -> tuple[dict, str, str]:
+        """Generate defaults without allowing an optional LLM failure to block import."""
+        try:
+            plan = self.profile_generator.generate(title, topics, summary)
+            source = getattr(self.profile_generator, "profile_source", "local")
+            warning = getattr(self.profile_generator, "profile_warning", "")
+        except Exception as exc:
+            plan = build_local_course_profile(topics, summary)
+            source = "local"
+            warning = f"Course generation profile failed: {exc}"
+        return plan.to_dict(), source, warning
 
 
 def _document_records(docs: list[ExtractedDocument]) -> list[dict]:

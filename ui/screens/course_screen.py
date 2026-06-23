@@ -201,13 +201,21 @@ class CourseScreen(QWidget):
 
     def _build_initializer(self):
         """Build an initializer using current AI settings when available."""
-        from ai.course_summary_factory import create_course_summary_generator
+        from ai.course_summary_factory import (
+            create_course_generation_profile_generator,
+            create_course_summary_generator,
+        )
         from core.secrets_manager import SecretsManager
 
         settings = read_json(SETTINGS_FILE) or {}
         api_key = SecretsManager.instance().get_key()
         summary_generator = create_course_summary_generator(settings, api_key=api_key)
-        return CourseInitializer(self.manager, summary_generator=summary_generator)
+        profile_generator = create_course_generation_profile_generator(settings, api_key=api_key)
+        return CourseInitializer(
+            self.manager,
+            summary_generator=summary_generator,
+            profile_generator=profile_generator,
+        )
 
     def _on_init_done(self, project):
         self.progress_bar.setVisible(False)
@@ -220,6 +228,7 @@ class CourseScreen(QWidget):
         else:
             msg = f"Initialized '{project.title}' with {len(project.documents)} files and {len(project.topics)} topics."
         msg = self._with_summary_warning(msg, project)
+        msg = self._with_profile_warning(msg, project)
         msg = self._with_document_warnings(msg, project)
         QMessageBox.information(
             self,
@@ -355,6 +364,7 @@ class CourseScreen(QWidget):
         self.current_course_changed.emit()
         msg = self.lang_manager.get_text("课程总结已重新生成。", "Course summary regenerated.")
         msg = self._with_summary_warning(msg, project)
+        msg = self._with_profile_warning(msg, project)
         msg = self._with_document_warnings(msg, project)
         QMessageBox.information(
             self,
@@ -370,6 +380,17 @@ class CourseScreen(QWidget):
         fallback = self.lang_manager.get_text(
             "LLM 总结生成失败，已保存本地总结。原因：",
             "LLM summary generation failed; a local summary was saved. Reason:",
+        )
+        return f"{message}\n\n{fallback} {warning}"
+
+    def _with_profile_warning(self, message, project):
+        """Append a localized notice when course-specific defaults used fallback."""
+        warning = str(getattr(project, "generation_profile_warning", "") or "").strip()
+        if not warning:
+            return message
+        fallback = self.lang_manager.get_text(
+            "课程默认出题配置已使用本地方案。原因：",
+            "Course quiz defaults used the local fallback. Reason:",
         )
         return f"{message}\n\n{fallback} {warning}"
 
