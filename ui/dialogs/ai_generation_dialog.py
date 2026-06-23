@@ -60,8 +60,10 @@ class AIGenerationDialog(QDialog):
         # Select all / deselect all
         btn_row = QHBoxLayout()
         self.select_all_btn = QPushButton(self.lang_manager.get_text("全选", "Select All"))
+        self.select_all_btn.setObjectName("secondaryButton")
         self.select_all_btn.clicked.connect(lambda: self._toggle_all(True))
         self.deselect_btn = QPushButton(self.lang_manager.get_text("取消全选", "Deselect All"))
+        self.deselect_btn.setObjectName("secondaryButton")
         self.deselect_btn.clicked.connect(lambda: self._toggle_all(False))
         btn_row.addWidget(self.select_all_btn)
         btn_row.addWidget(self.deselect_btn)
@@ -188,14 +190,15 @@ class AIGenerationDialog(QDialog):
         btn_layout = QHBoxLayout()
 
         self.cancel_btn = QPushButton(self.lang_manager.get_text("取消", "Cancel"))
+        self.cancel_btn.setObjectName("secondaryButton")
         self.cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(self.cancel_btn)
 
         btn_layout.addStretch()
 
-        self.generate_btn = QPushButton(self.lang_manager.get_text("生成题目 🚀", "Generate Questions 🚀"))
+        self.generate_btn = QPushButton(self.lang_manager.get_text("生成题目", "Generate Questions"))
+        self.generate_btn.setObjectName("primaryButton")
         self.generate_btn.setMinimumHeight(40)
-        self.generate_btn.setStyleSheet("font-size: 15px; font-weight: bold;")
         self.generate_btn.clicked.connect(self._start_generation)
         btn_layout.addWidget(self.generate_btn)
 
@@ -261,7 +264,7 @@ class AIGenerationDialog(QDialog):
         self._update_preview()
 
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
-        self.generate_btn.setText(self.lang_manager.get_text("生成题目 🚀", "Generate Questions 🚀"))
+        self.generate_btn.setText(self.lang_manager.get_text("生成题目", "Generate Questions"))
 
     def _toggle_all(self, selected: bool):
         """Select/deselect all topics."""

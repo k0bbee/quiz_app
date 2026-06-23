@@ -42,7 +42,7 @@ class HomeScreen(QWidget):
         title_font.setPointSize(24)
         title_font.setBold(True)
         self.title.setFont(title_font)
-        self.title.setObjectName("homeTitle")
+        self.title.setObjectName("screenTitle")
         main_layout.addWidget(self.title)
 
         # Subtitle
@@ -62,33 +62,33 @@ class HomeScreen(QWidget):
         btn_layout = QVBoxLayout(btn_frame)
         btn_layout.setSpacing(12)
 
-        self.start_btn = QPushButton(self.lang_manager.get_text("📝 开始练习", "📝 Start Practice"))
+        self.start_btn = QPushButton(self.lang_manager.get_text("开始练习", "Start Practice"))
+        self.start_btn.setObjectName("primaryButton")
         self.start_btn.setMinimumHeight(50)
-        self.start_btn.setStyleSheet("font-size: 16px; font-weight: bold;")
         self.start_btn.clicked.connect(self.start_practice.emit)
         btn_layout.addWidget(self.start_btn)
 
-        self.incorrect_btn = QPushButton(self.lang_manager.get_text("🎯 练习历史错题", "🎯 Practice Incorrect"))
+        self.incorrect_btn = QPushButton(self.lang_manager.get_text("练习历史错题", "Practice Incorrect"))
+        self.incorrect_btn.setObjectName("secondaryButton")
         self.incorrect_btn.setMinimumHeight(45)
-        self.incorrect_btn.setStyleSheet("font-size: 14px;")
         self.incorrect_btn.clicked.connect(self.practice_incorrect.emit)
         btn_layout.addWidget(self.incorrect_btn)
 
-        self.ai_btn = QPushButton(self.lang_manager.get_text("🤖 AI生成题目", "🤖 Generate Questions"))
+        self.ai_btn = QPushButton(self.lang_manager.get_text("AI 生成题目", "Generate Questions"))
+        self.ai_btn.setObjectName("secondaryButton")
         self.ai_btn.setMinimumHeight(45)
-        self.ai_btn.setStyleSheet("font-size: 14px;")
         self.ai_btn.clicked.connect(self.ai_generate.emit)
         btn_layout.addWidget(self.ai_btn)
 
-        self.progress_btn = QPushButton(self.lang_manager.get_text("📊 查看进度", "📊 View Progress"))
+        self.progress_btn = QPushButton(self.lang_manager.get_text("查看进度", "View Progress"))
+        self.progress_btn.setObjectName("secondaryButton")
         self.progress_btn.setMinimumHeight(45)
-        self.progress_btn.setStyleSheet("font-size: 14px;")
         self.progress_btn.clicked.connect(self.view_progress.emit)
         btn_layout.addWidget(self.progress_btn)
 
-        self.settings_btn = QPushButton(self.lang_manager.get_text("⚙ 设置", "⚙ Settings"))
+        self.settings_btn = QPushButton(self.lang_manager.get_text("设置", "Settings"))
+        self.settings_btn.setObjectName("secondaryButton")
         self.settings_btn.setMinimumHeight(45)
-        self.settings_btn.setStyleSheet("font-size: 14px;")
         self.settings_btn.clicked.connect(self.open_settings.emit)
         btn_layout.addWidget(self.settings_btn)
 
@@ -119,11 +119,11 @@ class HomeScreen(QWidget):
             "从课件生成总结、题库和自测练习",
             "Generate summaries, question banks and self-tests from courseware"
         ))
-        self.start_btn.setText(self.lang_manager.get_text("📝 开始练习", "📝 Start Practice"))
-        self.incorrect_btn.setText(self.lang_manager.get_text("🎯 练习历史错题", "🎯 Practice Incorrect"))
-        self.ai_btn.setText(self.lang_manager.get_text("🤖 AI生成题目", "🤖 Generate Questions"))
-        self.progress_btn.setText(self.lang_manager.get_text("📊 查看进度", "📊 View Progress"))
-        self.settings_btn.setText(self.lang_manager.get_text("⚙ 设置", "⚙ Settings"))
+        self.start_btn.setText(self.lang_manager.get_text("开始练习", "Start Practice"))
+        self.incorrect_btn.setText(self.lang_manager.get_text("练习历史错题", "Practice Incorrect"))
+        self.ai_btn.setText(self.lang_manager.get_text("AI 生成题目", "Generate Questions"))
+        self.progress_btn.setText(self.lang_manager.get_text("查看进度", "View Progress"))
+        self.settings_btn.setText(self.lang_manager.get_text("设置", "Settings"))
         # Refresh stats text in the new language
         self.refresh()
 

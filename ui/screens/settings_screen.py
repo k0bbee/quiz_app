@@ -65,7 +65,7 @@ class SettingsScreen(QWidget):
         layout.setSpacing(12)
 
         self.title = QLabel(self.lang_manager.get_text("设置", "Settings"))
-        self.title.setStyleSheet("font-size: 20px; font-weight: bold; padding-bottom: 12px;")
+        self.title.setObjectName("screenTitle")
         layout.addWidget(self.title)
 
         # ── Language ──
@@ -118,12 +118,12 @@ class SettingsScreen(QWidget):
         # Help / local agent status
         self.provider_help = QLabel()
         self.provider_help.setWordWrap(True)
-        self.provider_help.setStyleSheet("font-size: 12px; color: #a6adc8;")
+        self.provider_help.setObjectName("settingsProviderHelp")
         ai_layout.addRow("", self.provider_help)
 
         self.local_agent_status = QLabel()
         self.local_agent_status.setWordWrap(True)
-        self.local_agent_status.setStyleSheet("font-size: 12px; color: #a6adc8;")
+        self.local_agent_status.setObjectName("settingsLocalAgentStatus")
         self.local_agent_label = QLabel(self.lang_manager.get_text("本地代理:", "Local agent:"))
         ai_layout.addRow(self.local_agent_label, self.local_agent_status)
 
@@ -131,12 +131,13 @@ class SettingsScreen(QWidget):
         save_row = QHBoxLayout()
         save_row.addStretch()
         self.test_ai_btn = QPushButton(self.lang_manager.get_text("测试 AI 设置", "Test AI Settings"))
+        self.test_ai_btn.setObjectName("secondaryButton")
         self.test_ai_btn.setMinimumHeight(40)
         self.test_ai_btn.clicked.connect(self._test_ai_settings)
         save_row.addWidget(self.test_ai_btn)
-        self.save_btn = QPushButton(self.lang_manager.get_text("💾 保存设置", "💾 Save Settings"))
+        self.save_btn = QPushButton(self.lang_manager.get_text("保存设置", "Save Settings"))
+        self.save_btn.setObjectName("primaryButton")
         self.save_btn.setMinimumHeight(40)
-        self.save_btn.setStyleSheet("font-size: 14px; font-weight: bold;")
         self.save_btn.clicked.connect(self.save_settings)
         save_row.addWidget(self.save_btn)
         ai_layout.addRow("", save_row)
@@ -147,17 +148,20 @@ class SettingsScreen(QWidget):
         self.data_group = QGroupBox(self.lang_manager.get_text("数据管理", "Data Management"))
         data_layout = QVBoxLayout(self.data_group)
 
-        self.export_btn = QPushButton(self.lang_manager.get_text("📤 导出进度", "📤 Export Progress"))
+        self.export_btn = QPushButton(self.lang_manager.get_text("导出进度", "Export Progress"))
+        self.export_btn.setObjectName("secondaryButton")
         self.export_btn.clicked.connect(self._export_progress)
         data_layout.addWidget(self.export_btn)
 
-        self.import_btn = QPushButton(self.lang_manager.get_text("📥 导入进度", "📥 Import Progress"))
+        self.import_btn = QPushButton(self.lang_manager.get_text("导入进度", "Import Progress"))
+        self.import_btn.setObjectName("secondaryButton")
         self.import_btn.clicked.connect(self._import_progress)
         data_layout.addWidget(self.import_btn)
 
         reset_row = QHBoxLayout()
         self.reset_progress_btn = QPushButton(
-            self.lang_manager.get_text("🗑 重置全部进度", "🗑 Reset All Progress"))
+            self.lang_manager.get_text("重置全部进度", "Reset All Progress"))
+        self.reset_progress_btn.setObjectName("dangerButton")
         self.reset_progress_btn.clicked.connect(self._reset_progress)
         reset_row.addWidget(self.reset_progress_btn)
         reset_row.addStretch()
@@ -168,7 +172,7 @@ class SettingsScreen(QWidget):
 
         version_label = QLabel("Course Quiz Studio v1.0.0")
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        version_label.setStyleSheet("color: #6c7086; font-size: 11px; padding-top: 12px;")
+        version_label.setObjectName("settingsVersionLabel")
         layout.addWidget(version_label)
 
         scroll.setWidget(content)
@@ -187,11 +191,11 @@ class SettingsScreen(QWidget):
         self.model_label.setText(self.lang_manager.get_text("模型:", "Model:"))
         self.local_agent_label.setText(self.lang_manager.get_text("本地代理:", "Local agent:"))
         self.data_group.setTitle(self.lang_manager.get_text("数据管理", "Data Management"))
-        self.export_btn.setText(self.lang_manager.get_text("📤 导出进度", "📤 Export Progress"))
-        self.import_btn.setText(self.lang_manager.get_text("📥 导入进度", "📥 Import Progress"))
-        self.reset_progress_btn.setText(self.lang_manager.get_text("🗑 重置全部进度", "🗑 Reset All Progress"))
+        self.export_btn.setText(self.lang_manager.get_text("导出进度", "Export Progress"))
+        self.import_btn.setText(self.lang_manager.get_text("导入进度", "Import Progress"))
+        self.reset_progress_btn.setText(self.lang_manager.get_text("重置全部进度", "Reset All Progress"))
         self.test_ai_btn.setText(self.lang_manager.get_text("测试 AI 设置", "Test AI Settings"))
-        self.save_btn.setText(self.lang_manager.get_text("💾 保存设置", "💾 Save Settings"))
+        self.save_btn.setText(self.lang_manager.get_text("保存设置", "Save Settings"))
         self.api_key_input.setPlaceholderText(
             self.lang_manager.get_text("输入 API 密钥...", "Enter API key..."))
         self.api_base_url.setPlaceholderText(
