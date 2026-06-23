@@ -78,9 +78,21 @@ API Key 存储优先级：环境变量 `QUIZ_APP_API_KEY` → 系统密钥环 �
 | 格式 | 说明 |
 |---|---|
 | `.pptx` | PowerPoint 幻灯片，按页提取文本 |
-| `.pdf` | PDF（需 `pip install PyMuPDF`） |
+| `.pdf` | PDF 文本提取；无可提取文本的页面会尝试 OCR fallback |
 | `.docx` | Word 文档 |
 | `.txt` / `.md` | 纯文本/Markdown |
+
+### OCR fallback 配置
+
+PDF 页面没有可提取文本时，程序会用 `PyMuPDF` 渲染页面，再通过 `Pillow` 和 `pytesseract` 尝试 OCR。`requirements.txt` 会安装这些 Python 依赖，但还必须单独安装 **Tesseract OCR** 系统程序，并确保 `tesseract` 可执行文件位于 `PATH`。
+
+中英文课件需要安装 Tesseract 的 `eng` 和 `chi_sim` 语言包。可用以下命令确认：
+
+```bash
+tesseract --list-langs
+```
+
+当前 OCR fallback 面向扫描版或图片型 PDF 的空文本页；PPTX/DOCX 中的嵌入图片暂不执行 OCR。OCR 不可用或识别失败时，课程完成提示和课程总结会保留对应警告，其他成功解析的资料仍可继续使用。
 
 ## 运行测试
 

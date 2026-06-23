@@ -10,6 +10,13 @@ class ProjectMetadataTests(unittest.TestCase):
         self.assertIn("pillow", requirements)
         self.assertIn("pytesseract", requirements)
 
+    def test_readme_documents_ocr_runtime_prerequisites(self):
+        readme = Path("README.md").read_text(encoding="utf-8").lower()
+
+        self.assertIn("tesseract", readme)
+        self.assertIn("chi_sim", readme)
+        self.assertIn("无可提取文本", readme)
+
 
 if __name__ == "__main__":
     unittest.main()
