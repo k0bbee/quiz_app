@@ -10,7 +10,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from core.language_manager import LanguageManager
 from models.question import QuestionBank
 from models.question_set import SetManager
-from core.question_set_regenerator import apply_regenerated_questions
+from core.question_set_regenerator import persist_regenerated_question_set
 from core.question_set_builder import build_ai_question_set
 from core.progress_tracker import ProgressManager
 from models.course_project import CourseProjectManager
@@ -499,19 +499,37 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, gm("没有题目", "No Questions"), gm("未生成可保存的题目。", "No generated questions to save."))
             return
 
-        saved = self.question_bank.save_many(questions)
         selected_diff = dialog.diff_combo.currentData()
         difficulty = qset.difficulty
         if selected_diff in {d.value for d in Difficulty}:
             difficulty = Difficulty(selected_diff)
-        apply_regenerated_questions(qset, questions, difficulty=difficulty, course_project=course_project)
-        self.set_manager.save(qset)
+        try:
+            qset, saved, deleted = persist_regenerated_question_set(
+                self.question_bank,
+                self.set_manager,
+                self.progress_manager,
+                qset,
+                questions,
+                difficulty=difficulty,
+                course_project=course_project,
+            )
+        except RuntimeError as exc:
+            QMessageBox.critical(
+                self,
+                gm("保存失败", "Save Failed"),
+                str(exc),
+            )
+            return
         self.topic_screen.refresh()
+        cleanup_note = gm(
+            f"\n已清理 {len(deleted)} 道无引用旧 AI 题目。" if deleted else "",
+            f"\nCleaned up {len(deleted)} unreferenced old AI question(s)." if deleted else "",
+        )
         QMessageBox.information(
             self,
             gm("已重新生成", "Regenerated"),
-            gm(f"已保存 {saved} 道新题，并更新题目集：\n{qset.get_title(self.lang_manager.current)}",
-               f"Saved {saved} new questions and updated question set:\n{qset.get_title(self.lang_manager.current)}"),
+            gm(f"已保存 {saved} 道新题，并更新题目集：\n{qset.get_title(self.lang_manager.current)}{cleanup_note}",
+               f"Saved {saved} new questions and updated question set:\n{qset.get_title(self.lang_manager.current)}{cleanup_note}"),
         )
         self.navigate_to(self.SCREEN_TOPIC_SELECTION)
 

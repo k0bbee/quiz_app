@@ -11,8 +11,11 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from core.progress_tracker import ProgressManager
-from core.question_bank_maintenance import remove_question_from_sets
-from models.progress import ProgressRecord
+from core.question_bank_maintenance import (
+    delete_unreferenced_ai_questions,
+    remove_question_from_sets,
+)
+from models.progress import AnswerRecord, ProgressRecord
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
 from ui.screens.question_bank_screen import QuestionBankScreen
@@ -219,6 +222,48 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
             self.assertIsNone(question_bank.get("q1"))
             self.assertEqual(["q2"], set_manager.get(qset.set_id).questions)
+
+    def test_regeneration_cleanup_deletes_only_truly_orphaned_ai_questions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            set_manager = SetManager(str(root / "sets"))
+            progress_manager = ProgressManager(str(root / "progress"))
+
+            orphan = self._question("q-orphan")
+            orphan.metadata["source"] = "ai_generated"
+            shared = self._question("q-shared")
+            shared.metadata["source"] = "ai_generated"
+            historical = self._question("q-history")
+            historical.metadata["source"] = "ai_generated"
+            manual = self._question("q-manual")
+            manual.metadata["source"] = "manual"
+            question_bank.save_many([orphan, shared, historical, manual])
+
+            set_manager.save(self._set("set-other", ["q-shared"]))
+            record = ProgressRecord.create_new("set-regenerated")
+            record.answers = [
+                AnswerRecord(
+                    question_id="q-history",
+                    index_in_session=0,
+                    user_answer="A",
+                    is_correct=True,
+                )
+            ]
+            progress_manager.save(record)
+
+            deleted = delete_unreferenced_ai_questions(
+                question_bank,
+                set_manager,
+                ["q-orphan", "q-shared", "q-history", "q-manual"],
+                progress_manager=progress_manager,
+            )
+
+            self.assertEqual(["q-orphan"], deleted)
+            self.assertIsNone(question_bank.get("q-orphan"))
+            self.assertIsNotNone(question_bank.get("q-shared"))
+            self.assertIsNotNone(question_bank.get("q-history"))
+            self.assertIsNotNone(question_bank.get("q-manual"))
 
 
 if __name__ == "__main__":

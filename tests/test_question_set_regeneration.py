@@ -1,9 +1,15 @@
 import unittest
+import tempfile
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
-from core.question_set_regenerator import apply_regenerated_questions
-from models.question import Question
-from models.question_set import QuestionSet
+from core.question_set_regenerator import (
+    apply_regenerated_questions,
+    persist_regenerated_question_set,
+)
+from models.question import Question, QuestionBank
+from models.question_set import QuestionSet, SetManager
 from utils.constants import Difficulty, QuestionType
 
 
@@ -85,6 +91,87 @@ class QuestionSetRegenerationTests(unittest.TestCase):
         self.assertEqual("course-new", updated.metadata["course_id"])
         self.assertEqual("New Course", updated.metadata["course_title"])
         self.assertEqual("2026-06-18T12:00:00+00:00", updated.metadata["course_updated_at"])
+
+    def test_persist_regeneration_replaces_set_and_deletes_orphaned_old_ai_questions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bank = QuestionBank(str(root / "questions"))
+            sets = SetManager(str(root / "sets"))
+            old = self._question("old-ai", "old")
+            old.metadata["source"] = "ai_generated"
+            bank.save(old)
+            qset = QuestionSet(
+                set_id="set-review",
+                title={"zh": "复习", "en": "Review"},
+                description={"zh": "", "en": ""},
+                topics=["old"],
+                difficulty=Difficulty.MEDIUM,
+                estimated_minutes=4,
+                questions=[old.question_id],
+                metadata={"source": "ai_generated"},
+            )
+            sets.save(qset)
+            new_questions = [self._question("new-1", "cache"), self._question("new-2", "process")]
+            for question in new_questions:
+                question.metadata["source"] = "ai_generated"
+
+            updated, saved, deleted = persist_regenerated_question_set(
+                bank,
+                sets,
+                None,
+                qset,
+                new_questions,
+                difficulty=Difficulty.HARD,
+            )
+
+            self.assertEqual(2, saved)
+            self.assertEqual(["old-ai"], deleted)
+            self.assertEqual(["new-1", "new-2"], updated.questions)
+            self.assertEqual(["new-1", "new-2"], sets.get(qset.set_id).questions)
+            self.assertIsNone(bank.get("old-ai"))
+
+    def test_persist_regeneration_rolls_back_new_questions_when_save_is_incomplete(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bank = QuestionBank(str(root / "questions"))
+            sets = SetManager(str(root / "sets"))
+            old = self._question("old-ai", "old")
+            old.metadata["source"] = "ai_generated"
+            bank.save(old)
+            qset = QuestionSet(
+                set_id="set-review",
+                title={"zh": "复习", "en": "Review"},
+                description={"zh": "", "en": ""},
+                topics=["old"],
+                difficulty=Difficulty.MEDIUM,
+                estimated_minutes=4,
+                questions=[old.question_id],
+                metadata={"source": "ai_generated"},
+            )
+            sets.save(qset)
+            new_questions = [self._question("new-1", "cache"), self._question("new-2", "process")]
+            original_save = bank.save
+            calls = 0
+
+            def flaky_save(question):
+                nonlocal calls
+                calls += 1
+                return original_save(question) if calls == 1 else False
+
+            with patch.object(bank, "save", side_effect=flaky_save):
+                with self.assertRaisesRegex(RuntimeError, "1 of 2"):
+                    persist_regenerated_question_set(
+                        bank,
+                        sets,
+                        None,
+                        qset,
+                        new_questions,
+                    )
+
+            self.assertIsNone(bank.get("new-1"))
+            self.assertIsNone(bank.get("new-2"))
+            self.assertIsNotNone(bank.get("old-ai"))
+            self.assertEqual(["old-ai"], sets.get(qset.set_id).questions)
 
 
 if __name__ == "__main__":
