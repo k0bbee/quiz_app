@@ -18,6 +18,8 @@ class CourseSummaryGenerator:
 
     def __init__(self, llm_client):
         self.llm_client = llm_client
+        self.summary_source = "local"
+        self.summary_warning = ""
 
     def generate(
         self,
@@ -27,10 +29,17 @@ class CourseSummaryGenerator:
         local_summary: str,
     ) -> str:
         """Return an LLM summary, falling back to the local summary on failure."""
+        self.summary_source = "local"
+        self.summary_warning = ""
         messages = self.build_messages(title, docs, topics, local_summary)
         text = self.llm_client.generate(messages, temperature=0.3, max_tokens=12000)
         if not text or not text.strip():
+            self.summary_warning = (
+                getattr(self.llm_client, "last_error", "")
+                or "LLM returned an empty summary."
+            )
             return local_summary
+        self.summary_source = "llm"
         return text.strip()
 
     @classmethod

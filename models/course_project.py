@@ -53,6 +53,8 @@ class CourseProject:
     documents: list[dict]
     created_at: str
     updated_at: str
+    summary_source: str = "local"
+    summary_warning: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -65,6 +67,8 @@ class CourseProject:
             "documents": self.documents,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+            "summary_source": self.summary_source,
+            "summary_warning": self.summary_warning,
         }
 
     @classmethod
@@ -79,6 +83,8 @@ class CourseProject:
             documents=data.get("documents", []),
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),
+            summary_source=data.get("summary_source", "local"),
+            summary_warning=data.get("summary_warning", ""),
         )
 
 

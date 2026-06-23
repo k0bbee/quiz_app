@@ -22,6 +22,7 @@ class FakeLLMClient:
     def __init__(self, response):
         self.response = response
         self.messages = None
+        self.last_error = ""
 
     def generate(self, messages, temperature=0.7, max_tokens=8000):
         self.messages = messages
@@ -72,14 +73,19 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
         self.assertIn("# Semantic Summary", summary)
         self.assertIn("tag/set/offset", summary)
         self.assertIn("Cache line, byte offset", client.messages[1]["content"])
+        self.assertEqual("llm", generator.summary_source)
+        self.assertEqual("", generator.summary_warning)
 
     def test_generate_falls_back_to_local_summary_when_llm_returns_empty(self):
         client = FakeLLMClient("")
+        client.last_error = "API request failed"
         generator = CourseSummaryGenerator(client)
 
         summary = generator.generate("Systems", self._docs(), self._topics(), "# Local Summary")
 
         self.assertEqual("# Local Summary", summary)
+        self.assertEqual("local", generator.summary_source)
+        self.assertEqual("API request failed", generator.summary_warning)
 
     def test_initializer_can_use_injected_summary_generator(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -138,6 +144,29 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertEqual(repaired_summary, Path(project.summary_path))
             self.assertEqual("# Repaired Summary\n", repaired_summary.read_text(encoding="utf-8"))
             self.assertFalse(stale_summary.exists())
+
+    def test_project_manager_persists_summary_generation_status(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            project = CourseProject(
+                course_id="course-status",
+                title="Systems",
+                source_folder=str(Path(tmpdir) / "source"),
+                summary_markdown="# Local Summary\n",
+                summary_path="",
+                topics=self._topics(),
+                documents=[],
+                created_at="2026-06-23T00:00:00+00:00",
+                updated_at="2026-06-23T00:00:00+00:00",
+                summary_source="local",
+                summary_warning="API request failed",
+            )
+
+            self.assertTrue(manager.save(project, make_current=False))
+
+            loaded = manager.get(project.course_id)
+            self.assertEqual("local", loaded.summary_source)
+            self.assertEqual("API request failed", loaded.summary_warning)
 
     def test_course_screen_enables_regenerate_button_for_selected_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:

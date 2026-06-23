@@ -98,8 +98,12 @@ class CourseInitializer:
         course_title = title.strip() or Path(folder).name
         topics = infer_topics(docs)
         summary = build_summary_markdown(course_title, docs, topics)
+        summary_source = "local"
+        summary_warning = ""
         if self.summary_generator is not None:
             summary = self.summary_generator.generate(course_title, docs, topics, summary)
+            summary_source = getattr(self.summary_generator, "summary_source", "llm")
+            summary_warning = getattr(self.summary_generator, "summary_warning", "")
         now = datetime.now(timezone.utc).isoformat()
         project = CourseProject(
             course_id=CourseProjectManager.new_id(),
@@ -111,6 +115,8 @@ class CourseInitializer:
             documents=_document_records(docs),
             created_at=now,
             updated_at=now,
+            summary_source=summary_source,
+            summary_warning=summary_warning,
         )
         project = attach_index_to_project(project)
         self.manager.save(project, make_current=make_current)
@@ -124,8 +130,12 @@ class CourseInitializer:
 
         topics = infer_topics(docs)
         summary = build_summary_markdown(project.title, docs, topics)
+        summary_source = "local"
+        summary_warning = ""
         if self.summary_generator is not None:
             summary = self.summary_generator.generate(project.title, docs, topics, summary)
+            summary_source = getattr(self.summary_generator, "summary_source", "llm")
+            summary_warning = getattr(self.summary_generator, "summary_warning", "")
 
         updated = CourseProject(
             course_id=project.course_id,
@@ -137,6 +147,8 @@ class CourseInitializer:
             documents=_document_records(docs),
             created_at=project.created_at,
             updated_at=datetime.now(timezone.utc).isoformat(),
+            summary_source=summary_source,
+            summary_warning=summary_warning,
         )
         updated = attach_index_to_project(updated)
         self.manager.save(updated, make_current=make_current)
