@@ -5,13 +5,21 @@
 ## 环境要求
 
 - Python 3.10+
-- PyQt6
+- `requirements.txt` 中的 Python 依赖（PyQt6、requests、keyring、PyMuPDF、Pillow、pytesseract）
+- Tesseract OCR 及 `eng`/`chi_sim` 语言包（可选，仅扫描版 PDF OCR 需要）
 
 ## 快速启动
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
+python scripts/check_environment.py
 python main.py
+```
+
+`check_environment.py` 不读取或输出任何 API Key。它会检查 Python 版本、全部 Python 包、keyring backend、Windows DPAPI 回退、Tesseract/语言包和 `data/` 写权限。缺少启动必需项时返回非零退出码；缺少可选 Tesseract 时显示 `WARN`，其他功能仍可启动。需要机器可读结果时使用：
+
+```bash
+python scripts/check_environment.py --json
 ```
 
 ## 使用流程
@@ -59,6 +67,7 @@ quiz_app/
 │   ├── screens/         # 8 个页面（首页/选题/答题/结果/进度/设置/课件/题库）
 │   ├── dialogs/         # AI出题对话框、题目审核对话框
 │   └── widgets/         # 答题区、题目卡片、进度条等可复用组件
+├── scripts/             # 环境自检等维护脚本
 ├── utils/               # JSON读写、日志、常量
 ├── data/                # 🚫 运行时数据（题库/进度/课程/设置）
 ├── tests/               # 单元测试
@@ -76,6 +85,8 @@ quiz_app/
 API Key 读取优先级：环境变量 `QUIZ_APP_API_KEY` → 系统密钥环 → Windows DPAPI 加密存储。设置页不会回显已有密钥；空输入表示保持不变，只有输入新值才会更新，清除操作需要单独确认。
 
 新密钥会立即进入当前应用会话，并优先持久化到系统密钥环。Windows 上没有可用 `keyring` 后端时，会自动写入 `data/.api_key.dpapi`；文件内容由 Windows DPAPI 加密并绑定当前系统用户，不能复制到其他用户或机器直接解密。仅在密钥环和 DPAPI 都不可用时才退化为当前会话存储。密钥不会自动写入 `data/settings.json`。程序仍可读取旧版本留下的明文字段用于迁移，但下一次显式更新或清除密钥会移除该字段。
+
+可通过 `python scripts/check_environment.py` 查看当前 keyring backend。Windows 正常安装 `keyring` 后通常会显示 `keyring.backends.Windows.WinVaultKeyring`；如果该后端不可用，程序会自动使用 DPAPI，不需要重新输入密钥。
 
 远程 LLM 端点必须使用 `https://`。只有 `localhost`、`127.0.0.1` 或 `::1` 上的本机兼容服务可以使用 `http://`；包含用户名/密码、缺少主机或使用其他协议的 URL 会在设置测试和实际请求前被拒绝。
 
@@ -118,6 +129,15 @@ tesseract --list-langs
 ```
 
 当前 OCR fallback 面向扫描版或图片型 PDF 的空文本页；PPTX/DOCX 中的嵌入图片暂不执行 OCR。OCR 不可用或识别失败时，课程完成提示和课程总结会保留对应警告，其他成功解析的资料仍可继续使用。
+
+## 常见环境问题
+
+| 自检结果 | 影响与处理 |
+|---|---|
+| Python 包显示 `FAIL` | 运行 `python -m pip install -r requirements.txt`，再执行 `python -m pip check` |
+| keyring backend 显示 `WARN` | Windows 会使用 DPAPI 加密文件；其他系统需配置可用 keyring 后端，否则密钥仅当前会话有效 |
+| Tesseract OCR 显示 `WARN` | 仅扫描 PDF OCR 不可用；安装 Tesseract 系统程序和 `eng`、`chi_sim` 语言包并加入 `PATH` |
+| data directory 显示 `FAIL` | 确保应用目录及 `data/` 对当前用户可写 |
 
 ## 运行测试
 
