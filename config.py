@@ -26,6 +26,7 @@ PROGRESS_DIR = os.path.join(DATA_DIR, "progress")
 
 # Settings
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
+API_KEY_STORE_FILE = os.path.join(DATA_DIR, ".api_key.dpapi")
 
 # Active course pointer
 CURRENT_COURSE_FILE = os.path.join(DATA_DIR, "current_course.json")
