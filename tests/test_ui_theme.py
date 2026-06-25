@@ -138,6 +138,7 @@ class UiThemeTests(unittest.TestCase):
             settings.ai_action_layout.indexOf(settings.test_ai_btn),
             settings.ai_action_layout.indexOf(settings.save_btn),
         )
+        self.assertGreaterEqual(settings.ai_action_layout.contentsMargins().top(), 8)
         self.assertLess(
             settings.data_action_layout.indexOf(settings.export_btn),
             settings.data_action_layout.indexOf(settings.import_btn),

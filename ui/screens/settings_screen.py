@@ -184,6 +184,7 @@ class SettingsScreen(QWidget):
 
         # Save button
         self.ai_action_layout = QHBoxLayout()
+        self.ai_action_layout.setContentsMargins(0, 8, 0, 0)
         self.ai_action_layout.addStretch()
         self.test_ai_btn = QPushButton(self.lang_manager.get_text("测试 AI 设置", "Test AI Settings"))
         self.test_ai_btn.setObjectName("secondaryButton")
