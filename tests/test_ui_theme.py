@@ -35,6 +35,9 @@ class UiThemeTests(unittest.TestCase):
             self.assertIn(token, qss)
         self.assertRegex(qss, r"qdialog[^\{]*\{[^}]*background-color:\s*#1f1f1f")
         self.assertIn("qpushbutton#primarybutton", qss)
+        self.assertIn("qlabel#settingsconnectionstatus", qss)
+        self.assertIn("qlabel#settingsconnectionstatusok", qss)
+        self.assertIn("qlabel#settingsconnectionstatuserror", qss)
 
     def test_default_button_is_secondary_instead_of_primary_blue(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()

@@ -438,6 +438,7 @@ QLabel#screenSubtitle,
 QLabel#homeSubtitle,
 QLabel#settingsProviderHelp,
 QLabel#settingsLocalAgentStatus,
+QLabel#settingsConnectionStatus,
 QLabel#dialogStatusLabel,
 QLabel#questionTypeLabel,
 QLabel#resultsStatsLabel,
@@ -467,6 +468,25 @@ QLabel#homeStatsLabel,
 QLabel#dashboardRecentList,
 QLabel#resultsStatsLabel {
     font-size: 13px;
+}
+
+QLabel#settingsConnectionStatus,
+QLabel#settingsConnectionStatusOk,
+QLabel#settingsConnectionStatusError {
+    background-color: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 2px;
+    padding: 7px 9px;
+}
+
+QLabel#settingsConnectionStatusOk {
+    color: #89d185;
+    border-color: #2e6b3a;
+}
+
+QLabel#settingsConnectionStatusError {
+    color: #f48771;
+    border-color: #f14c4c;
 }
 
 QLabel#questionStem {

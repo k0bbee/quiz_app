@@ -7,11 +7,34 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
+from ai.connection_probe import ConnectionProbeResult
 from ai.settings_validation import validate_ai_settings
+from core.language_manager import LanguageManager
 from ui.screens.settings_screen import SettingsScreen
 
 
 _APP = QApplication.instance() or QApplication([])
+
+
+class ManualSignal:
+    def __init__(self):
+        self._callbacks = []
+
+    def connect(self, callback):
+        self._callbacks.append(callback)
+
+    def emit(self, *args):
+        for callback in list(self._callbacks):
+            callback(*args)
+
+
+class ManualConnectionWorker:
+    def __init__(self):
+        self.result_ready = ManualSignal()
+        self.start_called = False
+
+    def start(self):
+        self.start_called = True
 
 
 class AISettingsValidationTests(unittest.TestCase):
@@ -67,19 +90,80 @@ class AISettingsValidationTests(unittest.TestCase):
                 )
                 self.assertFalse(result.ok)
 
-    def test_settings_screen_test_button_reports_current_configuration(self):
+    def test_settings_screen_test_button_validates_then_starts_local_agent_probe(self):
         screen = SettingsScreen()
         screen.provider_combo.setCurrentIndex(screen.provider_combo.findData("local_agent"))
         screen.api_base_url.setText("local-agent://auto")
         screen.model_combo.setCurrentText("codex")
         screen.api_key_input.clear()
+        worker = ManualConnectionWorker()
 
-        with patch("ui.screens.settings_screen.detect_local_agents", return_value=["codex"]), \
+        with patch.object(screen, "_create_connection_test_worker", return_value=worker) as create_worker, \
+             patch("ui.screens.settings_screen.detect_local_agents", return_value=["codex"]), \
+             patch("ui.screens.settings_screen.QMessageBox.information") as info:
+            screen.test_ai_btn.click()
+            self.assertTrue(worker.start_called)
+            self.assertFalse(info.called)
+
+            worker.result_ready.emit(ConnectionProbeResult(
+                ok=True,
+                message="Connected to provider 'local_agent' with model 'codex'.",
+                elapsed_ms=15,
+                provider="local_agent",
+                model="codex",
+            ))
+
+        settings_arg, api_key_arg = create_worker.call_args.args
+        self.assertEqual("local_agent", settings_arg["ai_provider"])
+        self.assertEqual("", api_key_arg)
+        self.assertTrue(info.called)
+        self.assertIn("codex", info.call_args.args[2])
+
+    def test_settings_screen_runs_connection_probe_in_background(self):
+        screen = SettingsScreen()
+        screen.provider_combo.setCurrentIndex(screen.provider_combo.findData("custom"))
+        screen.api_base_url.setText("https://api.example.com/v1")
+        screen.model_combo.setCurrentText("test-model")
+        screen.api_key_input.setText("sk-test")
+        worker = ManualConnectionWorker()
+
+        with patch.object(screen, "_create_connection_test_worker", return_value=worker) as create_worker, \
+             patch("ui.screens.settings_screen.detect_local_agents", return_value=[]), \
              patch("ui.screens.settings_screen.QMessageBox.information") as info:
             screen.test_ai_btn.click()
 
+            self.assertTrue(worker.start_called)
+            self.assertFalse(screen.test_ai_btn.isEnabled())
+            self.assertFalse(screen.save_btn.isEnabled())
+            self.assertNotEqual("", screen.ai_connection_status.text())
+
+            worker.result_ready.emit(ConnectionProbeResult(
+                ok=True,
+                message="Connected to provider 'custom' with model 'test-model'.",
+                elapsed_ms=123,
+                provider="custom",
+                model="test-model",
+            ))
+
+        create_worker.assert_called_once()
+        self.assertTrue(screen.test_ai_btn.isEnabled())
+        self.assertTrue(screen.save_btn.isEnabled())
+        self.assertIn("Connected", screen.ai_connection_status.text())
         self.assertTrue(info.called)
-        self.assertIn("codex", info.call_args.args[2])
+        self.assertIn("123 ms", info.call_args.args[2])
+
+    def test_settings_screen_connection_status_label_updates_with_language(self):
+        manager = LanguageManager.instance()
+        original = manager.current
+        try:
+            screen = SettingsScreen()
+            manager.set_language("en")
+            self.assertEqual("Connection:", screen.ai_connection_status_label.text())
+
+            manager.set_language("zh")
+            self.assertEqual("连接状态:", screen.ai_connection_status_label.text())
+        finally:
+            manager.set_language(original)
 
     def test_settings_screen_does_not_reveal_existing_api_key(self):
         manager = SimpleNamespace(

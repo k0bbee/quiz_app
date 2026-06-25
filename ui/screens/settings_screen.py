@@ -15,11 +15,12 @@ from PyQt6.QtWidgets import (
     QGroupBox, QComboBox, QLineEdit, QFormLayout, QMessageBox,
     QFileDialog, QScrollArea, QFrame
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 from core.language_manager import LanguageManager
 from config import SETTINGS_FILE, DEFAULT_SETTINGS
 from utils.json_io import read_json, write_json
+from ai.connection_probe import AIConnectionProbe
 from ai.provider_presets import (
     PROVIDER_PRESETS,
     default_provider_settings,
@@ -29,14 +30,31 @@ from ai.provider_presets import (
 from ai.settings_validation import validate_ai_settings
 
 
+class AIConnectionTestWorker(QThread):
+    """Run the provider connection probe away from the UI thread."""
+
+    result_ready = pyqtSignal(object)
+
+    def __init__(self, probe: AIConnectionProbe, settings: dict, api_key: str, parent=None):
+        super().__init__(parent)
+        self.probe = probe
+        self.settings = dict(settings)
+        self.api_key = api_key
+
+    def run(self):
+        self.result_ready.emit(self.probe.run(self.settings, self.api_key))
+
+
 class SettingsScreen(QWidget):
     """Application settings with explicit save, crash-safe initialization."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, connection_probe_factory=None):
         super().__init__(parent)
         self.lang_manager = LanguageManager.instance()
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self._settings = self._load_settings()
+        self._connection_probe_factory = connection_probe_factory or AIConnectionProbe
+        self._connection_test_worker = None
         self._initializing = True
         self._setup_ui()
         self._populate_from_settings()
@@ -150,6 +168,20 @@ class SettingsScreen(QWidget):
         self.local_agent_label = QLabel(self.lang_manager.get_text("本地代理:", "Local agent:"))
         self.ai_form_layout.addRow(self.local_agent_label, self.local_agent_status)
 
+        self.ai_connection_status = QLabel(
+            self.lang_manager.get_text(
+                "尚未测试连接。",
+                "Connection has not been tested yet.",
+            )
+        )
+        self.ai_connection_status.setWordWrap(True)
+        self.ai_connection_status.setObjectName("settingsConnectionStatus")
+        self.ai_connection_status_label = QLabel(self.lang_manager.get_text("连接状态:", "Connection:"))
+        self.ai_form_layout.addRow(
+            self.ai_connection_status_label,
+            self.ai_connection_status,
+        )
+
         # Save button
         self.ai_action_layout = QHBoxLayout()
         self.ai_action_layout.addStretch()
@@ -214,6 +246,12 @@ class SettingsScreen(QWidget):
         self.api_base_url_label.setText(self.lang_manager.get_text("API 地址:", "API Base URL:"))
         self.model_label.setText(self.lang_manager.get_text("模型:", "Model:"))
         self.local_agent_label.setText(self.lang_manager.get_text("本地代理:", "Local agent:"))
+        self.ai_connection_status_label.setText(self.lang_manager.get_text("连接状态:", "Connection:"))
+        if hasattr(self, "ai_connection_status") and not getattr(self, "_connection_test_worker", None):
+            self.ai_connection_status.setText(self.lang_manager.get_text(
+                "尚未测试连接。",
+                "Connection has not been tested yet.",
+            ))
         self.data_group.setTitle(self.lang_manager.get_text("数据管理", "Data Management"))
         self.export_btn.setText(self.lang_manager.get_text("导出进度", "Export Progress"))
         self.import_btn.setText(self.lang_manager.get_text("导入进度", "Import Progress"))
@@ -427,6 +465,8 @@ class SettingsScreen(QWidget):
     def _test_ai_settings(self):
         from core.secrets_manager import SecretsManager
 
+        if self._connection_test_worker is not None:
+            return
         settings = {
             "ai_provider": self.provider_combo.currentData() or "",
             "ai_base_url": self.api_base_url.text().strip(),
@@ -434,17 +474,76 @@ class SettingsScreen(QWidget):
         }
         api_key = self.api_key_input.text() or SecretsManager.instance().get_key()
         result = validate_ai_settings(settings, api_key=api_key, detected_agents=detect_local_agents())
-        if result.ok:
-            QMessageBox.information(
+        if not result.ok:
+            self.ai_connection_status.setObjectName("settingsConnectionStatusError")
+            self.ai_connection_status.setText(result.message)
+            self.ai_connection_status.style().unpolish(self.ai_connection_status)
+            self.ai_connection_status.style().polish(self.ai_connection_status)
+            QMessageBox.warning(
                 self,
-                self.lang_manager.get_text("AI 设置可用", "AI Settings Ready"),
+                self.lang_manager.get_text("AI 设置需要处理", "AI Settings Need Attention"),
                 result.message,
             )
             return
+
+        self._set_connection_test_busy(True)
+        worker = self._create_connection_test_worker(settings, api_key)
+        self._connection_test_worker = worker
+        worker.result_ready.connect(self._handle_connection_test_result)
+        finished_signal = getattr(worker, "finished", None)
+        if finished_signal is not None:
+            finished_signal.connect(worker.deleteLater)
+        worker.start()
+
+    def _create_connection_test_worker(self, settings: dict, api_key: str):
+        return AIConnectionTestWorker(
+            self._connection_probe_factory(),
+            settings,
+            api_key,
+            self,
+        )
+
+    def _set_connection_test_busy(self, busy: bool):
+        self.test_ai_btn.setEnabled(not busy)
+        self.save_btn.setEnabled(not busy)
+        self.provider_combo.setEnabled(not busy)
+        self.api_key_input.setEnabled(not busy)
+        self.clear_api_key_btn.setEnabled((not busy) and bool(getattr(self, "_has_existing_api_key", False)))
+        self.api_base_url.setEnabled(not busy)
+        self.model_combo.setEnabled(not busy)
+        if busy:
+            self.ai_connection_status.setObjectName("settingsConnectionStatus")
+            self.ai_connection_status.setText(self.lang_manager.get_text(
+                "正在测试连接，请稍候……",
+                "Testing connection, please wait...",
+            ))
+            self.ai_connection_status.style().unpolish(self.ai_connection_status)
+            self.ai_connection_status.style().polish(self.ai_connection_status)
+
+    def _handle_connection_test_result(self, result):
+        self._connection_test_worker = None
+        self._set_connection_test_busy(False)
+        detail = f"{result.message}\n{result.elapsed_ms} ms"
+        if result.ok:
+            self.ai_connection_status.setObjectName("settingsConnectionStatusOk")
+            self.ai_connection_status.setText(detail)
+            self.ai_connection_status.style().unpolish(self.ai_connection_status)
+            self.ai_connection_status.style().polish(self.ai_connection_status)
+            QMessageBox.information(
+                self,
+                self.lang_manager.get_text("AI 连接可用", "AI Connection Ready"),
+                detail,
+            )
+            return
+
+        self.ai_connection_status.setObjectName("settingsConnectionStatusError")
+        self.ai_connection_status.setText(detail)
+        self.ai_connection_status.style().unpolish(self.ai_connection_status)
+        self.ai_connection_status.style().polish(self.ai_connection_status)
         QMessageBox.warning(
             self,
-            self.lang_manager.get_text("AI 设置需要处理", "AI Settings Need Attention"),
-            result.message,
+            self.lang_manager.get_text("AI 连接失败", "AI Connection Failed"),
+            detail,
         )
 
     # ── Public ────────────────────────────────────────────────
