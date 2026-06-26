@@ -104,7 +104,13 @@ def _global_key_terms(content: str, limit: int = 20) -> list[str]:
 
 
 def _split_terms(text: str) -> list[str]:
-    return re.findall(r"[A-Za-z][A-Za-z0-9_+-]{2,}|[\u4e00-\u9fff]{2,8}", text)
+    terms: list[str] = []
+    for token in re.findall(r"[A-Za-z][A-Za-z0-9_+-]{2,}|[\u4e00-\u9fff]{2,8}", text):
+        terms.append(token)
+        for part in re.split(r"[_+-]+", token):
+            if part != token and len(part) >= 2:
+                terms.append(part)
+    return terms
 
 
 def _score_text(text: str, terms: list[str]) -> int:

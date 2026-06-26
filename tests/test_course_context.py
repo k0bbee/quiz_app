@@ -30,6 +30,33 @@ class CourseContextTests(unittest.TestCase):
         self.assertIn("set index", terms)
         self.assertIn("byte offset", terms)
 
+    def test_topic_terms_split_slug_topic_ids_into_matchable_words(self):
+        terms = _topic_terms(["cache_mapping"], {})
+
+        self.assertIn("cache", terms)
+        self.assertIn("mapping", terms)
+
+    def test_selected_topic_id_context_prefers_matching_heading_over_global_noise(self):
+        from ai.course_context import extract_relevant_course_context
+
+        content = (
+            "## Cache Mapping\n"
+            "Cache mapping explains how an address maps to a cache set.\n\n"
+            "## Process Scheduling\n"
+            "Process scheduling, thread states, CPU dispatch, ready queue, context switch, "
+            "process priority, scheduling fairness, scheduling policy, and process lifecycle "
+            "are operating-system concepts.\n"
+        )
+
+        context = extract_relevant_course_context(
+            content,
+            ["cache_mapping"],
+            max_chars=900,
+        )
+
+        self.assertIn("Cache Mapping", context)
+        self.assertNotIn("Process Scheduling", context)
+
     def test_selected_topic_context_does_not_expand_with_unrelated_global_terms(self):
         from ai.course_context import extract_relevant_course_context
 
