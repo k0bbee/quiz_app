@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import re
-from collections import Counter
 from dataclasses import dataclass
 from functools import lru_cache
 
+from core.term_extraction import extract_course_terms
 from models.course_project import CourseProject
 
 _MAX_PAYLOAD_CACHE_SIZE = 24
@@ -168,16 +168,7 @@ def attach_index_to_project(project: CourseProject) -> CourseProject:
 
 def extract_terms(text: str, limit: int = 20) -> list[str]:
     """Extract high-value terms from arbitrary course text."""
-    tokens = re.findall(r"[A-Za-z][A-Za-z0-9_+-]{2,}|[\u4e00-\u9fff]{2,8}", text)
-    stop = {
-        "the", "and", "for", "with", "from", "that", "this", "which", "when",
-        "what", "how", "why", "are", "was", "were", "can", "will", "page",
-        "slide", "课程", "内容", "问题", "答案", "解析", "核心概念", "可考方向",
-        "机制流程", "推演流程", "实际例子", "答题要点", "易错点",
-        "根据", "需要", "可以", "一个", "一种",
-    }
-    counts = Counter(t.lower() for t in tokens if t.lower() not in stop)
-    return [term for term, _ in counts.most_common(limit)]
+    return list(extract_course_terms(text, limit=limit))
 
 
 def _split_chunks(markdown: str) -> list[tuple[str, str]]:

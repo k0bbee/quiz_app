@@ -58,6 +58,22 @@ class CourseIndexCacheTests(unittest.TestCase):
         for label in ("推演流程", "实际例子", "答题要点"):
             self.assertNotIn(label, terms)
 
+    def test_retrieval_terms_prioritize_topic_terms_over_template_noise(self):
+        noisy = "根据课件上下文 关键条件 中间状态 输出结果 整理概念关系 计算步骤 "
+        terms = course_index.extract_terms(
+            (
+                "Cache Mapping splits each byte address into tag, set index, and byte offset. "
+                "The cache line tag confirms whether the selected set contains the block. "
+                + noisy * 30
+            ),
+            limit=8,
+        )
+
+        for term in ("cache", "tag", "set", "offset"):
+            self.assertIn(term, terms)
+        for noise in ("根据课件", "关键条件", "中间状态", "输出结果", "整理概念", "计算步骤"):
+            self.assertNotIn(noise, terms)
+
 
 if __name__ == "__main__":
     unittest.main()

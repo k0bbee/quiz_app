@@ -1,0 +1,59 @@
+"""Shared course-term extraction helpers for topics and retrieval indexes."""
+
+from __future__ import annotations
+
+import re
+from collections import Counter
+
+
+STOP_WORDS = {
+    "the", "and", "for", "with", "from", "that", "this", "have", "will", "into",
+    "your", "about", "when", "which", "where", "what", "why", "how", "can",
+    "you", "are", "was", "were", "has", "use", "using", "page", "slide",
+    "一个", "一种", "以及", "或者", "因此", "因为", "如果", "可以", "需要",
+    "什么", "如何", "为什么", "主要", "系统", "课程", "内容", "问题",
+    "handout", "notes", "slides", "lecture", "chapter", "course", "review",
+    "uses", "order",
+    # Common noise from non-course files and generated study-summary scaffolding.
+    "files", "data", "details", "summary", "results", "diff", "total",
+    "codes", "comments", "blanks", "lines", "all", "question", "questions",
+    "discussion", "checkpoint", "previous", "答案", "解析",
+}
+
+
+TECHNICAL_KEYWORDS = {
+    "address", "block", "byte", "cache", "cpu", "dma", "gpu", "index", "line",
+    "mapping", "mmu", "offset", "pcb", "raid", "set", "simd", "simt", "tag",
+    "tlb", "warp",
+}
+
+
+LOW_VALUE_KEYWORD_FRAGMENTS = {
+    "根据课件", "课件上下文", "关键条件", "中间状态", "输出结果", "整理概念",
+    "概念关系", "计算步骤", "人工补充", "当前抽取", "可考方向", "答题要点",
+    "实际例子", "易错点", "核心概念", "推演流程",
+}
+
+
+def extract_course_terms(text: str, limit: int = 20) -> Counter:
+    """Extract high-value course terms with shared noise filtering."""
+    phrases = re.findall(r"[A-Z][a-z]+_[A-Z][a-z]+(?:_[A-Z][a-z]+)?", text)
+    tokens = re.findall(r"[\u4e00-\u9fff]{2,8}|[A-Za-z][A-Za-z0-9_+-]{2,}", text)
+    normalized = []
+    for token in phrases + tokens:
+        key = token.lower()
+        if key in STOP_WORDS:
+            continue
+        if is_low_value_keyword(key):
+            continue
+        if token.isdigit():
+            continue
+        if re.match(r"^[a-z]{2,10}$", key) and key not in TECHNICAL_KEYWORDS:
+            continue
+        normalized.append(key)
+    return Counter(dict(Counter(normalized).most_common(limit)))
+
+
+def is_low_value_keyword(term: str) -> bool:
+    """Return True for generated scaffolding terms that do not identify a topic."""
+    return any(fragment in term for fragment in LOW_VALUE_KEYWORD_FRAGMENTS)
