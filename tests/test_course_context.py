@@ -1,6 +1,6 @@
 import unittest
 
-from ai.course_context import _global_key_terms
+from ai.course_context import _global_key_terms, _topic_terms
 
 
 class CourseContextTests(unittest.TestCase):
@@ -19,6 +19,16 @@ class CourseContextTests(unittest.TestCase):
             self.assertIn(term, terms)
         for noise in ("根据课件", "关键条件", "中间状态", "输出结果", "整理概念", "计算步骤"):
             self.assertNotIn(noise, terms)
+
+    def test_topic_terms_match_topic_keywords_case_insensitively(self):
+        terms = _topic_terms(
+            ["cache mapping"],
+            {"Cache Mapping": ["tag", "set index", "byte offset"]},
+        )
+
+        self.assertIn("tag", terms)
+        self.assertIn("set index", terms)
+        self.assertIn("byte offset", terms)
 
 
 if __name__ == "__main__":

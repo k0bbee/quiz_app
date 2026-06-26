@@ -79,11 +79,13 @@ def _split_markdown_sections(content: str) -> list[tuple[str, str]]:
 
 def _topic_terms(topics: list, topic_keywords: dict[str, list[str]]) -> list[str]:
     terms: list[str] = []
+    keyword_lookup = {str(key).lower(): value for key, value in topic_keywords.items()}
     for topic in topics:
         title = topic_value(topic)
         terms.append(title)
         terms.extend(_split_terms(title))
         terms.extend(topic_keywords.get(title, []))
+        terms.extend(keyword_lookup.get(title.lower(), []))
     return [term.lower() for term in terms if term]
 
 

@@ -57,12 +57,12 @@ class GenerationConfigTests(unittest.TestCase):
             "## Cache Mapping\n"
             "This overview only says cache mapping at a high level.\n\n"
             "## Address Breakdown\n"
-            "The tag, set index, cache line, and byte offset determine lookup behavior.\n"
+            "The tag, set index, and byte offset determine lookup behavior.\n"
         )
 
         prompt = PromptBuilder.build_user_prompt(
             content,
-            ["Cache Mapping"],
+            ["cache mapping"],
             count=3,
             topic_keywords={"Cache Mapping": ["tag", "set index", "byte offset"]},
             max_context_chars=160,
