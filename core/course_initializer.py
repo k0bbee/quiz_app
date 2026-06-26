@@ -29,6 +29,18 @@ STOP_WORDS = {
     "codes", "comments", "blanks", "lines", "all", "question", "questions",
     "discussion", "checkpoint", "previous",
 }
+
+TECHNICAL_KEYWORDS = {
+    "address", "block", "byte", "cache", "cpu", "dma", "gpu", "index", "line",
+    "mapping", "mmu", "offset", "pcb", "raid", "set", "simd", "simt", "tag",
+    "tlb", "warp",
+}
+
+LOW_VALUE_KEYWORD_FRAGMENTS = {
+    "根据课件", "课件上下文", "关键条件", "中间状态", "输出结果", "整理概念",
+    "概念关系", "计算步骤", "人工补充", "当前抽取", "可考方向", "答题要点",
+    "实际例子", "易错点", "核心概念", "推演流程",
+}
 def _is_generic_title(title: str) -> bool:
     """Heuristic: is this title too generic to be a meaningful course topic?
 
@@ -240,15 +252,25 @@ def infer_topics(docs: list[ExtractedDocument]) -> list[CourseTopic]:
         display = _title_case(title)
         key = _normalize_key(title)
         if key not in file_topics:
-            file_topics[key] = {"title": display, "files": [], "keywords": set(), "total_words": 0}
+            file_topics[key] = {
+                "title": display,
+                "files": [],
+                "keywords": set(),
+                "keyword_counts": Counter(),
+                "total_words": 0,
+            }
         file_topics[key]["files"].append(doc.path)
         file_topics[key]["total_words"] += doc.word_count
         # Collect keywords from headings + key terms
         for h in _extract_heading_candidates(doc.text):
             for t in re.findall(r"[A-Za-z][A-Za-z0-9_+-]{2,}|[一-鿿]{2,8}", _clean_title(h)):
-                file_topics[key]["keywords"].add(t.lower())
-        for term in _extract_key_terms(doc.text):
-            file_topics[key]["keywords"].add(term.lower())
+                keyword = t.lower()
+                file_topics[key]["keywords"].add(keyword)
+                file_topics[key]["keyword_counts"][keyword] += 2
+        for term, count in _extract_key_terms(doc.text).items():
+            keyword = term.lower()
+            file_topics[key]["keywords"].add(keyword)
+            file_topics[key]["keyword_counts"][keyword] += count
 
     # ── Step 2: sibling merge ─────────────────────────────────
     items = list(file_topics.items())
@@ -269,6 +291,7 @@ def infer_topics(docs: list[ExtractedDocument]) -> list[CourseTopic]:
                 vi["files"].extend(vj["files"])
                 vi["total_words"] += vj["total_words"]
                 vi["keywords"] |= vj["keywords"]
+                vi["keyword_counts"].update(vj.get("keyword_counts", Counter()))
                 used.add(j)
             elif ki_kw and kj_kw:
                 overlap = len(ki_kw & kj_kw)
@@ -277,6 +300,7 @@ def infer_topics(docs: list[ExtractedDocument]) -> list[CourseTopic]:
                     vi["files"].extend(vj["files"])
                     vi["total_words"] += vj["total_words"]
                     vi["keywords"] |= vj["keywords"]
+                    vi["keyword_counts"].update(vj.get("keyword_counts", Counter()))
                     used.add(j)
         merged.append((ki, vi))
 
@@ -292,7 +316,11 @@ def infer_topics(docs: list[ExtractedDocument]) -> list[CourseTopic]:
     # ── Step 4: build CourseTopic list (all, no cap) ──────────
     topics: list[CourseTopic] = []
     for score, key, data in scored:
-        kw_list = sorted(data["keywords"], key=lambda k: -len(k))[:8]
+        counts = data.get("keyword_counts", Counter())
+        kw_list = sorted(
+            data["keywords"],
+            key=lambda k: (-counts.get(k, 0), -len(k), k),
+        )[:8]
         topics.append(CourseTopic(
             topic_id=_slugify(data["title"]),
             title=data["title"],
@@ -448,20 +476,27 @@ def _extract_key_terms(text: str) -> Counter:
     # Multi-word English phrases (2-3 words, e.g. "Cache_Mapping")
     phrases = re.findall(r"[A-Z][a-z]+_[A-Z][a-z]+(?:_[A-Z][a-z]+)?", text)
     # Chinese compounds (2-8 chars) and English compounds (3+ chars, not all lowercase)
-    tokens = re.findall(r"[\u4e00-\u9fff]{2,8}|[A-Z][a-z]{2,}(?:[A-Z][a-z]{2,})+|[A-Z][A-Za-z0-9_+-]{3,}", text)
+    tokens = re.findall(r"[\u4e00-\u9fff]{2,8}|[A-Za-z][A-Za-z0-9_+-]{2,}", text)
     normalized = []
     for token in phrases + tokens:
         key = token.lower()
         if key in STOP_WORDS:
             continue
+        if _is_low_value_keyword(key):
+            continue
         if token.isdigit():
             continue
         # Skip single English words that are just generic nouns
-        if re.match(r"^[a-z]{2,10}$", key) and key not in {"cache", "dma", "gpu", "cpu", "raid", "tlb", "pcb"}:
+        if re.match(r"^[a-z]{2,10}$", key) and key not in TECHNICAL_KEYWORDS:
             continue
         normalized.append(token)
     counts = Counter(normalized)
     return Counter(dict(counts.most_common(40)))
+
+
+def _is_low_value_keyword(term: str) -> bool:
+    """Reject generated-summary scaffolding terms before they become topic keywords."""
+    return any(fragment in term for fragment in LOW_VALUE_KEYWORD_FRAGMENTS)
 
 
 def _clean_title(title: str) -> str:

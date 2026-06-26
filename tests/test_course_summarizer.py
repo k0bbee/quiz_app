@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from ai.course_summarizer import CourseSummaryGenerator
 from ai.exam_plan import ExamGenerationPlan
-from core.course_initializer import CourseInitializer, build_summary_markdown
+from core.course_initializer import CourseInitializer, build_summary_markdown, infer_topics
 from core.document_parser import ExtractedDocument
 from core.language_manager import LanguageManager
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
@@ -110,6 +110,31 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
 
         for section in ("#### 核心概念", "#### 推演流程", "#### 实际例子", "#### 可考方向", "#### 答题要点"):
             self.assertIn(section, summary)
+
+    def test_inferred_topic_keywords_prioritize_topic_terms_over_template_noise(self):
+        noisy_cn = "根据课件上下文 关键条件 中间状态 输出结果 整理概念关系 计算步骤 "
+        text = (
+            "# Cache Mapping\n"
+            "Cache Mapping splits each byte address into tag, set index, and byte offset. "
+            "The cache line tag identifies whether the selected set contains the requested block. "
+            + noisy_cn * 30
+        )
+        doc = ExtractedDocument(
+            path="cache_mapping.md",
+            title="Cache Mapping",
+            extension=".md",
+            text=text,
+            pages=[text],
+        )
+
+        topics = infer_topics([doc])
+
+        self.assertEqual("Cache Mapping", topics[0].title)
+        self.assertIn("cache", topics[0].keywords)
+        self.assertIn("tag", topics[0].keywords)
+        self.assertIn("set", topics[0].keywords)
+        for noise in ("根据课件", "关键条件", "中间状态", "输出结果", "整理概念", "计算步骤"):
+            self.assertNotIn(noise, topics[0].keywords)
 
     def test_generate_falls_back_to_local_summary_when_llm_returns_empty(self):
         client = FakeLLMClient("")

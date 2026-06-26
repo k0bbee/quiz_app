@@ -147,6 +147,7 @@ class GenerationWorker(QThread):
                     batch_count,
                     self.difficulty,
                     quotas.remaining_config(),
+                    topic_keywords=self._topic_keywords(),
                 )
 
                 data = self.client.generate_with_json(messages, max_retries=3)
@@ -250,6 +251,16 @@ class GenerationWorker(QThread):
             "course_title": getattr(self.course_project, "title", ""),
             "course_updated_at": getattr(self.course_project, "updated_at", ""),
         }
+
+    def _topic_keywords(self) -> dict[str, list[str]]:
+        if self.course_project is None:
+            return {}
+        keywords: dict[str, list[str]] = {}
+        for topic in getattr(self.course_project, "topics", []) or []:
+            title = topic_value(getattr(topic, "title", ""))
+            if title:
+                keywords[title] = list(getattr(topic, "keywords", []) or [])
+        return keywords
 
     def _validate_raw_question(self, qdata: dict) -> tuple[bool, str]:
         """Validate raw model output before converting it to a Question."""

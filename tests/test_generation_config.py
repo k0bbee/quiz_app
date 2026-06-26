@@ -52,6 +52,25 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("cache mapping: 70%", prompt)
         self.assertIn("Final exam style", prompt)
 
+    def test_prompt_context_can_use_topic_keywords_to_respect_selected_topic(self):
+        content = (
+            "## Cache Mapping\n"
+            "This overview only says cache mapping at a high level.\n\n"
+            "## Address Breakdown\n"
+            "The tag, set index, cache line, and byte offset determine lookup behavior.\n"
+        )
+
+        prompt = PromptBuilder.build_user_prompt(
+            content,
+            ["Cache Mapping"],
+            count=3,
+            topic_keywords={"Cache Mapping": ["tag", "set index", "byte offset"]},
+            max_context_chars=160,
+        )
+
+        self.assertIn("Address Breakdown", prompt)
+        self.assertIn("byte offset", prompt)
+
     def test_worker_keeps_generation_config(self):
         config = GenerationConfig(template="quick_review")
         worker = GenerationWorker(
