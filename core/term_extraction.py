@@ -18,6 +18,10 @@ STOP_WORDS = {
     "files", "data", "details", "summary", "results", "diff", "total",
     "codes", "comments", "blanks", "lines", "all", "question", "questions",
     "discussion", "checkpoint", "previous", "答案", "解析",
+    # English equivalents of generated study-summary scaffolding.
+    "core", "concept", "concepts", "reasoning", "flow", "example", "examples",
+    "exam", "direction", "directions", "answer", "answers", "point", "points",
+    "overview",
 }
 
 
@@ -32,6 +36,7 @@ LOW_VALUE_KEYWORD_FRAGMENTS = {
     "根据课件", "课件上下文", "关键条件", "中间状态", "输出结果", "整理概念",
     "概念关系", "计算步骤", "人工补充", "当前抽取", "可考方向", "答题要点",
     "实际例子", "易错点", "核心概念", "推演流程",
+    "core concept", "reasoning flow", "exam direction", "answer point",
 }
 
 

@@ -30,6 +30,30 @@ class CourseContextTests(unittest.TestCase):
         self.assertIn("set index", terms)
         self.assertIn("byte offset", terms)
 
+    def test_selected_topic_context_does_not_expand_with_unrelated_global_terms(self):
+        from ai.course_context import extract_relevant_course_context
+
+        content = (
+            "## Cache Mapping\n"
+            "This overview names cache mapping at a high level.\n\n"
+            "## Address Breakdown\n"
+            "The tag, set index, and byte offset determine lookup behavior.\n\n"
+            "## Process Scheduling\n"
+            "Process scheduling, thread states, CPU dispatch, ready queue, context switch, "
+            "process priority, scheduling fairness, and scheduling policy are OS concepts.\n"
+        )
+
+        context = extract_relevant_course_context(
+            content,
+            ["cache mapping"],
+            topic_keywords={"Cache Mapping": ["tag", "set index", "byte offset"]},
+            max_chars=800,
+        )
+
+        self.assertIn("Cache Mapping", context)
+        self.assertIn("Address Breakdown", context)
+        self.assertNotIn("Process Scheduling", context)
+
 
 if __name__ == "__main__":
     unittest.main()

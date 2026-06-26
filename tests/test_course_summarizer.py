@@ -113,11 +113,13 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
 
     def test_inferred_topic_keywords_prioritize_topic_terms_over_template_noise(self):
         noisy_cn = "根据课件上下文 关键条件 中间状态 输出结果 整理概念关系 计算步骤 "
+        noisy_en = "Core concepts reasoning flow examples exam directions answer points overview "
         text = (
             "# Cache Mapping\n"
             "Cache Mapping splits each byte address into tag, set index, and byte offset. "
             "The cache line tag identifies whether the selected set contains the requested block. "
             + noisy_cn * 30
+            + noisy_en * 30
         )
         doc = ExtractedDocument(
             path="cache_mapping.md",
@@ -134,6 +136,8 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
         self.assertIn("tag", topics[0].keywords)
         self.assertIn("set", topics[0].keywords)
         for noise in ("根据课件", "关键条件", "中间状态", "输出结果", "整理概念", "计算步骤"):
+            self.assertNotIn(noise, topics[0].keywords)
+        for noise in ("core", "concept", "example", "exam", "answer", "overview"):
             self.assertNotIn(noise, topics[0].keywords)
 
     def test_generate_falls_back_to_local_summary_when_llm_returns_empty(self):

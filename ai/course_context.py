@@ -25,13 +25,9 @@ def extract_relevant_course_context(
 
     chunks = _split_markdown_sections(course_content)
     selected_terms = _topic_terms(topics, topic_keywords or {})
-    selected_terms.extend(_global_key_terms(course_content, limit=18))
-    scored = []
-    for heading, body in chunks:
-        text = f"{heading}\n{body}".strip()
-        score = _score_text(text, selected_terms)
-        if score > 0:
-            scored.append((score, heading, text))
+    scored = _score_sections(chunks, selected_terms)
+    if not scored:
+        scored = _score_sections(chunks, _global_key_terms(course_content, limit=18))
 
     scored.sort(key=lambda item: item[0], reverse=True)
     picked: list[str] = []
@@ -49,6 +45,19 @@ def extract_relevant_course_context(
 
     header = "以下是与所选主题最相关的课程内容摘录。只基于这些内容出题，不要引入课外细节。\n\n"
     return header + "\n\n---\n\n".join(picked)
+
+
+def _score_sections(
+    chunks: list[tuple[str, str]],
+    terms: list[str],
+) -> list[tuple[int, str, str]]:
+    scored = []
+    for heading, body in chunks:
+        text = f"{heading}\n{body}".strip()
+        score = _score_text(text, terms)
+        if score > 0:
+            scored.append((score, heading, text))
+    return scored
 
 
 def _split_markdown_sections(content: str) -> list[tuple[str, str]]:
