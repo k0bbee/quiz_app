@@ -11,6 +11,7 @@ from ai.connection_probe import ConnectionProbeResult
 from ai.settings_validation import validate_ai_settings
 from core.environment_check import CheckResult, EnvironmentReport
 from core.language_manager import LanguageManager
+from core.ocr_runtime import OCR_REMEDIATION
 from ui.screens.settings_screen import SettingsScreen
 
 
@@ -190,6 +191,17 @@ class AISettingsValidationTests(unittest.TestCase):
         message = info.call_args.args[2]
         self.assertIn("[WARN] Tesseract OCR", message)
         self.assertIn("winget install -e --id UB-Mannheim.TesseractOCR", message)
+
+    def test_settings_screen_copies_ocr_fix_commands(self):
+        screen = SettingsScreen()
+        _APP.clipboard().clear()
+
+        with patch("ui.screens.settings_screen.QMessageBox.information") as info:
+            screen.ocr_fix_btn.click()
+
+        self.assertEqual(OCR_REMEDIATION, _APP.clipboard().text())
+        self.assertTrue(info.called)
+        self.assertIn("winget install -e --id UB-Mannheim.TesseractOCR", info.call_args.args[2])
 
     def test_settings_screen_saves_practice_defaults(self):
         screen = SettingsScreen()

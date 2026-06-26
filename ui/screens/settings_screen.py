@@ -13,11 +13,12 @@ import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QGroupBox, QComboBox, QLineEdit, QFormLayout, QMessageBox,
-    QFileDialog, QScrollArea, QFrame, QSpinBox, QCheckBox
+    QFileDialog, QScrollArea, QFrame, QSpinBox, QCheckBox, QApplication
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 from core.environment_check import collect_environment_report, format_environment_report
+from core.ocr_runtime import OCR_REMEDIATION
 from core.language_manager import LanguageManager
 from config import BASE_DIR, SETTINGS_FILE, DEFAULT_SETTINGS
 from utils.json_io import read_json, write_json
@@ -268,6 +269,13 @@ class SettingsScreen(QWidget):
         self.environment_check_btn.setMinimumHeight(34)
         self.environment_check_btn.clicked.connect(self._show_environment_check)
         self.environment_action_layout.addWidget(self.environment_check_btn)
+        self.ocr_fix_btn = QPushButton(
+            self.lang_manager.get_text("复制 OCR 修复命令", "Copy OCR Fix Commands")
+        )
+        self.ocr_fix_btn.setObjectName("secondaryButton")
+        self.ocr_fix_btn.setMinimumHeight(34)
+        self.ocr_fix_btn.clicked.connect(self._copy_ocr_fix_commands)
+        self.environment_action_layout.addWidget(self.ocr_fix_btn)
         environment_layout.addLayout(self.environment_action_layout)
 
         layout.addWidget(self.environment_group)
@@ -331,6 +339,7 @@ class SettingsScreen(QWidget):
             "Check Python packages, API key persistence, OCR/Tesseract, and data/ write access.",
         ))
         self.environment_check_btn.setText(self.lang_manager.get_text("检查环境", "Check Environment"))
+        self.ocr_fix_btn.setText(self.lang_manager.get_text("复制 OCR 修复命令", "Copy OCR Fix Commands"))
         self.practice_group.setTitle(self.lang_manager.get_text("练习默认值", "Practice Defaults"))
         self.default_question_count_label.setText(
             self.lang_manager.get_text("默认题量:", "Default question count:")
@@ -674,6 +683,17 @@ class SettingsScreen(QWidget):
             self,
             self.lang_manager.get_text("环境检查", "Environment Check"),
             format_environment_report(report),
+        )
+
+    def _copy_ocr_fix_commands(self):
+        QApplication.clipboard().setText(OCR_REMEDIATION)
+        QMessageBox.information(
+            self,
+            self.lang_manager.get_text("已复制", "Copied"),
+            self.lang_manager.get_text(
+                f"OCR/Tesseract 补齐命令已复制到剪贴板：\n\n{OCR_REMEDIATION}",
+                f"OCR/Tesseract remediation commands copied to clipboard:\n\n{OCR_REMEDIATION}",
+            ),
         )
 
     # ── Public ────────────────────────────────────────────────

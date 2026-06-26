@@ -125,6 +125,7 @@ class UiThemeTests(unittest.TestCase):
             for button in (
                 settings.test_ai_btn,
                 settings.environment_check_btn,
+                settings.ocr_fix_btn,
                 settings.export_btn,
                 settings.import_btn,
                 settings.clear_api_key_btn,
