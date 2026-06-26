@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from ai.connection_probe import ConnectionProbeResult
 from ai.settings_validation import validate_ai_settings
+from core.environment_check import CheckResult, EnvironmentReport
 from core.language_manager import LanguageManager
 from ui.screens.settings_screen import SettingsScreen
 
@@ -164,6 +165,31 @@ class AISettingsValidationTests(unittest.TestCase):
             self.assertEqual("连接状态:", screen.ai_connection_status_label.text())
         finally:
             manager.set_language(original)
+
+    def test_settings_screen_exposes_environment_check_with_ocr_fix_options(self):
+        screen = SettingsScreen()
+        report = EnvironmentReport(
+            (
+                CheckResult("Python", True, True, "3.13.5"),
+                CheckResult(
+                    "Tesseract OCR",
+                    False,
+                    False,
+                    "optional system executable not found; scanned PDF OCR is unavailable",
+                    "Windows: winget install -e --id UB-Mannheim.TesseractOCR",
+                ),
+            )
+        )
+
+        with patch("ui.screens.settings_screen.collect_environment_report", return_value=report) as collect, \
+             patch("ui.screens.settings_screen.QMessageBox.information") as info:
+            screen.environment_check_btn.click()
+
+        collect.assert_called_once()
+        self.assertTrue(info.called)
+        message = info.call_args.args[2]
+        self.assertIn("[WARN] Tesseract OCR", message)
+        self.assertIn("winget install -e --id UB-Mannheim.TesseractOCR", message)
 
     def test_settings_screen_does_not_reveal_existing_api_key(self):
         manager = SimpleNamespace(

@@ -17,8 +17,9 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
+from core.environment_check import collect_environment_report, format_environment_report
 from core.language_manager import LanguageManager
-from config import SETTINGS_FILE, DEFAULT_SETTINGS
+from config import BASE_DIR, SETTINGS_FILE, DEFAULT_SETTINGS
 from utils.json_io import read_json, write_json
 from ai.connection_probe import AIConnectionProbe
 from ai.provider_presets import (
@@ -200,6 +201,36 @@ class SettingsScreen(QWidget):
 
         layout.addWidget(self.ai_group)
 
+        # ── Runtime Environment ──
+        self.environment_group = QGroupBox(
+            self.lang_manager.get_text("运行环境", "Runtime Environment")
+        )
+        environment_layout = QVBoxLayout(self.environment_group)
+        environment_layout.setSpacing(10)
+        self.environment_help = QLabel(
+            self.lang_manager.get_text(
+                "检查 Python 依赖、API Key 持久化、OCR/Tesseract 和 data/ 写入权限。",
+                "Check Python packages, API key persistence, OCR/Tesseract, and data/ write access.",
+            )
+        )
+        self.environment_help.setWordWrap(True)
+        self.environment_help.setObjectName("settingsProviderHelp")
+        environment_layout.addWidget(self.environment_help)
+
+        self.environment_action_layout = QHBoxLayout()
+        self.environment_action_layout.setContentsMargins(0, 0, 0, 0)
+        self.environment_action_layout.addStretch()
+        self.environment_check_btn = QPushButton(
+            self.lang_manager.get_text("检查环境", "Check Environment")
+        )
+        self.environment_check_btn.setObjectName("secondaryButton")
+        self.environment_check_btn.setMinimumHeight(34)
+        self.environment_check_btn.clicked.connect(self._show_environment_check)
+        self.environment_action_layout.addWidget(self.environment_check_btn)
+        environment_layout.addLayout(self.environment_action_layout)
+
+        layout.addWidget(self.environment_group)
+
         # ── Data Management ──
         self.data_group = QGroupBox(self.lang_manager.get_text("数据管理", "Data Management"))
         data_layout = QVBoxLayout(self.data_group)
@@ -253,6 +284,12 @@ class SettingsScreen(QWidget):
                 "尚未测试连接。",
                 "Connection has not been tested yet.",
             ))
+        self.environment_group.setTitle(self.lang_manager.get_text("运行环境", "Runtime Environment"))
+        self.environment_help.setText(self.lang_manager.get_text(
+            "检查 Python 依赖、API Key 持久化、OCR/Tesseract 和 data/ 写入权限。",
+            "Check Python packages, API key persistence, OCR/Tesseract, and data/ write access.",
+        ))
+        self.environment_check_btn.setText(self.lang_manager.get_text("检查环境", "Check Environment"))
         self.data_group.setTitle(self.lang_manager.get_text("数据管理", "Data Management"))
         self.export_btn.setText(self.lang_manager.get_text("导出进度", "Export Progress"))
         self.import_btn.setText(self.lang_manager.get_text("导入进度", "Import Progress"))
@@ -545,6 +582,14 @@ class SettingsScreen(QWidget):
             self,
             self.lang_manager.get_text("AI 连接失败", "AI Connection Failed"),
             detail,
+        )
+
+    def _show_environment_check(self):
+        report = collect_environment_report(BASE_DIR)
+        QMessageBox.information(
+            self,
+            self.lang_manager.get_text("环境检查", "Environment Check"),
+            format_environment_report(report),
         )
 
     # ── Public ────────────────────────────────────────────────

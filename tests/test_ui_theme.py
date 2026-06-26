@@ -71,6 +71,7 @@ class UiThemeTests(unittest.TestCase):
             self.assertEqual("primaryButton", settings.save_btn.objectName())
             for button in (
                 settings.test_ai_btn,
+                settings.environment_check_btn,
                 settings.export_btn,
                 settings.import_btn,
                 settings.clear_api_key_btn,

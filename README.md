@@ -16,7 +16,7 @@ python scripts/check_environment.py
 python main.py
 ```
 
-`check_environment.py` 不读取或输出任何 API Key。它会检查 Python 版本、全部 Python 包、keyring backend、Windows DPAPI 回退、Tesseract/语言包和 `data/` 写权限。缺少启动必需项时返回非零退出码；缺少可选 Tesseract 时显示 `WARN`，其他功能仍可启动。需要机器可读结果时使用：
+`check_environment.py` 不读取或输出任何 API Key。它会检查 Python 版本、全部 Python 包、keyring backend、Windows DPAPI 回退、Tesseract/语言包和 `data/` 写权限。缺少启动必需项时返回非零退出码；缺少可选 Tesseract 时显示 `WARN`，其他功能仍可启动。启动应用后，也可以在 **设置 → 运行环境 → 检查环境** 查看同一份诊断和 OCR 补齐命令。需要机器可读结果时使用：
 
 ```bash
 python scripts/check_environment.py --json
