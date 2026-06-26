@@ -89,6 +89,11 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("border-radius", menu_bar_item.group("body"))
         self.assertIn("border:", menu_bar_item.group("body"))
 
+        menu_item = re.search(r"qmenu::item\s*\{(?P<body>[^}]*)\}", qss, flags=re.DOTALL)
+        self.assertIsNotNone(menu_item)
+        self.assertIn("border:", menu_item.group("body"))
+        self.assertIn("border-radius", menu_item.group("body"))
+
         for selector in (
             "qmenubar::item:selected",
             "qmenubar::item:pressed",
@@ -100,6 +105,35 @@ class UiThemeTests(unittest.TestCase):
             "qtoolbar qpushbutton:focus",
         ):
             self.assertIn(selector, qss)
+
+    def test_home_actions_use_dedicated_soft_button_treatment(self):
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+
+        primary_home_rule = re.search(
+            r"qpushbutton\[homeaction=\"primary\"\]\s*\{(?P<body>[^}]*)\}",
+            qss,
+            flags=re.DOTALL,
+        )
+        secondary_home_rule = re.search(
+            r"qpushbutton\[homeaction=\"secondary\"\]\s*\{(?P<body>[^}]*)\}",
+            qss,
+            flags=re.DOTALL,
+        )
+
+        self.assertIsNotNone(primary_home_rule)
+        self.assertIsNotNone(secondary_home_rule)
+        self.assertRegex(primary_home_rule.group("body"), r"border-radius:\s*(1[4-9]|[2-9][0-9])px")
+        self.assertRegex(secondary_home_rule.group("body"), r"border-radius:\s*(1[2-9]|[2-9][0-9])px")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = HomeScreen(
+                ProgressManager(str(Path(tmpdir) / "progress")),
+                QuestionBank(str(Path(tmpdir) / "questions")),
+            )
+
+            self.assertEqual("primary", home.start_btn.property("homeAction"))
+            for button in (home.incorrect_btn, home.ai_btn, home.progress_btn, home.settings_btn):
+                self.assertEqual("secondary", button.property("homeAction"))
 
     def test_fallback_palette_matches_vscode_dark_base(self):
         _apply_dark_palette(_APP)

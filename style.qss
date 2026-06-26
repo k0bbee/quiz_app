@@ -169,6 +169,18 @@ QPushButton#dialogAcceptBtn:focus {
     border-color: #9be5a8;
 }
 
+QPushButton[homeAction="primary"] {
+    min-height: 46px;
+    padding: 10px 18px;
+    border-radius: 16px;
+}
+
+QPushButton[homeAction="secondary"] {
+    min-height: 42px;
+    padding: 9px 16px;
+    border-radius: 14px;
+}
+
 /* Sections */
 QGroupBox {
     color: #cccccc;
@@ -447,17 +459,20 @@ QMenu {
 
 QMenu::item {
     padding: 5px 28px 5px 20px;
+    border: 1px solid transparent;
     border-radius: 4px;
 }
 
 QMenu::item:selected {
     color: #ffffff;
     background-color: #094771;
+    border-color: #007fd4;
 }
 
 QMenu::item:pressed {
     color: #ffffff;
     background-color: #07395d;
+    border-color: #007fd4;
 }
 
 QStatusBar {
