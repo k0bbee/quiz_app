@@ -547,6 +547,7 @@ QLabel#homeSubtitle {
 }
 
 QLabel#homeStatsLabel,
+QLabel#dashboardOverallLabel,
 QLabel#setInfoLabel,
 QLabel#resultsTopicStats,
 QLabel#reviewExplanation {
@@ -561,6 +562,14 @@ QLabel#homeStatsLabel,
 QLabel#dashboardRecentList,
 QLabel#resultsStatsLabel {
     font-size: 13px;
+}
+
+QLabel#dashboardOverallLabel {
+    font-size: 16px;
+}
+
+QListWidget#topicSetList {
+    font-size: 14px;
 }
 
 QLabel#settingsConnectionStatus,
@@ -648,6 +657,10 @@ QPushButton#homeStartBtn {
 
 QPushButton#homeActionBtn {
     min-height: 30px;
+    font-size: 13px;
+}
+
+QToolBar QPushButton#toolbarButton {
     font-size: 13px;
 }
 

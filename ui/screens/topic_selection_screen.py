@@ -36,7 +36,7 @@ class TopicSelectionScreen(QWidget):
 
         # Title
         self.title_label = QLabel(self.lang_manager.get_text("选择题目集", "Select Question Set"))
-        self.title_label.setStyleSheet("font-size: 20px; font-weight: bold; padding-bottom: 12px;")
+        self.title_label.setObjectName("screenTitle")
         layout.addWidget(self.title_label)
 
         # Filters
@@ -62,7 +62,7 @@ class TopicSelectionScreen(QWidget):
         self.list_label = QLabel(self.lang_manager.get_text("可用的题目集:", "Available question sets:"))
         layout.addWidget(self.list_label)
         self.set_list = QListWidget()
-        self.set_list.setStyleSheet("font-size: 14px;")
+        self.set_list.setObjectName("topicSetList")
         self.set_list.setMinimumHeight(250)
         self.set_list.currentItemChanged.connect(self._on_set_selected)
         layout.addWidget(self.set_list)
@@ -77,24 +77,27 @@ class TopicSelectionScreen(QWidget):
         btn_layout.addStretch()
 
         self.back_btn = QPushButton(self.lang_manager.get_text("← 返回", "← Back"))
+        self.back_btn.setObjectName("secondaryButton")
         self.back_btn.clicked.connect(self.back_to_home.emit)
         btn_layout.addWidget(self.back_btn)
 
         self.export_btn = QPushButton(self.lang_manager.get_text("Export Mock Exam", "Export Mock Exam"))
+        self.export_btn.setObjectName("secondaryButton")
         self.export_btn.setMinimumHeight(40)
         self.export_btn.clicked.connect(self._export_selected_set)
         self.export_btn.setEnabled(False)
         btn_layout.addWidget(self.export_btn)
 
         self.regenerate_btn = QPushButton(self.lang_manager.get_text("Regenerate Questions", "Regenerate Questions"))
+        self.regenerate_btn.setObjectName("secondaryButton")
         self.regenerate_btn.setMinimumHeight(40)
         self.regenerate_btn.clicked.connect(self._regenerate_selected_set)
         self.regenerate_btn.setEnabled(False)
         btn_layout.addWidget(self.regenerate_btn)
 
         self.start_btn = QPushButton(self.lang_manager.get_text("▶ 开始答题", "▶ Start Quiz"))
+        self.start_btn.setObjectName("primaryButton")
         self.start_btn.setMinimumHeight(40)
-        self.start_btn.setStyleSheet("font-size: 15px; font-weight: bold;")
         self.start_btn.clicked.connect(self._start_quiz)
         self.start_btn.setEnabled(False)
         self.export_btn.setEnabled(False)

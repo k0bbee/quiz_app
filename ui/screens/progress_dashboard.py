@@ -34,7 +34,7 @@ class ProgressDashboard(QWidget):
         layout.setSpacing(12)
 
         self.title = QLabel()
-        self.title.setStyleSheet("font-size: 20px; font-weight: bold; padding-bottom: 12px;")
+        self.title.setObjectName("screenTitle")
         layout.addWidget(self.title)
 
         # Overall summary
@@ -42,7 +42,7 @@ class ProgressDashboard(QWidget):
         summary_layout = QVBoxLayout(self.summary_group)
 
         self.overall_label = QLabel()
-        self.overall_label.setStyleSheet("font-size: 16px; padding: 8px;")
+        self.overall_label.setObjectName("dashboardOverallLabel")
         summary_layout.addWidget(self.overall_label)
 
         self.detail_label = QLabel()
@@ -72,7 +72,7 @@ class ProgressDashboard(QWidget):
         recent_layout = QVBoxLayout(self.recent_group)
 
         self.recent_list = QListWidget()
-        self.recent_list.setStyleSheet("font-size: 13px;")
+        self.recent_list.setObjectName("dashboardRecentList")
         recent_layout.addWidget(self.recent_list)
 
         layout.addWidget(self.recent_group)
@@ -82,10 +82,12 @@ class ProgressDashboard(QWidget):
         btn_layout.addStretch()
 
         self.refresh_btn = QPushButton()
+        self.refresh_btn.setObjectName("secondaryButton")
         self.refresh_btn.clicked.connect(self.refresh)
         btn_layout.addWidget(self.refresh_btn)
 
         self.reset_btn = QPushButton()
+        self.reset_btn.setObjectName("dangerButton")
         self.reset_btn.clicked.connect(self._reset_progress)
         btn_layout.addWidget(self.reset_btn)
 

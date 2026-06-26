@@ -38,7 +38,6 @@ class ResultsScreen(QWidget):
         self.score_label = QLabel()
         self.score_label.setObjectName("resultsScoreLabel")
         self.score_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.score_label.setStyleSheet("font-size: 36px; font-weight: bold; padding: 20px;")
         layout.addWidget(self.score_label)
 
         # Summary bar
@@ -65,7 +64,7 @@ class ResultsScreen(QWidget):
 
         # Review label
         self.review_label = QLabel(self.lang_manager.get_text("回顾:", "Review:"))
-        self.review_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        self.review_label.setObjectName("resultsReviewLabel")
         layout.addWidget(self.review_label)
 
         # Scrollable review list
@@ -87,6 +86,7 @@ class ResultsScreen(QWidget):
         self.retry_incorrect_btn = QPushButton(
             self.lang_manager.get_text("🔄 只重做错题", "🔄 Retry Incorrect Only")
         )
+        self.retry_incorrect_btn.setObjectName("primaryButton")
         self.retry_incorrect_btn.setMinimumHeight(40)
         self.retry_incorrect_btn.setMinimumWidth(150)
         self.retry_incorrect_btn.clicked.connect(self.retry_incorrect.emit)
@@ -95,6 +95,7 @@ class ResultsScreen(QWidget):
         self.retry_all_btn = QPushButton(
             self.lang_manager.get_text("🔁 重新练习全部", "🔁 Retry Entire Set")
         )
+        self.retry_all_btn.setObjectName("secondaryButton")
         self.retry_all_btn.setMinimumHeight(40)
         self.retry_all_btn.setMinimumWidth(150)
         self.retry_all_btn.clicked.connect(self.retry_all.emit)
@@ -103,6 +104,7 @@ class ResultsScreen(QWidget):
         self.back_btn = QPushButton(
             self.lang_manager.get_text("🏠 返回选题", "🏠 Back to Topics")
         )
+        self.back_btn.setObjectName("secondaryButton")
         self.back_btn.setMinimumHeight(40)
         self.back_btn.setMinimumWidth(130)
         self.back_btn.clicked.connect(self.back_to_topics.emit)

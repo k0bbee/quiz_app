@@ -13,13 +13,18 @@ from PyQt6.QtWidgets import QApplication, QGridLayout, QSplitter
 from core.progress_tracker import ProgressManager
 from models.course_project import CourseProjectManager
 from models.question import QuestionBank
+from models.question_set import SetManager
 from main import _apply_dark_palette
+from ui.main_window import MainWindow
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from ui.screens.course_screen import CourseScreen
 from ui.screens.home_screen import HomeScreen
+from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.question_bank_screen import QuestionBankScreen
 from ui.screens.quiz_screen import QuizScreen
+from ui.screens.results_screen import ResultsScreen
 from ui.screens.settings_screen import SettingsScreen
+from ui.screens.topic_selection_screen import TopicSelectionScreen
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -280,6 +285,40 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual("secondaryButton", quiz.skip_btn.objectName())
         self.assertEqual("primaryButton", quiz.submit_btn.objectName())
         self.assertEqual("primaryButton", quiz.next_btn.objectName())
+
+    def test_main_flow_pages_use_theme_button_roles(self):
+        for path in (
+            Path("ui/screens/topic_selection_screen.py"),
+            Path("ui/screens/results_screen.py"),
+            Path("ui/screens/progress_dashboard.py"),
+        ):
+            self.assertNotIn(".setStyleSheet(", path.read_text(encoding="utf-8"))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            progress_manager = ProgressManager(str(root / "progress"))
+            question_bank = QuestionBank(str(root / "questions"))
+
+            topic = TopicSelectionScreen(SetManager(str(root / "sets")), progress_manager)
+            results = ResultsScreen()
+            progress = ProgressDashboard(progress_manager, question_bank)
+            main_window = MainWindow()
+            self.addCleanup(main_window.close)
+
+        self.assertEqual("secondaryButton", topic.back_btn.objectName())
+        self.assertEqual("secondaryButton", topic.export_btn.objectName())
+        self.assertEqual("secondaryButton", topic.regenerate_btn.objectName())
+        self.assertEqual("primaryButton", topic.start_btn.objectName())
+
+        self.assertEqual("primaryButton", results.retry_incorrect_btn.objectName())
+        self.assertEqual("secondaryButton", results.retry_all_btn.objectName())
+        self.assertEqual("secondaryButton", results.back_btn.objectName())
+
+        self.assertEqual("secondaryButton", progress.refresh_btn.objectName())
+        self.assertEqual("dangerButton", progress.reset_btn.objectName())
+
+        for button in (main_window.topics_btn, main_window.progress_btn, main_window.courses_btn):
+            self.assertEqual("toolbarButton", button.objectName())
 
 
 if __name__ == "__main__":
