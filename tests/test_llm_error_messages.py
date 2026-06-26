@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QApplication
 
 from ai.batch_generator import GenerationWorker
 from ai.llm_client import LLMClient
+from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -44,6 +45,24 @@ class LLMErrorMessageTests(unittest.TestCase):
         worker.run()
 
         self.assertEqual(["OpenAI-compatible API error 401: invalid API key"], errors)
+
+    def test_generation_dialog_keeps_error_status_after_worker_finished(self):
+        dialog = AIGenerationDialog(
+            "Cache content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=["cache"],
+        )
+
+        with patch("ui.dialogs.ai_generation_dialog.QMessageBox.critical"):
+            dialog._on_error("OpenAI-compatible API error 401: invalid API key")
+        dialog._on_finished()
+
+        self.assertIn("invalid API key", dialog.status_label.text())
+        self.assertNotIn("No questions were generated", dialog.status_label.text())
 
     def test_client_blocks_unsafe_remote_endpoint_before_network_request(self):
         client = LLMClient(

@@ -39,6 +39,7 @@ class AIGenerationDialog(QDialog):
         self.lang_manager = LanguageManager.instance()
         self.generated_questions: list[Question] = []
         self.worker: GenerationWorker = None
+        self._generation_failed = False
 
         self.setWindowTitle(self.lang_manager.get_text("AI 出题", "AI Question Generation"))
         self.resize(1000, 700)
@@ -635,6 +636,7 @@ class AIGenerationDialog(QDialog):
         generation_config = self._build_generation_config()
 
         # Disable UI during generation
+        self._generation_failed = False
         self.generate_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # Indeterminate
@@ -688,6 +690,7 @@ class AIGenerationDialog(QDialog):
         self.generated_questions = questions
 
     def _on_error(self, message: str):
+        self._generation_failed = True
         if self.lang_manager.current == "zh":
             self.status_label.setText(f"错误: {message}")
         else:
@@ -699,6 +702,10 @@ class AIGenerationDialog(QDialog):
     def _on_finished(self):
         self.progress_bar.setVisible(False)
         self.generate_btn.setEnabled(True)
+        if self._generation_failed:
+            if self.worker:
+                self.worker.wait(2000)
+            return
 
         if self.generated_questions:
             if self.lang_manager.current == "zh":
