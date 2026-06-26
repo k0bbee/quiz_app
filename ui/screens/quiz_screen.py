@@ -184,21 +184,25 @@ class QuizScreen(QWidget):
 
     # --- Public interface ---
 
-    def start_quiz(self, question_set: QuestionSet, questions: list[Question]):
+    def start_quiz(self, question_set: QuestionSet, questions: list[Question], show_timer: bool = False):
         """Start a quiz session with a question set."""
         self._question_set = question_set
         lang = self.lang_manager.current
         self._last_user_answer = None
         self.answer_area.clear()
         self.feedback_frame.hide()
+        self.timer_label.setVisible(show_timer)
         self.session.start(question_set, questions, lang)
         self.submit_btn.setText(self.lang_manager.get_text("提交答案 ✓", "Submit Answer ✓"))
         self.submit_btn.setEnabled(False)
         self.skip_btn.setEnabled(True)
-        self.session_timer.start()
         self._update_timer()
+        if show_timer:
+            self.session_timer.start()
+        else:
+            self.session_timer.stop()
 
-    def start_quiz_custom(self, questions: list[Question], label: str = "Custom"):
+    def start_quiz_custom(self, questions: list[Question], label: str = "Custom", show_timer: bool = False):
         """Start a custom quiz session (e.g., retry incorrect)."""
         from models.question_set import QuestionSet
         qs = QuestionSet.create_new(
@@ -207,7 +211,7 @@ class QuizScreen(QWidget):
             topics=[], question_ids=[q.question_id for q in questions],
             source="retry"
         )
-        self.start_quiz(qs, questions)
+        self.start_quiz(qs, questions, show_timer=show_timer)
 
     # --- Internal UI logic ---
 

@@ -280,7 +280,7 @@ class MainWindow(QMainWindow):
             return
 
         self._active_questions = {q.question_id: q for q in questions}
-        self.quiz_screen.start_quiz(question_set, questions)
+        self.quiz_screen.start_quiz(question_set, questions, show_timer=self._show_timer_setting())
         self.navigate_to(self.SCREEN_QUIZ)
 
     def _on_export_mock_exam(self, set_id: str):
@@ -358,7 +358,11 @@ class MainWindow(QMainWindow):
         questions = self.question_bank.get_many(incorrect_ids, course_id=self._current_course_id())
         if questions:
             self._active_questions = {q.question_id: q for q in questions}
-            self.quiz_screen.start_quiz_custom(questions, gm("重做：错题", "Retry: Incorrect Questions"))
+            self.quiz_screen.start_quiz_custom(
+                questions,
+                gm("重做：错题", "Retry: Incorrect Questions"),
+                show_timer=self._show_timer_setting(),
+            )
             self.navigate_to(self.SCREEN_QUIZ)
 
     def _on_practice_incorrect(self):
@@ -387,7 +391,7 @@ class MainWindow(QMainWindow):
 
         self._active_questions = {q.question_id: q for q in questions}
         label = gm("历史错题复习", "Incorrect Review")
-        self.quiz_screen.start_quiz_custom(questions, label)
+        self.quiz_screen.start_quiz_custom(questions, label, show_timer=self._show_timer_setting())
         self.navigate_to(self.SCREEN_QUIZ)
 
     def _on_ai_generate(self):
@@ -544,8 +548,11 @@ class MainWindow(QMainWindow):
             questions = self.question_bank.get_many(question_set.questions)
             if questions:
                 self._active_questions = {q.question_id: q for q in questions}
-                self.quiz_screen.start_quiz(question_set, questions)
+                self.quiz_screen.start_quiz(question_set, questions, show_timer=self._show_timer_setting())
                 self.navigate_to(self.SCREEN_QUIZ)
+
+    def _show_timer_setting(self) -> bool:
+        return bool(self.settings_screen._settings.get("show_timer", False))
 
     def _on_course_changed(self):
         """Refresh app state after switching/importing course projects."""

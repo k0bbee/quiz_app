@@ -19,6 +19,7 @@ from core.progress_tracker import ProgressManager
 from core.language_manager import LanguageManager
 from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
+from ui.screens.quiz_screen import QuizScreen
 from ui.widgets.answer_area import MatchingWidget
 from utils.constants import Difficulty, QuestionType
 
@@ -78,6 +79,39 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertEqual(widget.left_list.count(), 2)
         self.assertEqual(widget.left_list.item(0).text(), "CPU")
         self.assertEqual(len(widget.get_answer()), 2)
+
+    def test_quiz_screen_timer_visibility_follows_setting(self):
+        question = Question.create_new(
+            qtype=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "问题", "options": ["A. 对", "B. 错"], "explanation": "解释说明"},
+                "en": {"stem": "Question", "options": ["A. Right", "B. Wrong"], "explanation": "Explanation text"},
+            },
+            correct_answer="A",
+            topic="test",
+        )
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=[question.question_id],
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            hidden_timer_screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            hidden_timer_screen.start_quiz(qset, [question], show_timer=False)
+            self.assertTrue(hidden_timer_screen.timer_label.isHidden())
+
+            visible_timer_screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            visible_timer_screen.start_quiz(qset, [question], show_timer=True)
+            self.assertFalse(visible_timer_screen.timer_label.isHidden())
+            visible_timer_screen.session_timer.stop()
 
     def test_quiz_session_abandon_returns_abandoned_record(self):
         question = Question.create_new(
@@ -259,9 +293,10 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             started = {}
 
             class FakeQuizScreen:
-                def start_quiz_custom(self, questions, label):
+                def start_quiz_custom(self, questions, label, show_timer=False):
                     started["questions"] = questions
                     started["label"] = label
+                    started["show_timer"] = show_timer
 
             shell = types.SimpleNamespace(
                 progress_manager=progress_manager,
@@ -271,6 +306,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 _active_questions={},
                 SCREEN_QUIZ=2,
                 _current_course_id=lambda: "course-a",
+                _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
 
