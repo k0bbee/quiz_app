@@ -12,11 +12,12 @@ from PyQt6.QtWidgets import QApplication, QGridLayout, QSplitter
 
 from core.progress_tracker import ProgressManager
 from models.course_project import CourseProjectManager
-from models.question import QuestionBank
+from models.question import Question, QuestionBank
 from models.question_set import SetManager
 from main import _apply_dark_palette
 from ui.main_window import MainWindow
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
+from ui.dialogs.question_review_dialog import QuestionReviewDialog
 from ui.screens.course_screen import CourseScreen
 from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
@@ -25,6 +26,8 @@ from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
 from ui.screens.settings_screen import SettingsScreen
 from ui.screens.topic_selection_screen import TopicSelectionScreen
+from ui.widgets.answer_area import OrderingWidget
+from utils.constants import Difficulty, QuestionType
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -319,6 +322,33 @@ class UiThemeTests(unittest.TestCase):
 
         for button in (main_window.topics_btn, main_window.progress_btn, main_window.courses_btn):
             self.assertEqual("toolbarButton", button.objectName())
+
+    def test_review_dialog_and_ordering_controls_use_theme_roles(self):
+        source = Path("ui/dialogs/question_review_dialog.py").read_text(encoding="utf-8")
+        self.assertNotIn(".setStyleSheet(", source)
+
+        question = Question.create_new(
+            QuestionType.MULTIPLE_CHOICE,
+            Difficulty.MEDIUM,
+            {
+                "zh": {"stem": "问题？", "options": ["A", "B"], "explanation": "解释"},
+                "en": {"stem": "Question?", "options": ["A", "B"], "explanation": "Explanation"},
+            },
+            "A",
+            "general",
+        )
+        dialog = QuestionReviewDialog([question])
+        ordering = OrderingWidget()
+
+        self.assertEqual("secondaryButton", dialog.accept_all_btn.objectName())
+        self.assertEqual("dangerButton", dialog.reject_all_btn.objectName())
+        self.assertEqual("secondaryButton", dialog.accept_btn.objectName())
+        self.assertEqual("dangerButton", dialog.reject_btn.objectName())
+        self.assertEqual("secondaryButton", dialog.cancel_btn.objectName())
+        self.assertEqual("primaryButton", dialog.save_btn.objectName())
+
+        self.assertEqual("secondaryButton", ordering.up_btn.objectName())
+        self.assertEqual("secondaryButton", ordering.down_btn.objectName())
 
 
 if __name__ == "__main__":

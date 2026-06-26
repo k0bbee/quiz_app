@@ -572,6 +572,11 @@ QListWidget#topicSetList {
     font-size: 14px;
 }
 
+QListWidget#orderingList {
+    font-size: 13px;
+    padding: 4px;
+}
+
 QLabel#settingsConnectionStatus,
 QLabel#settingsConnectionStatusOk,
 QLabel#settingsConnectionStatusError {

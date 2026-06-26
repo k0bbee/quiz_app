@@ -350,12 +350,14 @@ class OrderingWidget(QWidget):
         layout = QVBoxLayout(self)
 
         self.list_widget = QListWidget()
-        self.list_widget.setStyleSheet("font-size: 13px; padding: 4px;")
+        self.list_widget.setObjectName("orderingList")
         self.list_widget.setDragDropMode(QListWidget.DragDropMode.InternalMove)
 
         btn_layout = QHBoxLayout()
         self.up_btn = QPushButton(self.lang_manager.get_text("▲ 上移", "▲ Up"))
+        self.up_btn.setObjectName("secondaryButton")
         self.down_btn = QPushButton(self.lang_manager.get_text("▼ 下移", "▼ Down"))
+        self.down_btn.setObjectName("secondaryButton")
         btn_layout.addStretch()
         btn_layout.addWidget(self.up_btn)
         btn_layout.addWidget(self.down_btn)
