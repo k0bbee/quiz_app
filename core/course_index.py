@@ -97,9 +97,11 @@ def _retrieve_cached(
         return data.get("summary", "")[:max_chars]
 
     terms = []
+    topic_keywords = data.get("topic_keywords", {})
     for topic in topic_key:
         terms.extend(extract_terms(topic, limit=12))
         terms.append(topic.lower())
+        terms.extend(topic_keywords.get(topic, []))
 
     if not terms:
         terms = extract_terms(data.get("summary", ""), limit=24)
@@ -144,6 +146,11 @@ def _project_payload(project: CourseProject) -> str:
         {
             "summary": project.summary_markdown,
             "index": project.documents[0].get("_course_index", []) if project.documents else [],
+            "topic_keywords": {
+                str(getattr(topic, "title", "")): list(getattr(topic, "keywords", []) or [])
+                for topic in getattr(project, "topics", []) or []
+                if str(getattr(topic, "title", "")).strip()
+            },
         },
         ensure_ascii=False,
         sort_keys=True,
