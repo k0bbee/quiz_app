@@ -74,6 +74,18 @@ class CourseIndexCacheTests(unittest.TestCase):
         for noise in ("根据课件", "关键条件", "中间状态", "输出结果", "整理概念", "计算步骤"):
             self.assertNotIn(noise, terms)
 
+    def test_retrieval_terms_are_not_limited_to_computer_science_vocabulary(self):
+        terms = course_index.extract_terms(
+            (
+                "DNA replication uses polymerase enzymes. DNA strands are copied with ATP energy. "
+                "Protein folding depends on enzyme shape, protein charge, and RNA regulation."
+            ),
+            limit=10,
+        )
+
+        for term in ("dna", "atp", "protein", "enzyme", "rna"):
+            self.assertIn(term, terms)
+
 
 if __name__ == "__main__":
     unittest.main()

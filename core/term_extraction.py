@@ -39,17 +39,25 @@ def extract_course_terms(text: str, limit: int = 20) -> Counter:
     """Extract high-value course terms with shared noise filtering."""
     phrases = re.findall(r"[A-Z][a-z]+_[A-Z][a-z]+(?:_[A-Z][a-z]+)?", text)
     tokens = re.findall(r"[\u4e00-\u9fff]{2,8}|[A-Za-z][A-Za-z0-9_+-]{2,}", text)
-    normalized = []
+    candidates: list[tuple[str, str]] = []
     for token in phrases + tokens:
-        key = token.lower()
+        key = _normalize_english_plural(token.lower())
         if key in STOP_WORDS:
             continue
         if is_low_value_keyword(key):
             continue
         if token.isdigit():
             continue
+        candidates.append((key, token))
+
+    counts = Counter(key for key, _ in candidates)
+    normalized = []
+    for key, token in candidates:
         if re.match(r"^[a-z]{2,10}$", key) and key not in TECHNICAL_KEYWORDS:
-            continue
+            is_acronym = token.isupper() and 2 <= len(token) <= 8
+            is_repeated_domain_term = counts[key] >= 2
+            if not (is_acronym or is_repeated_domain_term):
+                continue
         normalized.append(key)
     return Counter(dict(Counter(normalized).most_common(limit)))
 
@@ -57,3 +65,9 @@ def extract_course_terms(text: str, limit: int = 20) -> Counter:
 def is_low_value_keyword(term: str) -> bool:
     """Return True for generated scaffolding terms that do not identify a topic."""
     return any(fragment in term for fragment in LOW_VALUE_KEYWORD_FRAGMENTS)
+
+
+def _normalize_english_plural(term: str) -> str:
+    if re.match(r"^[a-z]{5,}s$", term) and not term.endswith("ss"):
+        return term[:-1]
+    return term
