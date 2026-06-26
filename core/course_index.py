@@ -101,8 +101,8 @@ def _retrieve_cached(
     for topic in topic_key:
         terms.extend(extract_terms(topic, limit=12))
         terms.append(topic.lower())
-        terms.extend(topic_keywords.get(topic, []))
-        terms.extend(topic_keywords.get(topic.lower(), []))
+        terms.extend(_expanded_terms(topic_keywords.get(topic, [])))
+        terms.extend(_expanded_terms(topic_keywords.get(topic.lower(), [])))
 
     if not terms:
         terms = extract_terms(data.get("summary", ""), limit=24)
@@ -158,12 +158,37 @@ def _topic_keyword_payload(project: CourseProject) -> dict[str, list[str]]:
     topic_keywords: dict[str, list[str]] = {}
     for topic in getattr(project, "topics", []) or []:
         title = str(getattr(topic, "title", "")).strip()
-        if not title:
-            continue
         keywords = list(getattr(topic, "keywords", []) or [])
-        topic_keywords[title] = keywords
-        topic_keywords[title.lower()] = keywords
+        for key in _topic_lookup_keys(
+            title,
+            str(getattr(topic, "topic_id", "")).strip(),
+        ):
+            topic_keywords[key] = keywords
     return topic_keywords
+
+
+def _expanded_terms(values: list[str]) -> list[str]:
+    terms: list[str] = []
+    for value in values or []:
+        clean = str(value or "").strip()
+        if not clean:
+            continue
+        terms.append(clean.lower())
+        terms.extend(extract_terms(clean, limit=12))
+    return terms
+
+
+def _topic_lookup_keys(*values: str) -> list[str]:
+    keys: list[str] = []
+    for value in values:
+        clean = str(value or "").strip()
+        if not clean:
+            continue
+        slug = re.sub(r"[^A-Za-z0-9\u4e00-\u9fff]+", "_", clean).strip("_").lower()
+        for candidate in (clean, clean.lower(), slug):
+            if candidate and candidate not in keys:
+                keys.append(candidate)
+    return keys
 
 
 def _trim_payload_cache() -> None:

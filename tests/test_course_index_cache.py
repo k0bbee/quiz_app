@@ -128,6 +128,48 @@ class CourseIndexCacheTests(unittest.TestCase):
         self.assertIn("Address Breakdown", context)
         self.assertIn("byte offset", context)
 
+    def test_retrieval_matches_project_topic_keywords_by_topic_id(self):
+        summary = (
+            "## Cache Mapping\n"
+            "This high-level overview names cache mapping but omits address field details.\n\n"
+            "## Address Breakdown\n"
+            "The tag, set index, and byte offset determine lookup behavior.\n"
+        )
+        project = CourseProject(
+            course_id="course-topic-id-keywords",
+            title="Systems",
+            source_folder="",
+            summary_markdown=summary,
+            summary_path="",
+            topics=[
+                CourseTopic(
+                    topic_id="cache_mapping",
+                    title="Cache Mapping",
+                    keywords=["tag", "set index", "byte offset"],
+                    source_files=["summary.md"],
+                )
+            ],
+            documents=[
+                {
+                    "path": "summary.md",
+                    "title": "summary",
+                    "extension": ".md",
+                    "_course_index": course_index.build_course_index(summary),
+                }
+            ],
+            created_at="2026-06-26T00:00:00+00:00",
+            updated_at="2026-06-26T00:00:00+00:00",
+        )
+
+        context = course_index.retrieve_course_context(
+            project,
+            ["cache_mapping"],
+            max_chars=180,
+        )
+
+        self.assertIn("Address Breakdown", context)
+        self.assertIn("byte offset", context)
+
 
 if __name__ == "__main__":
     unittest.main()
