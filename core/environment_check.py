@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 
-from core.ocr_runtime import find_tessdata_dir, find_tesseract_executable
+from core.ocr_runtime import OCR_REMEDIATION, find_tessdata_dir, find_tesseract_executable
 from core.windows_dpapi_store import WindowsDPAPISecretStore
 
 
@@ -124,12 +124,7 @@ def collect_environment_report(project_root: str | Path) -> EnvironmentReport:
 
 
 def _check_tesseract(project_root: str | Path) -> CheckResult:
-    remediation = (
-        "Windows: winget install -e --id UB-Mannheim.TesseractOCR "
-        "--accept-package-agreements --accept-source-agreements; "
-        "Alternative: choco install tesseract; then reopen the terminal and rerun "
-        "python scripts/check_environment.py."
-    )
+    remediation = OCR_REMEDIATION
     executable = find_tesseract_executable()
     if not executable:
         return CheckResult(

@@ -12,10 +12,18 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
 from core.course_initializer import CourseInitializer
+from core.ocr_runtime import OCR_REMEDIATION
 from models.course_project import CourseProjectManager
 from core.language_manager import LanguageManager
 from config import SETTINGS_FILE
 from utils.json_io import read_json
+
+
+def _contains_ocr_warning(warnings) -> bool:
+    return any(
+        "ocr" in str(warning).lower() or "tesseract" in str(warning).lower()
+        for warning in warnings
+    )
 
 
 class CourseScreen(QWidget):
@@ -420,6 +428,13 @@ class CourseScreen(QWidget):
                 f"- 另有 {remaining} 条警告未显示。",
                 f"- {remaining} more warning(s) not shown.",
             ))
+        if _contains_ocr_warning(warning for _, warning in warnings):
+            lines.append("")
+            lines.append(self.lang_manager.get_text(
+                "OCR 补齐选项：",
+                "OCR setup options:",
+            ))
+            lines.append(OCR_REMEDIATION)
         return f"{message}\n\n" + "\n".join(lines)
 
     def _on_regen_error(self, error_msg):

@@ -414,6 +414,35 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertNotIn("warning four", message)
             self.assertIn("1 more", message)
 
+    def test_course_screen_document_warnings_include_ocr_fix_options(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            screen = CourseScreen(manager)
+            language_manager = LanguageManager.instance()
+            previous_language = language_manager.current
+            self.addCleanup(language_manager.set_language, previous_language)
+            language_manager.set_language("en")
+            project = CourseProject(
+                course_id="course-ocr-warning",
+                title="Systems",
+                source_folder=str(Path(tmpdir) / "source"),
+                summary_markdown="# Summary\n",
+                summary_path="",
+                topics=self._topics(),
+                documents=[{
+                    "path": str(Path(tmpdir) / "scan.pdf"),
+                    "warnings": ["OCR fallback unavailable: tesseract executable not found"],
+                }],
+                created_at="2026-06-23T00:00:00+00:00",
+                updated_at="2026-06-23T00:00:00+00:00",
+            )
+
+            message = screen._with_document_warnings("Course ready.", project)
+
+            self.assertIn("OCR setup options", message)
+            self.assertIn("winget install -e --id UB-Mannheim.TesseractOCR", message)
+            self.assertIn("data/tessdata", message)
+
     def test_course_screen_leaves_message_unchanged_without_document_warnings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = CourseProjectManager(str(Path(tmpdir) / "projects"))

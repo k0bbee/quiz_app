@@ -14,6 +14,14 @@ COMMON_TESSERACT_EXECUTABLES = (
     Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
 )
 
+OCR_REMEDIATION = (
+    "Windows: winget install -e --id UB-Mannheim.TesseractOCR "
+    "--accept-package-agreements --accept-source-agreements; "
+    "Alternative: choco install tesseract; "
+    "Language data fallback: put eng.traineddata and chi_sim.traineddata in data/tessdata; "
+    "then reopen the terminal and rerun python scripts/check_environment.py."
+)
+
 
 def find_tesseract_executable() -> str:
     """Return a usable Tesseract executable from PATH or common Windows paths."""
