@@ -121,7 +121,7 @@ class CourseIndexCacheTests(unittest.TestCase):
 
         context = course_index.retrieve_course_context(
             project,
-            ["Cache Mapping"],
+            ["cache mapping"],
             max_chars=260,
         )
 

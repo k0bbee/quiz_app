@@ -102,6 +102,7 @@ def _retrieve_cached(
         terms.extend(extract_terms(topic, limit=12))
         terms.append(topic.lower())
         terms.extend(topic_keywords.get(topic, []))
+        terms.extend(topic_keywords.get(topic.lower(), []))
 
     if not terms:
         terms = extract_terms(data.get("summary", ""), limit=24)
@@ -146,15 +147,23 @@ def _project_payload(project: CourseProject) -> str:
         {
             "summary": project.summary_markdown,
             "index": project.documents[0].get("_course_index", []) if project.documents else [],
-            "topic_keywords": {
-                str(getattr(topic, "title", "")): list(getattr(topic, "keywords", []) or [])
-                for topic in getattr(project, "topics", []) or []
-                if str(getattr(topic, "title", "")).strip()
-            },
+            "topic_keywords": _topic_keyword_payload(project),
         },
         ensure_ascii=False,
         sort_keys=True,
     )
+
+
+def _topic_keyword_payload(project: CourseProject) -> dict[str, list[str]]:
+    topic_keywords: dict[str, list[str]] = {}
+    for topic in getattr(project, "topics", []) or []:
+        title = str(getattr(topic, "title", "")).strip()
+        if not title:
+            continue
+        keywords = list(getattr(topic, "keywords", []) or [])
+        topic_keywords[title] = keywords
+        topic_keywords[title.lower()] = keywords
+    return topic_keywords
 
 
 def _trim_payload_cache() -> None:
