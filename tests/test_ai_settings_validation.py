@@ -191,6 +191,22 @@ class AISettingsValidationTests(unittest.TestCase):
         self.assertIn("[WARN] Tesseract OCR", message)
         self.assertIn("winget install -e --id UB-Mannheim.TesseractOCR", message)
 
+    def test_settings_screen_saves_practice_defaults(self):
+        screen = SettingsScreen()
+        screen.default_question_count_input.setValue(24)
+        screen.default_difficulty_combo.setCurrentIndex(
+            screen.default_difficulty_combo.findData("hard")
+        )
+        screen.show_timer_checkbox.setChecked(True)
+
+        with patch("ui.screens.settings_screen.write_json", return_value=True) as write_json:
+            screen.save_settings(silent=True)
+
+        saved = write_json.call_args.args[1]
+        self.assertEqual(24, saved["default_question_count"])
+        self.assertEqual("hard", saved["default_difficulty"])
+        self.assertTrue(saved["show_timer"])
+
     def test_settings_screen_does_not_reveal_existing_api_key(self):
         manager = SimpleNamespace(
             get_key=lambda: "sk-super-secret",

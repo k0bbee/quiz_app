@@ -13,7 +13,7 @@ import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QGroupBox, QComboBox, QLineEdit, QFormLayout, QMessageBox,
-    QFileDialog, QScrollArea, QFrame
+    QFileDialog, QScrollArea, QFrame, QSpinBox, QCheckBox
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
@@ -201,6 +201,47 @@ class SettingsScreen(QWidget):
 
         layout.addWidget(self.ai_group)
 
+        # ── Practice Defaults ──
+        self.practice_group = QGroupBox(
+            self.lang_manager.get_text("练习默认值", "Practice Defaults")
+        )
+        self.practice_form_layout = QFormLayout(self.practice_group)
+        self.practice_form_layout.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.practice_form_layout.setHorizontalSpacing(16)
+        self.practice_form_layout.setVerticalSpacing(10)
+
+        self.default_question_count_input = QSpinBox()
+        self.default_question_count_input.setRange(3, 60)
+        self.default_question_count_input.setSingleStep(1)
+        self.default_question_count_label = QLabel(
+            self.lang_manager.get_text("默认题量:", "Default question count:")
+        )
+        self.practice_form_layout.addRow(
+            self.default_question_count_label,
+            self.default_question_count_input,
+        )
+
+        self.default_difficulty_combo = QComboBox()
+        self.default_difficulty_combo.addItem(self.lang_manager.get_text("简单", "Easy"), "easy")
+        self.default_difficulty_combo.addItem(self.lang_manager.get_text("中等", "Medium"), "medium")
+        self.default_difficulty_combo.addItem(self.lang_manager.get_text("困难", "Hard"), "hard")
+        self.default_difficulty_label = QLabel(
+            self.lang_manager.get_text("默认难度:", "Default difficulty:")
+        )
+        self.practice_form_layout.addRow(
+            self.default_difficulty_label,
+            self.default_difficulty_combo,
+        )
+
+        self.show_timer_checkbox = QCheckBox(
+            self.lang_manager.get_text("练习时显示计时器", "Show timer during practice")
+        )
+        self.practice_form_layout.addRow("", self.show_timer_checkbox)
+
+        layout.addWidget(self.practice_group)
+
         # ── Runtime Environment ──
         self.environment_group = QGroupBox(
             self.lang_manager.get_text("运行环境", "Runtime Environment")
@@ -290,6 +331,17 @@ class SettingsScreen(QWidget):
             "Check Python packages, API key persistence, OCR/Tesseract, and data/ write access.",
         ))
         self.environment_check_btn.setText(self.lang_manager.get_text("检查环境", "Check Environment"))
+        self.practice_group.setTitle(self.lang_manager.get_text("练习默认值", "Practice Defaults"))
+        self.default_question_count_label.setText(
+            self.lang_manager.get_text("默认题量:", "Default question count:")
+        )
+        self.default_difficulty_label.setText(
+            self.lang_manager.get_text("默认难度:", "Default difficulty:")
+        )
+        self._refresh_difficulty_labels()
+        self.show_timer_checkbox.setText(
+            self.lang_manager.get_text("练习时显示计时器", "Show timer during practice")
+        )
         self.data_group.setTitle(self.lang_manager.get_text("数据管理", "Data Management"))
         self.export_btn.setText(self.lang_manager.get_text("导出进度", "Export Progress"))
         self.import_btn.setText(self.lang_manager.get_text("导入进度", "Import Progress"))
@@ -349,6 +401,17 @@ class SettingsScreen(QWidget):
         elif model:
             self.model_combo.setEditText(model)
 
+        self.default_question_count_input.setValue(
+            int(self._settings.get("default_question_count", DEFAULT_SETTINGS["default_question_count"]))
+        )
+        difficulty = self._settings.get("default_difficulty", DEFAULT_SETTINGS["default_difficulty"])
+        difficulty_index = self.default_difficulty_combo.findData(difficulty)
+        if difficulty_index >= 0:
+            self.default_difficulty_combo.setCurrentIndex(difficulty_index)
+        self.show_timer_checkbox.setChecked(
+            bool(self._settings.get("show_timer", DEFAULT_SETTINGS["show_timer"]))
+        )
+
         self._refresh_local_agent_status()
 
     # ── Save ─────────────────────────────────────────────────
@@ -363,6 +426,9 @@ class SettingsScreen(QWidget):
             self._settings["ai_provider"] = self.provider_combo.currentData() or ""
             self._settings["ai_base_url"] = self.api_base_url.text().strip()
             self._settings["ai_model"] = self.model_combo.currentText().strip()
+            self._settings["default_question_count"] = self.default_question_count_input.value()
+            self._settings["default_difficulty"] = self.default_difficulty_combo.currentData() or "medium"
+            self._settings["show_timer"] = self.show_timer_checkbox.isChecked()
 
             # A blank field means "keep the existing key". Only explicit new
             # input changes secret storage; the actual key is never re-rendered.
@@ -471,6 +537,24 @@ class SettingsScreen(QWidget):
                 self.model_combo.setCurrentText(defaults["model"])
         self.provider_help.setText(defaults["help"])
         self._refresh_local_agent_status()
+
+    def _refresh_difficulty_labels(self):
+        if not hasattr(self, "default_difficulty_combo"):
+            return
+        current = self.default_difficulty_combo.currentData()
+        labels = (
+            ("easy", self.lang_manager.get_text("简单", "Easy")),
+            ("medium", self.lang_manager.get_text("中等", "Medium")),
+            ("hard", self.lang_manager.get_text("困难", "Hard")),
+        )
+        self.default_difficulty_combo.blockSignals(True)
+        self.default_difficulty_combo.clear()
+        for value, label in labels:
+            self.default_difficulty_combo.addItem(label, value)
+        index = self.default_difficulty_combo.findData(current or "medium")
+        if index >= 0:
+            self.default_difficulty_combo.setCurrentIndex(index)
+        self.default_difficulty_combo.blockSignals(False)
 
     def _populate_provider_models(self, provider: str, keep_existing: bool):
         current = self.model_combo.currentText() if keep_existing else ""

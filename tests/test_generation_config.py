@@ -167,6 +167,22 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(config.topic_weights["process"], 20)
         self.assertEqual(config.template, "final_exam")
 
+    def test_dialog_uses_saved_practice_defaults_as_initial_generation_settings(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+                "default_question_count": 24,
+                "default_difficulty": "hard",
+            },
+            available_topics=["cache"],
+        )
+
+        self.assertEqual(24, dialog.count_spin.value())
+        self.assertEqual("hard", dialog.diff_combo.currentData())
+
     def test_dialog_can_prefill_from_existing_question_set(self):
         dialog = AIGenerationDialog(
             "course content",

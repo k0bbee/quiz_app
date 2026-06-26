@@ -27,6 +27,7 @@ class ProjectMetadataTests(unittest.TestCase):
         self.assertIn("python -m pip install -r requirements.txt", readme)
         self.assertIn("python scripts/check_environment.py", readme)
         self.assertIn("设置 → 运行环境 → 检查环境", readme)
+        self.assertIn("练习默认题量/难度/计时器", readme)
         self.assertIn("windows dpapi", readme)
         self.assertIn("keyring backend", readme)
 

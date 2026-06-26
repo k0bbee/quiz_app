@@ -136,7 +136,8 @@ class AIGenerationDialog(QDialog):
         self.count_label = QLabel(self.lang_manager.get_text("数量:", "Count:"))
         self.count_spin = QSpinBox()
         self.count_spin.setRange(3, 60)
-        self.count_spin.setValue(15)
+        default_count = int(self.settings.get("default_question_count", 15) or 15)
+        self.count_spin.setValue(max(self.count_spin.minimum(), min(self.count_spin.maximum(), default_count)))
         config_layout.addRow(self.count_label, self.count_spin)
 
         self.diff_label = QLabel(self.lang_manager.get_text("整体难度:", "Overall difficulty:"))
@@ -150,7 +151,7 @@ class AIGenerationDialog(QDialog):
         for display, value in difficulties:
             self.diff_combo.addItem(display, value)
         for i in range(self.diff_combo.count()):
-            if self.diff_combo.itemData(i) == "medium":
+            if self.diff_combo.itemData(i) == self.settings.get("default_difficulty", "medium"):
                 self.diff_combo.setCurrentIndex(i)
                 break
         config_layout.addRow(self.diff_label, self.diff_combo)
