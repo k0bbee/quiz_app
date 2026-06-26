@@ -152,8 +152,8 @@ QFrame#questionCard,
 QFrame#reviewCard,
 QFrame#feedbackFrame {
     background-color: #252526;
-    border: 1px solid #3c3c3c;
-    border-radius: 3px;
+    border: 1px solid #4a4a4a;
+    border-radius: 14px;
 }
 
 QFrame#dividerLine {
@@ -559,4 +559,22 @@ QRadioButton#answerOption,
 QLineEdit#fillInput,
 QPlainTextEdit#shortAnswerInput {
     font-size: 14px;
+    background-color: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 12px;
+    padding: 10px 12px;
+}
+
+QRadioButton#answerOption:hover,
+QLineEdit#fillInput:hover,
+QPlainTextEdit#shortAnswerInput:hover {
+    border-color: #5a5a5a;
+    background-color: #2b2b2b;
+}
+
+QRadioButton#answerOption:checked,
+QLineEdit#fillInput:focus,
+QPlainTextEdit#shortAnswerInput:focus {
+    border-color: #007fd4;
+    background-color: #2b2b2b;
 }

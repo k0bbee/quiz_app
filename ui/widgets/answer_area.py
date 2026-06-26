@@ -148,7 +148,7 @@ class MultipleChoiceWidget(QWidget):
         self.clear()
         for opt in options:
             btn = QRadioButton(opt)
-            btn.setStyleSheet("font-size: 14px; padding: 6px 0;")
+            btn.setObjectName("answerOption")
             self.group.addButton(btn, len(self.buttons))
             self.layout().insertWidget(self.layout().count() - 1, btn)
             self.buttons.append(btn)
@@ -192,8 +192,8 @@ class TrueFalseWidget(QWidget):
 
         self.true_btn = QRadioButton(self.lang_manager.get_text("正确", "True"))
         self.false_btn = QRadioButton(self.lang_manager.get_text("错误", "False"))
-        self.true_btn.setStyleSheet("font-size: 14px; padding: 6px 0;")
-        self.false_btn.setStyleSheet("font-size: 14px; padding: 6px 0;")
+        self.true_btn.setObjectName("answerOption")
+        self.false_btn.setObjectName("answerOption")
 
         layout.addWidget(self.true_btn)
         layout.addWidget(self.false_btn)
@@ -433,7 +433,7 @@ class FillInBlankWidget(QWidget):
         self.label = QLabel(self.lang_manager.get_text("输入答案:", "Enter your answer:"))
         layout.addWidget(self.label)
         self.input = QLineEdit()
-        self.input.setStyleSheet("font-size: 14px; padding: 8px;")
+        self.input.setObjectName("fillInput")
         self.input.setPlaceholderText(self.lang_manager.get_text("在此输入答案...", "Type your answer here..."))
         self.input.textChanged.connect(lambda t: self.answer_ready.emit(t))
         layout.addWidget(self.input)
@@ -466,7 +466,7 @@ class ShortAnswerWidget(QWidget):
         self.label = QLabel(self.lang_manager.get_text("写下你的答案:", "Write your answer:"))
         layout.addWidget(self.label)
         self.editor = QPlainTextEdit()
-        self.editor.setStyleSheet("font-size: 14px; padding: 8px;")
+        self.editor.setObjectName("shortAnswerInput")
         self.editor.setPlaceholderText(self.lang_manager.get_text("在此输入答案...", "Type your answer here..."))
         self.editor.setMinimumHeight(120)
         self.editor.textChanged.connect(lambda: self.answer_ready.emit(self.get_answer()))

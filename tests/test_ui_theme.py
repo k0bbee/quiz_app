@@ -181,6 +181,37 @@ class UiThemeTests(unittest.TestCase):
             dialog.footer_action_layout.indexOf(dialog.generate_btn),
         )
 
+    def test_quiz_cards_use_soft_baicizhan_style_borders(self):
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+
+        card_rule = re.search(
+            r"qframe#questioncard,\s*qframe#reviewcard,\s*qframe#feedbackframe\s*\{(?P<body>[^}]*)\}",
+            qss,
+            flags=re.DOTALL,
+        )
+        self.assertIsNotNone(card_rule)
+        self.assertIn("border-radius: 14px", card_rule.group("body"))
+        self.assertIn("#4a4a4a", card_rule.group("body"))
+        self.assertIn("qframe#feedbackframe", qss)
+
+    def test_answer_inputs_have_themeable_soft_option_roles(self):
+        from ui.widgets.answer_area import FillInBlankWidget, MultipleChoiceWidget, ShortAnswerWidget, TrueFalseWidget
+
+        choices = MultipleChoiceWidget()
+        choices.set_options(["A. one", "B. two"])
+        self.assertTrue(choices.buttons)
+        for button in choices.buttons:
+            self.assertEqual("answerOption", button.objectName())
+
+        true_false = TrueFalseWidget()
+        self.assertEqual("answerOption", true_false.true_btn.objectName())
+        self.assertEqual("answerOption", true_false.false_btn.objectName())
+
+        fill = FillInBlankWidget()
+        short = ShortAnswerWidget()
+        self.assertEqual("fillInput", fill.input.objectName())
+        self.assertEqual("shortAnswerInput", short.editor.objectName())
+
 
 if __name__ == "__main__":
     unittest.main()
