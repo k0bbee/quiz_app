@@ -37,13 +37,19 @@ class Difficulty(str, Enum):
 def coerce_topic(raw):
     """Normalize a topic value to a stable string.
 
-    Accepts strings, enums (uses .value), or None.
+    Accepts strings, enums (uses .value), course-topic-like objects, or None.
     Returns a lowercase string suitable for storage and comparison.
     """
     if raw is None:
         return "general"
     if isinstance(raw, Enum):
         return raw.value
+    title = _object_text_attr(raw, "title")
+    if title:
+        return title.strip().lower()
+    topic_id = _object_text_attr(raw, "topic_id")
+    if topic_id:
+        return topic_id.strip().lower()
     return str(raw).strip().lower()
 
 
@@ -52,6 +58,7 @@ def topic_value(topic):
 
     For string topics: the lowercase string itself.
     For enum topics: the .value.
+    For course-topic-like objects: the normalized title, falling back to topic_id.
     For None: returns "general" (consistent with coerce_topic).
     """
     if topic is None:
@@ -60,20 +67,33 @@ def topic_value(topic):
         return topic.strip().lower()
     if isinstance(topic, Enum):
         return topic.value
+    title = _object_text_attr(topic, "title")
+    if title:
+        return title.strip().lower()
+    topic_id = _object_text_attr(topic, "topic_id")
+    if topic_id:
+        return topic_id.strip().lower()
     return str(topic).strip().lower()
 
 
 def topic_label(topic, lang="zh"):
     """Return a human-readable label for a topic.
 
-    For generic string topics, returns the topic string itself
-    (the CourseProject is expected to provide bilingual labels).
+    For CourseProject topics, returns the inferred human-readable title.
+    For generic string topics, returns the normalized topic string itself.
     """
+    title = _object_text_attr(topic, "title")
+    if title:
+        return title.strip()
     t = topic_value(topic)
-    # CourseProject.topics may have labels; these are provided
-    # by the caller when rendering. For bare strings without
-    # label data, return the key itself.
     return t
+
+
+def _object_text_attr(obj, name: str) -> str:
+    value = getattr(obj, name, "")
+    if callable(value):
+        return ""
+    return str(value or "")
 
 
 # ── Auto-gradeable and manual-review question types ───────────

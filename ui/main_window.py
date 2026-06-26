@@ -568,7 +568,7 @@ class MainWindow(QMainWindow):
         gm = self.lang_manager.get_text
         course = self.course_manager.current()
         if course:
-            topics = [topic.title for topic in course.topics] or [gm("综合", "General")]
+            topics = list(course.topics) or [gm("综合", "General")]
             return course.summary_markdown, topics, course
         return "", [], None
 
