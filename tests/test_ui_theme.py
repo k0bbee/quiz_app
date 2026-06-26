@@ -198,6 +198,8 @@ class UiThemeTests(unittest.TestCase):
             settings.settings_content.layout().indexOf(settings.ai_group),
             settings.settings_content.layout().indexOf(settings.practice_group),
         )
+        self.assertIsNotNone(settings.default_template_combo)
+        self.assertGreaterEqual(settings.default_template_combo.count(), 3)
         self.assertLess(
             settings.settings_content.layout().indexOf(settings.practice_group),
             settings.settings_content.layout().indexOf(settings.environment_group),

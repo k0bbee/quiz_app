@@ -176,12 +176,14 @@ class GenerationConfigTests(unittest.TestCase):
                 "ai_model": "codex",
                 "default_question_count": 24,
                 "default_difficulty": "hard",
+                "default_generation_template": "final_exam",
             },
             available_topics=["cache"],
         )
 
         self.assertEqual(24, dialog.count_spin.value())
         self.assertEqual("hard", dialog.diff_combo.currentData())
+        self.assertEqual("final_exam", dialog.template_combo.currentData())
 
     def test_dialog_can_prefill_from_existing_question_set(self):
         dialog = AIGenerationDialog(

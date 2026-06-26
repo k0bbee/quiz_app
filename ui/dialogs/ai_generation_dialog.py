@@ -161,6 +161,10 @@ class AIGenerationDialog(QDialog):
         self.template_combo.addItem(self.lang_manager.get_text("快速复习", "Quick Review"), "quick_review")
         self.template_combo.addItem(self.lang_manager.get_text("期末模拟", "Final Exam Style"), "final_exam")
         self.template_combo.addItem(self.lang_manager.get_text("计算训练", "Calculation Practice"), "calculation_practice")
+        default_template = self.settings.get("default_generation_template", "quick_review")
+        template_index = self.template_combo.findData(default_template)
+        if template_index >= 0:
+            self.template_combo.setCurrentIndex(template_index)
         config_layout.addRow(self.template_label, self.template_combo)
 
         self.assistant_action_layout = QHBoxLayout()

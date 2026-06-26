@@ -61,6 +61,7 @@ DEFAULT_SETTINGS = {
     "ai_model": "claude-sonnet-4-6",
     "default_question_count": 15,
     "default_difficulty": "medium",
+    "default_generation_template": "quick_review",
     "show_timer": False,
 }
 

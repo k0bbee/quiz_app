@@ -236,6 +236,16 @@ class SettingsScreen(QWidget):
             self.default_difficulty_combo,
         )
 
+        self.default_template_combo = QComboBox()
+        self._refresh_template_labels()
+        self.default_template_label = QLabel(
+            self.lang_manager.get_text("默认模板:", "Default template:")
+        )
+        self.practice_form_layout.addRow(
+            self.default_template_label,
+            self.default_template_combo,
+        )
+
         self.show_timer_checkbox = QCheckBox(
             self.lang_manager.get_text("练习时显示计时器", "Show timer during practice")
         )
@@ -348,6 +358,10 @@ class SettingsScreen(QWidget):
             self.lang_manager.get_text("默认难度:", "Default difficulty:")
         )
         self._refresh_difficulty_labels()
+        self.default_template_label.setText(
+            self.lang_manager.get_text("默认模板:", "Default template:")
+        )
+        self._refresh_template_labels()
         self.show_timer_checkbox.setText(
             self.lang_manager.get_text("练习时显示计时器", "Show timer during practice")
         )
@@ -417,6 +431,13 @@ class SettingsScreen(QWidget):
         difficulty_index = self.default_difficulty_combo.findData(difficulty)
         if difficulty_index >= 0:
             self.default_difficulty_combo.setCurrentIndex(difficulty_index)
+        template = self._settings.get(
+            "default_generation_template",
+            DEFAULT_SETTINGS["default_generation_template"],
+        )
+        template_index = self.default_template_combo.findData(template)
+        if template_index >= 0:
+            self.default_template_combo.setCurrentIndex(template_index)
         self.show_timer_checkbox.setChecked(
             bool(self._settings.get("show_timer", DEFAULT_SETTINGS["show_timer"]))
         )
@@ -437,6 +458,9 @@ class SettingsScreen(QWidget):
             self._settings["ai_model"] = self.model_combo.currentText().strip()
             self._settings["default_question_count"] = self.default_question_count_input.value()
             self._settings["default_difficulty"] = self.default_difficulty_combo.currentData() or "medium"
+            self._settings["default_generation_template"] = (
+                self.default_template_combo.currentData() or "quick_review"
+            )
             self._settings["show_timer"] = self.show_timer_checkbox.isChecked()
 
             # A blank field means "keep the existing key". Only explicit new
@@ -564,6 +588,24 @@ class SettingsScreen(QWidget):
         if index >= 0:
             self.default_difficulty_combo.setCurrentIndex(index)
         self.default_difficulty_combo.blockSignals(False)
+
+    def _refresh_template_labels(self):
+        if not hasattr(self, "default_template_combo"):
+            return
+        current = self.default_template_combo.currentData()
+        labels = (
+            ("quick_review", self.lang_manager.get_text("快速复习", "Quick Review")),
+            ("final_exam", self.lang_manager.get_text("期末模拟", "Final Exam Style")),
+            ("calculation_practice", self.lang_manager.get_text("计算训练", "Calculation Practice")),
+        )
+        self.default_template_combo.blockSignals(True)
+        self.default_template_combo.clear()
+        for value, label in labels:
+            self.default_template_combo.addItem(label, value)
+        index = self.default_template_combo.findData(current or "quick_review")
+        if index >= 0:
+            self.default_template_combo.setCurrentIndex(index)
+        self.default_template_combo.blockSignals(False)
 
     def _populate_provider_models(self, provider: str, keep_existing: bool):
         current = self.model_combo.currentText() if keep_existing else ""

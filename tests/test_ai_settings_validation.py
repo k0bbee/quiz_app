@@ -209,6 +209,9 @@ class AISettingsValidationTests(unittest.TestCase):
         screen.default_difficulty_combo.setCurrentIndex(
             screen.default_difficulty_combo.findData("hard")
         )
+        screen.default_template_combo.setCurrentIndex(
+            screen.default_template_combo.findData("final_exam")
+        )
         screen.show_timer_checkbox.setChecked(True)
 
         with patch("ui.screens.settings_screen.write_json", return_value=True) as write_json:
@@ -217,6 +220,7 @@ class AISettingsValidationTests(unittest.TestCase):
         saved = write_json.call_args.args[1]
         self.assertEqual(24, saved["default_question_count"])
         self.assertEqual("hard", saved["default_difficulty"])
+        self.assertEqual("final_exam", saved["default_generation_template"])
         self.assertTrue(saved["show_timer"])
 
     def test_settings_screen_does_not_reveal_existing_api_key(self):
