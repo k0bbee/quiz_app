@@ -2,10 +2,10 @@
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QProgressBar, QFrame, QScrollArea, QSizePolicy, QMessageBox
+    QProgressBar, QFrame, QScrollArea, QMessageBox
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
-from PyQt6.QtGui import QFont, QKeySequence, QShortcut
+from PyQt6.QtGui import QKeySequence, QShortcut
 
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet
@@ -52,7 +52,6 @@ class QuizScreen(QWidget):
             self.lang_manager.get_text("题目 1/20", "Question 1/20")
         )
         self.progress_label.setObjectName("quizProgressLabel")
-        self.progress_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         info_row.addWidget(self.progress_label)
 
         self.timer_label = QLabel("00:00")
@@ -64,11 +63,13 @@ class QuizScreen(QWidget):
         self.lang_btn = QPushButton(
             "English" if self.lang_manager.current == "zh" else "中文"
         )
+        self.lang_btn.setObjectName("secondaryButton")
         self.lang_btn.setMinimumWidth(80)
         self.lang_btn.clicked.connect(self._toggle_language)
         info_row.addWidget(self.lang_btn)
 
         self.back_btn = QPushButton(self.lang_manager.get_text("← 退出", "← Exit"))
+        self.back_btn.setObjectName("secondaryButton")
         self.back_btn.clicked.connect(self._confirm_exit)
         info_row.addWidget(self.back_btn)
 
@@ -78,7 +79,6 @@ class QuizScreen(QWidget):
         self.progress_bar.setMinimum(0)
         self.progress_bar.setMaximum(100)
         self.progress_bar.setTextVisible(True)
-        self.progress_bar.setStyleSheet("QProgressBar { height: 20px; border-radius: 3px; }")
         layout.addWidget(self.progress_bar)
 
         self.session_timer = QTimer(self)
@@ -115,6 +115,7 @@ class QuizScreen(QWidget):
         action_layout = QHBoxLayout()
 
         self.skip_btn = QPushButton(self.lang_manager.get_text("跳过 ⏭", "Skip ⏭"))
+        self.skip_btn.setObjectName("secondaryButton")
         self.skip_btn.clicked.connect(self._skip_question)
         self.skip_btn.setEnabled(False)
         action_layout.addWidget(self.skip_btn)
@@ -124,8 +125,8 @@ class QuizScreen(QWidget):
         self.submit_btn = QPushButton(
             self.lang_manager.get_text("提交答案 ✓", "Submit Answer ✓")
         )
+        self.submit_btn.setObjectName("primaryButton")
         self.submit_btn.setMinimumHeight(40)
-        self.submit_btn.setStyleSheet("font-size: 15px; font-weight: bold;")
         self.submit_btn.clicked.connect(self._submit_answer)
         self.submit_btn.setEnabled(False)
         action_layout.addWidget(self.submit_btn)
@@ -142,7 +143,7 @@ class QuizScreen(QWidget):
         self.correct_indicator = QLabel()
         self.correct_indicator.setObjectName("correctIndicator")
         self.correct_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.correct_indicator.setStyleSheet("font-size: 20px; font-weight: bold;")
+        self.correct_indicator.setProperty("answerState", "")
         fb_layout.addWidget(self.correct_indicator)
 
         self.explanation_label = QLabel()
@@ -153,8 +154,8 @@ class QuizScreen(QWidget):
         next_btn_layout = QHBoxLayout()
         next_btn_layout.addStretch()
         self.next_btn = QPushButton(self.lang_manager.get_text("下一题 →", "Next →"))
+        self.next_btn.setObjectName("primaryButton")
         self.next_btn.setMinimumHeight(36)
-        self.next_btn.setStyleSheet("font-size: 14px;")
         self.next_btn.clicked.connect(self._next_question)
         next_btn_layout.addWidget(self.next_btn)
         fb_layout.addLayout(next_btn_layout)
@@ -191,6 +192,7 @@ class QuizScreen(QWidget):
         self._last_user_answer = None
         self.answer_area.clear()
         self.feedback_frame.hide()
+        self._set_correct_indicator_state("")
         self.timer_label.setVisible(show_timer)
         self.session.start(question_set, questions, lang)
         self.submit_btn.setText(self.lang_manager.get_text("提交答案 ✓", "Submit Answer ✓"))
@@ -241,6 +243,7 @@ class QuizScreen(QWidget):
         self.answer_area.set_question_type(q.type, options)
         self.answer_area.set_enabled(True)
         self.feedback_frame.hide()
+        self._set_correct_indicator_state("")
         self.submit_btn.setText(self.lang_manager.get_text("提交答案 ✓", "Submit Answer ✓"))
         self._update_submit_enabled()
         self.submit_btn.show()
@@ -375,16 +378,12 @@ class QuizScreen(QWidget):
             self.correct_indicator.setText(
                 self.lang_manager.get_text("✅ 正确！", "✅ Correct!")
             )
-            self.correct_indicator.setStyleSheet(
-                "color: #a6e3a1; font-size: 20px; font-weight: bold;"
-            )
+            self._set_correct_indicator_state("correct")
         else:
             self.correct_indicator.setText(
                 self.lang_manager.get_text("❌ 错误", "❌ Incorrect")
             )
-            self.correct_indicator.setStyleSheet(
-                "color: #f38ba8; font-size: 20px; font-weight: bold;"
-            )
+            self._set_correct_indicator_state("incorrect")
 
         user_answer = self._format_answer(self._last_user_answer, q)
         correct_answer = self._format_answer(q.correct_answer, q)
@@ -444,6 +443,12 @@ class QuizScreen(QWidget):
         seconds = int(self.session.elapsed_seconds)
         minutes, seconds = divmod(seconds, 60)
         self.timer_label.setText(f"{minutes:02d}:{seconds:02d}")
+
+    def _set_correct_indicator_state(self, state: str):
+        """Update feedback color through themeable dynamic properties."""
+        self.correct_indicator.setProperty("answerState", state)
+        self.correct_indicator.style().unpolish(self.correct_indicator)
+        self.correct_indicator.style().polish(self.correct_indicator)
 
     def _format_answer(self, answer, question: Question = None) -> str:
         """Convert stored answers to readable text for feedback/review."""

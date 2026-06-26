@@ -18,6 +18,7 @@ from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from ui.screens.course_screen import CourseScreen
 from ui.screens.home_screen import HomeScreen
 from ui.screens.question_bank_screen import QuestionBankScreen
+from ui.screens.quiz_screen import QuizScreen
 from ui.screens.settings_screen import SettingsScreen
 
 
@@ -255,6 +256,30 @@ class UiThemeTests(unittest.TestCase):
         short = ShortAnswerWidget()
         self.assertEqual("fillInput", fill.input.objectName())
         self.assertEqual("shortAnswerInput", short.editor.objectName())
+
+    def test_quiz_screen_uses_theme_roles_instead_of_inline_styles(self):
+        source = Path("ui/screens/quiz_screen.py").read_text(encoding="utf-8")
+        self.assertNotIn(".setStyleSheet(", source)
+
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+        progress_rule = re.search(r"qprogressbar\s*\{(?P<body>[^}]*)\}", qss, flags=re.DOTALL)
+        self.assertIsNotNone(progress_rule)
+        self.assertRegex(progress_rule.group("body"), r"border-radius:\s*([6-9]|[1-9][0-9])px")
+        self.assertIn("qprogressbar::chunk", qss)
+        self.assertIn('qlabel#correctindicator[answerstate="correct"]', qss)
+        self.assertIn('qlabel#correctindicator[answerstate="incorrect"]', qss)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            quiz = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+
+        self.assertEqual("secondaryButton", quiz.lang_btn.objectName())
+        self.assertEqual("secondaryButton", quiz.back_btn.objectName())
+        self.assertEqual("secondaryButton", quiz.skip_btn.objectName())
+        self.assertEqual("primaryButton", quiz.submit_btn.objectName())
+        self.assertEqual("primaryButton", quiz.next_btn.objectName())
 
 
 if __name__ == "__main__":
