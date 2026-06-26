@@ -20,7 +20,13 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from core.environment_check import collect_environment_report, format_environment_report
 from core.ocr_runtime import OCR_REMEDIATION
 from core.language_manager import LanguageManager
-from config import BASE_DIR, SETTINGS_FILE, DEFAULT_SETTINGS
+from config import (
+    BASE_DIR,
+    SETTINGS_FILE,
+    DEFAULT_SETTINGS,
+    DEFAULT_DIFFICULTY_WEIGHTS,
+    DEFAULT_QUESTION_TYPE_WEIGHTS,
+)
 from utils.json_io import read_json, write_json
 from ai.connection_probe import AIConnectionProbe
 from ai.provider_presets import (
@@ -246,6 +252,73 @@ class SettingsScreen(QWidget):
             self.default_template_combo,
         )
 
+        self.question_type_weight_label = QLabel(
+            self.lang_manager.get_text("默认题型权重", "Default question type weights")
+        )
+        self.question_type_weight_label.setObjectName("sectionLabel")
+        self.practice_form_layout.addRow(self.question_type_weight_label)
+
+        self.default_mc_weight_input = self._make_weight_spinbox(
+            DEFAULT_QUESTION_TYPE_WEIGHTS["multiple_choice"]
+        )
+        self.default_scenario_weight_input = self._make_weight_spinbox(
+            DEFAULT_QUESTION_TYPE_WEIGHTS["scenario_choice"]
+        )
+        self.default_true_false_weight_input = self._make_weight_spinbox(
+            DEFAULT_QUESTION_TYPE_WEIGHTS["true_false"]
+        )
+        self.default_fill_blank_weight_input = self._make_weight_spinbox(
+            DEFAULT_QUESTION_TYPE_WEIGHTS["fill_in_blank"]
+        )
+        self.default_mc_weight_label = QLabel(self.lang_manager.get_text("选择题:", "Multiple choice:"))
+        self.default_scenario_weight_label = QLabel(
+            self.lang_manager.get_text("情境选择题:", "Scenario choice:")
+        )
+        self.default_true_false_weight_label = QLabel(
+            self.lang_manager.get_text("判断题:", "True / false:")
+        )
+        self.default_fill_blank_weight_label = QLabel(
+            self.lang_manager.get_text("填空题:", "Fill in the blank:")
+        )
+        self.practice_form_layout.addRow(self.default_mc_weight_label, self.default_mc_weight_input)
+        self.practice_form_layout.addRow(
+            self.default_scenario_weight_label,
+            self.default_scenario_weight_input,
+        )
+        self.practice_form_layout.addRow(
+            self.default_true_false_weight_label,
+            self.default_true_false_weight_input,
+        )
+        self.practice_form_layout.addRow(
+            self.default_fill_blank_weight_label,
+            self.default_fill_blank_weight_input,
+        )
+
+        self.difficulty_weight_label = QLabel(
+            self.lang_manager.get_text("默认难度权重", "Default difficulty weights")
+        )
+        self.difficulty_weight_label.setObjectName("sectionLabel")
+        self.practice_form_layout.addRow(self.difficulty_weight_label)
+
+        self.default_easy_weight_input = self._make_weight_spinbox(
+            DEFAULT_DIFFICULTY_WEIGHTS["easy"]
+        )
+        self.default_medium_weight_input = self._make_weight_spinbox(
+            DEFAULT_DIFFICULTY_WEIGHTS["medium"]
+        )
+        self.default_hard_weight_input = self._make_weight_spinbox(
+            DEFAULT_DIFFICULTY_WEIGHTS["hard"]
+        )
+        self.default_easy_weight_label = QLabel(self.lang_manager.get_text("简单:", "Easy:"))
+        self.default_medium_weight_label = QLabel(self.lang_manager.get_text("中等:", "Medium:"))
+        self.default_hard_weight_label = QLabel(self.lang_manager.get_text("困难:", "Hard:"))
+        self.practice_form_layout.addRow(self.default_easy_weight_label, self.default_easy_weight_input)
+        self.practice_form_layout.addRow(
+            self.default_medium_weight_label,
+            self.default_medium_weight_input,
+        )
+        self.practice_form_layout.addRow(self.default_hard_weight_label, self.default_hard_weight_input)
+
         self.show_timer_checkbox = QCheckBox(
             self.lang_manager.get_text("练习时显示计时器", "Show timer during practice")
         )
@@ -362,6 +435,25 @@ class SettingsScreen(QWidget):
             self.lang_manager.get_text("默认模板:", "Default template:")
         )
         self._refresh_template_labels()
+        self.question_type_weight_label.setText(
+            self.lang_manager.get_text("默认题型权重", "Default question type weights")
+        )
+        self.default_mc_weight_label.setText(self.lang_manager.get_text("选择题:", "Multiple choice:"))
+        self.default_scenario_weight_label.setText(
+            self.lang_manager.get_text("情境选择题:", "Scenario choice:")
+        )
+        self.default_true_false_weight_label.setText(
+            self.lang_manager.get_text("判断题:", "True / false:")
+        )
+        self.default_fill_blank_weight_label.setText(
+            self.lang_manager.get_text("填空题:", "Fill in the blank:")
+        )
+        self.difficulty_weight_label.setText(
+            self.lang_manager.get_text("默认难度权重", "Default difficulty weights")
+        )
+        self.default_easy_weight_label.setText(self.lang_manager.get_text("简单:", "Easy:"))
+        self.default_medium_weight_label.setText(self.lang_manager.get_text("中等:", "Medium:"))
+        self.default_hard_weight_label.setText(self.lang_manager.get_text("困难:", "Hard:"))
         self.show_timer_checkbox.setText(
             self.lang_manager.get_text("练习时显示计时器", "Show timer during practice")
         )
@@ -438,6 +530,21 @@ class SettingsScreen(QWidget):
         template_index = self.default_template_combo.findData(template)
         if template_index >= 0:
             self.default_template_combo.setCurrentIndex(template_index)
+        question_type_weights = self._settings_weights(
+            "default_question_type_weights",
+            DEFAULT_QUESTION_TYPE_WEIGHTS,
+        )
+        self.default_mc_weight_input.setValue(question_type_weights["multiple_choice"])
+        self.default_scenario_weight_input.setValue(question_type_weights["scenario_choice"])
+        self.default_true_false_weight_input.setValue(question_type_weights["true_false"])
+        self.default_fill_blank_weight_input.setValue(question_type_weights["fill_in_blank"])
+        difficulty_weights = self._settings_weights(
+            "default_difficulty_weights",
+            DEFAULT_DIFFICULTY_WEIGHTS,
+        )
+        self.default_easy_weight_input.setValue(difficulty_weights["easy"])
+        self.default_medium_weight_input.setValue(difficulty_weights["medium"])
+        self.default_hard_weight_input.setValue(difficulty_weights["hard"])
         self.show_timer_checkbox.setChecked(
             bool(self._settings.get("show_timer", DEFAULT_SETTINGS["show_timer"]))
         )
@@ -461,6 +568,17 @@ class SettingsScreen(QWidget):
             self._settings["default_generation_template"] = (
                 self.default_template_combo.currentData() or "quick_review"
             )
+            self._settings["default_question_type_weights"] = {
+                "multiple_choice": self.default_mc_weight_input.value(),
+                "scenario_choice": self.default_scenario_weight_input.value(),
+                "true_false": self.default_true_false_weight_input.value(),
+                "fill_in_blank": self.default_fill_blank_weight_input.value(),
+            }
+            self._settings["default_difficulty_weights"] = {
+                "easy": self.default_easy_weight_input.value(),
+                "medium": self.default_medium_weight_input.value(),
+                "hard": self.default_hard_weight_input.value(),
+            }
             self._settings["show_timer"] = self.show_timer_checkbox.isChecked()
 
             # A blank field means "keep the existing key". Only explicit new
@@ -494,6 +612,25 @@ class SettingsScreen(QWidget):
             if not silent:
                 QMessageBox.critical(
                     self, self.lang_manager.get_text("保存失败", "Save Failed"), str(e))
+
+    def _make_weight_spinbox(self, value: int) -> QSpinBox:
+        spinbox = QSpinBox()
+        spinbox.setRange(0, 100)
+        spinbox.setSingleStep(5)
+        spinbox.setSuffix("%")
+        spinbox.setValue(value)
+        return spinbox
+
+    def _settings_weights(self, settings_key: str, defaults: dict[str, int]) -> dict[str, int]:
+        configured = self._settings.get(settings_key, {})
+        weights = dict(defaults)
+        if isinstance(configured, dict):
+            for key in defaults:
+                try:
+                    weights[key] = max(0, min(100, int(configured.get(key, defaults[key]))))
+                except (TypeError, ValueError):
+                    weights[key] = defaults[key]
+        return weights
 
     def _update_api_key_placeholder(self):
         if not hasattr(self, "api_key_input"):

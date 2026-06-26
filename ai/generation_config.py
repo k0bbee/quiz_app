@@ -4,19 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from config import DEFAULT_DIFFICULTY_WEIGHTS, DEFAULT_QUESTION_TYPE_WEIGHTS
 
-QUESTION_TYPE_DEFAULTS = {
-    "multiple_choice": 70,
-    "scenario_choice": 20,
-    "true_false": 5,
-    "fill_in_blank": 5,
-}
+QUESTION_TYPE_DEFAULTS = dict(DEFAULT_QUESTION_TYPE_WEIGHTS)
 
-DIFFICULTY_DEFAULTS = {
-    "easy": 20,
-    "medium": 60,
-    "hard": 20,
-}
+DIFFICULTY_DEFAULTS = dict(DEFAULT_DIFFICULTY_WEIGHTS)
 
 TEMPLATE_GUIDES = {
     "quick_review": "Quick review style: emphasize fast recall, core definitions, and common misconceptions.",

@@ -212,6 +212,13 @@ class AISettingsValidationTests(unittest.TestCase):
         screen.default_template_combo.setCurrentIndex(
             screen.default_template_combo.findData("final_exam")
         )
+        screen.default_mc_weight_input.setValue(45)
+        screen.default_scenario_weight_input.setValue(35)
+        screen.default_true_false_weight_input.setValue(15)
+        screen.default_fill_blank_weight_input.setValue(5)
+        screen.default_easy_weight_input.setValue(10)
+        screen.default_medium_weight_input.setValue(70)
+        screen.default_hard_weight_input.setValue(20)
         screen.show_timer_checkbox.setChecked(True)
 
         with patch("ui.screens.settings_screen.write_json", return_value=True) as write_json:
@@ -221,6 +228,19 @@ class AISettingsValidationTests(unittest.TestCase):
         self.assertEqual(24, saved["default_question_count"])
         self.assertEqual("hard", saved["default_difficulty"])
         self.assertEqual("final_exam", saved["default_generation_template"])
+        self.assertEqual(
+            {
+                "multiple_choice": 45,
+                "scenario_choice": 35,
+                "true_false": 15,
+                "fill_in_blank": 5,
+            },
+            saved["default_question_type_weights"],
+        )
+        self.assertEqual(
+            {"easy": 10, "medium": 70, "hard": 20},
+            saved["default_difficulty_weights"],
+        )
         self.assertTrue(saved["show_timer"])
 
     def test_settings_screen_does_not_reveal_existing_api_key(self):

@@ -200,6 +200,8 @@ class UiThemeTests(unittest.TestCase):
         )
         self.assertIsNotNone(settings.default_template_combo)
         self.assertGreaterEqual(settings.default_template_combo.count(), 3)
+        self.assertIsNotNone(settings.default_mc_weight_input)
+        self.assertIsNotNone(settings.default_hard_weight_input)
         self.assertLess(
             settings.settings_content.layout().indexOf(settings.practice_group),
             settings.settings_content.layout().indexOf(settings.environment_group),

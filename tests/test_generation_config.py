@@ -177,6 +177,17 @@ class GenerationConfigTests(unittest.TestCase):
                 "default_question_count": 24,
                 "default_difficulty": "hard",
                 "default_generation_template": "final_exam",
+                "default_question_type_weights": {
+                    "multiple_choice": 45,
+                    "scenario_choice": 35,
+                    "true_false": 15,
+                    "fill_in_blank": 5,
+                },
+                "default_difficulty_weights": {
+                    "easy": 10,
+                    "medium": 70,
+                    "hard": 20,
+                },
             },
             available_topics=["cache"],
         )
@@ -184,6 +195,13 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(24, dialog.count_spin.value())
         self.assertEqual("hard", dialog.diff_combo.currentData())
         self.assertEqual("final_exam", dialog.template_combo.currentData())
+        self.assertEqual(45, dialog.mc_slider.value())
+        self.assertEqual(35, dialog.scenario_slider.value())
+        self.assertEqual(15, dialog.true_false_slider.value())
+        self.assertEqual(5, dialog.fill_blank_slider.value())
+        self.assertEqual(10, dialog.easy_slider.value())
+        self.assertEqual(70, dialog.medium_slider.value())
+        self.assertEqual(20, dialog.hard_slider.value())
 
     def test_dialog_can_prefill_from_existing_question_set(self):
         dialog = AIGenerationDialog(

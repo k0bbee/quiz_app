@@ -52,6 +52,20 @@ CURRENT_COURSE_FILE = os.path.join(DATA_DIR, "current_course.json")
 # Default course materials search path (optional convenience)
 COURSES_SEARCH_DIR = os.path.join(os.path.dirname(BASE_DIR), "courses")
 
+# ── Default generation controls ───────────────────────────────
+DEFAULT_QUESTION_TYPE_WEIGHTS = {
+    "multiple_choice": 70,
+    "scenario_choice": 20,
+    "true_false": 5,
+    "fill_in_blank": 5,
+}
+
+DEFAULT_DIFFICULTY_WEIGHTS = {
+    "easy": 20,
+    "medium": 60,
+    "hard": 20,
+}
+
 # ── Default settings ──────────────────────────────────────────
 DEFAULT_SETTINGS = {
     "language": "zh",
@@ -62,6 +76,8 @@ DEFAULT_SETTINGS = {
     "default_question_count": 15,
     "default_difficulty": "medium",
     "default_generation_template": "quick_review",
+    "default_question_type_weights": dict(DEFAULT_QUESTION_TYPE_WEIGHTS),
+    "default_difficulty_weights": dict(DEFAULT_DIFFICULTY_WEIGHTS),
     "show_timer": False,
 }
 

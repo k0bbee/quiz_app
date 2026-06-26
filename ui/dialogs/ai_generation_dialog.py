@@ -212,10 +212,14 @@ class AIGenerationDialog(QDialog):
         self.question_type_heading.setObjectName("sectionLabel")
         structure_layout.addRow(self.question_type_heading)
 
-        self.mc_slider = self._make_slider(QUESTION_TYPE_DEFAULTS["multiple_choice"])
-        self.scenario_slider = self._make_slider(QUESTION_TYPE_DEFAULTS["scenario_choice"])
-        self.true_false_slider = self._make_slider(QUESTION_TYPE_DEFAULTS["true_false"])
-        self.fill_blank_slider = self._make_slider(QUESTION_TYPE_DEFAULTS["fill_in_blank"])
+        question_type_defaults = self._settings_weights(
+            "default_question_type_weights",
+            QUESTION_TYPE_DEFAULTS,
+        )
+        self.mc_slider = self._make_slider(question_type_defaults["multiple_choice"])
+        self.scenario_slider = self._make_slider(question_type_defaults["scenario_choice"])
+        self.true_false_slider = self._make_slider(question_type_defaults["true_false"])
+        self.fill_blank_slider = self._make_slider(question_type_defaults["fill_in_blank"])
         self.mc_label = QLabel(self.lang_manager.get_text("选择题", "Multiple choice"))
         self.scenario_label = QLabel(self.lang_manager.get_text("情境选择题", "Scenario choice"))
         self.true_false_label = QLabel(self.lang_manager.get_text("判断题", "True / false"))
@@ -231,9 +235,13 @@ class AIGenerationDialog(QDialog):
         self.difficulty_weight_heading.setObjectName("sectionLabel")
         structure_layout.addRow(self.difficulty_weight_heading)
 
-        self.easy_slider = self._make_slider(DIFFICULTY_DEFAULTS["easy"])
-        self.medium_slider = self._make_slider(DIFFICULTY_DEFAULTS["medium"])
-        self.hard_slider = self._make_slider(DIFFICULTY_DEFAULTS["hard"])
+        difficulty_defaults = self._settings_weights(
+            "default_difficulty_weights",
+            DIFFICULTY_DEFAULTS,
+        )
+        self.easy_slider = self._make_slider(difficulty_defaults["easy"])
+        self.medium_slider = self._make_slider(difficulty_defaults["medium"])
+        self.hard_slider = self._make_slider(difficulty_defaults["hard"])
         self.easy_label = QLabel(self.lang_manager.get_text("简单", "Easy"))
         self.medium_label = QLabel(self.lang_manager.get_text("中等", "Medium"))
         self.hard_label = QLabel(self.lang_manager.get_text("困难", "Hard"))
@@ -296,6 +304,17 @@ class AIGenerationDialog(QDialog):
         slider.setPageStep(10)
         slider.setValue(value)
         return slider
+
+    def _settings_weights(self, settings_key: str, defaults: dict[str, int]) -> dict[str, int]:
+        configured = self.settings.get(settings_key, {})
+        weights = dict(defaults)
+        if isinstance(configured, dict):
+            for key in defaults:
+                try:
+                    weights[key] = max(0, min(100, int(configured.get(key, defaults[key]))))
+                except (TypeError, ValueError):
+                    weights[key] = defaults[key]
+        return weights
 
     def _slider_row(self, slider: QSlider) -> QWidget:
         row = QWidget()
