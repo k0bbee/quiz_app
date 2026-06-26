@@ -5,8 +5,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from core.environment_check import CheckResult, EnvironmentReport, collect_environment_report
+from core.environment_check import CheckResult, EnvironmentReport, collect_environment_report, _check_tesseract
 from scripts.check_environment import main as environment_check_main
 
 
@@ -14,7 +15,13 @@ class EnvironmentCheckTests(unittest.TestCase):
     def test_only_required_failures_make_report_unhealthy(self):
         healthy = EnvironmentReport((
             CheckResult("python", True, True, "3.14"),
-            CheckResult("tesseract", False, False, "optional executable missing"),
+            CheckResult(
+                "tesseract",
+                False,
+                False,
+                "optional executable missing",
+                "install tesseract",
+            ),
         ))
         unhealthy = EnvironmentReport((
             CheckResult("python", True, True, "3.14"),
@@ -52,6 +59,58 @@ class EnvironmentCheckTests(unittest.TestCase):
         self.assertIn("checks", payload)
         self.assertNotIn("api_key", rendered.lower())
         self.assertNotIn("secret", rendered.lower())
+
+    def test_text_report_includes_optional_ocr_remediation_options(self):
+        report = EnvironmentReport((
+            CheckResult("Python", True, True, "3.14"),
+            CheckResult(
+                "Tesseract OCR",
+                False,
+                False,
+                "optional system executable not found; scanned PDF OCR is unavailable",
+                "Windows: winget install -e --id UB-Mannheim.TesseractOCR",
+            ),
+        ))
+
+        from core.environment_check import format_environment_report
+
+        rendered = format_environment_report(report)
+
+        self.assertIn("[WARN] Tesseract OCR", rendered)
+        self.assertIn("Fix: Windows: winget install -e --id UB-Mannheim.TesseractOCR", rendered)
+
+    def test_json_report_exposes_remediation_without_secret_values(self):
+        report = EnvironmentReport((
+            CheckResult(
+                "Tesseract OCR",
+                False,
+                False,
+                "optional system executable not found",
+                "Windows: winget install -e --id UB-Mannheim.TesseractOCR",
+            ),
+        ))
+
+        payload = report.to_dict()
+
+        self.assertEqual(
+            "Windows: winget install -e --id UB-Mannheim.TesseractOCR",
+            payload["checks"][0]["remediation"],
+        )
+
+    def test_tesseract_check_uses_common_install_path_and_project_tessdata(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            tessdata = root / "data" / "tessdata"
+            tessdata.mkdir(parents=True)
+            (tessdata / "eng.traineddata").write_text("fake", encoding="utf-8")
+            (tessdata / "chi_sim.traineddata").write_text("fake", encoding="utf-8")
+
+            with patch("core.environment_check.find_tesseract_executable", return_value=r"C:\Program Files\Tesseract-OCR\tesseract.exe"), \
+                 patch("core.environment_check._run_tesseract_list_langs", return_value=(0, "List of available languages:\neng\nchi_sim\n")):
+                result = _check_tesseract(root)
+
+        self.assertTrue(result.ok, result.detail)
+        self.assertIn("data", result.detail)
 
 
 if __name__ == "__main__":

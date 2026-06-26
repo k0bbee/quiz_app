@@ -7,11 +7,11 @@ import importlib
 import importlib.metadata
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import tempfile
 
+from core.ocr_runtime import find_tessdata_dir, find_tesseract_executable
 from core.windows_dpapi_store import WindowsDPAPISecretStore
 
 
@@ -31,6 +31,7 @@ class CheckResult:
     ok: bool
     required: bool
     detail: str
+    remediation: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -117,43 +118,44 @@ def collect_environment_report(project_root: str | Path) -> EnvironmentReport:
         )
     )
 
-    checks.append(_check_tesseract())
+    checks.append(_check_tesseract(root))
     checks.append(_check_data_directory(root / "data"))
     return EnvironmentReport(tuple(checks))
 
 
-def _check_tesseract() -> CheckResult:
-    executable = shutil.which("tesseract")
+def _check_tesseract(project_root: str | Path) -> CheckResult:
+    remediation = (
+        "Windows: winget install -e --id UB-Mannheim.TesseractOCR "
+        "--accept-package-agreements --accept-source-agreements; "
+        "Alternative: choco install tesseract; then reopen the terminal and rerun "
+        "python scripts/check_environment.py."
+    )
+    executable = find_tesseract_executable()
     if not executable:
         return CheckResult(
             "Tesseract OCR",
             False,
             False,
             "optional system executable not found; scanned PDF OCR is unavailable",
+            remediation,
         )
     try:
-        result = subprocess.run(
-            [executable, "--list-langs"],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=15,
-        )
+        tessdata_dir = find_tessdata_dir(project_root)
+        returncode, stdout = _run_tesseract_list_langs(executable, tessdata_dir)
         languages = {
             line.strip()
-            for line in result.stdout.splitlines()[1:]
+            for line in stdout.splitlines()[1:]
             if line.strip()
         }
         expected = {"eng", "chi_sim"}
         missing = sorted(expected - languages)
-        if result.returncode != 0:
+        if returncode != 0:
             return CheckResult(
                 "Tesseract OCR",
                 False,
                 False,
-                f"executable failed with exit code {result.returncode}",
+                f"executable failed with exit code {returncode}",
+                remediation,
             )
         if missing:
             return CheckResult(
@@ -161,15 +163,39 @@ def _check_tesseract() -> CheckResult:
                 False,
                 False,
                 "missing optional language packs: " + ", ".join(missing),
+                remediation,
             )
         return CheckResult(
             "Tesseract OCR",
             True,
             False,
-            f"{executable}; eng and chi_sim available",
+            f"{executable}; eng and chi_sim available"
+            + (f"; tessdata: {tessdata_dir}" if tessdata_dir else ""),
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        return CheckResult("Tesseract OCR", False, False, f"{type(exc).__name__}: {exc}")
+        return CheckResult(
+            "Tesseract OCR",
+            False,
+            False,
+            f"{type(exc).__name__}: {exc}",
+            remediation,
+        )
+
+
+def _run_tesseract_list_langs(executable: str, tessdata_dir: str = "") -> tuple[int, str]:
+    command = [executable, "--list-langs"]
+    if tessdata_dir:
+        command.extend(["--tessdata-dir", tessdata_dir])
+    result = subprocess.run(
+        command,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=15,
+    )
+    return result.returncode, result.stdout
 
 
 def _check_data_directory(data_dir: Path) -> CheckResult:
@@ -188,4 +214,6 @@ def format_environment_report(report: EnvironmentReport) -> str:
     for check in report.checks:
         status = "OK" if check.ok else "WARN" if not check.required else "FAIL"
         lines.append(f"[{status}] {check.name}: {check.detail}")
+        if not check.ok and check.remediation:
+            lines.append(f"  Fix: {check.remediation}")
     return "\n".join(lines)

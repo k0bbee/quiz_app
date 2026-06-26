@@ -15,6 +15,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from core.ocr_runtime import configure_pytesseract
+
 
 SUPPORTED_EXTENSIONS = {".pdf", ".pptx", ".docx", ".txt", ".md"}
 
@@ -296,7 +298,8 @@ def _ocr_pdf_page(page, page_number: int, warnings: list[str]) -> str:
     try:
         pix = page.get_pixmap(matrix=None, alpha=False)
         image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        text = pytesseract.image_to_string(image, lang="eng+chi_sim")
+        ocr_config = configure_pytesseract(pytesseract)
+        text = pytesseract.image_to_string(image, lang="eng+chi_sim", config=ocr_config)
         if text.strip():
             warnings.append(f"Page {page_number} text recovered by OCR fallback")
             return text.strip()

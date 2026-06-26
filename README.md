@@ -124,6 +124,20 @@ LLM 不可用、返回非法 JSON 或引用不存在的知识点时，不会阻�
 
 PDF 页面没有可提取文本时，程序会用 `PyMuPDF` 渲染页面，再通过 `Pillow` 和 `pytesseract` 尝试 OCR。`requirements.txt` 会安装这些 Python 依赖，但还必须单独安装 **Tesseract OCR** 系统程序，并确保 `tesseract` 可执行文件位于 `PATH`。
 
+Windows 推荐补齐入口：
+
+```powershell
+winget install -e --id UB-Mannheim.TesseractOCR --accept-package-agreements --accept-source-agreements
+```
+
+如果使用 Chocolatey，可选：
+
+```powershell
+choco install tesseract
+```
+
+安装后重新打开终端或 VS Code，再运行 `python scripts/check_environment.py`。如果仍提示缺少 `chi_sim`，请在 Tesseract 安装器中补选 Chinese Simplified 语言数据，或从 Tesseract tessdata 来源补齐 `chi_sim.traineddata`。没有管理员权限写入 `C:\Program Files\Tesseract-OCR\tessdata` 时，也可以把 `eng.traineddata` 和 `chi_sim.traineddata` 放到本项目的 `data/tessdata/`；程序和环境检查会优先使用这个可写目录。
+
 中英文课件需要安装 Tesseract 的 `eng` 和 `chi_sim` 语言包。可用以下命令确认：
 
 ```bash
@@ -138,7 +152,7 @@ tesseract --list-langs
 |---|---|
 | Python 包显示 `FAIL` | 运行 `python -m pip install -r requirements.txt`，再执行 `python -m pip check` |
 | keyring backend 显示 `WARN` | Windows 会使用 DPAPI 加密文件；其他系统需配置可用 keyring 后端，否则密钥仅当前会话有效 |
-| Tesseract OCR 显示 `WARN` | 仅扫描 PDF OCR 不可用；安装 Tesseract 系统程序和 `eng`、`chi_sim` 语言包并加入 `PATH` |
+| Tesseract OCR 显示 `WARN` | 仅扫描 PDF OCR 不可用；按自检输出的 `Fix:` 命令安装 Tesseract，或使用 `winget install -e --id UB-Mannheim.TesseractOCR` / `choco install tesseract`，并确保 `eng`、`chi_sim` 可在安装目录或 `data/tessdata/` 中找到 |
 | data directory 显示 `FAIL` | 确保应用目录及 `data/` 对当前用户可写 |
 
 ## 运行测试

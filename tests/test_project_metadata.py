@@ -17,6 +17,9 @@ class ProjectMetadataTests(unittest.TestCase):
         self.assertIn("tesseract", readme)
         self.assertIn("chi_sim", readme)
         self.assertIn("无可提取文本", readme)
+        self.assertIn("winget install -e --id ub-mannheim.tesseractocr", readme)
+        self.assertIn("choco install tesseract", readme)
+        self.assertIn("data/tessdata", readme)
 
     def test_readme_documents_install_and_environment_diagnostics(self):
         readme = Path("README.md").read_text(encoding="utf-8").lower()
