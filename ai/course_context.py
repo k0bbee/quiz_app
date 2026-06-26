@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import re
-from collections import Counter
 
+from core.term_extraction import extract_course_terms
 from utils.constants import topic_value
 
 
@@ -89,14 +89,7 @@ def _topic_terms(topics: list, topic_keywords: dict[str, list[str]]) -> list[str
 
 def _global_key_terms(content: str, limit: int = 20) -> list[str]:
     """Extract general technical terms from the course content itself."""
-    tokens = re.findall(r"[A-Za-z][A-Za-z0-9_+-]{2,}|[\u4e00-\u9fff]{2,8}", content)
-    stop = {
-        "the", "and", "for", "with", "from", "that", "this", "which", "when",
-        "what", "how", "why", "are", "was", "were", "can", "will", "课程",
-        "内容", "问题", "答案", "解析", "可考方向", "核心概念",
-    }
-    counts = Counter(t for t in tokens if t.lower() not in stop)
-    return [term for term, _ in counts.most_common(limit)]
+    return list(extract_course_terms(content, limit=limit))
 
 
 def _split_terms(text: str) -> list[str]:

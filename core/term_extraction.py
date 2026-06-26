@@ -49,6 +49,11 @@ def extract_course_terms(text: str, limit: int = 20) -> Counter:
         if token.isdigit():
             continue
         candidates.append((key, token))
+        for part in re.split(r"[_+-]+", token):
+            part_key = _normalize_english_plural(part.lower())
+            if part_key != key and len(part_key) >= 2:
+                if part_key not in STOP_WORDS and not is_low_value_keyword(part_key):
+                    candidates.append((part_key, part))
 
     counts = Counter(key for key, _ in candidates)
     normalized = []
