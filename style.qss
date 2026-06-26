@@ -35,23 +35,26 @@ QLabel:disabled {
 /* Buttons: secondary by default, blue only for primary actions */
 QPushButton {
     min-height: 20px;
-    padding: 5px 14px;
+    padding: 7px 14px;
     color: #cccccc;
     background-color: #313131;
     border: 1px solid #3c3c3c;
-    border-radius: 2px;
+    border-radius: 10px;
+    outline: none;
 }
 
 QPushButton:hover {
     background-color: #3c3c3c;
-    border-color: #4c4c4c;
+    border-color: #5a5a5a;
 }
 
 QPushButton:pressed {
     background-color: #252526;
+    border-color: #007fd4;
 }
 
 QPushButton:focus {
+    background-color: #343434;
     border-color: #007fd4;
 }
 
@@ -79,10 +82,41 @@ QPushButton#dialogSaveBtn:hover {
     border-color: #026ec1;
 }
 
+QPushButton#primaryButton:pressed,
+QPushButton#homeStartBtn:pressed,
+QPushButton#dialogGenerateBtn:pressed,
+QPushButton#dialogSaveBtn:pressed {
+    background-color: #005a9e;
+    border-color: #005a9e;
+}
+
+QPushButton#primaryButton:focus,
+QPushButton#homeStartBtn:focus,
+QPushButton#dialogGenerateBtn:focus,
+QPushButton#dialogSaveBtn:focus {
+    background-color: #0078d4;
+    border-color: #8cc8ff;
+}
+
 QPushButton#secondaryButton {
     color: #cccccc;
     background-color: #313131;
     border-color: #3c3c3c;
+}
+
+QPushButton#secondaryButton:hover {
+    background-color: #3c3c3c;
+    border-color: #5a5a5a;
+}
+
+QPushButton#secondaryButton:pressed {
+    background-color: #252526;
+    border-color: #007fd4;
+}
+
+QPushButton#secondaryButton:focus {
+    background-color: #343434;
+    border-color: #007fd4;
 }
 
 QPushButton#dangerButton,
@@ -97,12 +131,42 @@ QPushButton#dangerButton:hover,
 QPushButton#danger:hover,
 QPushButton#dialogRejectBtn:hover {
     background-color: #6e2424;
+    border-color: #ff6b6b;
+}
+
+QPushButton#dangerButton:pressed,
+QPushButton#danger:pressed,
+QPushButton#dialogRejectBtn:pressed {
+    background-color: #451515;
+    border-color: #f14c4c;
+}
+
+QPushButton#dangerButton:focus,
+QPushButton#danger:focus,
+QPushButton#dialogRejectBtn:focus {
+    background-color: #5a1d1d;
+    border-color: #ff9b9b;
 }
 
 QPushButton#dialogAcceptBtn {
     color: #ffffff;
     background-color: #2e6b3a;
     border-color: #4aa85d;
+}
+
+QPushButton#dialogAcceptBtn:hover {
+    background-color: #347a42;
+    border-color: #65c877;
+}
+
+QPushButton#dialogAcceptBtn:pressed {
+    background-color: #24592f;
+    border-color: #4aa85d;
+}
+
+QPushButton#dialogAcceptBtn:focus {
+    background-color: #2e6b3a;
+    border-color: #9be5a8;
 }
 
 /* Sections */
@@ -332,11 +396,21 @@ QToolBar {
 
 QMenuBar::item {
     padding: 5px 9px;
+    border: 1px solid transparent;
+    border-radius: 6px;
 }
 
 QMenuBar::item:selected,
 QToolBar QPushButton:hover {
     background-color: #2a2d2e;
+    border-color: #3c3c3c;
+}
+
+QMenuBar::item:pressed,
+QMenuBar::item:open {
+    color: #ffffff;
+    background-color: #094771;
+    border-color: #007fd4;
 }
 
 QToolBar {
@@ -349,6 +423,18 @@ QToolBar QPushButton {
     background-color: transparent;
     border-color: transparent;
     padding: 4px 10px;
+    border-radius: 8px;
+}
+
+QToolBar QPushButton:pressed {
+    color: #ffffff;
+    background-color: #094771;
+    border-color: #007fd4;
+}
+
+QToolBar QPushButton:focus {
+    background-color: #2a2d2e;
+    border-color: #007fd4;
 }
 
 QMenu {
@@ -360,11 +446,17 @@ QMenu {
 
 QMenu::item {
     padding: 5px 28px 5px 20px;
+    border-radius: 4px;
 }
 
 QMenu::item:selected {
     color: #ffffff;
     background-color: #094771;
+}
+
+QMenu::item:pressed {
+    color: #ffffff;
+    background-color: #07395d;
 }
 
 QStatusBar {

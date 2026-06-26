@@ -48,6 +48,50 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("#313131", default_rule)
         self.assertNotIn("#0078d4", default_rule)
 
+    def test_buttons_use_soft_radius_and_complete_interaction_states(self):
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+
+        default_rule = re.search(r"qpushbutton\s*\{(?P<body>[^}]*)\}", qss, flags=re.DOTALL)
+        self.assertIsNotNone(default_rule)
+        self.assertRegex(default_rule.group("body"), r"border-radius:\s*(1[0-9]|[2-9][0-9])px")
+        self.assertIn("outline: none", default_rule.group("body"))
+
+        for selector in (
+            "qpushbutton:hover",
+            "qpushbutton:pressed",
+            "qpushbutton:focus",
+            "qpushbutton#primarybutton:hover",
+            "qpushbutton#primarybutton:pressed",
+            "qpushbutton#primarybutton:focus",
+            "qpushbutton#secondarybutton:hover",
+            "qpushbutton#secondarybutton:pressed",
+            "qpushbutton#secondarybutton:focus",
+            "qpushbutton#dangerbutton:hover",
+            "qpushbutton#dangerbutton:pressed",
+            "qpushbutton#dangerbutton:focus",
+        ):
+            self.assertIn(selector, qss)
+
+    def test_menus_have_clear_hover_pressed_and_open_states(self):
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+
+        menu_bar_item = re.search(r"qmenubar::item\s*\{(?P<body>[^}]*)\}", qss, flags=re.DOTALL)
+        self.assertIsNotNone(menu_bar_item)
+        self.assertIn("border-radius", menu_bar_item.group("body"))
+        self.assertIn("border:", menu_bar_item.group("body"))
+
+        for selector in (
+            "qmenubar::item:selected",
+            "qmenubar::item:pressed",
+            "qmenubar::item:open",
+            "qmenu::item:selected",
+            "qmenu::item:pressed",
+            "qtoolbar qpushbutton:hover",
+            "qtoolbar qpushbutton:pressed",
+            "qtoolbar qpushbutton:focus",
+        ):
+            self.assertIn(selector, qss)
+
     def test_fallback_palette_matches_vscode_dark_base(self):
         _apply_dark_palette(_APP)
         palette = _APP.palette()
