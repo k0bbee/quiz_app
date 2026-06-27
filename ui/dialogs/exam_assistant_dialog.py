@@ -83,10 +83,12 @@ class ExamAssistantDialog(QDialog):
 
     def _build_default_interpreter(self):
         from ai.llm_client import LLMClient
+        from ai.course_summary_factory import provider_requires_api_key
         from core.secrets_manager import SecretsManager
 
+        api_key = SecretsManager.instance().get_key() if provider_requires_api_key(self.settings) else ""
         client = LLMClient(
-            api_key=SecretsManager.instance().get_key(),
+            api_key=api_key,
             base_url=self.settings.get("ai_base_url", "local-agent://auto"),
             model=self.settings.get("ai_model", "auto"),
         )

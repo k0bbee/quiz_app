@@ -224,6 +224,42 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual("100 → 56%", dialog.weight_value_labels[dialog.topic_weight_sliders["cache"]].text())
         self.assertEqual("80 → 44%", dialog.weight_value_labels[dialog.topic_weight_sliders["process"]].text())
 
+    def test_local_agent_generation_start_does_not_read_persisted_api_key(self):
+        class ForbiddenSecrets:
+            def get_key(self):
+                raise AssertionError("local agent generation must not read persisted API keys")
+
+        class FakeSignal:
+            def connect(self, _callback):
+                pass
+
+        class FakeWorker:
+            def __init__(self, *args, **kwargs):
+                self.progress = FakeSignal()
+                self.batch_done = FakeSignal()
+                self.error = FakeSignal()
+                self.finished = FakeSignal()
+                self.args = args
+                self.kwargs = kwargs
+                self.started = False
+
+            def start(self):
+                self.started = True
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+
+        with patch("core.secrets_manager.SecretsManager.instance", return_value=ForbiddenSecrets()), \
+             patch("ui.dialogs.ai_generation_dialog.GenerationWorker", FakeWorker):
+            dialog._start_generation()
+
+        self.assertIsInstance(dialog.worker, FakeWorker)
+        self.assertTrue(dialog.worker.started)
+
     def test_dialog_can_prefill_from_existing_question_set(self):
         dialog = AIGenerationDialog(
             "course content",
@@ -397,6 +433,10 @@ class GenerationConfigTests(unittest.TestCase):
         from core.language_manager import LanguageManager
         from ui.main_window import MainWindow
 
+        class ForbiddenSecrets:
+            def get_key(self):
+                raise AssertionError("local agent generation preflight must not read persisted API keys")
+
         settings = {
             "ai_provider": "local_agent",
             "ai_base_url": "local-agent://auto",
@@ -410,9 +450,8 @@ class GenerationConfigTests(unittest.TestCase):
         )
 
         with patch("ui.main_window._ai_generation_settings_error", return_value=""), \
-             patch("core.secrets_manager.SecretsManager.instance") as secrets_instance, \
+             patch("core.secrets_manager.SecretsManager.instance", return_value=ForbiddenSecrets()), \
              patch("ui.dialogs.ai_generation_dialog.AIGenerationDialog") as dialog_class:
-            secrets_instance.return_value.get_key.return_value = ""
             dialog_class.return_value.exec.return_value = QDialog.DialogCode.Rejected
 
             MainWindow._on_ai_generate(shell)

@@ -212,11 +212,12 @@ class CourseScreen(QWidget):
         from ai.course_summary_factory import (
             create_course_generation_profile_generator,
             create_course_summary_generator,
+            provider_requires_api_key,
         )
         from core.secrets_manager import SecretsManager
 
         settings = read_json(SETTINGS_FILE) or {}
-        api_key = SecretsManager.instance().get_key()
+        api_key = SecretsManager.instance().get_key() if provider_requires_api_key(settings) else ""
         summary_generator = create_course_summary_generator(settings, api_key=api_key)
         profile_generator = create_course_generation_profile_generator(settings, api_key=api_key)
         return CourseInitializer(

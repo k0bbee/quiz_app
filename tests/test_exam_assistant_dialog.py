@@ -1,5 +1,6 @@
 import os
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -67,6 +68,23 @@ class ExamAssistantDialogTests(unittest.TestCase):
         self.assertEqual("secondaryButton", self.dialog.cancel_btn.objectName())
         self.assertEqual("primaryButton", self.dialog.apply_btn.objectName())
         self.assertFalse(self.dialog.apply_btn.isEnabled())
+
+    def test_local_agent_default_interpreter_does_not_read_persisted_api_key(self):
+        class ForbiddenSecrets:
+            def get_key(self):
+                raise AssertionError("local agent exam assistant must not read persisted API keys")
+
+        settings = {
+            "ai_provider": "local_agent",
+            "ai_base_url": "local-agent://auto",
+            "ai_model": "codex",
+        }
+
+        with patch("core.secrets_manager.SecretsManager.instance", return_value=ForbiddenSecrets()):
+            dialog = ExamAssistantDialog(self.initial, ["cache"], settings=settings)
+
+        self.assertEqual("local-agent://auto", dialog.interpreter.llm_client.base_url)
+        dialog.close()
 
     def test_interpretation_updates_only_draft_and_supports_follow_up(self):
         first = self.interpreter.interpret("make 20", self.dialog.draft_plan)

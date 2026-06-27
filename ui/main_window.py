@@ -487,7 +487,7 @@ class MainWindow(QMainWindow):
 
         # Check API key unless a local CLI agent is selected.
         from core.secrets_manager import SecretsManager
-        api_key = SecretsManager.instance().get_key()
+        api_key = SecretsManager.instance().get_key() if _provider_requires_api_key(settings) else ""
         settings_error = _ai_generation_settings_error(settings, api_key)
         if settings_error:
             QMessageBox.warning(
@@ -548,7 +548,7 @@ class MainWindow(QMainWindow):
             return
 
         from core.secrets_manager import SecretsManager
-        api_key = SecretsManager.instance().get_key()
+        api_key = SecretsManager.instance().get_key() if _provider_requires_api_key(settings) else ""
         settings_error = _ai_generation_settings_error(settings, api_key)
         if settings_error:
             QMessageBox.warning(

@@ -140,6 +140,26 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
         for noise in ("core", "concept", "example", "exam", "answer", "overview"):
             self.assertNotIn(noise, topics[0].keywords)
 
+    def test_course_screen_local_agent_initializer_does_not_read_persisted_api_key(self):
+        class ForbiddenSecrets:
+            def get_key(self):
+                raise AssertionError("local agent course initialization must not read persisted API keys")
+
+        settings = {
+            "ai_provider": "local_agent",
+            "ai_base_url": "local-agent://auto",
+            "ai_model": "codex",
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             patch("ui.screens.course_screen.read_json", return_value=settings), \
+             patch("core.secrets_manager.SecretsManager.instance", return_value=ForbiddenSecrets()):
+            screen = CourseScreen(CourseProjectManager(str(Path(tmpdir) / "courses")))
+            initializer = screen._build_initializer()
+
+        self.assertIsNotNone(initializer.summary_generator)
+        self.assertIsNotNone(initializer.profile_generator)
+
     def test_generate_falls_back_to_local_summary_when_llm_returns_empty(self):
         client = FakeLLMClient("")
         client.last_error = "API request failed"

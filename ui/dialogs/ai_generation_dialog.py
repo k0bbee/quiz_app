@@ -700,8 +700,9 @@ class AIGenerationDialog(QDialog):
             return
 
         from core.secrets_manager import SecretsManager
-        api_key = SecretsManager.instance().get_key()
-        if provider_requires_api_key(self.settings) and not api_key:
+        requires_api_key = provider_requires_api_key(self.settings)
+        api_key = SecretsManager.instance().get_key() if requires_api_key else ""
+        if requires_api_key and not api_key:
             QMessageBox.warning(
                 self,
                 self.lang_manager.get_text("未配置 API Key", "No API Key"),
