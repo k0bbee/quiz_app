@@ -22,6 +22,7 @@ from core.ocr_runtime import OCR_REMEDIATION
 from core.language_manager import LanguageManager
 from config import (
     BASE_DIR,
+    DATA_DIR,
     SETTINGS_FILE,
     DEFAULT_SETTINGS,
     DEFAULT_DIFFICULTY_WEIGHTS,
@@ -381,6 +382,20 @@ class SettingsScreen(QWidget):
         self.import_btn.clicked.connect(self._import_progress)
         self.data_action_layout.addWidget(self.import_btn)
 
+        self.export_app_data_btn = QPushButton(
+            self.lang_manager.get_text("导出应用数据", "Export App Data")
+        )
+        self.export_app_data_btn.setObjectName("secondaryButton")
+        self.export_app_data_btn.clicked.connect(self._export_app_data)
+        self.data_action_layout.addWidget(self.export_app_data_btn)
+
+        self.import_app_data_btn = QPushButton(
+            self.lang_manager.get_text("导入应用数据", "Import App Data")
+        )
+        self.import_app_data_btn.setObjectName("secondaryButton")
+        self.import_app_data_btn.clicked.connect(self._import_app_data)
+        self.data_action_layout.addWidget(self.import_app_data_btn)
+
         self.reset_progress_btn = QPushButton(
             self.lang_manager.get_text("重置全部进度", "Reset All Progress"))
         self.reset_progress_btn.setObjectName("dangerButton")
@@ -462,6 +477,8 @@ class SettingsScreen(QWidget):
         self.data_group.setTitle(self.lang_manager.get_text("数据管理", "Data Management"))
         self.export_btn.setText(self.lang_manager.get_text("导出进度", "Export Progress"))
         self.import_btn.setText(self.lang_manager.get_text("导入进度", "Import Progress"))
+        self.export_app_data_btn.setText(self.lang_manager.get_text("导出应用数据", "Export App Data"))
+        self.import_app_data_btn.setText(self.lang_manager.get_text("导入应用数据", "Import App Data"))
         self.reset_progress_btn.setText(self.lang_manager.get_text("重置全部进度", "Reset All Progress"))
         self.test_ai_btn.setText(self.lang_manager.get_text("测试 AI 设置", "Test AI Settings"))
         self.save_btn.setText(self.lang_manager.get_text("保存设置", "Save Settings"))
@@ -927,6 +944,87 @@ class SettingsScreen(QWidget):
                     self,
                     self.lang_manager.get_text("无效文件", "Invalid File"),
                     self.lang_manager.get_text("文件格式无效。", "Invalid file format."))
+
+    def _export_app_data(self):
+        filepath, _ = QFileDialog.getSaveFileName(
+            self,
+            self.lang_manager.get_text("导出应用数据", "Export App Data"),
+            "quiz_app_data.quizdata",
+            "Quiz App Data (*.quizdata);;Zip Files (*.zip);;All Files (*)",
+        )
+        if not filepath:
+            return
+
+        from core.app_data_bundle import export_app_data_bundle
+
+        try:
+            written = export_app_data_bundle(DATA_DIR, filepath)
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(
+                self,
+                self.lang_manager.get_text("导出失败", "Export Failed"),
+                str(exc),
+            )
+            return
+
+        QMessageBox.information(
+            self,
+            self.lang_manager.get_text("已导出", "Exported"),
+            self.lang_manager.get_text(
+                f"应用数据已导出到:\n{written}\n\nAPI Key 不会包含在导出包中。",
+                f"App data exported to:\n{written}\n\nAPI keys are not included in the bundle.",
+            ),
+        )
+
+    def _import_app_data(self):
+        filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            self.lang_manager.get_text("导入应用数据", "Import App Data"),
+            "",
+            "Quiz App Data (*.quizdata);;Zip Files (*.zip);;All Files (*)",
+        )
+        if not filepath:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            self.lang_manager.get_text("导入应用数据?", "Import App Data?"),
+            self.lang_manager.get_text(
+                "将导入课程、题库、题目集、进度和非敏感设置；同名文件会被覆盖。API Key 不会从导入包读取。继续吗？",
+                "This imports courses, questions, question sets, progress, and non-sensitive settings; files with the same name will be overwritten. API keys are never read from the bundle. Continue?",
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        from core.app_data_bundle import import_app_data_bundle
+
+        try:
+            result = import_app_data_bundle(filepath, DATA_DIR)
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(
+                self,
+                self.lang_manager.get_text("导入失败", "Import Failed"),
+                str(exc),
+            )
+            return
+
+        skipped_hint = ""
+        if result.skipped_files:
+            skipped_hint = self.lang_manager.get_text(
+                f"\n已跳过 {len(result.skipped_files)} 个不安全或不支持的文件。",
+                f"\nSkipped {len(result.skipped_files)} unsafe or unsupported files.",
+            )
+        QMessageBox.information(
+            self,
+            self.lang_manager.get_text("已导入", "Imported"),
+            self.lang_manager.get_text(
+                f"已导入 {result.imported_files} 个数据文件。{skipped_hint}\n建议重启应用以刷新全部数据。",
+                f"Imported {result.imported_files} data files.{skipped_hint}\nRestart the app to refresh all data.",
+            ),
+        )
 
     def _reset_progress(self):
         reply = QMessageBox.question(

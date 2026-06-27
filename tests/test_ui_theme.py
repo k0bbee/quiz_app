@@ -187,6 +187,8 @@ class UiThemeTests(unittest.TestCase):
                 settings.ocr_fix_btn,
                 settings.export_btn,
                 settings.import_btn,
+                settings.export_app_data_btn,
+                settings.import_app_data_btn,
                 settings.clear_api_key_btn,
             ):
                 self.assertEqual("secondaryButton", button.objectName())
@@ -271,6 +273,14 @@ class UiThemeTests(unittest.TestCase):
         )
         self.assertLess(
             settings.data_action_layout.indexOf(settings.import_btn),
+            settings.data_action_layout.indexOf(settings.export_app_data_btn),
+        )
+        self.assertLess(
+            settings.data_action_layout.indexOf(settings.export_app_data_btn),
+            settings.data_action_layout.indexOf(settings.import_app_data_btn),
+        )
+        self.assertLess(
+            settings.data_action_layout.indexOf(settings.import_app_data_btn),
             settings.data_action_layout.indexOf(settings.reset_progress_btn),
         )
 
