@@ -3,7 +3,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QComboBox, QLineEdit,
-    QMessageBox
+    QMessageBox, QAbstractItemView
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 
@@ -17,6 +17,7 @@ class TopicSelectionScreen(QWidget):
 
     quiz_start = pyqtSignal(str, list)  # set_id, question_ids
     export_mock_exam = pyqtSignal(str)  # set_id
+    export_mock_exams = pyqtSignal(list)  # set_ids
     regenerate_questions = pyqtSignal(str)  # set_id
     back_to_home = pyqtSignal()
 
@@ -27,6 +28,7 @@ class TopicSelectionScreen(QWidget):
         self.lang_manager = LanguageManager.instance()
         self._all_sets = []
         self._current_course_id = ""
+        self._updating_topic_filter = False
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -49,7 +51,9 @@ class TopicSelectionScreen(QWidget):
         self.topic_filter = QComboBox()
         self.topic_filter.setEditable(True)
         self.topic_filter.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.topic_filter.lineEdit().setReadOnly(True)
         self.topic_filter.currentIndexChanged.connect(self._render_sets)
+        self.topic_filter.model().itemChanged.connect(self._on_topic_filter_item_changed)
         filter_layout.addWidget(self.topic_filter, 1)
 
         self.difficulty_filter = QComboBox()
@@ -64,7 +68,9 @@ class TopicSelectionScreen(QWidget):
         self.set_list = QListWidget()
         self.set_list.setObjectName("topicSetList")
         self.set_list.setMinimumHeight(250)
+        self.set_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.set_list.currentItemChanged.connect(self._on_set_selected)
+        self.set_list.itemSelectionChanged.connect(self._on_set_selection_changed)
         layout.addWidget(self.set_list)
 
         # Set info
@@ -147,8 +153,13 @@ class TopicSelectionScreen(QWidget):
                 f"{self.lang_manager.get_text('最佳:', 'Best:')} {best_score}"
             )
             self.start_btn.setEnabled(True)
-            self.export_btn.setEnabled(True)
             self.regenerate_btn.setEnabled(True)
+            self._on_set_selection_changed()
+
+    def _on_set_selection_changed(self):
+        """Keep batch-export availability aligned with selected question sets."""
+        has_selection = bool(self._selected_set_ids())
+        self.export_btn.setEnabled(has_selection)
 
     def _start_quiz(self):
         """Emit signal to start the quiz with selected set."""
@@ -163,11 +174,12 @@ class TopicSelectionScreen(QWidget):
 
 
     def _export_selected_set(self):
-        """Emit signal to export the selected question set as a mock exam."""
-        current = self.set_list.currentItem()
-        if not current:
-            return
-        self.export_mock_exam.emit(current.data(Qt.ItemDataRole.UserRole))
+        """Emit signal to export selected question sets as mock exams."""
+        set_ids = self._selected_set_ids()
+        if len(set_ids) == 1:
+            self.export_mock_exam.emit(set_ids[0])
+        elif len(set_ids) > 1:
+            self.export_mock_exams.emit(set_ids)
 
     def _regenerate_selected_set(self):
         """Emit signal to regenerate questions for the selected question set."""
@@ -193,10 +205,13 @@ class TopicSelectionScreen(QWidget):
             if self._matches_current_course(qset)
         ]
 
+        self._updating_topic_filter = True
         self.topic_filter.blockSignals(True)
-        current_topic = self.topic_filter.currentData()
+        self.topic_filter.model().blockSignals(True)
+        current_topics = {topic_value(topic) for topic in self._selected_topic_filters()}
         self.topic_filter.clear()
         self.topic_filter.addItem(self.lang_manager.get_text("全部主题", "All topics"), None)
+        self._configure_topic_filter_item(0, checked=not current_topics)
         seen_topics = []
         for qs in self._all_sets:
             for topic in qs.topics:
@@ -204,11 +219,14 @@ class TopicSelectionScreen(QWidget):
                     seen_topics.append(topic)
         for topic in sorted(seen_topics, key=topic_value):
             self.topic_filter.addItem(topic_label(topic, lang), topic)
-        if current_topic is not None:
-            idx = self.topic_filter.findData(current_topic)
-            if idx >= 0:
-                self.topic_filter.setCurrentIndex(idx)
+            self._configure_topic_filter_item(
+                self.topic_filter.count() - 1,
+                checked=topic_value(topic) in current_topics,
+            )
+        self.topic_filter.model().blockSignals(False)
         self.topic_filter.blockSignals(False)
+        self._updating_topic_filter = False
+        self._update_topic_filter_label()
 
         self.difficulty_filter.blockSignals(True)
         current_diff = self.difficulty_filter.currentData()
@@ -237,10 +255,10 @@ class TopicSelectionScreen(QWidget):
         self.set_list.clear()
         lang = self.lang_manager.current
         query = self.search_input.text().strip().lower() if hasattr(self, "search_input") else ""
-        topic_filter = self.topic_filter.currentData() if hasattr(self, "topic_filter") else None
+        topic_filters = self._selected_topic_filters() if hasattr(self, "topic_filter") else []
         diff_filter = self.difficulty_filter.currentData() if hasattr(self, "difficulty_filter") else None
 
-        visible = [qs for qs in self._all_sets if self._matches_filters(qs, query, topic_filter, diff_filter, lang)]
+        visible = [qs for qs in self._all_sets if self._matches_filters(qs, query, topic_filters, diff_filter, lang)]
         for qs in visible:
             completed = []
             if self.progress_manager:
@@ -274,9 +292,10 @@ class TopicSelectionScreen(QWidget):
             self.export_btn.setEnabled(False)
             self.regenerate_btn.setEnabled(False)
 
-    def _matches_filters(self, qset, query: str, topic_filter, diff_filter, lang: str) -> bool:
+    def _matches_filters(self, qset, query: str, topic_filters, diff_filter, lang: str) -> bool:
         """Return True if a question set should be shown."""
-        if topic_filter is not None and topic_filter not in qset.topics:
+        selected_topic_values = {topic_value(topic) for topic in topic_filters}
+        if selected_topic_values and not any(topic_value(topic) in selected_topic_values for topic in qset.topics):
             return False
         if diff_filter is not None and qset.difficulty.value != diff_filter:
             return False
@@ -295,6 +314,78 @@ class TopicSelectionScreen(QWidget):
             topic_text,
         ]).lower()
         return query in haystack
+
+    def _configure_topic_filter_item(self, row: int, checked: bool = False):
+        """Make a topic filter row checkable."""
+        item = self.topic_filter.model().item(row)
+        if item is None:
+            return
+        item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+
+    def _selected_topic_filters(self) -> list[object]:
+        """Return checked topic filter values; empty means all topics."""
+        if not hasattr(self, "topic_filter"):
+            return []
+        selected = []
+        model = self.topic_filter.model()
+        for row in range(self.topic_filter.count()):
+            topic = self.topic_filter.itemData(row)
+            if topic is None:
+                continue
+            item = model.item(row)
+            if item and item.checkState() == Qt.CheckState.Checked:
+                selected.append(topic)
+        return selected
+
+    def _on_topic_filter_item_changed(self, item):
+        """Apply multi-topic filter changes from checkable combo rows."""
+        if self._updating_topic_filter:
+            return
+        self._updating_topic_filter = True
+        try:
+            changed_topic = item.data(Qt.ItemDataRole.UserRole)
+            model = self.topic_filter.model()
+            all_item = model.item(0)
+            if changed_topic is None and item.checkState() == Qt.CheckState.Checked:
+                for row in range(1, self.topic_filter.count()):
+                    topic_item = model.item(row)
+                    if topic_item:
+                        topic_item.setCheckState(Qt.CheckState.Unchecked)
+            elif changed_topic is not None and item.checkState() == Qt.CheckState.Checked and all_item:
+                all_item.setCheckState(Qt.CheckState.Unchecked)
+            if all_item and not self._selected_topic_filters():
+                all_item.setCheckState(Qt.CheckState.Checked)
+        finally:
+            self._updating_topic_filter = False
+
+        self._update_topic_filter_label()
+        self._render_sets()
+
+    def _update_topic_filter_label(self):
+        """Show a compact label for the current multi-topic filter."""
+        if not hasattr(self, "topic_filter") or not self.topic_filter.isEditable():
+            return
+        count = len(self._selected_topic_filters())
+        if count == 0:
+            text = self.lang_manager.get_text("全部主题", "All topics")
+        else:
+            text = self.lang_manager.get_text(f"已选 {count} 个主题", f"{count} topics selected")
+        self.topic_filter.lineEdit().setText(text)
+
+    def _selected_set_ids(self) -> list[str]:
+        """Return selected question-set ids without duplicates."""
+        items = self.set_list.selectedItems() if hasattr(self, "set_list") else []
+        if not items and hasattr(self, "set_list") and self.set_list.currentItem():
+            items = [self.set_list.currentItem()]
+        set_ids = []
+        seen = set()
+        for item in items:
+            set_id = item.data(Qt.ItemDataRole.UserRole)
+            if set_id and set_id not in seen:
+                seen.add(set_id)
+                set_ids.append(set_id)
+        return set_ids
 
     def _matches_current_course(self, qset) -> bool:
         source_course_id = (qset.metadata or {}).get("course_id", "")

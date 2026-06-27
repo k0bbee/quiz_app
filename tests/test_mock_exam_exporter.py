@@ -6,7 +6,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QAbstractItemView
 from PyQt6.QtCore import Qt
 
 from core.mock_exam_exporter import MockExamExporter, render_mock_exam_markdown
@@ -126,8 +126,10 @@ class MockExamExporterTests(unittest.TestCase):
             qset = self._make_question_set()
             manager.save(qset)
             screen = TopicSelectionScreen(manager)
-            emitted = []
-            screen.export_mock_exam.connect(emitted.append)
+            emitted_singles = []
+            emitted_batches = []
+            screen.export_mock_exam.connect(emitted_singles.append)
+            screen.export_mock_exams.connect(emitted_batches.append)
 
             screen.refresh()
             self.assertFalse(screen.export_btn.isEnabled())
@@ -136,7 +138,73 @@ class MockExamExporterTests(unittest.TestCase):
             self.assertTrue(screen.export_btn.isEnabled())
             screen.export_btn.click()
 
-            self.assertEqual([qset.set_id], emitted)
+            self.assertEqual([qset.set_id], emitted_singles)
+            self.assertEqual([], emitted_batches)
+
+    def test_topic_selection_screen_emits_export_requests_for_multiple_selected_sets(self):
+        from models.question_set import SetManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SetManager(tmpdir)
+            first = self._make_question_set()
+            first.set_id = "set-a"
+            second = self._make_question_set()
+            second.set_id = "set-b"
+            manager.save(first)
+            manager.save(second)
+            screen = TopicSelectionScreen(manager)
+            emitted_singles = []
+            emitted_batches = []
+            screen.export_mock_exam.connect(emitted_singles.append)
+            screen.export_mock_exams.connect(emitted_batches.append)
+
+            screen.refresh()
+            self.assertEqual(
+                QAbstractItemView.SelectionMode.ExtendedSelection,
+                screen.set_list.selectionMode(),
+            )
+
+            screen.set_list.setCurrentRow(0)
+            screen.set_list.item(1).setSelected(True)
+            self.assertTrue(screen.export_btn.isEnabled())
+            screen.export_btn.click()
+
+            self.assertEqual([], emitted_singles)
+            self.assertEqual(1, len(emitted_batches))
+            self.assertCountEqual([first.set_id, second.set_id], emitted_batches[0])
+
+    def test_topic_selection_screen_filters_by_multiple_selected_topics(self):
+        from models.question_set import SetManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SetManager(tmpdir)
+            cache = self._make_question_set()
+            cache.set_id = "set-cache"
+            cache.topics = ["cache"]
+            scheduling = self._make_question_set()
+            scheduling.set_id = "set-scheduling"
+            scheduling.topics = ["scheduling"]
+            memory = self._make_question_set()
+            memory.set_id = "set-memory"
+            memory.topics = ["memory"]
+            manager.save(cache)
+            manager.save(scheduling)
+            manager.save(memory)
+
+            screen = TopicSelectionScreen(manager)
+            screen.refresh()
+            model = screen.topic_filter.model()
+            for row in range(screen.topic_filter.count()):
+                if screen.topic_filter.itemData(row) in {"cache", "scheduling"}:
+                    model.item(row).setCheckState(Qt.CheckState.Checked)
+
+            screen._render_sets()
+
+            visible_ids = {
+                screen.set_list.item(row).data(Qt.ItemDataRole.UserRole)
+                for row in range(screen.set_list.count())
+            }
+            self.assertEqual({"set-cache", "set-scheduling"}, visible_ids)
 
     def test_topic_selection_screen_emits_regenerate_request_for_selected_set(self):
         from models.question_set import SetManager

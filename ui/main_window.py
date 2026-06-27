@@ -1,5 +1,7 @@
 """Main window — application shell with QStackedWidget navigation."""
 
+from pathlib import Path
+
 from PyQt6.QtWidgets import (
     QMainWindow, QStackedWidget, QMenuBar, QMenu, QDialog,
     QToolBar, QMessageBox, QWidget, QVBoxLayout, QPushButton, QFileDialog
@@ -200,6 +202,7 @@ class MainWindow(QMainWindow):
         # Topic selection
         self.topic_screen.quiz_start.connect(self._on_quiz_start)
         self.topic_screen.export_mock_exam.connect(self._on_export_mock_exam)
+        self.topic_screen.export_mock_exams.connect(self._on_export_mock_exams)
         self.topic_screen.regenerate_questions.connect(self._on_regenerate_question_set)
         self.topic_screen.back_to_home.connect(lambda: self.navigate_to(self.SCREEN_HOME))
 
@@ -328,6 +331,69 @@ class MainWindow(QMainWindow):
             gm("Export Complete", "Export Complete"),
             gm(f"Mock exam exported to:\n{written}", f"Mock exam exported to:\n{written}"),
         )
+
+    def _on_export_mock_exams(self, set_ids: list[str]):
+        """Export multiple selected question sets to one folder."""
+        gm = self.lang_manager.get_text
+        unique_set_ids = list(dict.fromkeys(set_ids))
+        if not unique_set_ids:
+            return
+        if len(unique_set_ids) == 1:
+            self._on_export_mock_exam(unique_set_ids[0])
+            return
+
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            gm("Export Mock Exams", "Export Mock Exams"),
+        )
+        if not folder:
+            return
+
+        from core.mock_exam_exporter import MockExamExporter
+        from utils.json_io import sanitize_filename_part
+
+        output_dir = Path(folder)
+        written: list[Path] = []
+        failures: list[str] = []
+        for set_id in unique_set_ids:
+            question_set = self.set_manager.get(set_id)
+            if not question_set:
+                failures.append(gm(f"{set_id}: 未找到题目集", f"{set_id}: question set not found"))
+                continue
+
+            questions = self.question_bank.get_many(question_set.questions)
+            if not questions:
+                failures.append(gm(f"{set_id}: 未找到题目", f"{set_id}: no questions found"))
+                continue
+
+            output_path = output_dir / f"{sanitize_filename_part(question_set.set_id)}_mock_exam.md"
+            try:
+                written.append(
+                    MockExamExporter.write_markdown(
+                        output_path,
+                        question_set,
+                        questions,
+                        lang=self.lang_manager.current,
+                        include_answers=True,
+                    )
+                )
+            except OSError as exc:
+                failures.append(f"{set_id}: {exc}")
+
+        if written:
+            preview = "\n".join(str(path) for path in written[:5])
+            extra = "" if len(written) <= 5 else gm(f"\n等 {len(written)} 份文件", f"\nand {len(written)} files total")
+            QMessageBox.information(
+                self,
+                gm("Export Complete", "Export Complete"),
+                gm(f"已导出模拟卷:\n{preview}{extra}", f"Mock exams exported:\n{preview}{extra}"),
+            )
+        if failures:
+            QMessageBox.warning(
+                self,
+                gm("Export Partially Failed", "Export Partially Failed"),
+                "\n".join(failures),
+            )
 
     def _on_quiz_finished(self, progress_record):
         """Show results screen after quiz completion."""
