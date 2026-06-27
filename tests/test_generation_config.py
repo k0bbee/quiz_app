@@ -203,6 +203,27 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(70, dialog.medium_slider.value())
         self.assertEqual(20, dialog.hard_slider.value())
 
+    def test_dialog_weight_labels_update_normalized_effective_percentages_after_confirmation(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache", "process"],
+        )
+
+        self.assertEqual("50%", dialog.weight_value_labels[dialog.topic_weight_sliders["cache"]].text())
+        self.assertEqual("50%", dialog.weight_value_labels[dialog.topic_weight_sliders["process"]].text())
+
+        dialog.topic_weight_sliders["cache"].setValue(100)
+        dialog.topic_weight_sliders["process"].setValue(80)
+
+        self.assertEqual("50%", dialog.weight_value_labels[dialog.topic_weight_sliders["cache"]].text())
+        self.assertEqual("50%", dialog.weight_value_labels[dialog.topic_weight_sliders["process"]].text())
+
+        dialog.refresh_weight_preview_btn.click()
+
+        self.assertEqual("100 → 56%", dialog.weight_value_labels[dialog.topic_weight_sliders["cache"]].text())
+        self.assertEqual("80 → 44%", dialog.weight_value_labels[dialog.topic_weight_sliders["process"]].text())
+
     def test_dialog_can_prefill_from_existing_question_set(self):
         dialog = AIGenerationDialog(
             "course content",

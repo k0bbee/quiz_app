@@ -25,6 +25,7 @@ from models.question import Question
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
 from ai.course_context import extract_relevant_course_context
 from core.course_index import retrieve_course_context
+from ui.widgets.wheel_safe_controls import WheelSafeComboBox, WheelSafeSlider, WheelSafeSpinBox
 
 
 class AIGenerationDialog(QDialog):
@@ -40,6 +41,7 @@ class AIGenerationDialog(QDialog):
         self.generated_questions: list[Question] = []
         self.worker: GenerationWorker = None
         self._generation_failed = False
+        self.weight_value_labels: dict[QSlider, QLabel] = {}
 
         self.setWindowTitle(self.lang_manager.get_text("AI 出题", "AI Question Generation"))
         self.resize(1000, 700)
@@ -134,14 +136,14 @@ class AIGenerationDialog(QDialog):
         config_layout.setVerticalSpacing(10)
 
         self.count_label = QLabel(self.lang_manager.get_text("数量:", "Count:"))
-        self.count_spin = QSpinBox()
+        self.count_spin = WheelSafeSpinBox()
         self.count_spin.setRange(3, 60)
         default_count = int(self.settings.get("default_question_count", 15) or 15)
         self.count_spin.setValue(max(self.count_spin.minimum(), min(self.count_spin.maximum(), default_count)))
         config_layout.addRow(self.count_label, self.count_spin)
 
         self.diff_label = QLabel(self.lang_manager.get_text("整体难度:", "Overall difficulty:"))
-        self.diff_combo = QComboBox()
+        self.diff_combo = WheelSafeComboBox()
         difficulties = [
             (self.lang_manager.get_text("简单", "easy"), "easy"),
             (self.lang_manager.get_text("中等", "medium"), "medium"),
@@ -157,7 +159,7 @@ class AIGenerationDialog(QDialog):
         config_layout.addRow(self.diff_label, self.diff_combo)
 
         self.template_label = QLabel(self.lang_manager.get_text("模板:", "Template:"))
-        self.template_combo = QComboBox()
+        self.template_combo = WheelSafeComboBox()
         self.template_combo.addItem(self.lang_manager.get_text("快速复习", "Quick Review"), "quick_review")
         self.template_combo.addItem(self.lang_manager.get_text("期末模拟", "Final Exam Style"), "final_exam")
         self.template_combo.addItem(self.lang_manager.get_text("计算训练", "Calculation Practice"), "calculation_practice")
@@ -249,11 +251,19 @@ class AIGenerationDialog(QDialog):
         structure_layout.addRow(self.medium_label, self._slider_row(self.medium_slider))
         structure_layout.addRow(self.hard_label, self._slider_row(self.hard_slider))
 
+        self.refresh_weight_preview_btn = QPushButton(
+            self.lang_manager.get_text("更新权重显示", "Update Weight Preview")
+        )
+        self.refresh_weight_preview_btn.setObjectName("secondaryButton")
+        self.refresh_weight_preview_btn.clicked.connect(self._refresh_weight_labels)
+        structure_layout.addRow("", self.refresh_weight_preview_btn)
+
         right_layout.addWidget(self.structure_group)
         right_layout.addStretch()
 
         if hasattr(self, "topic_weight_group"):
             self.topic_weight_group.setTitle(self.lang_manager.get_text("知识点权重", "Topic Weights"))
+        self._refresh_weight_labels()
         self._update_preview()
 
         self.right_scroll.setWidget(self.right_content)
@@ -298,7 +308,7 @@ class AIGenerationDialog(QDialog):
         outer.addWidget(bottom)
 
     def _make_slider(self, value: int) -> QSlider:
-        slider = QSlider(Qt.Orientation.Horizontal)
+        slider = WheelSafeSlider(Qt.Orientation.Horizontal)
         slider.setRange(0, 100)
         slider.setSingleStep(5)
         slider.setPageStep(10)
@@ -323,10 +333,53 @@ class AIGenerationDialog(QDialog):
         label = QLabel(f"{slider.value()}%")
         label.setMinimumWidth(40)
         label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        slider.valueChanged.connect(lambda value, target=label: target.setText(f"{value}%"))
+        self.weight_value_labels[slider] = label
         layout.addWidget(slider, 1)
         layout.addWidget(label)
         return row
+
+    def _refresh_weight_labels(self) -> None:
+        """Show raw slider weights and their normalized effective percentages."""
+        groups: list[list[QSlider]] = []
+        if hasattr(self, "topic_weight_sliders"):
+            groups.append(list(self.topic_weight_sliders.values()))
+        question_sliders = [
+            getattr(self, name, None)
+            for name in ("mc_slider", "scenario_slider", "true_false_slider", "fill_blank_slider")
+        ]
+        difficulty_sliders = [
+            getattr(self, name, None)
+            for name in ("easy_slider", "medium_slider", "hard_slider")
+        ]
+        groups.append([slider for slider in question_sliders if slider is not None])
+        groups.append([slider for slider in difficulty_sliders if slider is not None])
+
+        for sliders in groups:
+            self._refresh_weight_label_group(sliders)
+
+    def _refresh_weight_label_group(self, sliders: list[QSlider]) -> None:
+        sliders = [slider for slider in sliders if slider in self.weight_value_labels]
+        if not sliders:
+            return
+        raw_values = {slider: max(0, int(slider.value())) for slider in sliders}
+        total = sum(raw_values.values())
+        if total <= 0:
+            normalized = {slider: 0 for slider in sliders}
+        else:
+            normalized = {
+                slider: round(value * 100 / total)
+                for slider, value in raw_values.items()
+            }
+            delta = 100 - sum(normalized.values())
+            if normalized:
+                first_slider = next(iter(normalized))
+                normalized[first_slider] += delta
+
+        for slider in sliders:
+            raw = raw_values[slider]
+            effective = normalized[slider]
+            text = f"{raw}%" if raw == effective else f"{raw} → {effective}%"
+            self.weight_value_labels[slider].setText(text)
 
     def _on_language_changed(self, lang):
         """Update all UI strings when language changes."""
@@ -389,6 +442,9 @@ class AIGenerationDialog(QDialog):
         self.easy_label.setText(self.lang_manager.get_text("简单", "Easy"))
         self.medium_label.setText(self.lang_manager.get_text("中等", "Medium"))
         self.hard_label.setText(self.lang_manager.get_text("困难", "Hard"))
+        self.refresh_weight_preview_btn.setText(
+            self.lang_manager.get_text("更新权重显示", "Update Weight Preview")
+        )
         if hasattr(self, "topic_weight_group"):
             self.topic_weight_group.setTitle(self.lang_manager.get_text("知识点权重", "Topic Weights"))
         self._update_preview()

@@ -35,7 +35,9 @@ from ai.provider_presets import (
     provider_from_base_url,
     detect_local_agents,
 )
+from ai.course_summary_factory import provider_requires_api_key
 from ai.settings_validation import validate_ai_settings
+from ui.widgets.wheel_safe_controls import WheelSafeComboBox, WheelSafeSpinBox
 
 
 class AIConnectionTestWorker(QThread):
@@ -106,7 +108,7 @@ class SettingsScreen(QWidget):
         )
         lang_layout.setHorizontalSpacing(16)
         lang_layout.setVerticalSpacing(10)
-        self.lang_combo = QComboBox()
+        self.lang_combo = WheelSafeComboBox()
         self.lang_combo.addItem("中文", "zh")
         self.lang_combo.addItem("English", "en")
         self.lang_combo.currentIndexChanged.connect(self._on_language_combo_changed)
@@ -124,7 +126,7 @@ class SettingsScreen(QWidget):
         self.ai_form_layout.setVerticalSpacing(10)
 
         # Provider
-        self.provider_combo = QComboBox()
+        self.provider_combo = WheelSafeComboBox()
         for key, preset in PROVIDER_PRESETS.items():
             self.provider_combo.addItem(preset["label"], key)
         self.provider_combo.currentIndexChanged.connect(self._on_provider_changed)
@@ -159,7 +161,7 @@ class SettingsScreen(QWidget):
         self.ai_form_layout.addRow(self.api_base_url_label, self.api_base_url)
 
         # Model
-        self.model_combo = QComboBox()
+        self.model_combo = WheelSafeComboBox()
         self.model_combo.setEditable(True)
         self.model_label = QLabel(self.lang_manager.get_text("模型:", "Model:"))
         self.ai_form_layout.addRow(self.model_label, self.model_combo)
@@ -219,7 +221,7 @@ class SettingsScreen(QWidget):
         self.practice_form_layout.setHorizontalSpacing(16)
         self.practice_form_layout.setVerticalSpacing(10)
 
-        self.default_question_count_input = QSpinBox()
+        self.default_question_count_input = WheelSafeSpinBox()
         self.default_question_count_input.setRange(3, 60)
         self.default_question_count_input.setSingleStep(1)
         self.default_question_count_label = QLabel(
@@ -230,7 +232,7 @@ class SettingsScreen(QWidget):
             self.default_question_count_input,
         )
 
-        self.default_difficulty_combo = QComboBox()
+        self.default_difficulty_combo = WheelSafeComboBox()
         self.default_difficulty_combo.addItem(self.lang_manager.get_text("简单", "Easy"), "easy")
         self.default_difficulty_combo.addItem(self.lang_manager.get_text("中等", "Medium"), "medium")
         self.default_difficulty_combo.addItem(self.lang_manager.get_text("困难", "Hard"), "hard")
@@ -242,7 +244,7 @@ class SettingsScreen(QWidget):
             self.default_difficulty_combo,
         )
 
-        self.default_template_combo = QComboBox()
+        self.default_template_combo = WheelSafeComboBox()
         self._refresh_template_labels()
         self.default_template_label = QLabel(
             self.lang_manager.get_text("默认模板:", "Default template:")
@@ -614,7 +616,7 @@ class SettingsScreen(QWidget):
                     self, self.lang_manager.get_text("保存失败", "Save Failed"), str(e))
 
     def _make_weight_spinbox(self, value: int) -> QSpinBox:
-        spinbox = QSpinBox()
+        spinbox = WheelSafeSpinBox()
         spinbox.setRange(0, 100)
         spinbox.setSingleStep(5)
         spinbox.setSuffix("%")
@@ -782,7 +784,10 @@ class SettingsScreen(QWidget):
             "ai_base_url": self.api_base_url.text().strip(),
             "ai_model": self.model_combo.currentText().strip(),
         }
-        api_key = self.api_key_input.text() or SecretsManager.instance().get_key()
+        if provider_requires_api_key(settings):
+            api_key = self.api_key_input.text() or SecretsManager.instance().get_key()
+        else:
+            api_key = ""
         result = validate_ai_settings(settings, api_key=api_key, detected_agents=detect_local_agents())
         if not result.ok:
             self.ai_connection_status.setObjectName("settingsConnectionStatusError")
