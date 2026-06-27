@@ -253,7 +253,7 @@ class MatchingWidget(QWidget):
         self.left_label = QLabel(self.lang_manager.get_text("项目:", "Items:"))
         left_layout.addWidget(self.left_label)
         self.left_list = QListWidget()
-        self.left_list.setStyleSheet("font-size: 13px;")
+        self.left_list.setObjectName("matchingLeftList")
         left_layout.addWidget(self.left_list)
 
         # Right side: one combo per left item, built by set_options()
@@ -266,6 +266,7 @@ class MatchingWidget(QWidget):
         self._main_layout.addLayout(self._right_layout)
 
         self.combos: list[QComboBox] = []
+        self.left_item_labels: list[QLabel] = []
         self.right_items: list[str] = []
 
         self.lang_manager.language_changed.connect(self._on_language_changed)
@@ -292,14 +293,15 @@ class MatchingWidget(QWidget):
             for item in options["left"]:
                 self.left_list.addItem(str(item))
                 left_lbl = QLabel(str(item))
+                left_lbl.setObjectName("matchingLeftItem")
                 left_lbl.setMinimumWidth(120)
-                left_lbl.setStyleSheet("font-size: 13px; padding: 4px;")
                 combo = QComboBox()
+                combo.setObjectName("matchingCombo")
                 combo.addItem("---", "")
                 for r in shuffled_right:
                     combo.addItem(r, r)
-                combo.setStyleSheet("font-size: 13px;")
                 combo.currentIndexChanged.connect(lambda idx: self._emit_pairs())
+                self.left_item_labels.append(left_lbl)
                 self.combos.append(combo)
 
                 row = QHBoxLayout()
@@ -327,6 +329,7 @@ class MatchingWidget(QWidget):
         for combo in self.combos:
             combo.deleteLater()
         self.combos.clear()
+        self.left_item_labels.clear()
         self.right_items.clear()
         # Remove all rows from right layout
         while self._right_layout.count() > 2:  # label + stretch

@@ -653,6 +653,22 @@ QLabel#settingsWeightPreview {
     font-size: 12px;
 }
 
+QLabel#courseSummaryLabel,
+QLabel#reviewIndexLabel {
+    color: #f0f0f0;
+    font-weight: 600;
+}
+
+QListWidget#matchingLeftList,
+QLabel#matchingLeftItem,
+QComboBox#matchingCombo {
+    font-size: 13px;
+}
+
+QLabel#matchingLeftItem {
+    padding: 4px;
+}
+
 QLabel#questionStem {
     color: #cccccc;
     font-size: 15px;

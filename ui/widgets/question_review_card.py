@@ -32,7 +32,7 @@ class QuestionReviewCard(QFrame):
         self.icon_label = QLabel()
         self.icon_label.setFixedWidth(24)
         self.index_label = QLabel()
-        self.index_label.setStyleSheet("font-weight: bold;")
+        self.index_label.setObjectName("reviewIndexLabel")
         self.result_label = QLabel()
         top.addWidget(self.icon_label)
         top.addWidget(self.index_label)

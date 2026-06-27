@@ -377,6 +377,7 @@ class UiThemeTests(unittest.TestCase):
     def test_quiz_screen_uses_theme_roles_instead_of_inline_styles(self):
         source = Path("ui/screens/quiz_screen.py").read_text(encoding="utf-8")
         self.assertNotIn(".setStyleSheet(", source)
+        self.assertNotIn(".setStyleSheet(", Path("ui/widgets/answer_area.py").read_text(encoding="utf-8"))
 
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
         progress_rule = re.search(r"qprogressbar\s*\{(?P<body>[^}]*)\}", qss, flags=re.DOTALL)
@@ -435,6 +436,7 @@ class UiThemeTests(unittest.TestCase):
     def test_review_dialog_and_ordering_controls_use_theme_roles(self):
         source = Path("ui/dialogs/question_review_dialog.py").read_text(encoding="utf-8")
         self.assertNotIn(".setStyleSheet(", source)
+        self.assertNotIn(".setStyleSheet(", Path("ui/widgets/question_review_card.py").read_text(encoding="utf-8"))
 
         question = Question.create_new(
             QuestionType.MULTIPLE_CHOICE,
@@ -458,6 +460,32 @@ class UiThemeTests(unittest.TestCase):
 
         self.assertEqual("secondaryButton", ordering.up_btn.objectName())
         self.assertEqual("secondaryButton", ordering.down_btn.objectName())
+
+    def test_course_and_matching_widgets_use_theme_roles(self):
+        self.assertNotIn(".setStyleSheet(", Path("ui/screens/course_screen.py").read_text(encoding="utf-8"))
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            course = CourseScreen(CourseProjectManager(str(Path(tmpdir) / "courses")))
+        self.assertEqual("courseSummaryLabel", course.summary_label.objectName())
+
+        from ui.widgets.answer_area import MatchingWidget
+
+        matching = MatchingWidget()
+        matching.set_options({"left": ["CPU"], "right": ["processor"]})
+
+        self.assertEqual("matchingLeftList", matching.left_list.objectName())
+        self.assertEqual("matchingLeftItem", matching.left_item_labels[0].objectName())
+        self.assertEqual("matchingCombo", matching.combos[0].objectName())
+
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+        for selector in (
+            "qlabel#coursesummarylabel",
+            "qlabel#reviewindexlabel",
+            "qlistwidget#matchingleftlist",
+            "qlabel#matchingleftitem",
+            "qcombobox#matchingcombo",
+        ):
+            self.assertIn(selector, qss)
 
 
 if __name__ == "__main__":

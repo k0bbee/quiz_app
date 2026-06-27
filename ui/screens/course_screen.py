@@ -144,7 +144,7 @@ class CourseScreen(QWidget):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
         self.summary_label = QLabel(self.lang_manager.get_text("摘要预览", "Summary preview"))
-        self.summary_label.setStyleSheet("font-weight: bold;")
+        self.summary_label.setObjectName("courseSummaryLabel")
         right_layout.addWidget(self.summary_label)
         self.summary_preview = QTextEdit()
         self.summary_preview.setObjectName("courseSummaryPreview")
