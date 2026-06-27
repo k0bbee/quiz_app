@@ -243,6 +243,26 @@ class AISettingsValidationTests(unittest.TestCase):
         )
         self.assertTrue(saved["show_timer"])
 
+    def test_settings_weight_preview_updates_normalized_effective_percentages_after_confirmation(self):
+        screen = SettingsScreen()
+
+        self.assertIn("选择题", screen.question_type_weight_preview.text())
+        initial_preview = screen.question_type_weight_preview.text()
+
+        screen.default_mc_weight_input.setValue(100)
+        screen.default_scenario_weight_input.setValue(80)
+        screen.default_true_false_weight_input.setValue(0)
+        screen.default_fill_blank_weight_input.setValue(0)
+
+        self.assertEqual(initial_preview, screen.question_type_weight_preview.text())
+
+        screen.refresh_default_weight_preview_btn.click()
+
+        self.assertIn("选择题 56%", screen.question_type_weight_preview.text())
+        self.assertIn("情境选择题 44%", screen.question_type_weight_preview.text())
+        self.assertIn("判断题 0%", screen.question_type_weight_preview.text())
+        self.assertIn("填空题 0%", screen.question_type_weight_preview.text())
+
     def test_settings_screen_does_not_reveal_existing_api_key(self):
         manager = SimpleNamespace(
             get_key=lambda: "sk-super-secret",

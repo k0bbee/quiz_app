@@ -41,6 +41,27 @@ from ai.settings_validation import validate_ai_settings
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox, WheelSafeSpinBox
 
 
+def _normalize_weight_shares(weights: dict[str, int]) -> dict[str, int]:
+    """Normalize relative weights into integer percentages that sum to 100."""
+    keys = list(weights)
+    if not keys:
+        return {}
+    source = {key: max(0, int(weights[key])) for key in keys}
+    total = sum(source.values())
+    if total <= 0:
+        return {key: 0 for key in keys}
+    raw = {key: source[key] * 100 / total for key in keys}
+    normalized = {key: int(raw[key]) for key in keys}
+    remainder = 100 - sum(normalized.values())
+    ranked = sorted(
+        keys,
+        key=lambda key: (-(raw[key] - normalized[key]), keys.index(key)),
+    )
+    for key in ranked[:remainder]:
+        normalized[key] += 1
+    return normalized
+
+
 class AIConnectionTestWorker(QThread):
     """Run the provider connection probe away from the UI thread."""
 
@@ -296,6 +317,16 @@ class SettingsScreen(QWidget):
             self.default_fill_blank_weight_label,
             self.default_fill_blank_weight_input,
         )
+        self.question_type_weight_preview = QLabel()
+        self.question_type_weight_preview.setObjectName("settingsWeightPreview")
+        self.question_type_weight_preview.setWordWrap(True)
+        self.question_type_weight_preview_title = QLabel(
+            self.lang_manager.get_text("有效占比:", "Effective share:")
+        )
+        self.practice_form_layout.addRow(
+            self.question_type_weight_preview_title,
+            self.question_type_weight_preview,
+        )
 
         self.difficulty_weight_label = QLabel(
             self.lang_manager.get_text("默认难度权重", "Default difficulty weights")
@@ -321,6 +352,23 @@ class SettingsScreen(QWidget):
             self.default_medium_weight_input,
         )
         self.practice_form_layout.addRow(self.default_hard_weight_label, self.default_hard_weight_input)
+        self.difficulty_weight_preview = QLabel()
+        self.difficulty_weight_preview.setObjectName("settingsWeightPreview")
+        self.difficulty_weight_preview.setWordWrap(True)
+        self.difficulty_weight_preview_title = QLabel(
+            self.lang_manager.get_text("有效占比:", "Effective share:")
+        )
+        self.practice_form_layout.addRow(
+            self.difficulty_weight_preview_title,
+            self.difficulty_weight_preview,
+        )
+
+        self.refresh_default_weight_preview_btn = QPushButton(
+            self.lang_manager.get_text("更新权重显示", "Update Weight Preview")
+        )
+        self.refresh_default_weight_preview_btn.setObjectName("secondaryButton")
+        self.refresh_default_weight_preview_btn.clicked.connect(self._refresh_default_weight_previews)
+        self.practice_form_layout.addRow("", self.refresh_default_weight_preview_btn)
 
         self.show_timer_checkbox = QCheckBox(
             self.lang_manager.get_text("练习时显示计时器", "Show timer during practice")
@@ -465,12 +513,21 @@ class SettingsScreen(QWidget):
         self.default_fill_blank_weight_label.setText(
             self.lang_manager.get_text("填空题:", "Fill in the blank:")
         )
+        self.question_type_weight_preview_title.setText(
+            self.lang_manager.get_text("有效占比:", "Effective share:")
+        )
         self.difficulty_weight_label.setText(
             self.lang_manager.get_text("默认难度权重", "Default difficulty weights")
         )
         self.default_easy_weight_label.setText(self.lang_manager.get_text("简单:", "Easy:"))
         self.default_medium_weight_label.setText(self.lang_manager.get_text("中等:", "Medium:"))
         self.default_hard_weight_label.setText(self.lang_manager.get_text("困难:", "Hard:"))
+        self.difficulty_weight_preview_title.setText(
+            self.lang_manager.get_text("有效占比:", "Effective share:")
+        )
+        self.refresh_default_weight_preview_btn.setText(
+            self.lang_manager.get_text("更新权重显示", "Update Weight Preview")
+        )
         self.show_timer_checkbox.setText(
             self.lang_manager.get_text("练习时显示计时器", "Show timer during practice")
         )
@@ -567,6 +624,7 @@ class SettingsScreen(QWidget):
         self.show_timer_checkbox.setChecked(
             bool(self._settings.get("show_timer", DEFAULT_SETTINGS["show_timer"]))
         )
+        self._refresh_default_weight_previews()
 
         self._refresh_local_agent_status()
 
@@ -650,6 +708,50 @@ class SettingsScreen(QWidget):
                 except (TypeError, ValueError):
                     weights[key] = defaults[key]
         return weights
+
+    def _refresh_default_weight_previews(self):
+        """Refresh normalized effective shares for default generation weights."""
+        type_weights = _normalize_weight_shares({
+            "multiple_choice": self.default_mc_weight_input.value(),
+            "scenario_choice": self.default_scenario_weight_input.value(),
+            "true_false": self.default_true_false_weight_input.value(),
+            "fill_in_blank": self.default_fill_blank_weight_input.value(),
+        })
+        difficulty_weights = _normalize_weight_shares({
+            "easy": self.default_easy_weight_input.value(),
+            "medium": self.default_medium_weight_input.value(),
+            "hard": self.default_hard_weight_input.value(),
+        })
+        self.question_type_weight_preview.setText(
+            self.lang_manager.get_text(
+                "；".join([
+                    f"选择题 {type_weights['multiple_choice']}%",
+                    f"情境选择题 {type_weights['scenario_choice']}%",
+                    f"判断题 {type_weights['true_false']}%",
+                    f"填空题 {type_weights['fill_in_blank']}%",
+                ]),
+                "; ".join([
+                    f"Multiple choice {type_weights['multiple_choice']}%",
+                    f"Scenario choice {type_weights['scenario_choice']}%",
+                    f"True / false {type_weights['true_false']}%",
+                    f"Fill in the blank {type_weights['fill_in_blank']}%",
+                ]),
+            )
+        )
+        self.difficulty_weight_preview.setText(
+            self.lang_manager.get_text(
+                "；".join([
+                    f"简单 {difficulty_weights['easy']}%",
+                    f"中等 {difficulty_weights['medium']}%",
+                    f"困难 {difficulty_weights['hard']}%",
+                ]),
+                "; ".join([
+                    f"Easy {difficulty_weights['easy']}%",
+                    f"Medium {difficulty_weights['medium']}%",
+                    f"Hard {difficulty_weights['hard']}%",
+                ]),
+            )
+        )
 
     def _update_api_key_placeholder(self):
         if not hasattr(self, "api_key_input"):

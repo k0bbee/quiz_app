@@ -47,6 +47,7 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("qlabel#settingsconnectionstatus", qss)
         self.assertIn("qlabel#settingsconnectionstatusok", qss)
         self.assertIn("qlabel#settingsconnectionstatuserror", qss)
+        self.assertIn("qlabel#settingsweightpreview", qss)
 
     def test_default_button_is_secondary_instead_of_primary_blue(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
@@ -189,6 +190,7 @@ class UiThemeTests(unittest.TestCase):
                 settings.import_btn,
                 settings.export_app_data_btn,
                 settings.import_app_data_btn,
+                settings.refresh_default_weight_preview_btn,
                 settings.clear_api_key_btn,
             ):
                 self.assertEqual("secondaryButton", button.objectName())
@@ -263,6 +265,20 @@ class UiThemeTests(unittest.TestCase):
         self.assertGreaterEqual(settings.default_template_combo.count(), 3)
         self.assertIsNotNone(settings.default_mc_weight_input)
         self.assertIsNotNone(settings.default_hard_weight_input)
+        self.assertEqual("settingsWeightPreview", settings.question_type_weight_preview.objectName())
+        self.assertEqual("settingsWeightPreview", settings.difficulty_weight_preview.objectName())
+        self.assertLess(
+            settings.practice_form_layout.indexOf(settings.default_fill_blank_weight_input),
+            settings.practice_form_layout.indexOf(settings.question_type_weight_preview),
+        )
+        self.assertLess(
+            settings.practice_form_layout.indexOf(settings.default_hard_weight_input),
+            settings.practice_form_layout.indexOf(settings.difficulty_weight_preview),
+        )
+        self.assertLess(
+            settings.practice_form_layout.indexOf(settings.difficulty_weight_preview),
+            settings.practice_form_layout.indexOf(settings.refresh_default_weight_preview_btn),
+        )
         self.assertLess(
             settings.settings_content.layout().indexOf(settings.practice_group),
             settings.settings_content.layout().indexOf(settings.environment_group),

@@ -648,6 +648,11 @@ QLabel#settingsConnectionStatusError {
     border-color: #f14c4c;
 }
 
+QLabel#settingsWeightPreview {
+    color: #9d9d9d;
+    font-size: 12px;
+}
+
 QLabel#questionStem {
     color: #cccccc;
     font-size: 15px;
