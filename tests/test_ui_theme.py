@@ -288,6 +288,25 @@ class UiThemeTests(unittest.TestCase):
 
     def test_answer_inputs_have_themeable_soft_option_roles(self):
         from ui.widgets.answer_area import FillInBlankWidget, MultipleChoiceWidget, ShortAnswerWidget, TrueFalseWidget
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+
+        option_rule = re.search(
+            r"q(?:radiobutton|checkbox)#answeroption\s*\{(?P<body>[^}]*)\}",
+            qss,
+            flags=re.DOTALL,
+        )
+        self.assertIsNotNone(option_rule)
+        self.assertRegex(option_rule.group("body"), r"border-radius:\s*(1[2-9]|[2-9][0-9])px")
+        self.assertIn("border:", option_rule.group("body"))
+        for selector in (
+            "qradiobutton#answeroption:hover",
+            "qcheckbox#answeroption:hover",
+            "qradiobutton#answeroption:checked",
+            "qcheckbox#answeroption:checked",
+            "qradiobutton#answeroption:focus",
+            "qcheckbox#answeroption:focus",
+        ):
+            self.assertIn(selector, qss)
 
         choices = MultipleChoiceWidget()
         choices.set_options(["A. one", "B. two"])
