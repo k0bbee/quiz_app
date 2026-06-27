@@ -6,8 +6,7 @@ import json
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QListWidget, QListWidgetItem, QTextEdit, QMessageBox, QComboBox,
-    QSplitter
+    QListWidget, QListWidgetItem, QTextEdit, QMessageBox, QSplitter
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -15,6 +14,7 @@ from core.language_manager import LanguageManager
 from core.question_bank_maintenance import remove_question_from_sets
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
+from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 from utils.constants import Difficulty, QuestionType, topic_value
 
 
@@ -53,7 +53,7 @@ class QuestionBankScreen(QWidget):
         self.search_input.textChanged.connect(self._reset_and_refresh)
         filter_row.addWidget(self.search_input, 2)
 
-        self.difficulty_filter = QComboBox()
+        self.difficulty_filter = WheelSafeComboBox()
         self.difficulty_filter.addItem(self.lang_manager.get_text("全部难度", "All difficulty"), None)
         for difficulty in Difficulty:
             self.difficulty_filter.addItem(difficulty.value, difficulty.value)

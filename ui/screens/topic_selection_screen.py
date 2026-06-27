@@ -10,6 +10,7 @@ from PyQt6.QtCore import pyqtSignal, Qt
 from utils.constants import topic_label, topic_value
 from core.language_manager import LanguageManager
 from models.question_set import SetManager
+from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 
 
 class TopicSelectionScreen(QWidget):
@@ -48,7 +49,7 @@ class TopicSelectionScreen(QWidget):
         self.search_input.textChanged.connect(self._render_sets)
         filter_layout.addWidget(self.search_input, 2)
 
-        self.topic_filter = QComboBox()
+        self.topic_filter = WheelSafeComboBox()
         self.topic_filter.setEditable(True)
         self.topic_filter.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.topic_filter.lineEdit().setReadOnly(True)
@@ -56,7 +57,7 @@ class TopicSelectionScreen(QWidget):
         self.topic_filter.model().itemChanged.connect(self._on_topic_filter_item_changed)
         filter_layout.addWidget(self.topic_filter, 1)
 
-        self.difficulty_filter = QComboBox()
+        self.difficulty_filter = WheelSafeComboBox()
         self.difficulty_filter.currentIndexChanged.connect(self._render_sets)
         filter_layout.addWidget(self.difficulty_filter)
 

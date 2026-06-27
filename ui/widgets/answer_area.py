@@ -11,6 +11,7 @@ from PyQt6.QtGui import QFont
 
 from utils.constants import QuestionType
 from core.language_manager import LanguageManager
+from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 
 
 class AnswerArea(QWidget):
@@ -295,7 +296,7 @@ class MatchingWidget(QWidget):
                 left_lbl = QLabel(str(item))
                 left_lbl.setObjectName("matchingLeftItem")
                 left_lbl.setMinimumWidth(120)
-                combo = QComboBox()
+                combo = WheelSafeComboBox()
                 combo.setObjectName("matchingCombo")
                 combo.addItem("---", "")
                 for r in shuffled_right:
