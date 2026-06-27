@@ -453,14 +453,14 @@ QMenuBar::item {
 QMenuBar::item:selected,
 QToolBar QPushButton:hover {
     background-color: #2a2d2e;
-    border-color: #3c3c3c;
+    border-color: #4a4a4a;
 }
 
 QMenuBar::item:pressed,
 QMenuBar::item:open {
     color: #ffffff;
-    background-color: #094771;
-    border-color: #007fd4;
+    background-color: #313131;
+    border-color: #5a5a5a;
 }
 
 QToolBar {
@@ -478,13 +478,13 @@ QToolBar QPushButton {
 
 QToolBar QPushButton:pressed {
     color: #ffffff;
-    background-color: #094771;
-    border-color: #007fd4;
+    background-color: #313131;
+    border-color: #5a5a5a;
 }
 
 QToolBar QPushButton:focus {
-    background-color: #2a2d2e;
-    border-color: #007fd4;
+    background-color: transparent;
+    border-color: transparent;
 }
 
 QMenu {

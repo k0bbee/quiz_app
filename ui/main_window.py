@@ -135,6 +135,7 @@ class MainWindow(QMainWindow):
 
     def _create_menus(self):
         menubar = self.menuBar()
+        menubar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         # File menu
         self.file_menu = menubar.addMenu("")
@@ -177,12 +178,15 @@ class MainWindow(QMainWindow):
 
         self.topics_btn = QPushButton("")
         self.topics_btn.setObjectName("toolbarButton")
+        self.topics_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.topics_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_TOPIC_SELECTION))
         self.progress_btn = QPushButton("")
         self.progress_btn.setObjectName("toolbarButton")
+        self.progress_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.progress_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
         self.courses_btn = QPushButton("")
         self.courses_btn.setObjectName("toolbarButton")
+        self.courses_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.courses_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
 
         self.toolbar.addWidget(self.topics_btn)

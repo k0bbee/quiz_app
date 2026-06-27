@@ -106,6 +106,31 @@ class UiThemeTests(unittest.TestCase):
         ):
             self.assertIn(selector, qss)
 
+    def test_menus_and_toolbar_avoid_sticky_focus_chrome(self):
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+
+        menu_active_rule = re.search(
+            r"qmenubar::item:pressed,\s*qmenubar::item:open\s*\{(?P<body>[^}]*)\}",
+            qss,
+            flags=re.DOTALL,
+        )
+        menu_selected_rule = re.search(
+            r"qmenubar::item:selected,\s*qtoolbar qpushbutton:hover\s*\{(?P<body>[^}]*)\}",
+            qss,
+            flags=re.DOTALL,
+        )
+        self.assertIsNotNone(menu_active_rule)
+        self.assertIsNotNone(menu_selected_rule)
+        self.assertNotIn("#094771", menu_active_rule.group("body"))
+        self.assertNotIn("#007fd4", menu_selected_rule.group("body"))
+
+        main_window = MainWindow()
+        self.addCleanup(main_window.close)
+
+        self.assertEqual(Qt.FocusPolicy.NoFocus, main_window.menuBar().focusPolicy())
+        for button in (main_window.topics_btn, main_window.progress_btn, main_window.courses_btn):
+            self.assertEqual(Qt.FocusPolicy.NoFocus, button.focusPolicy())
+
     def test_home_actions_use_dedicated_soft_button_treatment(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
 
