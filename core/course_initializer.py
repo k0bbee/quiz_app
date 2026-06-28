@@ -9,7 +9,7 @@ from pathlib import Path
 
 from core.document_parser import DocumentParser, ExtractedDocument
 from core.course_index import attach_index_to_project
-from core.term_extraction import extract_course_terms
+from core.term_extraction import extract_course_terms, is_low_value_keyword
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from ai.course_generation_profile import (
     CourseGenerationProfileGenerator,
@@ -29,6 +29,8 @@ def _is_generic_title(title: str) -> bool:
     """
     t = title.strip().lower()
     if not t or len(t) < 3:
+        return True
+    if is_low_value_keyword(t):
         return True
     # Allowlist: technical terms/acronyms that are short but legitimate
     _TECH_TERMS = {"cache", "dma", "gpu", "cpu", "raid", "tlb", "pcb", "simd",
@@ -319,6 +321,8 @@ def _extract_first_meaningful_sentence(text: str) -> str:
         clean = line.strip(" -*#\t")
         clean = re.sub(r"^\d+[\.\)]\s*", "", clean)
         if not (6 <= len(clean) <= 90):
+            continue
+        if is_low_value_keyword(clean.lower()):
             continue
         words = clean.split()
         if not words:

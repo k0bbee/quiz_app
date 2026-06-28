@@ -140,6 +140,27 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
         for noise in ("core", "concept", "example", "exam", "answer", "overview"):
             self.assertNotIn(noise, topics[0].keywords)
 
+    def test_inferred_topic_title_skips_generated_summary_scaffold(self):
+        scaffold = "根据课件上下文，按输入、关键条件、中间状态和输出结果整理概念关系或计算步骤。"
+        text = (
+            f"{scaffold}\n"
+            "# Cache Mapping\n"
+            "Cache Mapping splits byte addresses into tag, set index, and byte offset. "
+            "The cache tag is compared after selecting a set. "
+        ) * 20
+        doc = ExtractedDocument(
+            path="slides.md",
+            title="slides",
+            extension=".md",
+            text=text,
+            pages=[text],
+        )
+
+        topics = infer_topics([doc])
+
+        self.assertEqual("Cache Mapping", topics[0].title)
+        self.assertNotIn("根据课件上下文", topics[0].title)
+
     def test_course_screen_local_agent_initializer_does_not_read_persisted_api_key(self):
         class ForbiddenSecrets:
             def get_key(self):
