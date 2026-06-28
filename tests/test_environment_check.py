@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core.environment_check import CheckResult, EnvironmentReport, collect_environment_report, _check_tesseract
+from core.environment_check import format_environment_report
 from scripts.check_environment import main as environment_check_main
 
 
@@ -43,6 +44,25 @@ class EnvironmentCheckTests(unittest.TestCase):
             self.assertTrue(by_name[dependency].ok, by_name[dependency].detail)
         self.assertTrue(by_name["data directory"].ok)
         self.assertIn("secure API key persistence", by_name)
+
+    def test_collector_exposes_remediation_for_missing_required_python_packages(self):
+        original_import_module = __import__("importlib").import_module
+
+        def import_module(name):
+            if name == "requests":
+                raise ModuleNotFoundError("No module named requests")
+            return original_import_module(name)
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             patch("core.environment_check.importlib.import_module", side_effect=import_module), \
+             patch("core.environment_check._check_tesseract", return_value=CheckResult("Tesseract OCR", True, False, "available")):
+            report = collect_environment_report(Path(tmpdir))
+
+        by_name = {check.name: check for check in report.checks}
+        self.assertFalse(report.ok)
+        self.assertFalse(by_name["requests"].ok)
+        self.assertEqual("python -m pip install -r requirements.txt", by_name["requests"].remediation)
+        self.assertIn("Fix: python -m pip install -r requirements.txt", format_environment_report(report))
 
     def test_cli_json_report_is_machine_readable_and_contains_no_secret_values(self):
         output = io.StringIO()

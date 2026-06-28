@@ -23,6 +23,7 @@ PYTHON_DEPENDENCIES = (
     ("Pillow", "PIL"),
     ("pytesseract", "pytesseract"),
 )
+PYTHON_DEPENDENCY_REMEDIATION = "python -m pip install -r requirements.txt"
 
 
 @dataclass(frozen=True)
@@ -79,7 +80,8 @@ def collect_environment_report(project_root: str | Path) -> EnvironmentReport:
                 distribution,
                 False,
                 True,
-                f"{type(exc).__name__}: install with python -m pip install -r requirements.txt",
+                f"{type(exc).__name__}: Python package is unavailable",
+                PYTHON_DEPENDENCY_REMEDIATION,
             )
         checks.append(result)
         package_status[distribution] = result
