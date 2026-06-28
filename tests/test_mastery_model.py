@@ -1,0 +1,123 @@
+from models.progress import AnswerRecord, ProgressRecord, SessionSummary
+from core.mastery import build_question_mastery, prioritize_review_question_ids
+from core.progress_tracker import ProgressManager
+
+
+def _record(progress_id: str, started_at: str, answers: list[AnswerRecord]) -> ProgressRecord:
+    return ProgressRecord(
+        progress_id=progress_id,
+        set_id="set-review",
+        language="zh",
+        started_at=started_at,
+        completed_at=started_at,
+        status="completed",
+        answers=answers,
+        summary=SessionSummary.compute(
+            answers,
+            total_questions=len(answers),
+            total_time=sum(answer.time_spent_seconds for answer in answers),
+        ),
+    )
+
+
+def _answer(question_id: str, is_correct: bool, index: int = 0) -> AnswerRecord:
+    return AnswerRecord(
+        question_id=question_id,
+        index_in_session=index,
+        user_answer="A" if is_correct else "B",
+        is_correct=is_correct,
+    )
+
+
+def test_prioritizes_repeated_and_recent_wrong_questions_before_recovered_old_mistakes():
+    records = [
+        _record(
+            "old",
+            "2026-06-01T00:00:00+00:00",
+            [
+                _answer("repeated-wrong", False, 0),
+                _answer("recovered", False, 1),
+                _answer("single-old-wrong", False, 2),
+            ],
+        ),
+        _record(
+            "middle",
+            "2026-06-10T00:00:00+00:00",
+            [
+                _answer("recovered", True, 0),
+                _answer("repeated-wrong", False, 1),
+            ],
+        ),
+        _record(
+            "recent",
+            "2026-06-20T00:00:00+00:00",
+            [
+                _answer("recovered", True, 0),
+                _answer("repeated-wrong", False, 1),
+            ],
+        ),
+    ]
+
+    prioritized = prioritize_review_question_ids(records)
+
+    assert prioritized[0] == "repeated-wrong"
+    assert prioritized.index("single-old-wrong") < prioritized.index("recovered")
+    assert set(prioritized) == {"repeated-wrong", "single-old-wrong", "recovered"}
+
+
+def test_mastery_state_tracks_streaks_accuracy_and_excludes_never_wrong_questions_from_review():
+    records = [
+        _record(
+            "first",
+            "2026-06-01T00:00:00+00:00",
+            [
+                _answer("cache", False, 0),
+                _answer("process", True, 1),
+            ],
+        ),
+        _record(
+            "second",
+            "2026-06-02T00:00:00+00:00",
+            [
+                _answer("cache", True, 0),
+                _answer("process", True, 1),
+            ],
+        ),
+    ]
+
+    states = build_question_mastery(records)
+    prioritized = prioritize_review_question_ids(records)
+
+    assert states["cache"].attempts == 2
+    assert states["cache"].correct == 1
+    assert states["cache"].recent_correct_streak == 1
+    assert states["cache"].recent_wrong_streak == 0
+    assert 0 < states["cache"].mastery_score < states["process"].mastery_score
+    assert prioritized == ["cache"]
+
+
+def test_progress_manager_returns_prioritized_review_ids(tmp_path):
+    progress_manager = ProgressManager(str(tmp_path / "progress"))
+    for record in [
+        _record(
+            "old",
+            "2026-06-01T00:00:00+00:00",
+            [
+                _answer("recovered", False, 0),
+                _answer("repeated-wrong", False, 1),
+            ],
+        ),
+        _record(
+            "recent",
+            "2026-06-20T00:00:00+00:00",
+            [
+                _answer("recovered", True, 0),
+                _answer("repeated-wrong", False, 1),
+            ],
+        ),
+    ]:
+        progress_manager.save(record)
+
+    prioritized = progress_manager.get_prioritized_review_question_ids()
+
+    assert prioritized == ["repeated-wrong", "recovered"]

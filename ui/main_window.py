@@ -461,7 +461,7 @@ class MainWindow(QMainWindow):
     def _on_practice_incorrect(self):
         """Start a quiz session from all historical incorrect questions."""
         gm = self.lang_manager.get_text
-        incorrect_ids = self.progress_manager.get_incorrect_question_ids()
+        incorrect_ids = self.progress_manager.get_prioritized_review_question_ids()
         if not incorrect_ids:
             QMessageBox.information(
                 self,

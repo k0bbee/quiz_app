@@ -7,6 +7,7 @@ from typing import Optional
 
 from models.progress import ProgressRecord, SessionSummary, AnswerRecord
 from models.question_set import QuestionSet
+from core.mastery import prioritize_review_question_ids
 from utils.json_io import read_json, write_json, list_json_files, load_all_json, delete_json, sanitize_filename_part
 
 
@@ -130,6 +131,13 @@ class ProgressManager:
                 if not answer.is_correct:
                     incorrect.add(answer.question_id)
         return list(incorrect)
+
+    def get_prioritized_review_question_ids(
+        self,
+        candidate_question_ids: list[str] | set[str] | None = None,
+    ) -> list[str]:
+        """Get historically wrong question IDs ordered by review priority."""
+        return prioritize_review_question_ids(self.load_all(), candidate_question_ids)
 
     def get_incorrect_for_topics(
         self, question_ids_by_topic: dict[str, list[str]]

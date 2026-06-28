@@ -443,6 +443,69 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual({course_a.question_id}, set(shell._active_questions))
             self.assertEqual([course_a.question_id], [q.question_id for q in started["questions"]])
 
+    def test_incorrect_review_uses_mastery_priority_order(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            lower_priority = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "旧错题", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Old mistake", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            lower_priority.metadata["course_id"] = "course-a"
+            higher_priority = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "反复错题", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Repeated mistake", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            higher_priority.metadata["course_id"] = "course-a"
+            question_bank.save_many([lower_priority, higher_priority])
+
+            class FakeProgressManager:
+                def get_incorrect_question_ids(self):
+                    raise AssertionError("historical review should use mastery-prioritized IDs")
+
+                def get_prioritized_review_question_ids(self):
+                    return [higher_priority.question_id, lower_priority.question_id]
+
+            started = {}
+
+            class FakeQuizScreen:
+                def start_quiz_custom(self, questions, label, show_timer=False):
+                    started["questions"] = questions
+                    started["label"] = label
+                    started["show_timer"] = show_timer
+
+            shell = types.SimpleNamespace(
+                progress_manager=FakeProgressManager(),
+                question_bank=question_bank,
+                lang_manager=LanguageManager.instance(),
+                quiz_screen=FakeQuizScreen(),
+                _active_questions={},
+                SCREEN_QUIZ=2,
+                _current_course_id=lambda: "course-a",
+                _show_timer_setting=lambda: False,
+                navigate_to=lambda screen: started.setdefault("screen", screen),
+            )
+
+            MainWindow._on_practice_incorrect(shell)
+
+            self.assertEqual(
+                [higher_priority.question_id, lower_priority.question_id],
+                [q.question_id for q in started["questions"]],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
