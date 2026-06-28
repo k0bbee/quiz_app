@@ -132,6 +132,30 @@ class UiThemeTests(unittest.TestCase):
         for button in (main_window.topics_btn, main_window.progress_btn, main_window.courses_btn):
             self.assertEqual(Qt.FocusPolicy.NoFocus, button.focusPolicy())
 
+    def test_main_navigation_uses_left_toolbar_with_back_home_and_clean_file_menu(self):
+        main_window = MainWindow()
+        self.addCleanup(main_window.close)
+
+        self.assertEqual(
+            Qt.ToolBarArea.LeftToolBarArea,
+            main_window.toolBarArea(main_window.toolbar),
+        )
+        self.assertFalse(
+            any(action is getattr(main_window, "home_action", None) for action in main_window.file_menu.actions())
+        )
+        self.assertFalse(main_window.nav_back_btn.isEnabled())
+
+        main_window.navigate_to(main_window.SCREEN_PROGRESS)
+        self.assertTrue(main_window.nav_back_btn.isEnabled())
+
+        main_window.nav_back_btn.click()
+        self.assertEqual(main_window.SCREEN_HOME, main_window.stack.currentIndex())
+        self.assertFalse(main_window.nav_back_btn.isEnabled())
+
+        main_window.navigate_to(main_window.SCREEN_SETTINGS)
+        main_window.nav_home_btn.click()
+        self.assertEqual(main_window.SCREEN_HOME, main_window.stack.currentIndex())
+
     def test_semantic_action_buttons_keep_tab_focus_without_mouse_focus(self):
         load_stylesheet(_APP)
 

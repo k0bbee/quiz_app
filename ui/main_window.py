@@ -87,6 +87,7 @@ class MainWindow(QMainWindow):
         self._course_screen = None
         self._question_bank_screen = None
         self._active_questions: dict = {}
+        self._navigation_history: list[int] = []
 
         # Screens 6-7 are lazily created on first access (see properties below)
         self.stack.addWidget(self.home_screen)       # 0
@@ -115,6 +116,7 @@ class MainWindow(QMainWindow):
 
         # Start on home screen
         self.stack.setCurrentIndex(self.SCREEN_HOME)
+        self._update_navigation_actions()
 
     def _get_course_screen(self):
         """Lazy-init the course screen on first access."""
@@ -139,10 +141,6 @@ class MainWindow(QMainWindow):
 
         # File menu
         self.file_menu = menubar.addMenu("")
-        self.home_action = QAction("", self)
-        self.home_action.triggered.connect(lambda: self.navigate_to(self.SCREEN_HOME))
-        self.file_menu.addAction(self.home_action)
-        self.file_menu.addSeparator()
         self.exit_action = QAction("", self)
         self.exit_action.triggered.connect(self.close)
         self.file_menu.addAction(self.exit_action)
@@ -174,7 +172,17 @@ class MainWindow(QMainWindow):
     def _create_toolbar(self):
         self.toolbar = QToolBar("")
         self.toolbar.setMovable(False)
-        self.addToolBar(self.toolbar)
+        self.toolbar.setOrientation(Qt.Orientation.Vertical)
+        self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.toolbar)
+
+        self.nav_back_btn = QPushButton("")
+        self.nav_back_btn.setObjectName("toolbarButton")
+        self.nav_back_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.nav_back_btn.clicked.connect(self.navigate_back)
+        self.nav_home_btn = QPushButton("")
+        self.nav_home_btn.setObjectName("toolbarButton")
+        self.nav_home_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.nav_home_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_HOME))
 
         self.topics_btn = QPushButton("")
         self.topics_btn.setObjectName("toolbarButton")
@@ -189,6 +197,9 @@ class MainWindow(QMainWindow):
         self.courses_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.courses_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
 
+        self.toolbar.addWidget(self.nav_back_btn)
+        self.toolbar.addWidget(self.nav_home_btn)
+        self.toolbar.addSeparator()
         self.toolbar.addWidget(self.topics_btn)
         self.toolbar.addWidget(self.progress_btn)
         self.toolbar.addWidget(self.courses_btn)
@@ -235,7 +246,6 @@ class MainWindow(QMainWindow):
         self.help_menu.setTitle(gm("帮助", "Help"))
 
         # Update menu action texts
-        self.home_action.setText(gm("首页", "Home"))
         self.exit_action.setText(gm("退出", "Exit"))
         self.topics_action.setText(gm("题目集", "Question Sets"))
         self.progress_action.setText(gm("进度", "Progress"))
@@ -248,12 +258,18 @@ class MainWindow(QMainWindow):
         self.toolbar.setWindowTitle(gm("快捷导航", "Quick Nav"))
 
         # Update toolbar button texts (core 3 only)
+        self.nav_back_btn.setText(gm("← 返回", "← Back"))
+        self.nav_home_btn.setText(gm("⌂ 首页", "⌂ Home"))
         self.topics_btn.setText(gm("📋 题目集", "📋 Topics"))
         self.progress_btn.setText(gm("📊 进度", "📊 Progress"))
         self.courses_btn.setText(gm("📚 课件", "📚 Course"))
 
-    def navigate_to(self, screen_index: int):
+    def navigate_to(self, screen_index: int, remember: bool = True):
         """Switch to a screen by index."""
+        current_index = self.stack.currentIndex()
+        if remember and current_index >= 0 and current_index != screen_index:
+            self._navigation_history.append(current_index)
+            self._navigation_history = self._navigation_history[-50:]
         self.stack.setCurrentIndex(screen_index)
         # Refresh data on certain screens
         if screen_index == self.SCREEN_TOPIC_SELECTION:
@@ -270,6 +286,22 @@ class MainWindow(QMainWindow):
         elif screen_index == self.SCREEN_QUESTION_BANK:
             self._sync_question_bank_screen_course()
             self._get_question_bank_screen().refresh()
+        self._update_navigation_actions()
+
+    def navigate_back(self):
+        """Return to the previous screen if navigation history exists."""
+        if not self._navigation_history:
+            self._update_navigation_actions()
+            return
+        previous = self._navigation_history.pop()
+        self.navigate_to(previous, remember=False)
+
+    def _update_navigation_actions(self):
+        """Keep shell navigation buttons in sync with current location."""
+        if not hasattr(self, "nav_back_btn"):
+            return
+        self.nav_back_btn.setEnabled(bool(self._navigation_history))
+        self.nav_home_btn.setEnabled(self.stack.currentIndex() != self.SCREEN_HOME)
 
     # --- Slot handlers ---
 
