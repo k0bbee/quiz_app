@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QPalette
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QGridLayout, QPushButton, QSplitter
+from PyQt6.QtWidgets import QApplication, QFormLayout, QGridLayout, QLabel, QPushButton, QSplitter
 
 from core.progress_tracker import ProgressManager
 from models.course_project import CourseProjectManager
@@ -27,7 +27,7 @@ from ui.screens.results_screen import ResultsScreen
 from ui.screens.settings_screen import SettingsScreen
 from ui.screens.topic_selection_screen import TopicSelectionScreen
 from ui.widgets.answer_area import OrderingWidget
-from utils.constants import Difficulty, QuestionType
+from utils.constants import Difficulty, QuestionType, topic_label
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -341,6 +341,38 @@ class UiThemeTests(unittest.TestCase):
             dialog.footer_action_layout.indexOf(dialog.cancel_btn),
             dialog.footer_action_layout.indexOf(dialog.generate_btn),
         )
+
+    def test_generation_dialog_weight_panel_uses_compact_topic_labels(self):
+        long_topic = (
+            "非常非常非常长的课程主题名称包含根据课件整理概念关键条件中间状态输出结果 "
+            "Cache Mapping Address Breakdown Set Associativity Replacement Policy"
+        )
+        dialog = AIGenerationDialog(
+            "# Course\nCache content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=[long_topic],
+        )
+
+        topic_weight_layout = dialog.topic_weight_group.layout()
+        self.assertIsInstance(topic_weight_layout, QFormLayout)
+        self.assertEqual(QFormLayout.RowWrapPolicy.DontWrapRows, topic_weight_layout.rowWrapPolicy())
+
+        topic_labels = [
+            label
+            for label in dialog.topic_weight_group.findChildren(QLabel)
+            if label.objectName() == "weightTopicLabel"
+        ]
+        display_topic = topic_label(long_topic)
+        self.assertTrue(topic_labels)
+        self.assertTrue(all(not label.wordWrap() for label in topic_labels))
+        self.assertTrue(all(label.maximumWidth() <= 220 for label in topic_labels))
+        self.assertTrue(all(label.toolTip() == display_topic for label in topic_labels))
+        self.assertTrue(all("…" in label.text() for label in topic_labels))
+        self.assertLessEqual(dialog.right_content.minimumSizeHint().width(), 760)
 
     def test_quiz_cards_use_soft_baicizhan_style_borders(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()

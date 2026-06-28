@@ -28,6 +28,14 @@ from core.course_index import retrieve_course_context
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox, WheelSafeSlider, WheelSafeSpinBox
 
 
+def _compact_label_text(text: str, limit: int = 34) -> str:
+    """Return a single-line label while preserving full text in tooltip elsewhere."""
+    clean = " ".join(str(text or "").split())
+    if len(clean) <= limit:
+        return clean
+    return clean[: max(1, limit - 1)].rstrip() + "…"
+
+
 class AIGenerationDialog(QDialog):
     """Dialog for generating questions via AI."""
 
@@ -196,7 +204,10 @@ class AIGenerationDialog(QDialog):
                 key = topic_value(topic)
                 slider = self._make_slider(default_weight)
                 self.topic_weight_sliders[key] = slider
-                topic_weight_layout.addRow(topic_label(topic, lang), self._slider_row(slider))
+                topic_weight_layout.addRow(
+                    self._weight_topic_label(topic_label(topic, lang)),
+                    self._slider_row(slider),
+                )
             right_layout.addWidget(self.topic_weight_group)
 
         # Structure controls
@@ -356,6 +367,15 @@ class AIGenerationDialog(QDialog):
 
         for sliders in groups:
             self._refresh_weight_label_group(sliders)
+
+    def _weight_topic_label(self, text: str) -> QLabel:
+        label = QLabel(_compact_label_text(text, limit=34))
+        label.setObjectName("weightTopicLabel")
+        label.setToolTip(text)
+        label.setWordWrap(False)
+        label.setMaximumWidth(220)
+        label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        return label
 
     def _refresh_weight_label_group(self, sliders: list[QSlider]) -> None:
         sliders = [slider for slider in sliders if slider in self.weight_value_labels]
