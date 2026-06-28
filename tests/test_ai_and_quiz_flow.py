@@ -113,6 +113,83 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertFalse(visible_timer_screen.timer_label.isHidden())
             visible_timer_screen.session_timer.stop()
 
+    def test_quiz_language_switch_preserves_selected_choice(self):
+        question = Question.create_new(
+            qtype=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "问题", "options": ["A. 对", "B. 错"], "explanation": "解释说明"},
+                "en": {"stem": "Question", "options": ["A. Right", "B. Wrong"], "explanation": "Explanation text"},
+            },
+            correct_answer="A",
+            topic="test",
+        )
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=[question.question_id],
+        )
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [question], show_timer=False)
+
+            screen.answer_area.choice_widget.buttons[1].setChecked(True)
+            self.assertEqual("B", screen.answer_area.get_answer())
+            self.assertTrue(screen.submit_btn.isEnabled())
+
+            screen._toggle_language()
+
+            self.assertEqual("B", screen.answer_area.get_answer())
+            self.assertTrue(screen.submit_btn.isEnabled())
+            self.assertEqual("B. Wrong", screen.answer_area.choice_widget.buttons[1].text())
+
+    def test_quiz_language_switch_preserves_typed_answer(self):
+        question = Question.create_new(
+            qtype=QuestionType.FILL_IN_BLANK,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "CPU 的全称是 ____", "options": [], "explanation": "解释说明"},
+                "en": {"stem": "CPU stands for ____", "options": [], "explanation": "Explanation text"},
+            },
+            correct_answer="central processing unit",
+            topic="test",
+        )
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=[question.question_id],
+        )
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [question], show_timer=False)
+
+            screen.answer_area.fill_widget.input.setText("central processing unit")
+            self.assertEqual("central processing unit", screen.answer_area.get_answer())
+            self.assertTrue(screen.submit_btn.isEnabled())
+
+            screen._toggle_language()
+
+            self.assertEqual("central processing unit", screen.answer_area.get_answer())
+            self.assertTrue(screen.submit_btn.isEnabled())
+
     def test_quiz_session_abandon_returns_abandoned_record(self):
         question = Question.create_new(
             qtype=QuestionType.MULTIPLE_CHOICE,

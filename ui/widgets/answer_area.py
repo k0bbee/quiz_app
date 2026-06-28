@@ -63,30 +63,37 @@ class AnswerArea(QWidget):
         self.fill_widget._on_language_changed(lang)
         self.short_widget._on_language_changed(lang)
 
-    def set_question_type(self, qtype: QuestionType, options: list = None):
+    def set_question_type(self, qtype: QuestionType, options: list = None, preserve_answer: bool = False):
         """Switch to the correct answer input widget for the question type."""
+        previous_answer = self.get_answer() if preserve_answer and qtype == self._current_type else None
         self._current_type = qtype
 
         if qtype in (QuestionType.MULTIPLE_CHOICE, QuestionType.SCENARIO_CHOICE):
             self.stack.setCurrentWidget(self.choice_widget)
             if options:
                 self.choice_widget.set_options(options)
+            self.choice_widget.set_answer(previous_answer)
         elif qtype == QuestionType.TRUE_FALSE:
             self.stack.setCurrentWidget(self.true_false_widget)
             if options:
                 self.true_false_widget.set_options(options)
+            self.true_false_widget.set_answer(previous_answer)
         elif qtype == QuestionType.MATCHING:
             self.stack.setCurrentWidget(self.matching_widget)
             if options:
                 self.matching_widget.set_options(options)
+            self.matching_widget.set_answer(previous_answer)
         elif qtype == QuestionType.ORDERING:
             self.stack.setCurrentWidget(self.ordering_widget)
             if options:
                 self.ordering_widget.set_options(options)
+            self.ordering_widget.set_answer(previous_answer)
         elif qtype == QuestionType.FILL_IN_BLANK:
             self.stack.setCurrentWidget(self.fill_widget)
+            self.fill_widget.set_answer(previous_answer)
         elif qtype == QuestionType.SHORT_ANSWER:
             self.stack.setCurrentWidget(self.short_widget)
+            self.short_widget.set_answer(previous_answer)
 
     def get_answer(self) -> object:
         """Get the current answer from the active widget."""
@@ -170,6 +177,18 @@ class MultipleChoiceWidget(QWidget):
                 return label[i] if i < len(label) else ""
         return ""
 
+    def set_answer(self, answer):
+        """Restore a selected option by answer letter."""
+        if not answer:
+            return
+        label = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        try:
+            index = label.index(str(answer).strip().upper())
+        except ValueError:
+            return
+        if 0 <= index < len(self.buttons):
+            self.buttons[index].setChecked(True)
+
     def clear(self):
         for btn in self.buttons:
             self.group.removeButton(btn)
@@ -230,6 +249,13 @@ class TrueFalseWidget(QWidget):
         elif self.false_btn.isChecked():
             return "false"
         return ""
+
+    def set_answer(self, answer):
+        """Restore a true/false selection."""
+        if str(answer).lower() == "true":
+            self.true_btn.setChecked(True)
+        elif str(answer).lower() == "false":
+            self.false_btn.setChecked(True)
 
     def clear(self):
         for btn in (self.true_btn, self.false_btn):
@@ -324,6 +350,23 @@ class MatchingWidget(QWidget):
             right_text = self.combos[i].currentData() if i < len(self.combos) else ""
             pairs.append([left_text, right_text or ""])
         return pairs
+
+    def set_answer(self, answer):
+        """Restore matching selections when labels are still comparable."""
+        if not isinstance(answer, list):
+            return
+        selected_by_left = {
+            str(pair[0]): str(pair[1])
+            for pair in answer
+            if isinstance(pair, list) and len(pair) >= 2
+        }
+        for row in range(self.left_list.count()):
+            left_text = self.left_list.item(row).text()
+            selected = selected_by_left.get(left_text, "")
+            if selected and row < len(self.combos):
+                index = self.combos[row].findData(selected)
+                if index >= 0:
+                    self.combos[row].setCurrentIndex(index)
 
     def clear(self):
         self.left_list.clear()
@@ -422,6 +465,19 @@ class OrderingWidget(QWidget):
             order.append(self.list_widget.item(i).text())
         return order
 
+    def set_answer(self, answer):
+        """Restore ordering when item labels are still comparable."""
+        if not isinstance(answer, list):
+            return
+        available = []
+        for index in range(self.list_widget.count()):
+            available.append(self.list_widget.item(index).text())
+        if set(str(item) for item in answer) != set(available):
+            return
+        self.list_widget.clear()
+        for item in answer:
+            self.list_widget.addItem(str(item))
+
     def clear(self):
         self.list_widget.clear()
 
@@ -454,6 +510,10 @@ class FillInBlankWidget(QWidget):
 
     def get_answer(self) -> str:
         return self.input.text().strip()
+
+    def set_answer(self, answer):
+        if answer:
+            self.input.setText(str(answer))
 
     def clear(self):
         self.input.clear()
@@ -488,6 +548,10 @@ class ShortAnswerWidget(QWidget):
 
     def get_answer(self) -> str:
         return self.editor.toPlainText().strip()
+
+    def set_answer(self, answer):
+        if answer:
+            self.editor.setPlainText(str(answer))
 
     def clear(self):
         self.editor.clear()

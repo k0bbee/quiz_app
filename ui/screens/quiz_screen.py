@@ -224,7 +224,7 @@ class QuizScreen(QWidget):
 
     # --- Internal UI logic ---
 
-    def _display_current_question(self):
+    def _display_current_question(self, preserve_answer: bool = False):
         """Render the current question in the selected language."""
         q = self.session.current_question
         if q is None:
@@ -247,7 +247,7 @@ class QuizScreen(QWidget):
         type_label = type_names.get(q.type, "")
 
         self.question_card.set_question(stem, type_label)
-        self.answer_area.set_question_type(q.type, options)
+        self.answer_area.set_question_type(q.type, options, preserve_answer=preserve_answer)
         self.answer_area.set_enabled(True)
         self.feedback_frame.hide()
         self._set_correct_indicator_state("")
@@ -295,8 +295,8 @@ class QuizScreen(QWidget):
         """Switch between Chinese and English."""
         lang = self.lang_manager.current
         new_lang = "en" if lang == "zh" else "zh"
-        self.lang_manager.set_language(new_lang)
         self.session.set_language(new_lang)
+        self.lang_manager.set_language(new_lang)
 
     def confirm_exit(self) -> bool:
         """Ask whether the current quiz can be left, saving partial progress if needed."""
@@ -348,7 +348,7 @@ class QuizScreen(QWidget):
                     f"题目 {current}/{total}", f"Question {current}/{total}"
                 )
             )
-            self._display_current_question()
+            self._display_current_question(preserve_answer=True)
 
     # --- Session signal handlers ---
 
