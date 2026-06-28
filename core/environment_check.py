@@ -7,6 +7,7 @@ import importlib
 import importlib.metadata
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -178,12 +179,16 @@ def _check_tesseract(project_root: str | Path) -> CheckResult:
                 "missing optional language packs: " + ", ".join(missing),
                 remediation,
             )
+        path_note = ""
+        if not shutil.which("tesseract"):
+            path_note = "; tesseract is not on PATH, but the app can use the detected executable directly"
         return CheckResult(
             "Tesseract OCR",
             True,
             False,
             f"{executable}; eng and chi_sim available"
-            + (f"; tessdata: {tessdata_dir}" if tessdata_dir else ""),
+            + (f"; tessdata: {tessdata_dir}" if tessdata_dir else "")
+            + path_note,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return CheckResult(

@@ -172,6 +172,19 @@ class EnvironmentCheckTests(unittest.TestCase):
         self.assertTrue(result.ok, result.detail)
         self.assertIn("data", result.detail)
 
+    def test_tesseract_check_reports_when_executable_is_not_on_path_but_app_can_use_it(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            with patch("core.environment_check.find_tesseract_executable", return_value=r"C:\Program Files\Tesseract-OCR\tesseract.exe"), \
+                 patch("core.environment_check.find_tessdata_dir", return_value=r"C:\VSCode\quiz_app\data\tessdata"), \
+                 patch("core.environment_check._run_tesseract_list_langs", return_value=(0, "List of available languages:\neng\nchi_sim\n")), \
+                 patch("core.environment_check.shutil.which", return_value=None):
+                result = _check_tesseract(root)
+
+        self.assertTrue(result.ok, result.detail)
+        self.assertIn("not on PATH", result.detail)
+        self.assertIn("app can use", result.detail)
+
 
 if __name__ == "__main__":
     unittest.main()
