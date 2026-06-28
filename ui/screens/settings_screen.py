@@ -13,7 +13,8 @@ import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QGroupBox, QComboBox, QLineEdit, QFormLayout, QMessageBox,
-    QFileDialog, QScrollArea, QFrame, QSpinBox, QCheckBox, QApplication
+    QFileDialog, QScrollArea, QFrame, QSpinBox, QCheckBox, QApplication,
+    QListWidget, QListWidgetItem
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
@@ -134,9 +135,18 @@ class SettingsScreen(QWidget):
         return dict(DEFAULT_SETTINGS)
 
     def _setup_ui(self):
-        # Outer layout: just the scroll area
-        outer = QVBoxLayout(self)
+        # Outer layout: VSCode/Clash-style category navigation + detail pane.
+        outer = QHBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        self.settings_nav_list = QListWidget()
+        self.settings_nav_list.setObjectName("settingsNavList")
+        self.settings_nav_list.setMinimumWidth(150)
+        self.settings_nav_list.setMaximumWidth(200)
+        self.settings_nav_list.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.settings_nav_list.currentRowChanged.connect(self._on_settings_nav_changed)
+        outer.addWidget(self.settings_nav_list)
 
         self.settings_scroll = QScrollArea()
         self.settings_scroll.setWidgetResizable(True)
@@ -497,7 +507,9 @@ class SettingsScreen(QWidget):
         layout.addWidget(version_label)
 
         self.settings_scroll.setWidget(self.settings_content)
-        outer.addWidget(self.settings_scroll)
+        outer.addWidget(self.settings_scroll, 1)
+        self._refresh_settings_nav()
+        self.settings_nav_list.setCurrentRow(0)
 
     # ── Language ──────────────────────────────────────────────
 
@@ -568,6 +580,7 @@ class SettingsScreen(QWidget):
             self.lang_manager.get_text("练习时显示计时器", "Show timer during practice")
         )
         self.data_group.setTitle(self.lang_manager.get_text("数据管理", "Data Management"))
+        self._refresh_settings_nav(preserve_selection=True)
         self.export_btn.setText(self.lang_manager.get_text("导出进度", "Export Progress"))
         self.import_btn.setText(self.lang_manager.get_text("导入进度", "Import Progress"))
         self.export_app_data_btn.setText(self.lang_manager.get_text("导出应用数据", "Export App Data"))
@@ -581,6 +594,41 @@ class SettingsScreen(QWidget):
         self.api_base_url.setPlaceholderText(
             self.lang_manager.get_text("例如: https://api.anthropic.com/v1", "e.g. https://api.anthropic.com/v1"))
         self._refresh_local_agent_status()
+
+    def _refresh_settings_nav(self, preserve_selection: bool = False):
+        """Refresh the settings category list while preserving group mappings."""
+        previous_group = getattr(self, "_active_settings_group", None) if preserve_selection else None
+        sections = [
+            (self.lang_manager.get_text("显示语言", "Language"), self.lang_group),
+            (self.lang_manager.get_text("AI 出题", "AI Question Generation"), self.ai_group),
+            (self.lang_manager.get_text("练习默认值", "Practice Defaults"), self.practice_group),
+            (self.lang_manager.get_text("运行环境", "Runtime Environment"), self.environment_group),
+            (self.lang_manager.get_text("数据管理", "Data Management"), self.data_group),
+        ]
+        self.settings_nav_list.blockSignals(True)
+        self.settings_nav_list.clear()
+        row_to_select = 0
+        for index, (label, group) in enumerate(sections):
+            item = QListWidgetItem(label)
+            item.setData(Qt.ItemDataRole.UserRole, group)
+            self.settings_nav_list.addItem(item)
+            if group is previous_group:
+                row_to_select = index
+        self.settings_nav_list.blockSignals(False)
+        if self.settings_nav_list.count():
+            self.settings_nav_list.setCurrentRow(row_to_select)
+            self._active_settings_group = self.settings_nav_list.item(row_to_select).data(
+                Qt.ItemDataRole.UserRole
+            )
+
+    def _on_settings_nav_changed(self, row: int):
+        """Scroll the settings detail pane to the selected category."""
+        item = self.settings_nav_list.item(row)
+        if item is None:
+            return
+        group = item.data(Qt.ItemDataRole.UserRole)
+        self._active_settings_group = group
+        self.settings_scroll.ensureWidgetVisible(group, 0, 12)
 
     def _on_language_combo_changed(self, index):
         if self._initializing:

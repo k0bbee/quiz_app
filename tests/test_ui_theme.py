@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QPalette
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QFormLayout, QGridLayout, QLabel, QPushButton, QSplitter
+from PyQt6.QtWidgets import QApplication, QFormLayout, QGridLayout, QLabel, QListWidget, QPushButton, QSplitter
 
 from core.progress_tracker import ProgressManager
 from models.course_project import CourseProjectManager
@@ -52,6 +52,8 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn('qlabel#settingssavestatus[savestate="dirty"]', qss)
         self.assertIn('qlabel#settingssavestatus[savestate="saved"]', qss)
         self.assertIn("qlabel#settingsweightpreview", qss)
+        self.assertIn("qlistwidget#settingsnavlist", qss)
+        self.assertIn("qlistwidget#settingsnavlist::item:selected", qss)
 
     def test_default_button_is_secondary_instead_of_primary_blue(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
@@ -398,6 +400,17 @@ class UiThemeTests(unittest.TestCase):
     def test_settings_content_and_actions_follow_desktop_form_layout(self):
         settings = SettingsScreen()
 
+        self.assertIsInstance(settings.settings_nav_list, QListWidget)
+        self.assertEqual("settingsNavList", settings.settings_nav_list.objectName())
+        self.assertLessEqual(settings.settings_nav_list.maximumWidth(), 220)
+        nav_labels = [
+            settings.settings_nav_list.item(index).text()
+            for index in range(settings.settings_nav_list.count())
+        ]
+        self.assertEqual(
+            ["显示语言", "AI 出题", "练习默认值", "运行环境", "数据管理"],
+            nav_labels,
+        )
         self.assertEqual(960, settings.settings_content.maximumWidth())
         self.assertEqual(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
@@ -450,6 +463,18 @@ class UiThemeTests(unittest.TestCase):
             settings.data_action_layout.indexOf(settings.import_app_data_btn),
             settings.data_action_layout.indexOf(settings.reset_progress_btn),
         )
+
+    def test_settings_nav_selects_matching_section(self):
+        settings = SettingsScreen()
+
+        environment_row = [
+            index for index in range(settings.settings_nav_list.count())
+            if settings.settings_nav_list.item(index).data(Qt.ItemDataRole.UserRole) == settings.environment_group
+        ][0]
+
+        settings.settings_nav_list.setCurrentRow(environment_row)
+
+        self.assertEqual(settings.environment_group, settings._active_settings_group)
 
     def test_generation_dialog_uses_two_pane_desktop_layout(self):
         dialog = AIGenerationDialog(
