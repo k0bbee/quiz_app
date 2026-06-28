@@ -127,16 +127,62 @@ def _retrieve_cached(
 
     parts = ["以下是当前课程项目中与所选主题最相关的缓存检索片段："]
     used = len(parts[0])
-    for _, chunk in scored:
-        block = f"\n\n## {chunk.heading}\n\n{chunk.text}"
-        if used + len(block) > max_chars:
-            block = block[: max_chars - used]
+    excerpt_count = max(1, min(len(scored), 4))
+    per_chunk_budget = max(180, max_chars // excerpt_count)
+    for index, (_, chunk) in enumerate(scored):
+        remaining = max_chars - used
+        if remaining <= 0:
+            break
+        block_budget = remaining
+        if index < len(scored) - 1:
+            block_budget = min(remaining, per_chunk_budget)
+        block = _chunk_block(chunk, term_set, block_budget)
         if block.strip():
             parts.append(block)
             used += len(block)
         if used >= max_chars:
             break
     return "".join(parts)
+
+
+def _chunk_block(chunk: CourseChunk, term_set: set[str], budget: int) -> str:
+    """Format a chunk within budget while preserving its heading and a focused body."""
+    heading = f"\n\n## {chunk.heading}\n\n"
+    if budget <= len(heading):
+        return heading[:budget]
+    body_budget = budget - len(heading)
+    text = chunk.text.strip()
+    if len(text) <= body_budget:
+        return f"{heading}{text}"
+    return f"{heading}{_focused_excerpt(text, term_set, body_budget)}"
+
+
+def _focused_excerpt(text: str, term_set: set[str], limit: int) -> str:
+    """Return a compact excerpt around the earliest selected-topic match."""
+    if limit <= 0:
+        return ""
+    if len(text) <= limit:
+        return text
+
+    lowered = text.lower()
+    positions = [
+        position
+        for term in term_set
+        if term
+        for position in [lowered.find(term)]
+        if position >= 0
+    ]
+    anchor = min(positions) if positions else 0
+
+    ellipsis_budget = 2
+    window = max(1, limit - ellipsis_budget)
+    start = max(0, anchor - window // 4)
+    end = min(len(text), start + window)
+    start = max(0, end - window)
+    excerpt = text[start:end].strip()
+    prefix = "…" if start > 0 else ""
+    suffix = "…" if end < len(text) else ""
+    return f"{prefix}{excerpt}{suffix}"[:limit]
 
 
 def _project_payload(project: CourseProject) -> str:

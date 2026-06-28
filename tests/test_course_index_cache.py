@@ -170,6 +170,42 @@ class CourseIndexCacheTests(unittest.TestCase):
         self.assertIn("Address Breakdown", context)
         self.assertIn("byte offset", context)
 
+    def test_retrieval_balances_long_matching_chunks_with_later_key_details(self):
+        summary = (
+            "## Cache Mapping Overview\n"
+            + "cache mapping overview " * 80
+            + "\n\n## Byte Offset Detail\n"
+            "The byte offset sentinel detail explains which byte inside the cache block is selected.\n"
+        )
+        project = CourseProject(
+            course_id="course-balanced-context",
+            title="Systems",
+            source_folder="",
+            summary_markdown=summary,
+            summary_path="",
+            topics=[],
+            documents=[
+                {
+                    "path": "summary.md",
+                    "title": "summary",
+                    "extension": ".md",
+                    "_course_index": course_index.build_course_index(summary),
+                }
+            ],
+            created_at="2026-06-28T00:00:00+00:00",
+            updated_at="2026-06-28T00:00:00+00:00",
+        )
+
+        context = course_index.retrieve_course_context(
+            project,
+            ["cache mapping"],
+            max_chars=620,
+        )
+
+        self.assertIn("Cache Mapping Overview", context)
+        self.assertIn("Byte Offset Detail", context)
+        self.assertIn("sentinel detail", context)
+
 
 if __name__ == "__main__":
     unittest.main()
