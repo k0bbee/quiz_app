@@ -48,6 +48,11 @@ class ProgressDashboard(QWidget):
         self.detail_label = QLabel()
         summary_layout.addWidget(self.detail_label)
 
+        self.recommendation_label = QLabel()
+        self.recommendation_label.setObjectName("dashboardRecommendationLabel")
+        self.recommendation_label.setWordWrap(True)
+        summary_layout.addWidget(self.recommendation_label)
+
         layout.addWidget(self.summary_group)
 
         # Per-topic breakdown
@@ -128,6 +133,7 @@ class ProgressDashboard(QWidget):
                 "No progress yet. Start a quiz to begin tracking!"
             ))
             self.detail_label.clear()
+            self.recommendation_label.clear()
         else:
             self.overall_label.setText(self.lang_manager.get_text(
                 f"练习: {stats['total_sessions']} 次 | 题目: {stats['total_questions']} 题 | 正确率: {stats['overall_accuracy']:.1f}%",
@@ -137,6 +143,7 @@ class ProgressDashboard(QWidget):
                 f"正确: {stats['total_correct']} / {stats['total_questions']}",
                 f"Correct: {stats['total_correct']} / {stats['total_questions']}"
             ))
+            self._update_recommendations(lang, visible_question_ids)
 
         # Per-topic breakdown
         self._populate_topic_table(lang, visible_question_ids)
@@ -210,6 +217,35 @@ class ProgressDashboard(QWidget):
             self.topic_table.setItem(row, 1, QTableWidgetItem(str(len(stats["sessions"]))))
             self.topic_table.setItem(row, 2, QTableWidgetItem(f"{accuracy:.0f}%"))
             self.topic_table.setItem(row, 3, QTableWidgetItem(f"{stats['correct']}/{stats['total']}"))
+
+    def _update_recommendations(self, lang: str, visible_question_ids: set[str] | None):
+        """Show compact next-review topic suggestions."""
+        prioritized_ids = self.progress_manager.get_prioritized_review_question_ids(visible_question_ids)
+        questions = self.question_bank.get_many(
+            prioritized_ids,
+            course_id=self._current_course_id,
+        )
+
+        labels = []
+        seen_topics = set()
+        for question in questions:
+            value = topic_value(question.topic)
+            if value in seen_topics:
+                continue
+            seen_topics.add(value)
+            labels.append(topic_label(question.topic, lang))
+            if len(labels) >= 3:
+                break
+
+        if not labels:
+            self.recommendation_label.clear()
+            return
+
+        topics = ", ".join(labels)
+        self.recommendation_label.setText(self.lang_manager.get_text(
+            f"建议复习: {topics}",
+            f"Suggested review: {topics}",
+        ))
 
     def _reset_progress(self):
         """Confirm and reset all progress."""

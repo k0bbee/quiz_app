@@ -681,6 +681,14 @@ QLabel#dashboardOverallLabel {
     font-size: 16px;
 }
 
+QLabel#dashboardRecommendationLabel {
+    color: #dcdcaa;
+    background-color: #2a2718;
+    border: 1px solid #5a4d1f;
+    border-radius: 2px;
+    padding: 8px 10px;
+}
+
 QListWidget#topicSetList {
     font-size: 14px;
 }

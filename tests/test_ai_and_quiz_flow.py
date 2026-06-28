@@ -378,6 +378,69 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIn("Correct: 1 / 1", screen.detail_label.text())
             self.assertEqual(1, screen.topic_table.rowCount())
             self.assertEqual("1/1", screen.topic_table.item(0, 3).text())
+            self.assertEqual("", screen.recommendation_label.text())
+
+    def test_progress_dashboard_recommends_low_mastery_topics_for_current_course(self):
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            progress_manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            cache = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "Cache", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Cache", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            cache.metadata["course_id"] = "course-a"
+            process = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "Process", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Process", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="process",
+            )
+            process.metadata["course_id"] = "course-a"
+            other_course = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "Other", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Other", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="virtual memory",
+            )
+            other_course.metadata["course_id"] = "course-b"
+            question_bank.save_many([cache, process, other_course])
+
+            record = ProgressRecord.create_new("set-any")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(question_id=cache.question_id, index_in_session=0, user_answer="B", is_correct=False),
+                AnswerRecord(question_id=process.question_id, index_in_session=1, user_answer="A", is_correct=True),
+                AnswerRecord(question_id=other_course.question_id, index_in_session=2, user_answer="B", is_correct=False),
+            ]
+            record.summary = SessionSummary.compute(record.answers, total_questions=3, total_time=30)
+            progress_manager.save(record)
+
+            screen = ProgressDashboard(progress_manager, question_bank)
+            screen.set_current_course("course-a")
+            screen.refresh()
+
+            self.assertIn("建议复习", screen.recommendation_label.text())
+            self.assertIn("cache", screen.recommendation_label.text())
+            self.assertNotIn("process", screen.recommendation_label.text())
+            self.assertNotIn("virtual memory", screen.recommendation_label.text())
 
     def test_incorrect_review_uses_current_course_filter(self):
         from ui.main_window import MainWindow

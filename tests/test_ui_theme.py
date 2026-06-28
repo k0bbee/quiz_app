@@ -668,8 +668,12 @@ class UiThemeTests(unittest.TestCase):
 
         self.assertEqual("secondaryButton", progress.refresh_btn.objectName())
         self.assertEqual("dangerButton", progress.reset_btn.objectName())
+        self.assertEqual("dashboardRecommendationLabel", progress.recommendation_label.objectName())
         self.assertNotRegex(progress.refresh_btn.text(), r"[^\w\s]")
         self.assertNotRegex(progress.reset_btn.text(), r"[^\w\s]")
+
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+        self.assertIn("qlabel#dashboardrecommendationlabel", qss)
 
         for button in (main_window.topics_btn, main_window.progress_btn, main_window.courses_btn):
             self.assertEqual("toolbarButton", button.objectName())
