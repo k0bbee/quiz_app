@@ -129,20 +129,37 @@ class UiThemeTests(unittest.TestCase):
         self.addCleanup(main_window.close)
 
         self.assertEqual(Qt.FocusPolicy.NoFocus, main_window.menuBar().focusPolicy())
-        for button in (main_window.topics_btn, main_window.progress_btn, main_window.courses_btn):
+        for button in main_window.navigation_buttons():
             self.assertEqual(Qt.FocusPolicy.NoFocus, button.focusPolicy())
 
-    def test_main_navigation_uses_left_toolbar_with_back_home_and_clean_file_menu(self):
+    def test_main_navigation_uses_top_text_toolbar_with_semantic_groups_and_no_exit_entry(self):
         main_window = MainWindow()
         self.addCleanup(main_window.close)
+        self.addCleanup(main_window.lang_manager.set_language, "zh")
+        main_window.lang_manager.set_language("en")
 
         self.assertEqual(
-            Qt.ToolBarArea.LeftToolBarArea,
+            Qt.ToolBarArea.TopToolBarArea,
             main_window.toolBarArea(main_window.toolbar),
         )
-        self.assertFalse(
-            any(action is getattr(main_window, "home_action", None) for action in main_window.file_menu.actions())
+        self.assertFalse(hasattr(main_window, "exit_action"))
+
+        buttons = main_window.navigation_buttons()
+        self.assertEqual(
+            ["Back", "Home", "Question Sets", "Progress", "Courses", "Question Bank", "Settings"],
+            [button.text() for button in buttons],
         )
+        self.assertEqual(
+            ["navigation", "navigation", "practice", "practice", "management", "management", "management"],
+            [button.property("navGroup") for button in buttons],
+        )
+        self.assertGreaterEqual(
+            sum(1 for action in main_window.toolbar.actions() if action.isSeparator()),
+            2,
+        )
+        for button in buttons:
+            self.assertNotRegex(button.text(), r"[^\w\s]")
+
         self.assertFalse(main_window.nav_back_btn.isEnabled())
 
         main_window.navigate_to(main_window.SCREEN_PROGRESS)

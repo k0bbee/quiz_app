@@ -139,12 +139,6 @@ class MainWindow(QMainWindow):
         menubar = self.menuBar()
         menubar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
-        # File menu
-        self.file_menu = menubar.addMenu("")
-        self.exit_action = QAction("", self)
-        self.exit_action.triggered.connect(self.close)
-        self.file_menu.addAction(self.exit_action)
-
         # Tools menu
         self.tools_menu = menubar.addMenu("")
         self.topics_action = QAction("", self)
@@ -172,37 +166,52 @@ class MainWindow(QMainWindow):
     def _create_toolbar(self):
         self.toolbar = QToolBar("")
         self.toolbar.setMovable(False)
-        self.toolbar.setOrientation(Qt.Orientation.Vertical)
-        self.addToolBar(Qt.ToolBarArea.LeftToolBarArea, self.toolbar)
+        self.toolbar.setOrientation(Qt.Orientation.Horizontal)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
 
-        self.nav_back_btn = QPushButton("")
-        self.nav_back_btn.setObjectName("toolbarButton")
-        self.nav_back_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.nav_back_btn = self._create_toolbar_button("navigation")
         self.nav_back_btn.clicked.connect(self.navigate_back)
-        self.nav_home_btn = QPushButton("")
-        self.nav_home_btn.setObjectName("toolbarButton")
-        self.nav_home_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.nav_home_btn = self._create_toolbar_button("navigation")
         self.nav_home_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_HOME))
 
-        self.topics_btn = QPushButton("")
-        self.topics_btn.setObjectName("toolbarButton")
-        self.topics_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.topics_btn = self._create_toolbar_button("practice")
         self.topics_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_TOPIC_SELECTION))
-        self.progress_btn = QPushButton("")
-        self.progress_btn.setObjectName("toolbarButton")
-        self.progress_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.progress_btn = self._create_toolbar_button("practice")
         self.progress_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
-        self.courses_btn = QPushButton("")
-        self.courses_btn.setObjectName("toolbarButton")
-        self.courses_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.courses_btn = self._create_toolbar_button("management")
         self.courses_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
+        self.bank_btn = self._create_toolbar_button("management")
+        self.bank_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_QUESTION_BANK))
+        self.settings_btn = self._create_toolbar_button("management")
+        self.settings_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_SETTINGS))
 
         self.toolbar.addWidget(self.nav_back_btn)
         self.toolbar.addWidget(self.nav_home_btn)
         self.toolbar.addSeparator()
         self.toolbar.addWidget(self.topics_btn)
         self.toolbar.addWidget(self.progress_btn)
+        self.toolbar.addSeparator()
         self.toolbar.addWidget(self.courses_btn)
+        self.toolbar.addWidget(self.bank_btn)
+        self.toolbar.addWidget(self.settings_btn)
+
+    def _create_toolbar_button(self, group: str) -> QPushButton:
+        button = QPushButton("")
+        button.setObjectName("toolbarButton")
+        button.setProperty("navGroup", group)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        return button
+
+    def navigation_buttons(self) -> tuple[QPushButton, ...]:
+        return (
+            self.nav_back_btn,
+            self.nav_home_btn,
+            self.topics_btn,
+            self.progress_btn,
+            self.courses_btn,
+            self.bank_btn,
+            self.settings_btn,
+        )
 
     def _connect_signals(self):
         # Home screen
@@ -241,12 +250,10 @@ class MainWindow(QMainWindow):
         gm = self.lang_manager.get_text
 
         # Update menu titles
-        self.file_menu.setTitle(gm("文件", "File"))
         self.tools_menu.setTitle(gm("工具", "Tools"))
         self.help_menu.setTitle(gm("帮助", "Help"))
 
         # Update menu action texts
-        self.exit_action.setText(gm("退出", "Exit"))
         self.topics_action.setText(gm("题目集", "Question Sets"))
         self.progress_action.setText(gm("进度", "Progress"))
         self.settings_action.setText(gm("设置", "Settings"))
@@ -257,12 +264,14 @@ class MainWindow(QMainWindow):
         # Update toolbar title
         self.toolbar.setWindowTitle(gm("快捷导航", "Quick Nav"))
 
-        # Update toolbar button texts (core 3 only)
-        self.nav_back_btn.setText(gm("← 返回", "← Back"))
-        self.nav_home_btn.setText(gm("⌂ 首页", "⌂ Home"))
-        self.topics_btn.setText(gm("📋 题目集", "📋 Topics"))
-        self.progress_btn.setText(gm("📊 进度", "📊 Progress"))
-        self.courses_btn.setText(gm("📚 课件", "📚 Course"))
+        # Update semantic toolbar button texts.
+        self.nav_back_btn.setText(gm("返回", "Back"))
+        self.nav_home_btn.setText(gm("首页", "Home"))
+        self.topics_btn.setText(gm("题目集", "Question Sets"))
+        self.progress_btn.setText(gm("进度", "Progress"))
+        self.courses_btn.setText(gm("课程", "Courses"))
+        self.bank_btn.setText(gm("题库", "Question Bank"))
+        self.settings_btn.setText(gm("设置", "Settings"))
 
     def navigate_to(self, screen_index: int, remember: bool = True):
         """Switch to a screen by index."""
