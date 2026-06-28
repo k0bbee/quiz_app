@@ -1,4 +1,5 @@
 import unittest
+import re
 
 from ai.batch_generator import GenerationWorker, allocate_weighted_counts
 from ai.generation_config import GenerationConfig
@@ -47,6 +48,27 @@ class SequenceClient:
         if len(self.responses) > 1:
             return self.responses.pop(0)
         return self.responses[0]
+
+
+class TopicDriftClient:
+    model = "test-model"
+    last_error = ""
+
+    def __init__(self):
+        self.requested_counts = []
+
+    def generate_with_json(self, messages, **kwargs):
+        prompt = messages[-1]["content"]
+        match = re.search(r"Generate\s+(\d+)\s+bilingual quiz questions", prompt)
+        requested = int(match.group(1)) if match else 0
+        self.requested_counts.append(requested)
+
+        questions = []
+        for index in range(min(10, requested)):
+            questions.append(raw_question("multiple_choice", "medium", "other-topic", index))
+        for index in range(max(0, requested - 10)):
+            questions.append(raw_question("multiple_choice", "medium", "cache", 100 + index))
+        return {"questions": questions}
 
 
 class GenerationQuotaTests(unittest.TestCase):
@@ -183,6 +205,38 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertTrue(generation_messages)
         self.assertIn("15 questions", generation_messages[0])
         self.assertNotIn("10 questions", generation_messages[0])
+
+    def test_worker_oversamples_candidates_when_quota_filtering_rejects_model_drift(self):
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 100},
+        )
+        client = TopicDriftClient()
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=["cache"],
+            count=15,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        batches = []
+        errors = []
+        worker.batch_done.connect(batches.append)
+        worker.error.connect(errors.append)
+
+        worker.run()
+
+        self.assertEqual([], errors)
+        self.assertEqual(1, len(batches))
+        self.assertEqual(15, len(batches[0]))
+        self.assertTrue(any(count > 10 for count in client.requested_counts))
 
 
 def _counts(values):

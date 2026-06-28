@@ -14,6 +14,10 @@ from models.question import Question
 from utils.constants import QuestionType, Difficulty, topic_value
 
 
+ACCEPT_TARGET_BATCH_SIZE = 10
+MAX_CANDIDATE_BATCH_SIZE = 25
+
+
 def allocate_weighted_counts(weights: dict[str, int], count: int) -> dict[str, int]:
     """Convert percentages/relative weights into exact deterministic counts."""
     keys = list(weights)
@@ -123,10 +127,9 @@ class GenerationWorker(QThread):
         try:
             self.progress.emit("Building prompt...")
 
-            batch_size = 10
             all_questions = []
             attempts = 0
-            max_attempts = max(3, (self.count // batch_size + 1) * 3)
+            max_attempts = max(3, (self.count // ACCEPT_TARGET_BATCH_SIZE + 1) * 3)
             quotas = GenerationQuotaTracker(
                 self.generation_config,
                 self.topics,
@@ -138,16 +141,19 @@ class GenerationWorker(QThread):
 
             while len(all_questions) < self.count and not self._cancelled.is_set() and attempts < max_attempts:
                 attempts += 1
-                batch_count = min(batch_size, self.count - len(all_questions))
+                remaining = self.count - len(all_questions)
+                batch_count = min(ACCEPT_TARGET_BATCH_SIZE, remaining)
+                candidate_count = self._candidate_batch_count(batch_count)
                 self.progress.emit(
                     f"Generating {self.count} questions... "
-                    f"(batch requesting {batch_count}; {len(all_questions)}/{self.count} accepted)"
+                    f"(requesting {candidate_count} candidates; "
+                    f"{len(all_questions)}/{self.count} accepted)"
                 )
 
                 messages = PromptBuilder.build_messages(
                     course_context,
                     self.topics,
-                    batch_count,
+                    candidate_count,
                     self.difficulty,
                     quotas.remaining_config(),
                     topic_keywords=self._topic_keywords(),
@@ -235,6 +241,20 @@ class GenerationWorker(QThread):
     def cancel(self):
         """Signal the worker to stop."""
         self._cancelled.set()
+
+    def _candidate_batch_count(self, accept_target: int) -> int:
+        """Request extra candidates so strict quota filtering can recover from model drift.
+
+        The UI/requested total remains self.count. This only enlarges the
+        background candidate pool for one LLM call, keeping large generations
+        chunked instead of making one huge request.
+        """
+        if accept_target <= 0:
+            return 0
+        return min(
+            MAX_CANDIDATE_BATCH_SIZE,
+            max(accept_target + 10, accept_target * 2),
+        )
 
     def _build_course_context(self) -> str:
         """Retrieve the best context for currently selected topics."""
