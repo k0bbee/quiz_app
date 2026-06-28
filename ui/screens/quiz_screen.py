@@ -90,26 +90,33 @@ class QuizScreen(QWidget):
         line.setFrameShape(QFrame.Shape.HLine)
         layout.addWidget(line)
 
-        # === Question scroll area ===
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # === Centered practice card ===
+        self.practice_scroll = QScrollArea()
+        self.practice_scroll.setWidgetResizable(True)
+        self.practice_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.practice_scroll.setAlignment(
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
+        )
 
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 8, 0, 8)
+
+        self.practice_card = QFrame()
+        self.practice_card.setObjectName("quizPracticeCard")
+        self.practice_card.setMaximumWidth(860)
+        practice_layout = QVBoxLayout(self.practice_card)
+        practice_layout.setContentsMargins(16, 16, 16, 16)
+        practice_layout.setSpacing(12)
 
         # Question card
         self.question_card = QuestionCard()
-        scroll_layout.addWidget(self.question_card)
+        practice_layout.addWidget(self.question_card)
 
         # Answer area
         self.answer_area = AnswerArea()
         self.answer_area.answer_submitted.connect(lambda _answer: self._update_submit_enabled())
-        scroll_layout.addWidget(self.answer_area)
-        scroll_layout.addStretch()
-
-        scroll.setWidget(scroll_content)
-        layout.addWidget(scroll, 1)
+        practice_layout.addWidget(self.answer_area)
 
         # === Action buttons ===
         action_layout = QHBoxLayout()
@@ -131,7 +138,12 @@ class QuizScreen(QWidget):
         self.submit_btn.setEnabled(False)
         action_layout.addWidget(self.submit_btn)
 
-        layout.addLayout(action_layout)
+        practice_layout.addLayout(action_layout)
+        scroll_layout.addWidget(self.practice_card, 0, Qt.AlignmentFlag.AlignHCenter)
+        scroll_layout.addStretch()
+
+        self.practice_scroll.setWidget(scroll_content)
+        layout.addWidget(self.practice_scroll, 1)
 
         # === Feedback frame (shown after submit) ===
         self.feedback_frame = QFrame()

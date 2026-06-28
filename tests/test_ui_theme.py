@@ -476,14 +476,32 @@ class UiThemeTests(unittest.TestCase):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
 
         card_rule = re.search(
-            r"qframe#questioncard,\s*qframe#reviewcard,\s*qframe#feedbackframe\s*\{(?P<body>[^}]*)\}",
+            r"qframe#quizpracticecard,\s*qframe#questioncard,\s*qframe#reviewcard,\s*qframe#feedbackframe\s*\{(?P<body>[^}]*)\}",
             qss,
             flags=re.DOTALL,
         )
         self.assertIsNotNone(card_rule)
-        self.assertIn("border-radius: 14px", card_rule.group("body"))
+        self.assertRegex(card_rule.group("body"), r"border-radius:\s*(1[6-9]|[2-9][0-9])px")
         self.assertIn("#4a4a4a", card_rule.group("body"))
         self.assertIn("qframe#feedbackframe", qss)
+
+    def test_quiz_screen_centers_question_answer_and_actions_in_single_practice_card(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            quiz = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+
+        self.assertEqual("quizPracticeCard", quiz.practice_card.objectName())
+        self.assertLessEqual(quiz.practice_card.maximumWidth(), 860)
+        self.assertTrue(quiz.practice_card.isAncestorOf(quiz.question_card))
+        self.assertTrue(quiz.practice_card.isAncestorOf(quiz.answer_area))
+        self.assertTrue(quiz.practice_card.isAncestorOf(quiz.skip_btn))
+        self.assertTrue(quiz.practice_card.isAncestorOf(quiz.submit_btn))
+        self.assertEqual(
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            quiz.practice_scroll.alignment(),
+        )
 
     def test_answer_inputs_have_themeable_soft_option_roles(self):
         from ui.widgets.answer_area import FillInBlankWidget, MultipleChoiceWidget, ShortAnswerWidget, TrueFalseWidget

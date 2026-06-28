@@ -273,12 +273,13 @@ QSplitter::handle:hover {
     background-color: #3c3c3c;
 }
 
+QFrame#quizPracticeCard,
 QFrame#questionCard,
 QFrame#reviewCard,
 QFrame#feedbackFrame {
     background-color: #252526;
     border: 1px solid #4a4a4a;
-    border-radius: 14px;
+    border-radius: 18px;
 }
 
 QFrame#dividerLine {
