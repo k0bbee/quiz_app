@@ -438,6 +438,16 @@ class SettingsScreen(QWidget):
         self.environment_help.setWordWrap(True)
         self.environment_help.setObjectName("settingsProviderHelp")
         environment_layout.addWidget(self.environment_help)
+        self.environment_status = QLabel(
+            self.lang_manager.get_text(
+                "尚未检查运行环境。",
+                "Runtime environment has not been checked yet.",
+            )
+        )
+        self.environment_status.setWordWrap(True)
+        self.environment_status.setObjectName("settingsEnvironmentStatus")
+        self.environment_status.setProperty("envState", "unknown")
+        environment_layout.addWidget(self.environment_status)
 
         self.environment_action_layout = QHBoxLayout()
         self.environment_action_layout.setContentsMargins(0, 0, 0, 0)
@@ -534,6 +544,11 @@ class SettingsScreen(QWidget):
             "检查 Python 依赖、API Key 持久化、OCR/Tesseract 和 data/ 写入权限。",
             "Check Python packages, API key persistence, OCR/Tesseract, and data/ write access.",
         ))
+        if getattr(self.environment_status, "property", None) and self.environment_status.property("envState") == "unknown":
+            self.environment_status.setText(self.lang_manager.get_text(
+                "尚未检查运行环境。",
+                "Runtime environment has not been checked yet.",
+            ))
         self.environment_check_btn.setText(self.lang_manager.get_text("检查环境", "Check Environment"))
         self.ocr_fix_btn.setText(self.lang_manager.get_text("复制 OCR 修复命令", "Copy OCR Fix Commands"))
         self.practice_group.setTitle(self.lang_manager.get_text("练习默认值", "Practice Defaults"))
@@ -1121,12 +1136,39 @@ class SettingsScreen(QWidget):
 
     def _show_environment_check(self):
         report = collect_environment_report(BASE_DIR)
+        self._set_environment_status_from_report(report)
         message_box = QMessageBox.information if report.ok else QMessageBox.warning
         message_box(
             self,
             self.lang_manager.get_text("环境检查", "Environment Check"),
             format_environment_report(report),
         )
+
+    def _set_environment_status_from_report(self, report):
+        """Show a compact environment status in the settings page itself."""
+        required_failures = [check for check in report.checks if check.required and not check.ok]
+        optional_warnings = [check for check in report.checks if not check.required and not check.ok]
+        if required_failures:
+            state = "fail"
+            title = "Environment check: FAIL"
+            focus = required_failures[:2]
+        elif optional_warnings:
+            state = "warn"
+            title = "Environment check: WARN"
+            focus = optional_warnings[:2]
+        else:
+            state = "pass"
+            title = "Environment check: PASS"
+            focus = [
+                check for check in report.checks
+                if check.name in {"Tesseract OCR", "secure API key persistence", "keyring backend"}
+            ][:3]
+        details = "\n".join(f"{check.name}: {check.detail}" for check in focus)
+        text = title if not details else f"{title}\n{details}"
+        self.environment_status.setText(text)
+        self.environment_status.setProperty("envState", state)
+        self.environment_status.style().unpolish(self.environment_status)
+        self.environment_status.style().polish(self.environment_status)
 
     def _copy_ocr_fix_commands(self):
         QApplication.clipboard().setText(OCR_REMEDIATION)

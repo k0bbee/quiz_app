@@ -198,6 +198,9 @@ class AISettingsValidationTests(unittest.TestCase):
             screen.environment_check_btn.click()
 
         collect.assert_called_once()
+        self.assertIn("Environment check: WARN", screen.environment_status.text())
+        self.assertIn("Tesseract OCR", screen.environment_status.text())
+        self.assertEqual("warn", screen.environment_status.property("envState"))
         self.assertTrue(info.called)
         message = info.call_args.args[2]
         self.assertIn("[WARN] Tesseract OCR", message)
@@ -219,6 +222,9 @@ class AISettingsValidationTests(unittest.TestCase):
 
         self.assertFalse(info.called)
         self.assertTrue(warning.called)
+        self.assertIn("Environment check: FAIL", screen.environment_status.text())
+        self.assertIn("data directory", screen.environment_status.text())
+        self.assertEqual("fail", screen.environment_status.property("envState"))
         message = warning.call_args.args[2]
         self.assertIn("Environment check: FAIL", message)
         self.assertIn("[FAIL] data directory", message)
