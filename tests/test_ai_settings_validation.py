@@ -39,6 +39,17 @@ class ManualConnectionWorker:
         self.start_called = True
 
 
+class ManualAppDataWorker:
+    def __init__(self):
+        self.exported = ManualSignal()
+        self.imported = ManualSignal()
+        self.failed = ManualSignal()
+        self.start_called = False
+
+    def start(self):
+        self.start_called = True
+
+
 class AISettingsValidationTests(unittest.TestCase):
     def test_local_agent_settings_are_valid_when_agent_is_detected(self):
         result = validate_ai_settings(
@@ -329,6 +340,53 @@ class AISettingsValidationTests(unittest.TestCase):
         manager.set_key.assert_called_once_with("")
         self.assertFalse(screen.clear_api_key_btn.isEnabled())
         self.assertNotIn("system keychain", screen.api_key_input.placeholderText())
+
+    def test_app_data_export_runs_in_background_worker(self):
+        screen = SettingsScreen()
+        worker = ManualAppDataWorker()
+
+        with patch("ui.screens.settings_screen.QFileDialog.getSaveFileName", return_value=("backup.quizdata", "")), \
+             patch.object(screen, "_create_app_data_worker", return_value=worker) as create_worker, \
+             patch("ui.screens.settings_screen.QMessageBox.information") as info:
+            screen.export_app_data_btn.click()
+
+            create_worker.assert_called_once_with("export", "backup.quizdata")
+            self.assertTrue(worker.start_called)
+            self.assertFalse(screen.export_app_data_btn.isEnabled())
+            self.assertFalse(screen.import_app_data_btn.isEnabled())
+            self.assertFalse(info.called)
+
+            worker.exported.emit("backup.quizdata")
+
+        self.assertTrue(screen.export_app_data_btn.isEnabled())
+        self.assertTrue(screen.import_app_data_btn.isEnabled())
+        self.assertTrue(info.called)
+        self.assertIn("backup.quizdata", info.call_args.args[2])
+
+    def test_app_data_import_runs_in_background_worker(self):
+        screen = SettingsScreen()
+        worker = ManualAppDataWorker()
+        result = SimpleNamespace(imported_files=12, skipped_files=["unsafe.txt"])
+
+        with patch("ui.screens.settings_screen.QFileDialog.getOpenFileName", return_value=("backup.quizdata", "")), \
+             patch("ui.screens.settings_screen.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes), \
+             patch.object(screen, "_create_app_data_worker", return_value=worker) as create_worker, \
+             patch("ui.screens.settings_screen.QMessageBox.information") as info:
+            screen.import_app_data_btn.click()
+
+            create_worker.assert_called_once_with("import", "backup.quizdata")
+            self.assertTrue(worker.start_called)
+            self.assertFalse(screen.export_app_data_btn.isEnabled())
+            self.assertFalse(screen.import_app_data_btn.isEnabled())
+            self.assertFalse(info.called)
+
+            worker.imported.emit(result)
+
+        self.assertTrue(screen.export_app_data_btn.isEnabled())
+        self.assertTrue(screen.import_app_data_btn.isEnabled())
+        self.assertTrue(info.called)
+        self.assertIn("12", info.call_args.args[2])
+        self.assertTrue("Skipped" in info.call_args.args[2] or "跳过" in info.call_args.args[2])
 
 
 if __name__ == "__main__":

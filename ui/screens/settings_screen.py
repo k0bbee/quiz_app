@@ -77,6 +77,35 @@ class AIConnectionTestWorker(QThread):
         self.result_ready.emit(self.probe.run(self.settings, self.api_key))
 
 
+class AppDataBundleWorker(QThread):
+    """Run app data bundle import/export away from the UI thread."""
+
+    exported = pyqtSignal(object)
+    imported = pyqtSignal(object)
+    failed = pyqtSignal(str)
+
+    def __init__(self, operation: str, filepath: str, data_dir: str, parent=None):
+        super().__init__(parent)
+        self.operation = operation
+        self.filepath = filepath
+        self.data_dir = data_dir
+
+    def run(self):
+        try:
+            if self.operation == "export":
+                from core.app_data_bundle import export_app_data_bundle
+
+                self.exported.emit(export_app_data_bundle(self.data_dir, self.filepath))
+            elif self.operation == "import":
+                from core.app_data_bundle import import_app_data_bundle
+
+                self.imported.emit(import_app_data_bundle(self.filepath, self.data_dir))
+            else:
+                raise ValueError(f"Unsupported app data operation: {self.operation}")
+        except (OSError, ValueError) as exc:
+            self.failed.emit(str(exc))
+
+
 class SettingsScreen(QWidget):
     """Application settings with explicit save, crash-safe initialization."""
 
@@ -87,6 +116,7 @@ class SettingsScreen(QWidget):
         self._settings = self._load_settings()
         self._connection_probe_factory = connection_probe_factory or AIConnectionProbe
         self._connection_test_worker = None
+        self._app_data_worker = None
         self._initializing = True
         self._setup_ui()
         self._populate_from_settings()
@@ -1058,18 +1088,33 @@ class SettingsScreen(QWidget):
         if not filepath:
             return
 
-        from core.app_data_bundle import export_app_data_bundle
+        self._start_app_data_worker(self._create_app_data_worker("export", filepath), "export")
 
-        try:
-            written = export_app_data_bundle(DATA_DIR, filepath)
-        except (OSError, ValueError) as exc:
-            QMessageBox.critical(
-                self,
-                self.lang_manager.get_text("导出失败", "Export Failed"),
-                str(exc),
-            )
-            return
+    def _create_app_data_worker(self, operation: str, filepath: str):
+        return AppDataBundleWorker(operation, filepath, DATA_DIR, self)
 
+    def _start_app_data_worker(self, worker, operation: str):
+        self._app_data_worker = worker
+        self._set_app_data_busy(True, operation)
+        worker.exported.connect(self._on_app_data_exported)
+        worker.imported.connect(self._on_app_data_imported)
+        worker.failed.connect(lambda message: self._on_app_data_failed(message, operation))
+        worker.start()
+
+    def _set_app_data_busy(self, busy: bool, operation: str = ""):
+        self.export_app_data_btn.setEnabled(not busy)
+        self.import_app_data_btn.setEnabled(not busy)
+        if busy and operation == "export":
+            self.export_app_data_btn.setText(self.lang_manager.get_text("导出中…", "Exporting…"))
+        elif busy and operation == "import":
+            self.import_app_data_btn.setText(self.lang_manager.get_text("导入中…", "Importing…"))
+        else:
+            self.export_app_data_btn.setText(self.lang_manager.get_text("导出应用数据", "Export App Data"))
+            self.import_app_data_btn.setText(self.lang_manager.get_text("导入应用数据", "Import App Data"))
+
+    def _on_app_data_exported(self, written):
+        self._set_app_data_busy(False)
+        self._app_data_worker = None
         QMessageBox.information(
             self,
             self.lang_manager.get_text("已导出", "Exported"),
@@ -1077,6 +1122,18 @@ class SettingsScreen(QWidget):
                 f"应用数据已导出到:\n{written}\n\nAPI Key 不会包含在导出包中。",
                 f"App data exported to:\n{written}\n\nAPI keys are not included in the bundle.",
             ),
+        )
+
+    def _on_app_data_failed(self, message: str, operation: str):
+        self._set_app_data_busy(False)
+        self._app_data_worker = None
+        QMessageBox.critical(
+            self,
+            self.lang_manager.get_text(
+                "导出失败" if operation == "export" else "导入失败",
+                "Export Failed" if operation == "export" else "Import Failed",
+            ),
+            message,
         )
 
     def _import_app_data(self):
@@ -1102,18 +1159,11 @@ class SettingsScreen(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        from core.app_data_bundle import import_app_data_bundle
+        self._start_app_data_worker(self._create_app_data_worker("import", filepath), "import")
 
-        try:
-            result = import_app_data_bundle(filepath, DATA_DIR)
-        except (OSError, ValueError) as exc:
-            QMessageBox.critical(
-                self,
-                self.lang_manager.get_text("导入失败", "Import Failed"),
-                str(exc),
-            )
-            return
-
+    def _on_app_data_imported(self, result):
+        self._set_app_data_busy(False)
+        self._app_data_worker = None
         skipped_hint = ""
         if result.skipped_files:
             skipped_hint = self.lang_manager.get_text(
