@@ -3,6 +3,7 @@ import re
 
 from ai.batch_generator import GenerationWorker, allocate_weighted_counts
 from ai.generation_config import GenerationConfig
+from core.app_errors import AppError
 
 
 def raw_question(qtype, difficulty, topic, index=0):
@@ -167,10 +168,13 @@ class GenerationQuotaTests(unittest.TestCase):
 
         self.assertEqual([], batches)
         self.assertEqual(1, len(errors))
-        self.assertIn("requested distribution", errors[0])
-        self.assertIn("true_false", errors[0])
-        self.assertIn("hard", errors[0])
-        self.assertIn("process", errors[0])
+        self.assertIsInstance(errors[0], AppError)
+        self.assertEqual("GEN-QUOTA-001", errors[0].code)
+        self.assertIn("requested distribution", errors[0].technical_detail)
+        self.assertIn("true_false", errors[0].technical_detail)
+        self.assertIn("hard", errors[0].technical_detail)
+        self.assertIn("process", errors[0].technical_detail)
+        self.assertIn("放宽", errors[0].action_zh)
 
     def test_worker_progress_reports_total_requested_count_not_batch_size(self):
         config = GenerationConfig(

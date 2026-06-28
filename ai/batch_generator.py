@@ -9,6 +9,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from ai.llm_client import LLMClient
 from ai.generation_config import GenerationConfig
 from ai.prompt_templates import PromptBuilder
+from core.app_errors import AppError
 from core.course_index import retrieve_course_context
 from models.question import Question
 from utils.constants import QuestionType, Difficulty, topic_value
@@ -99,13 +100,26 @@ class GenerationQuotaTracker:
             "Try again, reduce the requested count, or relax the weights."
         )
 
+    def shortfall_error(self, accepted: int, requested: int) -> AppError:
+        return AppError(
+            code="GEN-QUOTA-001",
+            severity="error",
+            title_zh="生成未完成",
+            title_en="Generation incomplete",
+            message_zh=f"已接受 {accepted}/{requested} 道题，但仍有部分题型、难度或知识点没有满足当前分布设置。",
+            message_en=f"Accepted {accepted}/{requested} questions, but some question type, difficulty, or topic quotas are still unmet.",
+            action_zh="请重试，或减少题目数量，或放宽题型/难度/知识点权重。",
+            action_en="Try again, reduce the requested count, or relax the question type, difficulty, or topic weights.",
+            technical_detail=self.shortfall_message(accepted, requested),
+        )
+
 
 class GenerationWorker(QThread):
     """Background worker for generating questions via LLM."""
 
     progress = pyqtSignal(str)  # Status message
     batch_done = pyqtSignal(list)  # List of Question objects
-    error = pyqtSignal(str)
+    error = pyqtSignal(object)
     finished = pyqtSignal()
 
     def __init__(self, llm_client: LLMClient, course_content: str,
@@ -229,7 +243,7 @@ class GenerationWorker(QThread):
 
             if not self._cancelled.is_set():
                 if len(all_questions) != self.count:
-                    self.error.emit(quotas.shortfall_message(len(all_questions), self.count))
+                    self.error.emit(quotas.shortfall_error(len(all_questions), self.count))
                     return
                 self.batch_done.emit(all_questions)
 

@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QApplication
 
 from ai.batch_generator import GenerationWorker
 from ai.llm_client import LLMClient
+from core.app_errors import AppError
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 
 
@@ -63,6 +64,38 @@ class LLMErrorMessageTests(unittest.TestCase):
 
         self.assertIn("invalid API key", dialog.status_label.text())
         self.assertNotIn("No questions were generated", dialog.status_label.text())
+
+    def test_generation_dialog_formats_structured_error_for_users(self):
+        dialog = AIGenerationDialog(
+            "Cache content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=["cache"],
+        )
+        error = AppError(
+            code="GEN-QUOTA-001",
+            severity="error",
+            title_zh="生成未完成",
+            title_en="Generation incomplete",
+            message_zh="还有题目没有满足当前分布设置。",
+            message_en="Some requested quotas are still unmet.",
+            action_zh="请重试或放宽权重。",
+            action_en="Try again or relax the weights.",
+            technical_detail="Missing topic cache: 6",
+        )
+
+        with patch("ui.dialogs.ai_generation_dialog.QMessageBox.critical") as critical:
+            dialog._on_error(error)
+
+        self.assertIn("GEN-QUOTA-001", dialog.status_label.text())
+        self.assertIn("生成未完成", dialog.status_label.text())
+        self.assertIn("生成未完成", critical.call_args.args[1])
+        self.assertIn("错误码: GEN-QUOTA-001", critical.call_args.args[2])
+        self.assertIn("建议操作: 请重试或放宽权重。", critical.call_args.args[2])
+        self.assertIn("技术详情: Missing topic cache: 6", critical.call_args.args[2])
 
     def test_client_blocks_unsafe_remote_endpoint_before_network_request(self):
         client = LLMClient(

@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from utils.constants import topic_label, topic_value
+from core.app_errors import coerce_app_error, format_app_error
 from core.language_manager import LanguageManager
 from ai.llm_client import LLMClient
 from ai.batch_generator import GenerationWorker
@@ -796,15 +797,25 @@ class AIGenerationDialog(QDialog):
             return
         self.generated_questions = questions
 
-    def _on_error(self, message: str):
+    def _on_error(self, message):
         if self._generation_cancelled:
             return
         self._generation_failed = True
-        if self.lang_manager.current == "zh":
-            self.status_label.setText(f"错误: {message}")
-        else:
-            self.status_label.setText(f"Error: {message}")
-        QMessageBox.critical(self, self.lang_manager.get_text("生成错误", "Generation Error"), message)
+        app_error = coerce_app_error(
+            message,
+            default_code="GEN-AI-001",
+            title_zh="生成错误",
+            title_en="Generation error",
+            action_zh="请检查 AI 设置、网络连接或稍后重试。",
+            action_en="Check AI settings, network connectivity, or try again later.",
+        )
+        lang = self.lang_manager.current
+        self.status_label.setText(app_error.status_text(lang))
+        QMessageBox.critical(
+            self,
+            app_error.title(lang),
+            format_app_error(app_error, lang),
+        )
         self.generate_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
 
