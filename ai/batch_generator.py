@@ -139,7 +139,10 @@ class GenerationWorker(QThread):
             while len(all_questions) < self.count and not self._cancelled.is_set() and attempts < max_attempts:
                 attempts += 1
                 batch_count = min(batch_size, self.count - len(all_questions))
-                self.progress.emit(f"Generating {batch_count} questions... ({len(all_questions)}/{self.count} accepted)")
+                self.progress.emit(
+                    f"Generating {self.count} questions... "
+                    f"(batch requesting {batch_count}; {len(all_questions)}/{self.count} accepted)"
+                )
 
                 messages = PromptBuilder.build_messages(
                     course_context,

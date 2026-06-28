@@ -150,6 +150,40 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertIn("hard", errors[0])
         self.assertIn("process", errors[0])
 
+    def test_worker_progress_reports_total_requested_count_not_batch_size(self):
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 100},
+        )
+        worker = GenerationWorker(
+            SequenceClient([
+                {"questions": [raw_question("multiple_choice", "medium", "cache", index) for index in range(10)]},
+                {"questions": [raw_question("multiple_choice", "medium", "cache", index + 10) for index in range(5)]},
+            ]),
+            course_content="content",
+            topics=["cache"],
+            count=15,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        progress_messages = []
+        worker.progress.connect(progress_messages.append)
+
+        worker.run()
+
+        generation_messages = [
+            message for message in progress_messages if message.startswith("Generating")
+        ]
+        self.assertTrue(generation_messages)
+        self.assertIn("15 questions", generation_messages[0])
+        self.assertNotIn("10 questions", generation_messages[0])
+
 
 def _counts(values):
     result = {}
