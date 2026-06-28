@@ -119,6 +119,17 @@ QPushButton#secondaryButton:focus {
     border-color: #007fd4;
 }
 
+QPushButton#secondaryButton[marked="true"] {
+    color: #ffffff;
+    background-color: #3a3220;
+    border-color: #dcdcaa;
+}
+
+QPushButton#secondaryButton[marked="true"]:hover {
+    background-color: #4a4028;
+    border-color: #f0e6b2;
+}
+
 QPushButton#dangerButton,
 QPushButton#danger,
 QPushButton#dialogRejectBtn {

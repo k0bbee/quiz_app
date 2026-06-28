@@ -33,6 +33,7 @@ class QuizScreen(QWidget):
         self.session = QuizSession()
         self._question_set: QuestionSet = None
         self._last_user_answer = None
+        self._marked_question_ids: set[str] = set()
 
         self._setup_ui()
         self._connect_session()
@@ -116,6 +117,14 @@ class QuizScreen(QWidget):
         # === Action buttons ===
         action_layout = QHBoxLayout()
 
+        self.mark_review_btn = QPushButton(
+            self.lang_manager.get_text("标记复查", "Mark Review")
+        )
+        self.mark_review_btn.setObjectName("secondaryButton")
+        self.mark_review_btn.clicked.connect(self._toggle_mark_review)
+        self.mark_review_btn.setEnabled(False)
+        action_layout.addWidget(self.mark_review_btn)
+
         self.skip_btn = QPushButton(self.lang_manager.get_text("跳过", "Skip"))
         self.skip_btn.setObjectName("secondaryButton")
         self.skip_btn.clicked.connect(self._skip_question)
@@ -197,6 +206,7 @@ class QuizScreen(QWidget):
         self._question_set = question_set
         lang = self.lang_manager.current
         self._last_user_answer = None
+        self._marked_question_ids.clear()
         self.answer_area.clear()
         self.feedback_frame.hide()
         self._set_correct_indicator_state("")
@@ -205,6 +215,8 @@ class QuizScreen(QWidget):
         self.submit_btn.setText(self.lang_manager.get_text("提交答案", "Submit Answer"))
         self.submit_btn.setEnabled(False)
         self.skip_btn.setEnabled(True)
+        self.mark_review_btn.setEnabled(True)
+        self._refresh_mark_review_state()
         self._update_timer()
         if show_timer:
             self.session_timer.start()
@@ -255,6 +267,8 @@ class QuizScreen(QWidget):
         self._update_submit_enabled()
         self.submit_btn.show()
         self.skip_btn.setEnabled(True)
+        self.mark_review_btn.setEnabled(True)
+        self._refresh_mark_review_state()
 
         is_last = self.session.current_index == self.session.total_questions - 1
         self.next_btn.setText(
@@ -284,6 +298,37 @@ class QuizScreen(QWidget):
     def _skip_question(self):
         """Skip the current question."""
         self.session.skip_question()
+
+    def _toggle_mark_review(self):
+        """Toggle the review marker for the current question."""
+        question = self.session.current_question
+        if question is None:
+            return
+        if question.question_id in self._marked_question_ids:
+            self._marked_question_ids.discard(question.question_id)
+        else:
+            self._marked_question_ids.add(question.question_id)
+        self._refresh_mark_review_state()
+
+    def _refresh_mark_review_state(self):
+        """Keep the mark-for-review button aligned with the current question."""
+        question = self.session.current_question
+        if question is None:
+            self.mark_review_btn.setEnabled(False)
+            self.mark_review_btn.setText(self.lang_manager.get_text("标记复查", "Mark Review"))
+            self.mark_review_btn.setProperty("marked", False)
+            self.mark_review_btn.style().unpolish(self.mark_review_btn)
+            self.mark_review_btn.style().polish(self.mark_review_btn)
+            return
+        marked = question.question_id in self._marked_question_ids
+        self.mark_review_btn.setText(
+            self.lang_manager.get_text("取消标记", "Unmark")
+            if marked
+            else self.lang_manager.get_text("标记复查", "Mark Review")
+        )
+        self.mark_review_btn.setProperty("marked", marked)
+        self.mark_review_btn.style().unpolish(self.mark_review_btn)
+        self.mark_review_btn.style().polish(self.mark_review_btn)
 
     def _next_question(self):
         """Move to the next question."""
@@ -332,6 +377,7 @@ class QuizScreen(QWidget):
     def _on_language_changed(self, lang):
         """Update all UI text when language changes."""
         self.lang_btn.setText("English" if lang == "zh" else "中文")
+        self._refresh_mark_review_state()
         self.skip_btn.setText(self.lang_manager.get_text("跳过", "Skip"))
         self.submit_btn.setText(self.lang_manager.get_text("提交答案", "Submit Answer"))
         self.next_btn.setText(self.lang_manager.get_text("下一题", "Next"))
@@ -411,6 +457,7 @@ class QuizScreen(QWidget):
         self.answer_area.set_enabled(False)
         self.submit_btn.hide()
         self.skip_btn.setEnabled(False)
+        self.mark_review_btn.setEnabled(False)
 
     def _on_session_completed(self, progress_id: str):
         """Handle quiz completion."""

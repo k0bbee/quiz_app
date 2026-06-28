@@ -190,6 +190,57 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual("central processing unit", screen.answer_area.get_answer())
             self.assertTrue(screen.submit_btn.isEnabled())
 
+    def test_quiz_screen_marks_current_question_for_review(self):
+        first = Question.create_new(
+            qtype=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "问题 1", "options": ["A. 对", "B. 错"], "explanation": "解释说明"},
+                "en": {"stem": "Question 1", "options": ["A. Right", "B. Wrong"], "explanation": "Explanation text"},
+            },
+            correct_answer="A",
+            topic="test",
+        )
+        second = Question.create_new(
+            qtype=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "问题 2", "options": ["A. 对", "B. 错"], "explanation": "解释说明"},
+                "en": {"stem": "Question 2", "options": ["A. Right", "B. Wrong"], "explanation": "Explanation text"},
+            },
+            correct_answer="A",
+            topic="test",
+        )
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=[first.question_id, second.question_id],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [first, second], show_timer=False)
+            marked_question_id = screen.session.current_question.question_id
+
+            self.assertEqual(set(), screen._marked_question_ids)
+            self.assertEqual("标记复查", screen.mark_review_btn.text())
+
+            screen.mark_review_btn.click()
+
+            self.assertEqual({marked_question_id}, screen._marked_question_ids)
+            self.assertEqual("取消标记", screen.mark_review_btn.text())
+
+            screen.answer_area.choice_widget.buttons[0].setChecked(True)
+            screen._submit_answer()
+            screen._next_question()
+
+            self.assertEqual({marked_question_id}, screen._marked_question_ids)
+            self.assertEqual("标记复查", screen.mark_review_btn.text())
+
     def test_quiz_session_abandon_returns_abandoned_record(self):
         question = Question.create_new(
             qtype=QuestionType.MULTIPLE_CHOICE,
