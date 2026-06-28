@@ -274,6 +274,28 @@ class AISettingsValidationTests(unittest.TestCase):
         )
         self.assertTrue(saved["show_timer"])
 
+    def test_settings_screen_shows_unsaved_and_saved_state_for_manual_save(self):
+        screen = SettingsScreen()
+
+        self.assertFalse(screen.settings_dirty)
+        self.assertEqual("clean", screen.settings_save_status.property("saveState"))
+        self.assertIn("无未保存", screen.settings_save_status.text())
+
+        screen.default_question_count_input.setValue(
+            screen.default_question_count_input.value() + 1
+        )
+
+        self.assertTrue(screen.settings_dirty)
+        self.assertEqual("dirty", screen.settings_save_status.property("saveState"))
+        self.assertIn("未保存", screen.settings_save_status.text())
+
+        with patch("ui.screens.settings_screen.write_json", return_value=True):
+            screen.save_settings(silent=True)
+
+        self.assertFalse(screen.settings_dirty)
+        self.assertEqual("saved", screen.settings_save_status.property("saveState"))
+        self.assertIn("已保存", screen.settings_save_status.text())
+
     def test_settings_weight_preview_updates_normalized_effective_percentages_after_confirmation(self):
         screen = SettingsScreen()
 

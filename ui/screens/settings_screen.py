@@ -118,9 +118,12 @@ class SettingsScreen(QWidget):
         self._connection_test_worker = None
         self._app_data_worker = None
         self._initializing = True
+        self.settings_dirty = False
         self._setup_ui()
+        self._connect_settings_dirty_tracking()
         self._populate_from_settings()
         self._initializing = False
+        self._set_settings_dirty(False)
 
     # ── Init helpers ──────────────────────────────────────────
 
@@ -258,6 +261,9 @@ class SettingsScreen(QWidget):
         self.save_btn.setMinimumHeight(34)
         self.save_btn.clicked.connect(self.save_settings)
         self.ai_action_layout.addWidget(self.save_btn)
+        self.settings_save_status = QLabel()
+        self.settings_save_status.setObjectName("settingsSaveStatus")
+        self.ai_action_layout.addWidget(self.settings_save_status)
         self.ai_form_layout.addRow("", self.ai_action_layout)
 
         layout.addWidget(self.ai_group)
@@ -570,6 +576,7 @@ class SettingsScreen(QWidget):
         self.test_ai_btn.setText(self.lang_manager.get_text("测试 AI 设置", "Test AI Settings"))
         self.save_btn.setText(self.lang_manager.get_text("保存设置", "Save Settings"))
         self.clear_api_key_btn.setText(self.lang_manager.get_text("清除", "Clear"))
+        self._refresh_settings_save_status()
         self._update_api_key_placeholder()
         self.api_base_url.setPlaceholderText(
             self.lang_manager.get_text("例如: https://api.anthropic.com/v1", "e.g. https://api.anthropic.com/v1"))
@@ -582,6 +589,7 @@ class SettingsScreen(QWidget):
         if lang:
             self._settings["language"] = lang
             self.lang_manager.set_language(lang)
+            self._set_settings_dirty(True)
 
     # ── Population ────────────────────────────────────────────
 
@@ -703,6 +711,7 @@ class SettingsScreen(QWidget):
             self._settings.pop("ai_api_key", None)
 
             write_json(SETTINGS_FILE, self._settings)
+            self._set_settings_dirty(False, saved=True)
 
             if not silent:
                 storage = SecretsManager.instance().get_storage_location()
@@ -719,6 +728,58 @@ class SettingsScreen(QWidget):
             if not silent:
                 QMessageBox.critical(
                     self, self.lang_manager.get_text("保存失败", "Save Failed"), str(e))
+
+    def _connect_settings_dirty_tracking(self):
+        controls = (
+            self.provider_combo,
+            self.model_combo,
+            self.default_difficulty_combo,
+            self.default_template_combo,
+        )
+        for combo in controls:
+            combo.currentIndexChanged.connect(self._mark_settings_dirty)
+            combo.currentTextChanged.connect(self._mark_settings_dirty)
+        self.api_key_input.textChanged.connect(self._mark_settings_dirty)
+        self.api_base_url.textChanged.connect(self._mark_settings_dirty)
+        for spinbox in (
+            self.default_question_count_input,
+            self.default_mc_weight_input,
+            self.default_scenario_weight_input,
+            self.default_true_false_weight_input,
+            self.default_fill_blank_weight_input,
+            self.default_easy_weight_input,
+            self.default_medium_weight_input,
+            self.default_hard_weight_input,
+        ):
+            spinbox.valueChanged.connect(self._mark_settings_dirty)
+        self.show_timer_checkbox.toggled.connect(self._mark_settings_dirty)
+
+    def _mark_settings_dirty(self, *_args):
+        self._set_settings_dirty(True)
+
+    def _set_settings_dirty(self, dirty: bool, saved: bool = False):
+        if getattr(self, "_initializing", False):
+            return
+        self.settings_dirty = dirty
+        self._settings_saved_state = saved and not dirty
+        self._refresh_settings_save_status()
+
+    def _refresh_settings_save_status(self):
+        if not hasattr(self, "settings_save_status"):
+            return
+        if self.settings_dirty:
+            text = self.lang_manager.get_text("有未保存更改", "Unsaved changes")
+            state = "dirty"
+        elif getattr(self, "_settings_saved_state", False):
+            text = self.lang_manager.get_text("已保存", "Saved")
+            state = "saved"
+        else:
+            text = self.lang_manager.get_text("无未保存更改", "No unsaved changes")
+            state = "clean"
+        self.settings_save_status.setText(text)
+        self.settings_save_status.setProperty("saveState", state)
+        self.settings_save_status.style().unpolish(self.settings_save_status)
+        self.settings_save_status.style().polish(self.settings_save_status)
 
     def _make_weight_spinbox(self, value: int) -> QSpinBox:
         spinbox = WheelSafeSpinBox()

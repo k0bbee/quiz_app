@@ -47,6 +47,9 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("qlabel#settingsconnectionstatus", qss)
         self.assertIn("qlabel#settingsconnectionstatusok", qss)
         self.assertIn("qlabel#settingsconnectionstatuserror", qss)
+        self.assertIn("qlabel#settingssavestatus", qss)
+        self.assertIn('qlabel#settingssavestatus[savestate="dirty"]', qss)
+        self.assertIn('qlabel#settingssavestatus[savestate="saved"]', qss)
         self.assertIn("qlabel#settingsweightpreview", qss)
 
     def test_default_button_is_secondary_instead_of_primary_blue(self):
