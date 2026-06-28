@@ -150,6 +150,21 @@ class UiThemeTests(unittest.TestCase):
             self.assertEqual(Qt.FocusPolicy.TabFocus, button.focusPolicy())
         self.assertEqual(Qt.FocusPolicy.NoFocus, toolbar.focusPolicy())
 
+    def test_enabled_buttons_use_hand_cursor_and_disabled_buttons_use_arrow_cursor(self):
+        load_stylesheet(_APP)
+
+        button = QPushButton("Action")
+        button.setObjectName("secondaryButton")
+        button.show()
+        _APP.processEvents()
+
+        self.assertEqual(Qt.CursorShape.PointingHandCursor, button.cursor().shape())
+
+        button.setEnabled(False)
+        _APP.processEvents()
+
+        self.assertEqual(Qt.CursorShape.ArrowCursor, button.cursor().shape())
+
     def test_home_actions_use_dedicated_soft_button_treatment(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
 
@@ -178,6 +193,18 @@ class UiThemeTests(unittest.TestCase):
             self.assertEqual("primary", home.start_btn.property("homeAction"))
             for button in (home.incorrect_btn, home.ai_btn, home.progress_btn, home.settings_btn):
                 self.assertEqual("secondary", button.property("homeAction"))
+
+    def test_home_incorrect_action_stays_clickable_when_no_incorrect_questions_exist(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = HomeScreen(
+                ProgressManager(str(Path(tmpdir) / "progress")),
+                QuestionBank(str(Path(tmpdir) / "questions")),
+            )
+
+            home.refresh()
+
+            self.assertTrue(home.incorrect_btn.isEnabled())
+            self.assertEqual("true", home.incorrect_btn.property("emptyState"))
 
     def test_home_actions_have_dedicated_hover_pressed_and_focus_feedback(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()

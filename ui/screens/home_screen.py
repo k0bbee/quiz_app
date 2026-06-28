@@ -138,9 +138,10 @@ class HomeScreen(QWidget):
 
     def refresh(self):
         """Called when navigating back to home. Update stats."""
-        if not self.progress_manager or not self.question_bank:
+        if self.progress_manager is None or self.question_bank is None:
             self.stats_label.hide()
             self.incorrect_btn.setEnabled(False)
+            self._set_incorrect_empty_state(True)
             return
 
         visible_questions, total_questions = self.question_bank.search(
@@ -153,11 +154,11 @@ class HomeScreen(QWidget):
             self.progress_manager.get_incorrect_question_ids(),
             course_id=self._current_course_id,
         ))
-        self.incorrect_btn.setEnabled(incorrect_count > 0)
+        self.incorrect_btn.setEnabled(True)
+        self._set_incorrect_empty_state(incorrect_count <= 0)
 
         if stats["total_sessions"] == 0:
             self.stats_label.hide()
-            self.incorrect_btn.setEnabled(incorrect_count > 0)
             return
 
         self.stats_label.show()
@@ -183,3 +184,16 @@ class HomeScreen(QWidget):
             return
         self._current_course_id = course_id
         self.refresh()
+
+    def _set_incorrect_empty_state(self, empty: bool):
+        self.incorrect_btn.setProperty("emptyState", "true" if empty else "false")
+        self.incorrect_btn.setToolTip(
+            self.lang_manager.get_text(
+                "当前没有错题；点击可查看提示。",
+                "No incorrect questions yet; click for details.",
+            )
+            if empty
+            else ""
+        )
+        self.incorrect_btn.style().unpolish(self.incorrect_btn)
+        self.incorrect_btn.style().polish(self.incorrect_btn)

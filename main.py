@@ -15,26 +15,33 @@ from ui.main_window import MainWindow
 
 
 class _ButtonFocusPolicyFilter(QObject):
-    """Keep action buttons keyboard reachable without taking mouse focus."""
+    """Keep action buttons keyboard reachable and visibly clickable."""
 
     _BUTTON_EVENTS = {
         QEvent.Type.Polish,
         QEvent.Type.Show,
         QEvent.Type.DynamicPropertyChange,
+        QEvent.Type.EnabledChange,
     }
 
     def eventFilter(self, watched, event):  # noqa: N802 - Qt method name
         if isinstance(watched, QPushButton) and event.type() in self._BUTTON_EVENTS:
-            _apply_button_focus_policy(watched)
+            _apply_button_interaction_policy(watched)
         return super().eventFilter(watched, event)
 
 
-def _apply_button_focus_policy(button: QPushButton) -> None:
-    """Use TabFocus for actions; keep toolbar buttons out of focus traversal."""
+def _apply_button_interaction_policy(button: QPushButton) -> None:
+    """Use consistent focus and cursor affordances for push buttons."""
     if button.objectName() == "toolbarButton":
         button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
     else:
         button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+    cursor = (
+        Qt.CursorShape.PointingHandCursor
+        if button.isEnabled()
+        else Qt.CursorShape.ArrowCursor
+    )
+    button.setCursor(cursor)
 
 
 def _install_button_focus_policy(app: QApplication) -> None:
@@ -45,7 +52,7 @@ def _install_button_focus_policy(app: QApplication) -> None:
         app._quiz_button_focus_policy_filter = focus_filter
     for button in app.allWidgets():
         if isinstance(button, QPushButton):
-            _apply_button_focus_policy(button)
+            _apply_button_interaction_policy(button)
 
 
 def _apply_dark_palette(app: QApplication):
