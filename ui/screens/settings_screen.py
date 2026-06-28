@@ -982,7 +982,8 @@ class SettingsScreen(QWidget):
 
     def _show_environment_check(self):
         report = collect_environment_report(BASE_DIR)
-        QMessageBox.information(
+        message_box = QMessageBox.information if report.ok else QMessageBox.warning
+        message_box(
             self,
             self.lang_manager.get_text("环境检查", "Environment Check"),
             format_environment_report(report),

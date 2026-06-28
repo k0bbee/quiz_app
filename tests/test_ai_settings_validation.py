@@ -192,6 +192,26 @@ class AISettingsValidationTests(unittest.TestCase):
         self.assertIn("[WARN] Tesseract OCR", message)
         self.assertIn("winget install -e --id UB-Mannheim.TesseractOCR", message)
 
+    def test_settings_screen_uses_warning_for_required_environment_failures(self):
+        screen = SettingsScreen()
+        report = EnvironmentReport(
+            (
+                CheckResult("Python", True, True, "3.13.5"),
+                CheckResult("data directory", False, True, "not writable: denied"),
+            )
+        )
+
+        with patch("ui.screens.settings_screen.collect_environment_report", return_value=report), \
+             patch("ui.screens.settings_screen.QMessageBox.information") as info, \
+             patch("ui.screens.settings_screen.QMessageBox.warning") as warning:
+            screen.environment_check_btn.click()
+
+        self.assertFalse(info.called)
+        self.assertTrue(warning.called)
+        message = warning.call_args.args[2]
+        self.assertIn("Environment check: FAIL", message)
+        self.assertIn("[FAIL] data directory", message)
+
     def test_settings_screen_copies_ocr_fix_commands(self):
         screen = SettingsScreen()
         _APP.clipboard().clear()
