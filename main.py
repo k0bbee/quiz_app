@@ -6,11 +6,46 @@ import os
 # Ensure the quiz_app directory is on the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import QEvent, QObject, Qt
+from PyQt6.QtWidgets import QApplication, QPushButton
 from PyQt6.QtGui import QPalette, QColor
 
 from config import APP_NAME
 from ui.main_window import MainWindow
+
+
+class _ButtonFocusPolicyFilter(QObject):
+    """Keep action buttons keyboard reachable without taking mouse focus."""
+
+    _BUTTON_EVENTS = {
+        QEvent.Type.Polish,
+        QEvent.Type.Show,
+        QEvent.Type.DynamicPropertyChange,
+    }
+
+    def eventFilter(self, watched, event):  # noqa: N802 - Qt method name
+        if isinstance(watched, QPushButton) and event.type() in self._BUTTON_EVENTS:
+            _apply_button_focus_policy(watched)
+        return super().eventFilter(watched, event)
+
+
+def _apply_button_focus_policy(button: QPushButton) -> None:
+    """Use TabFocus for actions; keep toolbar buttons out of focus traversal."""
+    if button.objectName() == "toolbarButton":
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+    else:
+        button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+
+
+def _install_button_focus_policy(app: QApplication) -> None:
+    """Install an app-wide policy for buttons created after startup."""
+    if not hasattr(app, "_quiz_button_focus_policy_filter"):
+        focus_filter = _ButtonFocusPolicyFilter(app)
+        app.installEventFilter(focus_filter)
+        app._quiz_button_focus_policy_filter = focus_filter
+    for button in app.allWidgets():
+        if isinstance(button, QPushButton):
+            _apply_button_focus_policy(button)
 
 
 def _apply_dark_palette(app: QApplication):
@@ -37,6 +72,7 @@ def load_stylesheet(app: QApplication) -> str:
     qss_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.qss")
     app.setStyle("Fusion")
     _apply_dark_palette(app)
+    _install_button_focus_policy(app)
     try:
         with open(qss_path, "r", encoding="utf-8") as f:
             stylesheet = f.read()

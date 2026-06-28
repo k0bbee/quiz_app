@@ -8,13 +8,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QPalette
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QGridLayout, QSplitter
+from PyQt6.QtWidgets import QApplication, QGridLayout, QPushButton, QSplitter
 
 from core.progress_tracker import ProgressManager
 from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
-from main import _apply_dark_palette
+from main import _apply_dark_palette, load_stylesheet
 from ui.main_window import MainWindow
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
@@ -131,6 +131,24 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual(Qt.FocusPolicy.NoFocus, main_window.menuBar().focusPolicy())
         for button in (main_window.topics_btn, main_window.progress_btn, main_window.courses_btn):
             self.assertEqual(Qt.FocusPolicy.NoFocus, button.focusPolicy())
+
+    def test_semantic_action_buttons_keep_tab_focus_without_mouse_focus(self):
+        load_stylesheet(_APP)
+
+        primary = QPushButton("Primary")
+        primary.setObjectName("primaryButton")
+        secondary = QPushButton("Secondary")
+        secondary.setObjectName("secondaryButton")
+        danger = QPushButton("Danger")
+        danger.setObjectName("dangerButton")
+        toolbar = QPushButton("Toolbar")
+        toolbar.setObjectName("toolbarButton")
+
+        _APP.processEvents()
+
+        for button in (primary, secondary, danger):
+            self.assertEqual(Qt.FocusPolicy.TabFocus, button.focusPolicy())
+        self.assertEqual(Qt.FocusPolicy.NoFocus, toolbar.focusPolicy())
 
     def test_home_actions_use_dedicated_soft_button_treatment(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
