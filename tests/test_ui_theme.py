@@ -179,6 +179,36 @@ class UiThemeTests(unittest.TestCase):
             for button in (home.incorrect_btn, home.ai_btn, home.progress_btn, home.settings_btn):
                 self.assertEqual("secondary", button.property("homeAction"))
 
+    def test_home_actions_have_dedicated_hover_pressed_and_focus_feedback(self):
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+
+        for selector in (
+            'qpushbutton[homeaction="primary"]:hover',
+            'qpushbutton[homeaction="primary"]:pressed',
+            'qpushbutton[homeaction="primary"]:focus',
+            'qpushbutton[homeaction="secondary"]:hover',
+            'qpushbutton[homeaction="secondary"]:pressed',
+            'qpushbutton[homeaction="secondary"]:focus',
+        ):
+            self.assertIn(selector, qss)
+
+        primary_pressed = re.search(
+            r'qpushbutton\[homeaction="primary"\]:pressed\s*\{(?P<body>[^}]*)\}',
+            qss,
+            flags=re.DOTALL,
+        )
+        secondary_pressed = re.search(
+            r'qpushbutton\[homeaction="secondary"\]:pressed\s*\{(?P<body>[^}]*)\}',
+            qss,
+            flags=re.DOTALL,
+        )
+        self.assertIsNotNone(primary_pressed)
+        self.assertIsNotNone(secondary_pressed)
+        for body in (primary_pressed.group("body"), secondary_pressed.group("body")):
+            self.assertIn("padding-top", body)
+            self.assertIn("padding-bottom", body)
+            self.assertIn("border-color", body)
+
     def test_fallback_palette_matches_vscode_dark_base(self):
         _apply_dark_palette(_APP)
         palette = _APP.palette()
