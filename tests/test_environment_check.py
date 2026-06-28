@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.environment_check import CheckResult, EnvironmentReport, collect_environment_report, _check_tesseract
+from core.environment_check import CheckResult, EnvironmentReport, collect_environment_report, _check_data_directory, _check_tesseract
 from core.environment_check import format_environment_report
 from scripts.check_environment import main as environment_check_main
 
@@ -63,6 +63,17 @@ class EnvironmentCheckTests(unittest.TestCase):
         self.assertFalse(by_name["requests"].ok)
         self.assertEqual("python -m pip install -r requirements.txt", by_name["requests"].remediation)
         self.assertIn("Fix: python -m pip install -r requirements.txt", format_environment_report(report))
+
+    def test_data_directory_check_exposes_remediation_when_not_writable(self):
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             patch("core.environment_check.tempfile.mkstemp", side_effect=OSError("denied")):
+            result = _check_data_directory(Path(tmpdir) / "data")
+
+        self.assertFalse(result.ok)
+        self.assertTrue(result.required)
+        self.assertIn("not writable", result.detail)
+        self.assertIn("choose a writable project location", result.remediation)
+        self.assertIn("Fix: " + result.remediation, format_environment_report(EnvironmentReport((result,))))
 
     def test_cli_json_report_is_machine_readable_and_contains_no_secret_values(self):
         output = io.StringIO()

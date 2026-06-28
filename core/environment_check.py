@@ -24,6 +24,9 @@ PYTHON_DEPENDENCIES = (
     ("pytesseract", "pytesseract"),
 )
 PYTHON_DEPENDENCY_REMEDIATION = "python -m pip install -r requirements.txt"
+DATA_DIRECTORY_REMEDIATION = (
+    "choose a writable project location or fix permissions for the app data directory"
+)
 
 
 @dataclass(frozen=True)
@@ -203,7 +206,13 @@ def _check_data_directory(data_dir: Path) -> CheckResult:
         Path(probe_path).unlink(missing_ok=True)
         return CheckResult("data directory", True, True, f"writable: {data_dir}")
     except OSError as exc:
-        return CheckResult("data directory", False, True, f"not writable: {exc}")
+        return CheckResult(
+            "data directory",
+            False,
+            True,
+            f"not writable: {exc}",
+            DATA_DIRECTORY_REMEDIATION,
+        )
 
 
 def format_environment_report(report: EnvironmentReport) -> str:
