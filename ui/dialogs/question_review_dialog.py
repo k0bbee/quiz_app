@@ -15,9 +15,11 @@ from utils.constants import topic_value
 class QuestionReviewDialog(QDialog):
     """Review and approve/reject AI-generated questions before saving."""
 
-    def __init__(self, questions: list[Question], parent=None):
+    def __init__(self, questions: list[Question], parent=None, page_size: int = 50):
         super().__init__(parent)
         self.questions = list(questions)
+        self.page_size = max(1, int(page_size or 50))
+        self._current_page = 0
         self._accepted: set[int] = set(range(len(questions)))  # indices
         self._current_index: int = -1
         self.lang_manager = LanguageManager.instance()
@@ -28,7 +30,7 @@ class QuestionReviewDialog(QDialog):
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
         if self.questions:
-            self.question_list.setCurrentRow(0)
+            self._render_current_page()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -56,15 +58,25 @@ class QuestionReviewDialog(QDialog):
 
         self.question_list = QListWidget()
         self.question_list.setMinimumWidth(250)
-        for i, q in enumerate(self.questions):
-            lang = self.lang_manager.current
-            stem = q.get_stem(lang)
-            short = stem[:80] + "..." if len(stem) > 80 else stem
-            item = QListWidgetItem(f"Q{i + 1}: {short}")
-            item.setData(Qt.ItemDataRole.UserRole, i)
-            self.question_list.addItem(item)
         self.question_list.currentRowChanged.connect(self._on_selection_changed)
         left_layout.addWidget(self.question_list)
+
+        page_layout = QHBoxLayout()
+        self.prev_page_btn = QPushButton(self.lang_manager.get_text("上一页", "Previous"))
+        self.prev_page_btn.setObjectName("secondaryButton")
+        self.prev_page_btn.clicked.connect(self._previous_page)
+        page_layout.addWidget(self.prev_page_btn)
+
+        self.page_label = QLabel()
+        self.page_label.setObjectName("dialogPageLabel")
+        self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        page_layout.addWidget(self.page_label, 1)
+
+        self.next_page_btn = QPushButton(self.lang_manager.get_text("下一页", "Next"))
+        self.next_page_btn.setObjectName("secondaryButton")
+        self.next_page_btn.clicked.connect(self._next_page)
+        page_layout.addWidget(self.next_page_btn)
+        left_layout.addLayout(page_layout)
 
         # Accept all / reject all buttons
         bulk_layout = QHBoxLayout()
@@ -140,6 +152,8 @@ class QuestionReviewDialog(QDialog):
             )
         )
         self.questions_label.setText(self.lang_manager.get_text("题目列表:", "Questions:"))
+        self.prev_page_btn.setText(self.lang_manager.get_text("上一页", "Previous"))
+        self.next_page_btn.setText(self.lang_manager.get_text("下一页", "Next"))
         self.accept_all_btn.setText(self.lang_manager.get_text("全部接受", "Accept All"))
         self.reject_all_btn.setText(self.lang_manager.get_text("全部拒绝", "Reject All"))
         self.preview_label.setText(self.lang_manager.get_text("选择题目以预览", "Select a question to preview"))
@@ -148,28 +162,28 @@ class QuestionReviewDialog(QDialog):
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
         self.save_btn.setText(self.lang_manager.get_text("保存已接受的题目", "Save Accepted Questions"))
 
-        # Update list item stems (may change with language)
-        for i in range(len(self.questions)):
-            self._update_list_item(i)
-
-        # Refresh preview if a question is currently selected
-        if self._current_index >= 0:
-            self._on_selection_changed(self._current_index)
+        # Update visible list item stems (may change with language)
+        self._render_current_page(preserve_selection=True)
 
     def _on_selection_changed(self, row: int):
         """Display question details in the preview panel."""
-        if row < 0 or row >= len(self.questions):
+        item = self.question_list.item(row)
+        if item is None:
             return
 
-        self._current_index = row
-        q = self.questions[row]
-        is_accepted = row in self._accepted
+        index = int(item.data(Qt.ItemDataRole.UserRole))
+        if index < 0 or index >= len(self.questions):
+            return
+
+        self._current_index = index
+        q = self.questions[index]
+        is_accepted = index in self._accepted
 
         if is_accepted:
             status = self.lang_manager.get_text("已接受", "ACCEPTED")
         else:
             status = self.lang_manager.get_text("已拒绝", "REJECTED")
-        self.preview_label.setText(f"Q{row + 1} — [{status}]")
+        self.preview_label.setText(f"Q{index + 1} — [{status}]")
 
         # Build detail text
         lang = self.lang_manager.current
@@ -205,17 +219,16 @@ class QuestionReviewDialog(QDialog):
         """Accept all questions."""
         for i in range(len(self.questions)):
             self._accepted.add(i)
-            self._update_list_item(i)
+        self._render_current_page(preserve_selection=True)
 
     def _reject_all(self):
         """Reject all questions."""
         self._accepted.clear()
-        for i in range(len(self.questions)):
-            self._update_list_item(i)
+        self._render_current_page(preserve_selection=True)
 
     def _update_list_item(self, index: int):
         """Update the visual indicator on a list item."""
-        item = self.question_list.item(index)
+        item = self._visible_item_for_index(index)
         if item is None:
             return
         q = self.questions[index]
@@ -224,6 +237,68 @@ class QuestionReviewDialog(QDialog):
         short = stem[:80] + "..." if len(stem) > 80 else stem
         prefix = "✓ " if index in self._accepted else "✗ "
         item.setText(f"{prefix}Q{index + 1}: {short}")
+
+    def _render_current_page(self, preserve_selection: bool = False):
+        """Render only the current page to keep large review batches responsive."""
+        selected_index = self._current_index if preserve_selection else -1
+        self.question_list.blockSignals(True)
+        self.question_list.clear()
+        start, end = self._page_bounds()
+        for index in range(start, end):
+            item = QListWidgetItem()
+            item.setData(Qt.ItemDataRole.UserRole, index)
+            self.question_list.addItem(item)
+            self._update_list_item(index)
+        self.question_list.blockSignals(False)
+        self._update_pagination_controls()
+
+        if self.question_list.count() == 0:
+            self._current_index = -1
+            return
+
+        row_to_select = 0
+        if start <= selected_index < end:
+            row_to_select = selected_index - start
+        self.question_list.setCurrentRow(row_to_select)
+
+    def _page_bounds(self) -> tuple[int, int]:
+        """Return start/end indexes for the current page."""
+        start = self._current_page * self.page_size
+        end = min(start + self.page_size, len(self.questions))
+        return start, end
+
+    def _page_count(self) -> int:
+        """Return the number of pages needed for the review list."""
+        if not self.questions:
+            return 1
+        return (len(self.questions) + self.page_size - 1) // self.page_size
+
+    def _visible_item_for_index(self, index: int):
+        """Return the visible QListWidgetItem for a global question index."""
+        start, end = self._page_bounds()
+        if index < start or index >= end:
+            return None
+        return self.question_list.item(index - start)
+
+    def _update_pagination_controls(self):
+        """Keep pagination controls in sync with the current page."""
+        page_count = self._page_count()
+        self._current_page = min(self._current_page, page_count - 1)
+        self.page_label.setText(f"{self._current_page + 1} / {page_count}")
+        self.prev_page_btn.setEnabled(self._current_page > 0)
+        self.next_page_btn.setEnabled(self._current_page < page_count - 1)
+
+    def _next_page(self):
+        """Move to the next review page."""
+        if self._current_page < self._page_count() - 1:
+            self._current_page += 1
+            self._render_current_page()
+
+    def _previous_page(self):
+        """Move to the previous review page."""
+        if self._current_page > 0:
+            self._current_page -= 1
+            self._render_current_page()
 
     def _on_save(self):
         """Validate and save accepted questions."""
