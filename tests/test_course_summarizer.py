@@ -161,6 +161,133 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
         self.assertEqual("Cache Mapping", topics[0].title)
         self.assertNotIn("根据课件上下文", topics[0].title)
 
+    def test_inferred_topics_ignore_computer_system_auxiliary_material_noise(self):
+        cache_text = (
+            "Cache mapping explains tag, set index, byte offset, replacement policy, "
+            "and set-associative lookup behavior. "
+        ) * 12
+        noisy_docs = [
+            ExtractedDocument(
+                path="standard.md",
+                title="HC Computer System 出题标准",
+                extension=".md",
+                text=("出题对象默认是计算机系统，干扰项更接近真实，批改只讲必要内容。 " * 20),
+                pages=[],
+            ),
+            ExtractedDocument(
+                path="复习辅助.md",
+                title="复习辅助",
+                extension=".md",
+                text=("课程内容整理标准，模拟卷整理成可复用模板，辅助提示词模板。 " * 20),
+                pages=[],
+            ),
+            ExtractedDocument(
+                path="课程内容.md",
+                title="课程内容",
+                extension=".md",
+                text=("已生成的课程笔记，核心概念，推演流程，答题要点。 " * 20),
+                pages=[],
+            ),
+            ExtractedDocument(
+                path="HENGJIA CAO-12组-Superscalar Processor-成绩反馈.pdf",
+                title="HENGJIA CAO-12组-Superscalar Processor-成绩反馈",
+                extension=".pdf",
+                text=("assignment grader feedback simplifications visualization understanding " * 20),
+                pages=[],
+            ),
+            ExtractedDocument(
+                path="marking-rubric.pdf",
+                title="Marking Rubric",
+                extension=".pdf",
+                text=("marking rubric grading feedback answer key partial credit " * 20),
+                pages=[],
+            ),
+            ExtractedDocument(
+                path="Tutorial Questions.pdf",
+                title="Tutorial Questions",
+                extension=".pdf",
+                text=("checkpoint question previous discussion answer question bank " * 20),
+                pages=[],
+            ),
+            ExtractedDocument(
+                path="L15_1_storag… - JupyterLab.pdf",
+                title="L15_1_storag… - JupyterLab",
+                extension=".pdf",
+                text=("select-object fancyarrowpatch privatememorysize pagedattention jupyterlab " * 20),
+                pages=[],
+            ),
+            ExtractedDocument(
+                path="例题与讲解.md",
+                title="例题与讲解",
+                extension=".md",
+                text=("用途：把高频考点转化为可推理的题。每道例题包含解法和变式提示。 " * 20),
+                pages=[],
+            ),
+            ExtractedDocument(
+                path="考前40分钟中文摘要.md",
+                title="考前40分钟中文摘要",
+                extension=".md",
+                text=("依据：模拟卷与课程内容的高频核心概念。最后 40 分钟优先级。 " * 20),
+                pages=[],
+            ),
+        ]
+        docs = [
+            ExtractedDocument(
+                path="2. Cache mapping.pptx",
+                title="Cache mapping",
+                extension=".pptx",
+                text=cache_text,
+                pages=[cache_text],
+            ),
+            *noisy_docs,
+        ]
+
+        topics = infer_topics(docs)
+
+        titles = [topic.title for topic in topics]
+        self.assertIn("Cache Mapping", titles)
+        for noisy_title in (
+            "HC Computer System 出题标准",
+            "复习辅助",
+            "课程内容",
+            "Marking Rubric",
+            "Tutorial Questions",
+            "1 Storag Jupyterlab",
+            "例题与讲解",
+            "考前40分钟中文摘要",
+        ):
+            self.assertNotIn(noisy_title, titles)
+        keywords = {keyword for topic in topics for keyword in topic.keywords}
+        for noisy_keyword in (
+            "干扰项更接近真实",
+            "辅助提示词模板",
+            "select-object",
+            "fancyarrowpatch",
+            "assignmentgrader",
+        ):
+            self.assertNotIn(noisy_keyword, keywords)
+
+    def test_inferred_topic_title_removes_compound_lecture_number_prefixes(self):
+        text = (
+            "Virtual memory address translation uses page tables, TLB lookup, page faults, "
+            "frames, valid bits, and page replacement policy. "
+        ) * 12
+        doc = ExtractedDocument(
+            path="L15_2_Virtual Memory- Address Translation- and Page Replacement.pdf.pdf",
+            title="L15_2_Virtual Memory- Address Translation- and Page Replacement.pdf",
+            extension=".pdf",
+            text=text,
+            pages=[text],
+        )
+
+        topics = infer_topics([doc])
+
+        self.assertEqual(
+            "Virtual Memory Address Translation And Page Replacement",
+            topics[0].title,
+        )
+        self.assertFalse(topics[0].title.startswith("2 "))
+
     def test_course_screen_local_agent_initializer_does_not_read_persisted_api_key(self):
         class ForbiddenSecrets:
             def get_key(self):

@@ -40,6 +40,18 @@ class DocumentParserQualityTests(unittest.TestCase):
             (root / "2. Cache mapping.md").write_text(repeated, encoding="utf-8")
             (root / "diff.md").write_text(repeated, encoding="utf-8")
             (root / "2. Cache mapping copy.md").write_text(repeated, encoding="utf-8")
+            (root / "standard.md").write_text("HC Computer System 出题标准 " * 20, encoding="utf-8")
+            (root / "marking-rubric.md").write_text(
+                "marking rubric grading feedback answer key " * 20,
+                encoding="utf-8",
+            )
+            (root / "复习辅助.md").write_text("课程内容整理标准 辅助提示词模板 " * 20, encoding="utf-8")
+            (root / "课程内容.md").write_text("核心概念 推演流程 答题要点 " * 20, encoding="utf-8")
+            (root / "例题与讲解.md").write_text("用途：把高频考点转化为可推理的题。变式提示 " * 20, encoding="utf-8")
+            (root / "考前40分钟中文摘要.md").write_text(
+                "依据：模拟卷与课程内容的高频核心概念。最后 40 分钟优先级 " * 20,
+                encoding="utf-8",
+            )
             (root / "data").mkdir()
             (root / "data" / "course-20260617_summary.md").write_text(repeated, encoding="utf-8")
 

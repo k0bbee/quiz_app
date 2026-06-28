@@ -13,7 +13,7 @@ STOP_WORDS = {
     "一个", "一种", "以及", "或者", "因此", "因为", "如果", "可以", "需要",
     "什么", "如何", "为什么", "主要", "系统", "课程", "内容", "问题",
     "handout", "notes", "slides", "lecture", "chapter", "course", "review",
-    "uses", "order",
+    "uses", "order", "text", "one", "not", "based", "says", "generic", "single",
     # Common noise from non-course files and generated study-summary scaffolding.
     "files", "data", "details", "summary", "results", "diff", "total",
     "codes", "comments", "blanks", "lines", "all", "question", "questions",
@@ -78,6 +78,10 @@ def is_low_value_keyword(term: str) -> bool:
 
 
 def _normalize_english_plural(term: str) -> str:
+    if re.match(r"^[a-z]{4,}ies$", term):
+        return f"{term[:-3]}y"
+    if re.match(r"^[a-z]{4,}(sses|ches|shes|xes|zes)$", term):
+        return term[:-2]
     if re.match(r"^[a-z]{5,}s$", term) and not term.endswith("ss"):
         return term[:-1]
     return term

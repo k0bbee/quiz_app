@@ -53,6 +53,8 @@ class DocumentParser:
         r"^course-.*_summary\.md$",
         r"^模拟卷_\d+\.md$",
         r"^quiz备选清单\.md$",
+        r"^课程内容\.md$",
+        r"^复习辅助\.md$",
     ]
 
     def parse_folder(self, folder: str) -> list[ExtractedDocument]:
@@ -79,6 +81,8 @@ class DocumentParser:
             if ext not in SUPPORTED_EXTENSIONS:
                 continue
             doc = self.parse_file(path)
+            if _is_auxiliary_text_document(doc):
+                continue
             fingerprint = _content_fingerprint(doc.text)
             if fingerprint:
                 if fingerprint in seen_fingerprints:
@@ -275,6 +279,31 @@ def _is_near_duplicate(signature: set[str], previous: list[set[str]]) -> bool:
         if smaller and overlap / smaller >= 0.82:
             return True
     return False
+
+
+def _is_auxiliary_text_document(doc: ExtractedDocument) -> bool:
+    """Detect local helper artifacts that are not source course materials."""
+    if doc.extension not in {".md", ".txt"}:
+        return False
+    haystack = f"{Path(doc.path).name}\n{doc.title}\n{doc.text[:2000]}".lower()
+    marker_groups = [
+        ("出题标准",),
+        ("干扰项", "批改"),
+        ("评分要点",),
+        ("辅助提示词",),
+        ("课程内容整理标准",),
+        ("已生成的课程笔记",),
+        ("高频考点", "变式提示"),
+        ("模拟卷", "高频核心概念"),
+        ("最后 40 分钟", "优先级"),
+        ("marking rubric",),
+        ("grading feedback",),
+        ("answer key",),
+        ("prompt template",),
+        ("study helper",),
+        ("review helper",),
+    ]
+    return any(all(marker in haystack for marker in markers) for markers in marker_groups)
 
 
 def _fingerprint_text(text: str) -> str:

@@ -20,6 +20,20 @@ class CourseContextTests(unittest.TestCase):
         for noise in ("根据课件", "关键条件", "中间状态", "输出结果", "整理概念", "计算步骤"):
             self.assertNotIn(noise, terms)
 
+    def test_course_terms_normalize_processes_and_drop_generic_fillers(self):
+        terms = [term.lower() for term in _global_key_terms(
+            (
+                "Processes process scheduling decisions with ready queues and context switches. "
+                "The text says one process is not based on a single generic example. "
+            ) * 8,
+            limit=12,
+        )]
+
+        self.assertIn("process", terms)
+        self.assertNotIn("processe", terms)
+        for noise in ("text", "one", "not", "based"):
+            self.assertNotIn(noise, terms)
+
     def test_topic_terms_match_topic_keywords_case_insensitively(self):
         terms = _topic_terms(
             ["cache mapping"],
