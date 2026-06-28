@@ -358,9 +358,9 @@ class OrderingWidget(QWidget):
         self.list_widget.setDragDropMode(QListWidget.DragDropMode.InternalMove)
 
         btn_layout = QHBoxLayout()
-        self.up_btn = QPushButton(self.lang_manager.get_text("▲ 上移", "▲ Up"))
+        self.up_btn = QPushButton(self.lang_manager.get_text("上移", "Up"))
         self.up_btn.setObjectName("secondaryButton")
-        self.down_btn = QPushButton(self.lang_manager.get_text("▼ 下移", "▼ Down"))
+        self.down_btn = QPushButton(self.lang_manager.get_text("下移", "Down"))
         self.down_btn.setObjectName("secondaryButton")
         btn_layout.addStretch()
         btn_layout.addWidget(self.up_btn)
@@ -386,8 +386,8 @@ class OrderingWidget(QWidget):
             "拖拽排序（正确顺序为从上到下）:",
             "Drag to reorder (correct order = top to bottom):"
         ))
-        self.up_btn.setText(self.lang_manager.get_text("▲ 上移", "▲ Up"))
-        self.down_btn.setText(self.lang_manager.get_text("▼ 下移", "▼ Down"))
+        self.up_btn.setText(self.lang_manager.get_text("上移", "Up"))
+        self.down_btn.setText(self.lang_manager.get_text("下移", "Down"))
 
     def set_options(self, options: list):
         self.clear()

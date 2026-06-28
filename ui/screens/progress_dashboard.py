@@ -101,8 +101,8 @@ class ProgressDashboard(QWidget):
         self.summary_group.setTitle(self.lang_manager.get_text("总览", "Overall"))
         self.topic_group.setTitle(self.lang_manager.get_text("按主题", "By Topic"))
         self.recent_group.setTitle(self.lang_manager.get_text("最近记录", "Recent Sessions"))
-        self.refresh_btn.setText(self.lang_manager.get_text("🔄 刷新", "🔄 Refresh"))
-        self.reset_btn.setText(self.lang_manager.get_text("🗑 重置全部进度", "🗑 Reset All Progress"))
+        self.refresh_btn.setText(self.lang_manager.get_text("刷新", "Refresh"))
+        self.reset_btn.setText(self.lang_manager.get_text("重置全部进度", "Reset All Progress"))
         self.topic_table.setHorizontalHeaderLabels([
             self.lang_manager.get_text("主题", "Topic"),
             self.lang_manager.get_text("练习次数", "Sessions"),

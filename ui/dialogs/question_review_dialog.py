@@ -68,10 +68,10 @@ class QuestionReviewDialog(QDialog):
 
         # Accept all / reject all buttons
         bulk_layout = QHBoxLayout()
-        self.accept_all_btn = QPushButton(self.lang_manager.get_text("✓ 全部接受", "✓ Accept All"))
+        self.accept_all_btn = QPushButton(self.lang_manager.get_text("全部接受", "Accept All"))
         self.accept_all_btn.setObjectName("secondaryButton")
         self.accept_all_btn.clicked.connect(self._accept_all)
-        self.reject_all_btn = QPushButton(self.lang_manager.get_text("✗ 全部拒绝", "✗ Reject All"))
+        self.reject_all_btn = QPushButton(self.lang_manager.get_text("全部拒绝", "Reject All"))
         self.reject_all_btn.setObjectName("dangerButton")
         self.reject_all_btn.clicked.connect(self._reject_all)
         bulk_layout.addWidget(self.accept_all_btn)
@@ -96,12 +96,12 @@ class QuestionReviewDialog(QDialog):
 
         # Accept/reject for current question
         action_layout = QHBoxLayout()
-        self.accept_btn = QPushButton(self.lang_manager.get_text("✓ 接受", "✓ Accept"))
+        self.accept_btn = QPushButton(self.lang_manager.get_text("接受", "Accept"))
         self.accept_btn.setObjectName("secondaryButton")
         self.accept_btn.clicked.connect(self._accept_current)
         action_layout.addWidget(self.accept_btn)
 
-        self.reject_btn = QPushButton(self.lang_manager.get_text("✗ 拒绝", "✗ Reject"))
+        self.reject_btn = QPushButton(self.lang_manager.get_text("拒绝", "Reject"))
         self.reject_btn.setObjectName("dangerButton")
         self.reject_btn.clicked.connect(self._reject_current)
         action_layout.addWidget(self.reject_btn)
@@ -140,11 +140,11 @@ class QuestionReviewDialog(QDialog):
             )
         )
         self.questions_label.setText(self.lang_manager.get_text("题目列表:", "Questions:"))
-        self.accept_all_btn.setText(self.lang_manager.get_text("✓ 全部接受", "✓ Accept All"))
-        self.reject_all_btn.setText(self.lang_manager.get_text("✗ 全部拒绝", "✗ Reject All"))
+        self.accept_all_btn.setText(self.lang_manager.get_text("全部接受", "Accept All"))
+        self.reject_all_btn.setText(self.lang_manager.get_text("全部拒绝", "Reject All"))
         self.preview_label.setText(self.lang_manager.get_text("选择题目以预览", "Select a question to preview"))
-        self.accept_btn.setText(self.lang_manager.get_text("✓ 接受", "✓ Accept"))
-        self.reject_btn.setText(self.lang_manager.get_text("✗ 拒绝", "✗ Reject"))
+        self.accept_btn.setText(self.lang_manager.get_text("接受", "Accept"))
+        self.reject_btn.setText(self.lang_manager.get_text("拒绝", "Reject"))
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
         self.save_btn.setText(self.lang_manager.get_text("保存已接受的题目", "Save Accepted Questions"))
 

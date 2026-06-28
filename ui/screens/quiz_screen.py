@@ -68,11 +68,6 @@ class QuizScreen(QWidget):
         self.lang_btn.clicked.connect(self._toggle_language)
         info_row.addWidget(self.lang_btn)
 
-        self.back_btn = QPushButton(self.lang_manager.get_text("← 退出", "← Exit"))
-        self.back_btn.setObjectName("secondaryButton")
-        self.back_btn.clicked.connect(self._confirm_exit)
-        info_row.addWidget(self.back_btn)
-
         layout.addLayout(info_row)
 
         self.progress_bar = QProgressBar()
@@ -121,7 +116,7 @@ class QuizScreen(QWidget):
         # === Action buttons ===
         action_layout = QHBoxLayout()
 
-        self.skip_btn = QPushButton(self.lang_manager.get_text("跳过 ⏭", "Skip ⏭"))
+        self.skip_btn = QPushButton(self.lang_manager.get_text("跳过", "Skip"))
         self.skip_btn.setObjectName("secondaryButton")
         self.skip_btn.clicked.connect(self._skip_question)
         self.skip_btn.setEnabled(False)
@@ -130,7 +125,7 @@ class QuizScreen(QWidget):
         action_layout.addStretch()
 
         self.submit_btn = QPushButton(
-            self.lang_manager.get_text("提交答案 ✓", "Submit Answer ✓")
+            self.lang_manager.get_text("提交答案", "Submit Answer")
         )
         self.submit_btn.setObjectName("primaryButton")
         self.submit_btn.setMinimumHeight(40)
@@ -165,7 +160,7 @@ class QuizScreen(QWidget):
 
         next_btn_layout = QHBoxLayout()
         next_btn_layout.addStretch()
-        self.next_btn = QPushButton(self.lang_manager.get_text("下一题 →", "Next →"))
+        self.next_btn = QPushButton(self.lang_manager.get_text("下一题", "Next"))
         self.next_btn.setObjectName("primaryButton")
         self.next_btn.setMinimumHeight(36)
         self.next_btn.clicked.connect(self._next_question)
@@ -207,7 +202,7 @@ class QuizScreen(QWidget):
         self._set_correct_indicator_state("")
         self.timer_label.setVisible(show_timer)
         self.session.start(question_set, questions, lang)
-        self.submit_btn.setText(self.lang_manager.get_text("提交答案 ✓", "Submit Answer ✓"))
+        self.submit_btn.setText(self.lang_manager.get_text("提交答案", "Submit Answer"))
         self.submit_btn.setEnabled(False)
         self.skip_btn.setEnabled(True)
         self._update_timer()
@@ -256,15 +251,15 @@ class QuizScreen(QWidget):
         self.answer_area.set_enabled(True)
         self.feedback_frame.hide()
         self._set_correct_indicator_state("")
-        self.submit_btn.setText(self.lang_manager.get_text("提交答案 ✓", "Submit Answer ✓"))
+        self.submit_btn.setText(self.lang_manager.get_text("提交答案", "Submit Answer"))
         self._update_submit_enabled()
         self.submit_btn.show()
         self.skip_btn.setEnabled(True)
 
         is_last = self.session.current_index == self.session.total_questions - 1
         self.next_btn.setText(
-            self.lang_manager.get_text("完成 ✓", "Finish ✓") if is_last
-            else self.lang_manager.get_text("下一题 →", "Next →")
+            self.lang_manager.get_text("完成", "Finish") if is_last
+            else self.lang_manager.get_text("下一题", "Next")
         )
 
     def _submit_answer(self):
@@ -303,11 +298,10 @@ class QuizScreen(QWidget):
         self.lang_manager.set_language(new_lang)
         self.session.set_language(new_lang)
 
-    def _confirm_exit(self):
-        """Ask user to confirm leaving mid-quiz. Save partial progress if abandoning."""
+    def confirm_exit(self) -> bool:
+        """Ask whether the current quiz can be left, saving partial progress if needed."""
         if self.session.state == QuizState.COMPLETED:
-            self.return_home.emit()
-            return
+            return True
 
         answered = self.session.answered_count
         msg = self.lang_manager.get_text(
@@ -327,15 +321,20 @@ class QuizScreen(QWidget):
             record = self.session.abandon()
             if record:
                 self.progress_manager.save(record)
+            return True
+        return False
+
+    def _confirm_exit(self):
+        """Handle keyboard-triggered quiz exit."""
+        if self.confirm_exit():
             self.return_home.emit()
 
     def _on_language_changed(self, lang):
         """Update all UI text when language changes."""
         self.lang_btn.setText("English" if lang == "zh" else "中文")
-        self.back_btn.setText(self.lang_manager.get_text("← 退出", "← Exit"))
-        self.skip_btn.setText(self.lang_manager.get_text("跳过 ⏭", "Skip ⏭"))
-        self.submit_btn.setText(self.lang_manager.get_text("提交答案 ✓", "Submit Answer ✓"))
-        self.next_btn.setText(self.lang_manager.get_text("下一题 →", "Next →"))
+        self.skip_btn.setText(self.lang_manager.get_text("跳过", "Skip"))
+        self.submit_btn.setText(self.lang_manager.get_text("提交答案", "Submit Answer"))
+        self.next_btn.setText(self.lang_manager.get_text("下一题", "Next"))
 
         if self.session.state in (
             QuizState.IN_PROGRESS,

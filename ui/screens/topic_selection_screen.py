@@ -20,8 +20,6 @@ class TopicSelectionScreen(QWidget):
     export_mock_exam = pyqtSignal(str)  # set_id
     export_mock_exams = pyqtSignal(list)  # set_ids
     regenerate_questions = pyqtSignal(str)  # set_id
-    back_to_home = pyqtSignal()
-
     def __init__(self, set_manager: SetManager, progress_manager=None, parent=None):
         super().__init__(parent)
         self.set_manager = set_manager
@@ -83,11 +81,6 @@ class TopicSelectionScreen(QWidget):
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
-        self.back_btn = QPushButton(self.lang_manager.get_text("← 返回", "← Back"))
-        self.back_btn.setObjectName("secondaryButton")
-        self.back_btn.clicked.connect(self.back_to_home.emit)
-        btn_layout.addWidget(self.back_btn)
-
         self.export_btn = QPushButton(self.lang_manager.get_text("Export Mock Exam", "Export Mock Exam"))
         self.export_btn.setObjectName("secondaryButton")
         self.export_btn.setMinimumHeight(40)
@@ -102,7 +95,7 @@ class TopicSelectionScreen(QWidget):
         self.regenerate_btn.setEnabled(False)
         btn_layout.addWidget(self.regenerate_btn)
 
-        self.start_btn = QPushButton(self.lang_manager.get_text("▶ 开始答题", "▶ Start Quiz"))
+        self.start_btn = QPushButton(self.lang_manager.get_text("开始答题", "Start Quiz"))
         self.start_btn.setObjectName("primaryButton")
         self.start_btn.setMinimumHeight(40)
         self.start_btn.clicked.connect(self._start_quiz)
@@ -117,10 +110,9 @@ class TopicSelectionScreen(QWidget):
         self.title_label.setText(self.lang_manager.get_text("选择题目集", "Select Question Set"))
         self.search_input.setPlaceholderText(self.lang_manager.get_text("搜索...", "Search..."))
         self.list_label.setText(self.lang_manager.get_text("可用的题目集:", "Available question sets:"))
-        self.back_btn.setText(self.lang_manager.get_text("← 返回", "← Back"))
         self.export_btn.setText(self.lang_manager.get_text("Export Mock Exam", "Export Mock Exam"))
         self.regenerate_btn.setText(self.lang_manager.get_text("Regenerate Questions", "Regenerate Questions"))
-        self.start_btn.setText(self.lang_manager.get_text("▶ 开始答题", "▶ Start Quiz"))
+        self.start_btn.setText(self.lang_manager.get_text("开始答题", "Start Quiz"))
         self.refresh()
 
     def _on_set_selected(self, current, previous):

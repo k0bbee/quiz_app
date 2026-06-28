@@ -3,10 +3,9 @@
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QMainWindow, QStackedWidget, QMenuBar, QMenu, QDialog,
+    QMainWindow, QStackedWidget, QDialog,
     QToolBar, QMessageBox, QWidget, QVBoxLayout, QPushButton, QFileDialog
 )
-from PyQt6.QtGui import QAction
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from core.language_manager import LanguageManager
@@ -99,8 +98,9 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(self.stack)
 
-        # Menu bar
-        self._create_menus()
+        # Keep the shell free of duplicate menu navigation; all app navigation
+        # lives in the semantic top toolbar.
+        self.menuBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
         # Toolbar
         self._create_toolbar()
@@ -135,34 +135,6 @@ class MainWindow(QMainWindow):
             self.stack.insertWidget(self.SCREEN_QUESTION_BANK, self._question_bank_screen)
         return self._question_bank_screen
 
-    def _create_menus(self):
-        menubar = self.menuBar()
-        menubar.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-
-        # Tools menu
-        self.tools_menu = menubar.addMenu("")
-        self.topics_action = QAction("", self)
-        self.topics_action.triggered.connect(lambda: self.navigate_to(self.SCREEN_TOPIC_SELECTION))
-        self.tools_menu.addAction(self.topics_action)
-        self.progress_action = QAction("", self)
-        self.progress_action.triggered.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
-        self.tools_menu.addAction(self.progress_action)
-        self.settings_action = QAction("", self)
-        self.settings_action.triggered.connect(lambda: self.navigate_to(self.SCREEN_SETTINGS))
-        self.tools_menu.addAction(self.settings_action)
-        self.courses_action = QAction("", self)
-        self.courses_action.triggered.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
-        self.tools_menu.addAction(self.courses_action)
-        self.bank_action = QAction("", self)
-        self.bank_action.triggered.connect(lambda: self.navigate_to(self.SCREEN_QUESTION_BANK))
-        self.tools_menu.addAction(self.bank_action)
-
-        # Help menu
-        self.help_menu = menubar.addMenu("")
-        self.about_action = QAction("", self)
-        self.about_action.triggered.connect(self._show_about)
-        self.help_menu.addAction(self.about_action)
-
     def _create_toolbar(self):
         self.toolbar = QToolBar("")
         self.toolbar.setMovable(False)
@@ -184,6 +156,8 @@ class MainWindow(QMainWindow):
         self.bank_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_QUESTION_BANK))
         self.settings_btn = self._create_toolbar_button("management")
         self.settings_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_SETTINGS))
+        self.about_btn = self._create_toolbar_button("support")
+        self.about_btn.clicked.connect(self._show_about)
 
         self.toolbar.addWidget(self.nav_back_btn)
         self.toolbar.addWidget(self.nav_home_btn)
@@ -194,6 +168,8 @@ class MainWindow(QMainWindow):
         self.toolbar.addWidget(self.courses_btn)
         self.toolbar.addWidget(self.bank_btn)
         self.toolbar.addWidget(self.settings_btn)
+        self.toolbar.addSeparator()
+        self.toolbar.addWidget(self.about_btn)
 
     def _create_toolbar_button(self, group: str) -> QPushButton:
         button = QPushButton("")
@@ -211,6 +187,7 @@ class MainWindow(QMainWindow):
             self.courses_btn,
             self.bank_btn,
             self.settings_btn,
+            self.about_btn,
         )
 
     def _connect_signals(self):
@@ -228,19 +205,16 @@ class MainWindow(QMainWindow):
         self.topic_screen.export_mock_exam.connect(self._on_export_mock_exam)
         self.topic_screen.export_mock_exams.connect(self._on_export_mock_exams)
         self.topic_screen.regenerate_questions.connect(self._on_regenerate_question_set)
-        self.topic_screen.back_to_home.connect(lambda: self.navigate_to(self.SCREEN_HOME))
 
         # Quiz screen
         self.quiz_screen.quiz_finished.connect(self._on_quiz_finished)
-        self.quiz_screen.return_home.connect(lambda: self.navigate_to(self.SCREEN_HOME))
+        self.quiz_screen.return_home.connect(
+            lambda: self.navigate_to(self.SCREEN_HOME, confirm_current=False)
+        )
 
         # Results screen
         self.results_screen.retry_incorrect.connect(self._on_retry_incorrect)
         self.results_screen.retry_all.connect(self._on_retry_all)
-        self.results_screen.back_to_topics.connect(
-            lambda: self.navigate_to(self.SCREEN_TOPIC_SELECTION)
-        )
-
         # Language manager
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -248,18 +222,6 @@ class MainWindow(QMainWindow):
         """Update all UI text based on current language."""
         lang = lang or self.lang_manager.current
         gm = self.lang_manager.get_text
-
-        # Update menu titles
-        self.tools_menu.setTitle(gm("工具", "Tools"))
-        self.help_menu.setTitle(gm("帮助", "Help"))
-
-        # Update menu action texts
-        self.topics_action.setText(gm("题目集", "Question Sets"))
-        self.progress_action.setText(gm("进度", "Progress"))
-        self.settings_action.setText(gm("设置", "Settings"))
-        self.courses_action.setText(gm("课件管理", "Course Materials"))
-        self.bank_action.setText(gm("题库", "Question Bank"))
-        self.about_action.setText(gm("关于", "About"))
 
         # Update toolbar title
         self.toolbar.setWindowTitle(gm("快捷导航", "Quick Nav"))
@@ -272,12 +234,18 @@ class MainWindow(QMainWindow):
         self.courses_btn.setText(gm("课程", "Courses"))
         self.bank_btn.setText(gm("题库", "Question Bank"))
         self.settings_btn.setText(gm("设置", "Settings"))
+        self.about_btn.setText(gm("关于", "About"))
 
-    def navigate_to(self, screen_index: int, remember: bool = True):
+    def navigate_to(self, screen_index: int, remember: bool = True, confirm_current: bool = True) -> bool:
         """Switch to a screen by index."""
         current_index = self.stack.currentIndex()
+        leaving_quiz = current_index == self.SCREEN_QUIZ and screen_index != self.SCREEN_QUIZ
+        if confirm_current and not self._confirm_current_navigation(screen_index):
+            self._update_navigation_actions()
+            return False
         if remember and current_index >= 0 and current_index != screen_index:
-            self._navigation_history.append(current_index)
+            if not leaving_quiz:
+                self._navigation_history.append(current_index)
             self._navigation_history = self._navigation_history[-50:]
         self.stack.setCurrentIndex(screen_index)
         # Refresh data on certain screens
@@ -296,14 +264,25 @@ class MainWindow(QMainWindow):
             self._sync_question_bank_screen_course()
             self._get_question_bank_screen().refresh()
         self._update_navigation_actions()
+        return True
 
     def navigate_back(self):
         """Return to the previous screen if navigation history exists."""
         if not self._navigation_history:
             self._update_navigation_actions()
             return
-        previous = self._navigation_history.pop()
-        self.navigate_to(previous, remember=False)
+        previous = self._navigation_history[-1]
+        if not self._confirm_current_navigation(previous):
+            self._update_navigation_actions()
+            return
+        self._navigation_history.pop()
+        self.navigate_to(previous, remember=False, confirm_current=False)
+
+    def _confirm_current_navigation(self, target_screen: int) -> bool:
+        """Return whether navigation away from the current screen may proceed."""
+        if self.stack.currentIndex() == self.SCREEN_QUIZ and target_screen != self.SCREEN_QUIZ:
+            return self.quiz_screen.confirm_exit()
+        return True
 
     def _update_navigation_actions(self):
         """Keep shell navigation buttons in sync with current location."""

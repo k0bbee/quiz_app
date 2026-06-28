@@ -18,8 +18,6 @@ class ResultsScreen(QWidget):
 
     retry_incorrect = pyqtSignal()
     retry_all = pyqtSignal()
-    back_to_topics = pyqtSignal()
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_record: ProgressRecord = None
@@ -84,7 +82,7 @@ class ResultsScreen(QWidget):
         btn_layout = QHBoxLayout()
 
         self.retry_incorrect_btn = QPushButton(
-            self.lang_manager.get_text("🔄 只重做错题", "🔄 Retry Incorrect Only")
+            self.lang_manager.get_text("只重做错题", "Retry Incorrect Only")
         )
         self.retry_incorrect_btn.setObjectName("primaryButton")
         self.retry_incorrect_btn.setMinimumHeight(40)
@@ -93,7 +91,7 @@ class ResultsScreen(QWidget):
         btn_layout.addWidget(self.retry_incorrect_btn)
 
         self.retry_all_btn = QPushButton(
-            self.lang_manager.get_text("🔁 重新练习全部", "🔁 Retry Entire Set")
+            self.lang_manager.get_text("重新练习全部", "Retry Entire Set")
         )
         self.retry_all_btn.setObjectName("secondaryButton")
         self.retry_all_btn.setMinimumHeight(40)
@@ -101,28 +99,16 @@ class ResultsScreen(QWidget):
         self.retry_all_btn.clicked.connect(self.retry_all.emit)
         btn_layout.addWidget(self.retry_all_btn)
 
-        self.back_btn = QPushButton(
-            self.lang_manager.get_text("🏠 返回选题", "🏠 Back to Topics")
-        )
-        self.back_btn.setObjectName("secondaryButton")
-        self.back_btn.setMinimumHeight(40)
-        self.back_btn.setMinimumWidth(130)
-        self.back_btn.clicked.connect(self.back_to_topics.emit)
-        btn_layout.addWidget(self.back_btn)
-
         layout.addLayout(btn_layout)
 
     def _on_language_changed(self, lang):
         """Update all labels when language changes."""
         self.review_label.setText(self.lang_manager.get_text("回顾:", "Review:"))
         self.retry_incorrect_btn.setText(
-            self.lang_manager.get_text("🔄 只重做错题", "🔄 Retry Incorrect Only")
+            self.lang_manager.get_text("只重做错题", "Retry Incorrect Only")
         )
         self.retry_all_btn.setText(
-            self.lang_manager.get_text("🔁 重新练习全部", "🔁 Retry Entire Set")
-        )
-        self.back_btn.setText(
-            self.lang_manager.get_text("🏠 返回选题", "🏠 Back to Topics")
+            self.lang_manager.get_text("重新练习全部", "Retry Entire Set")
         )
 
         # Re-render results if a record is loaded

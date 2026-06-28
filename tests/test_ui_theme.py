@@ -3,6 +3,7 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -146,14 +147,26 @@ class UiThemeTests(unittest.TestCase):
             main_window.toolBarArea(main_window.toolbar),
         )
         self.assertFalse(hasattr(main_window, "exit_action"))
+        self.assertEqual([], main_window.menuBar().actions())
+        for legacy_attr in (
+            "tools_menu",
+            "help_menu",
+            "topics_action",
+            "progress_action",
+            "settings_action",
+            "courses_action",
+            "bank_action",
+            "about_action",
+        ):
+            self.assertFalse(hasattr(main_window, legacy_attr), legacy_attr)
 
         buttons = main_window.navigation_buttons()
         self.assertEqual(
-            ["Back", "Home", "Question Sets", "Progress", "Courses", "Question Bank", "Settings"],
+            ["Back", "Home", "Question Sets", "Progress", "Courses", "Question Bank", "Settings", "About"],
             [button.text() for button in buttons],
         )
         self.assertEqual(
-            ["navigation", "navigation", "practice", "practice", "management", "management", "management"],
+            ["navigation", "navigation", "practice", "practice", "management", "management", "management", "support"],
             [button.property("navGroup") for button in buttons],
         )
         self.assertGreaterEqual(
@@ -175,6 +188,25 @@ class UiThemeTests(unittest.TestCase):
         main_window.navigate_to(main_window.SCREEN_SETTINGS)
         main_window.nav_home_btn.click()
         self.assertEqual(main_window.SCREEN_HOME, main_window.stack.currentIndex())
+
+    def test_top_navigation_confirms_before_leaving_active_quiz(self):
+        main_window = MainWindow()
+        self.addCleanup(main_window.close)
+        main_window.stack.setCurrentIndex(main_window.SCREEN_QUIZ)
+        main_window.quiz_screen.confirm_exit = Mock(return_value=False)
+
+        main_window.navigate_to(main_window.SCREEN_SETTINGS)
+
+        main_window.quiz_screen.confirm_exit.assert_called_once()
+        self.assertEqual(main_window.SCREEN_QUIZ, main_window.stack.currentIndex())
+
+        main_window.quiz_screen.confirm_exit.reset_mock()
+        main_window.quiz_screen.confirm_exit.return_value = True
+
+        main_window.navigate_to(main_window.SCREEN_SETTINGS)
+
+        main_window.quiz_screen.confirm_exit.assert_called_once()
+        self.assertEqual(main_window.SCREEN_SETTINGS, main_window.stack.currentIndex())
 
     def test_semantic_action_buttons_keep_tab_focus_without_mouse_focus(self):
         load_stylesheet(_APP)
@@ -563,10 +595,13 @@ class UiThemeTests(unittest.TestCase):
             )
 
         self.assertEqual("secondaryButton", quiz.lang_btn.objectName())
-        self.assertEqual("secondaryButton", quiz.back_btn.objectName())
         self.assertEqual("secondaryButton", quiz.skip_btn.objectName())
         self.assertEqual("primaryButton", quiz.submit_btn.objectName())
         self.assertEqual("primaryButton", quiz.next_btn.objectName())
+        self.assertFalse(hasattr(quiz, "back_btn"))
+        self.assertNotRegex(quiz.skip_btn.text(), r"[^\w\s]")
+        self.assertNotRegex(quiz.submit_btn.text(), r"[^\w\s]")
+        self.assertNotRegex(quiz.next_btn.text(), r"[^\w\s]")
 
     def test_main_flow_pages_use_theme_button_roles(self):
         for path in (
@@ -587,17 +622,22 @@ class UiThemeTests(unittest.TestCase):
             main_window = MainWindow()
             self.addCleanup(main_window.close)
 
-        self.assertEqual("secondaryButton", topic.back_btn.objectName())
         self.assertEqual("secondaryButton", topic.export_btn.objectName())
         self.assertEqual("secondaryButton", topic.regenerate_btn.objectName())
         self.assertEqual("primaryButton", topic.start_btn.objectName())
+        self.assertFalse(hasattr(topic, "back_btn"))
+        self.assertNotRegex(topic.start_btn.text(), r"[^\w\s]")
 
         self.assertEqual("primaryButton", results.retry_incorrect_btn.objectName())
         self.assertEqual("secondaryButton", results.retry_all_btn.objectName())
-        self.assertEqual("secondaryButton", results.back_btn.objectName())
+        self.assertFalse(hasattr(results, "back_btn"))
+        self.assertNotRegex(results.retry_incorrect_btn.text(), r"[^\w\s]")
+        self.assertNotRegex(results.retry_all_btn.text(), r"[^\w\s]")
 
         self.assertEqual("secondaryButton", progress.refresh_btn.objectName())
         self.assertEqual("dangerButton", progress.reset_btn.objectName())
+        self.assertNotRegex(progress.refresh_btn.text(), r"[^\w\s]")
+        self.assertNotRegex(progress.reset_btn.text(), r"[^\w\s]")
 
         for button in (main_window.topics_btn, main_window.progress_btn, main_window.courses_btn):
             self.assertEqual("toolbarButton", button.objectName())
@@ -629,6 +669,15 @@ class UiThemeTests(unittest.TestCase):
 
         self.assertEqual("secondaryButton", ordering.up_btn.objectName())
         self.assertEqual("secondaryButton", ordering.down_btn.objectName())
+        for button in (
+            dialog.accept_all_btn,
+            dialog.reject_all_btn,
+            dialog.accept_btn,
+            dialog.reject_btn,
+            ordering.up_btn,
+            ordering.down_btn,
+        ):
+            self.assertNotRegex(button.text(), r"[^\w\s]")
 
     def test_course_and_matching_widgets_use_theme_roles(self):
         self.assertNotIn(".setStyleSheet(", Path("ui/screens/course_screen.py").read_text(encoding="utf-8"))
