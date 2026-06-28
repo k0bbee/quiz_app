@@ -135,6 +135,32 @@ class ExamAssistantDialogTests(unittest.TestCase):
         self.assertTrue(self.dialog.interpret_btn.isEnabled())
         self.assertIn("make 20", self.dialog.transcript.toPlainText())
 
+    def test_busy_assistant_can_cancel_without_blocking_on_worker(self):
+        class BlockingWorker:
+            def __init__(self):
+                self.interrupted = False
+
+            def isRunning(self):
+                return True
+
+            def requestInterruption(self):
+                self.interrupted = True
+
+            def wait(self, *_args):
+                raise AssertionError("cancel must not block the UI thread waiting for worker")
+
+            def terminate(self):
+                raise AssertionError("cancel must not force-terminate worker from the UI thread")
+
+        worker = BlockingWorker()
+        self.dialog.worker = worker
+        self.dialog._set_busy(True)
+
+        self.assertTrue(self.dialog.cancel_btn.isEnabled())
+        self.dialog.reject()
+
+        self.assertTrue(worker.interrupted)
+
 
 if __name__ == "__main__":
     unittest.main()

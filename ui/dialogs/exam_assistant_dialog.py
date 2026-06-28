@@ -44,10 +44,16 @@ class ExamInterpretWorker(QThread):
         try:
             result = self.interpreter.interpret(self.request, self.current)
         except ExamRequestError as exc:
+            if self.isInterruptionRequested():
+                return
             self.failed.emit(str(exc))
         except Exception as exc:
+            if self.isInterruptionRequested():
+                return
             self.failed.emit(f"Unexpected interpretation error: {exc}")
         else:
+            if self.isInterruptionRequested():
+                return
             self.succeeded.emit(result)
 
 
@@ -73,6 +79,7 @@ class ExamAssistantDialog(QDialog):
         self.worker: ExamInterpretWorker | None = None
         self._pending_request = ""
         self._last_changes: tuple[PlanChange, ...] = ()
+        self._cancelled = False
 
         self.setWindowTitle(self.lang_manager.get_text("试卷助手", "Exam Assistant"))
         self.resize(980, 680)
@@ -206,6 +213,7 @@ class ExamAssistantDialog(QDialog):
         if self.worker and self.worker.isRunning():
             return
 
+        self._cancelled = False
         self._pending_request = request
         self._append_user(request)
         self._set_busy(True)
@@ -219,6 +227,8 @@ class ExamAssistantDialog(QDialog):
         self.worker.start()
 
     def _on_interpreted(self, result: InterpretationResult):
+        if self._cancelled:
+            return
         self._apply_interpretation(self._pending_request, result, record_user=False)
 
     def _apply_interpretation(
@@ -243,18 +253,22 @@ class ExamAssistantDialog(QDialog):
         self.apply_btn.setEnabled(self.draft_plan != self.initial_plan)
 
     def _on_interpretation_error(self, message: str):
+        if self._cancelled:
+            return
         self._append_assistant(
             self.lang_manager.get_text(f"未应用：{message}", f"Not applied: {message}")
         )
         self._set_error(message)
 
     def _on_worker_finished(self):
+        if self._cancelled:
+            return
         self._set_busy(False)
 
     def _set_busy(self, busy: bool):
         self.request_input.setEnabled(not busy)
         self.interpret_btn.setEnabled(not busy)
-        self.cancel_btn.setEnabled(not busy)
+        self.cancel_btn.setEnabled(True)
 
     def _set_error(self, message: str):
         self.status_label.setObjectName("errorLabel")
@@ -352,8 +366,6 @@ class ExamAssistantDialog(QDialog):
 
     def reject(self):
         if self.worker and self.worker.isRunning():
+            self._cancelled = True
             self.worker.requestInterruption()
-            if not self.worker.wait(250):
-                self.worker.terminate()
-                self.worker.wait(1000)
         super().reject()

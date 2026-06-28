@@ -260,6 +260,53 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIsInstance(dialog.worker, FakeWorker)
         self.assertTrue(dialog.worker.started)
 
+    def test_cancel_during_generation_does_not_block_waiting_for_worker(self):
+        class BlockingWorker:
+            def __init__(self):
+                self.cancelled = False
+
+            def isRunning(self):
+                return True
+
+            def cancel(self):
+                self.cancelled = True
+
+            def wait(self, *_args):
+                raise AssertionError("cancel must not block the UI thread waiting for worker")
+
+            def terminate(self):
+                raise AssertionError("cancel must not force-terminate worker from the UI thread")
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        worker = BlockingWorker()
+        dialog.worker = worker
+
+        dialog.reject()
+
+        self.assertTrue(worker.cancelled)
+
+    def test_generation_finished_handler_does_not_wait_on_worker(self):
+        class FinishedWorker:
+            def wait(self, *_args):
+                raise AssertionError("finished handler must not wait on worker in the UI thread")
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog.worker = FinishedWorker()
+        dialog._generation_failed = True
+
+        dialog._on_finished()
+
+        self.assertFalse(dialog.progress_bar.isVisible())
+        self.assertTrue(dialog.generate_btn.isEnabled())
+
     def test_dialog_can_prefill_from_existing_question_set(self):
         dialog = AIGenerationDialog(
             "course content",

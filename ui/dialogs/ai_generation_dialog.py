@@ -49,6 +49,7 @@ class AIGenerationDialog(QDialog):
         self.generated_questions: list[Question] = []
         self.worker: GenerationWorker = None
         self._generation_failed = False
+        self._generation_cancelled = False
         self.weight_value_labels: dict[QSlider, QLabel] = {}
 
         self.setWindowTitle(self.lang_manager.get_text("AI 出题", "AI Question Generation"))
@@ -738,6 +739,7 @@ class AIGenerationDialog(QDialog):
 
         # Disable UI during generation
         self._generation_failed = False
+        self._generation_cancelled = False
         self.generate_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # Indeterminate
@@ -785,12 +787,18 @@ class AIGenerationDialog(QDialog):
         )
 
     def _on_progress(self, message: str):
+        if self._generation_cancelled:
+            return
         self.status_label.setText(message)
 
     def _on_batch_done(self, questions: list[Question]):
+        if self._generation_cancelled:
+            return
         self.generated_questions = questions
 
     def _on_error(self, message: str):
+        if self._generation_cancelled:
+            return
         self._generation_failed = True
         if self.lang_manager.current == "zh":
             self.status_label.setText(f"错误: {message}")
@@ -801,11 +809,11 @@ class AIGenerationDialog(QDialog):
         self.progress_bar.setVisible(False)
 
     def _on_finished(self):
+        if self._generation_cancelled:
+            return
         self.progress_bar.setVisible(False)
         self.generate_btn.setEnabled(True)
         if self._generation_failed:
-            if self.worker:
-                self.worker.wait(2000)
             return
 
         if self.generated_questions:
@@ -834,18 +842,12 @@ class AIGenerationDialog(QDialog):
         else:
             self.status_label.setText(self.lang_manager.get_text("未生成任何题目。", "No questions were generated."))
 
-        # Clean up worker thread
-        if self.worker:
-            self.worker.wait(2000)
-        else:
+        if not self.worker:
             self.status_label.setText(self.lang_manager.get_text("未生成任何题目。", "No questions were generated."))
 
     def reject(self):
         """Cancel generation if the dialog is closed while a worker is running."""
         if self.worker and self.worker.isRunning():
+            self._generation_cancelled = True
             self.worker.cancel()
-            # Wait up to 5s for clean shutdown, then force-terminate
-            if not self.worker.wait(5000):
-                self.worker.terminate()
-                self.worker.wait(1000)
         super().reject()
