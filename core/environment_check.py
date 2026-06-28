@@ -27,6 +27,10 @@ PYTHON_DEPENDENCY_REMEDIATION = "python -m pip install -r requirements.txt"
 DATA_DIRECTORY_REMEDIATION = (
     "choose a writable project location or fix permissions for the app data directory"
 )
+KEYRING_BACKEND_REMEDIATION = (
+    "configure a usable keyring backend; on Windows, ensure Windows Credential Manager "
+    "is available or allow the Windows DPAPI fallback"
+)
 
 
 @dataclass(frozen=True)
@@ -103,7 +107,15 @@ def collect_environment_report(project_root: str | Path) -> EnvironmentReport:
             )
         except Exception as exc:
             keyring_detail = f"{type(exc).__name__}: {exc}"
-    checks.append(CheckResult("keyring backend", keyring_ok, False, keyring_detail))
+    checks.append(
+        CheckResult(
+            "keyring backend",
+            keyring_ok,
+            False,
+            keyring_detail,
+            "" if keyring_ok else KEYRING_BACKEND_REMEDIATION,
+        )
+    )
 
     dpapi_ok = WindowsDPAPISecretStore.is_available()
     persistence_ok = keyring_ok or dpapi_ok
@@ -120,6 +132,7 @@ def collect_environment_report(project_root: str | Path) -> EnvironmentReport:
             persistence_ok,
             False,
             persistence_detail,
+            "" if persistence_ok else KEYRING_BACKEND_REMEDIATION,
         )
     )
 

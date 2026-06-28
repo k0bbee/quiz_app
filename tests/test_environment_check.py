@@ -75,6 +75,35 @@ class EnvironmentCheckTests(unittest.TestCase):
         self.assertIn("choose a writable project location", result.remediation)
         self.assertIn("Fix: " + result.remediation, format_environment_report(EnvironmentReport((result,))))
 
+    def test_key_persistence_checks_expose_remediation_when_no_backend_is_available(self):
+        original_import_module = __import__("importlib").import_module
+
+        class NullKeyring:
+            priority = 0
+
+        class FakeKeyringModule:
+            @staticmethod
+            def get_keyring():
+                return NullKeyring()
+
+        def import_module(name):
+            if name == "keyring":
+                return FakeKeyringModule()
+            return original_import_module(name)
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             patch("core.environment_check.importlib.import_module", side_effect=import_module), \
+             patch("core.environment_check.WindowsDPAPISecretStore.is_available", return_value=False), \
+             patch("core.environment_check._check_tesseract", return_value=CheckResult("Tesseract OCR", True, False, "available")):
+            report = collect_environment_report(Path(tmpdir))
+
+        by_name = {check.name: check for check in report.checks}
+        self.assertFalse(by_name["keyring backend"].ok)
+        self.assertFalse(by_name["secure API key persistence"].ok)
+        self.assertIn("configure a usable keyring backend", by_name["keyring backend"].remediation)
+        self.assertIn("configure a usable keyring backend", by_name["secure API key persistence"].remediation)
+        self.assertIn("Fix: " + by_name["secure API key persistence"].remediation, format_environment_report(report))
+
     def test_cli_json_report_is_machine_readable_and_contains_no_secret_values(self):
         output = io.StringIO()
         previous_argv = sys.argv
