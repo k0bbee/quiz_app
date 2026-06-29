@@ -24,6 +24,9 @@ QUESTION_SETS_DIR = os.path.join(DATA_DIR, "question_sets")
 # Progress: per-session records
 PROGRESS_DIR = os.path.join(DATA_DIR, "progress")
 
+# Quiz snapshots: resumable in-progress quiz sessions
+QUIZ_SNAPSHOTS_DIR = os.path.join(DATA_DIR, "quiz_snapshots")
+
 # Settings
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 API_KEY_STORE_FILE = os.path.join(DATA_DIR, ".api_key.dpapi")
