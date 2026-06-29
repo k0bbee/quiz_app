@@ -65,9 +65,9 @@ class TopicDriftClient:
         self.requested_counts.append(requested)
 
         questions = []
-        for index in range(min(10, requested)):
+        for index in range(min(3, requested)):
             questions.append(raw_question("multiple_choice", "medium", "other-topic", index))
-        for index in range(max(0, requested - 10)):
+        for index in range(max(0, requested - 3)):
             questions.append(raw_question("multiple_choice", "medium", "cache", 100 + index))
         return {"questions": questions}
 
@@ -247,6 +247,30 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertTrue(generation_messages)
         self.assertIn("15 questions", generation_messages[0])
         self.assertNotIn("10 questions", generation_messages[0])
+        self.assertIn("batch", generation_messages[0].lower())
+
+    def test_worker_does_not_oversample_very_small_generation_requests(self):
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 100},
+        )
+        client = TopicDriftClient()
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=["cache"],
+            count=3,
+            difficulty="mixed",
+            generation_config=config,
+        )
+
+        self.assertEqual(3, worker._candidate_batch_count(3))
 
     def test_worker_oversamples_candidates_when_quota_filtering_rejects_model_drift(self):
         config = GenerationConfig(
@@ -278,7 +302,97 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual([], errors)
         self.assertEqual(1, len(batches))
         self.assertEqual(15, len(batches[0]))
-        self.assertTrue(any(count > 10 for count in client.requested_counts))
+        self.assertTrue(any(count > 5 for count in client.requested_counts))
+
+    def test_worker_accepts_fill_in_blank_string_answer_from_model(self):
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 0,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 100,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 100},
+        )
+        client = SequenceClient([
+            {
+                "questions": [
+                    {
+                        **raw_question("fill_in_blank", "medium", "cache", 1),
+                        "correct_answer": "cache line",
+                        "bilingual": {
+                            "zh": {
+                                "stem": "缓存中一次搬运的数据块称为____。",
+                                "explanation": "这是足够长的中文解释，用于说明填空答案为什么正确。",
+                            },
+                            "en": {
+                                "stem": "The block of data moved into cache is a ____.",
+                                "explanation": "This is a sufficiently detailed explanation of the blank answer.",
+                            },
+                        },
+                    }
+                ]
+            }
+        ])
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        batches = []
+        errors = []
+        worker.batch_done.connect(batches.append)
+        worker.error.connect(errors.append)
+
+        worker.run()
+
+        self.assertEqual([], errors)
+        self.assertEqual(["cache line"], batches[0][0].correct_answer)
+
+    def test_worker_maps_snake_case_model_topic_to_selected_topic_label(self):
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"Input Output Improvements": 100},
+        )
+        client = SequenceClient([
+            {
+                "questions": [
+                    raw_question(
+                        "multiple_choice",
+                        "medium",
+                        "input_output_improvements",
+                        1,
+                    )
+                ]
+            }
+        ])
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=["Input Output Improvements"],
+            count=1,
+            difficulty="medium",
+            generation_config=config,
+        )
+        batches = []
+        errors = []
+        worker.batch_done.connect(batches.append)
+        worker.error.connect(errors.append)
+
+        worker.run()
+
+        self.assertEqual([], errors)
+        self.assertEqual("Input Output Improvements", batches[0][0].topic)
 
     def test_worker_reduces_candidate_batch_after_truncated_json_response(self):
         config = GenerationConfig(

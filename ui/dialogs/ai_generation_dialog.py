@@ -7,7 +7,9 @@ from PyQt6.QtWidgets import (
     QAbstractItemView, QScrollArea, QFrame, QWidget, QSlider, QFormLayout,
     QSplitter
 )
-from PyQt6.QtCore import Qt
+import time
+
+from PyQt6.QtCore import Qt, QTimer
 
 from utils.constants import topic_label, topic_value
 from core.app_errors import coerce_app_error, format_app_error
@@ -52,6 +54,13 @@ class AIGenerationDialog(QDialog):
         self._generation_failed = False
         self._generation_cancelled = False
         self.weight_value_labels: dict[QSlider, QLabel] = {}
+        self.topic_weight_labels: dict[str, QLabel] = {}
+        self.topic_weight_rows: dict[str, QWidget] = {}
+        self._generation_started_at: float | None = None
+        self._last_generation_progress = ""
+        self.generation_status_timer = QTimer(self)
+        self.generation_status_timer.setInterval(1000)
+        self.generation_status_timer.timeout.connect(self._refresh_generation_status)
 
         self.setWindowTitle(self.lang_manager.get_text("AI 出题", "AI Question Generation"))
         self.resize(1000, 700)
@@ -107,7 +116,7 @@ class AIGenerationDialog(QDialog):
             item.setCheckState(Qt.CheckState.Unchecked)
             self.topic_list.addItem(item)
         # Use standard selection with checkboxes; don't disable selection
-        self.topic_list.itemChanged.connect(lambda _item: self._update_preview())
+        self.topic_list.itemChanged.connect(lambda _item: self._on_topics_changed())
         topic_layout.addWidget(self.topic_list)
 
         left_layout.addWidget(self.topic_group, 3)
@@ -206,10 +215,19 @@ class AIGenerationDialog(QDialog):
                 key = topic_value(topic)
                 slider = self._make_slider(default_weight)
                 self.topic_weight_sliders[key] = slider
-                topic_weight_layout.addRow(
-                    self._weight_topic_label(topic_label(topic, lang)),
-                    self._slider_row(slider),
+                label = self._weight_topic_label(topic_label(topic, lang))
+                row = self._slider_row(slider)
+                self.topic_weight_labels[key] = label
+                self.topic_weight_rows[key] = row
+                topic_weight_layout.addRow(label, row)
+            self.topic_weight_empty_label = QLabel(
+                self.lang_manager.get_text(
+                    "选择左侧主题后显示对应权重。",
+                    "Select topics on the left to show their weights.",
                 )
+            )
+            self.topic_weight_empty_label.setObjectName("mutedLabel")
+            topic_weight_layout.addRow("", self.topic_weight_empty_label)
             right_layout.addWidget(self.topic_weight_group)
 
         # Structure controls
@@ -276,6 +294,7 @@ class AIGenerationDialog(QDialog):
 
         if hasattr(self, "topic_weight_group"):
             self.topic_weight_group.setTitle(self.lang_manager.get_text("知识点权重", "Topic Weights"))
+        self._sync_topic_weight_rows()
         self._refresh_weight_labels()
         self._update_preview()
 
@@ -355,7 +374,12 @@ class AIGenerationDialog(QDialog):
         """Show raw slider weights and their normalized effective percentages."""
         groups: list[list[QSlider]] = []
         if hasattr(self, "topic_weight_sliders"):
-            groups.append(list(self.topic_weight_sliders.values()))
+            selected_topic_keys = set(self._selected_topic_keys())
+            groups.append([
+                slider
+                for key, slider in self.topic_weight_sliders.items()
+                if key in selected_topic_keys
+            ])
         question_sliders = [
             getattr(self, name, None)
             for name in ("mc_slider", "scenario_slider", "true_false_slider", "fill_blank_slider")
@@ -400,8 +424,15 @@ class AIGenerationDialog(QDialog):
         for slider in sliders:
             raw = raw_values[slider]
             effective = normalized[slider]
-            text = f"{raw}%" if raw == effective else f"{raw} → {effective}%"
-            self.weight_value_labels[slider].setText(text)
+            text = f"{effective}%" if raw == effective else f"{raw} ({effective}%)"
+            label = self.weight_value_labels[slider]
+            label.setText(text)
+            label.setToolTip(
+                self.lang_manager.get_text(
+                    f"原始权重：{raw}；有效占比：{effective}%。",
+                    f"Raw weight: {raw}; effective share: {effective}%.",
+                )
+            )
 
     def _on_language_changed(self, lang):
         """Update all UI strings when language changes."""
@@ -414,7 +445,13 @@ class AIGenerationDialog(QDialog):
         for i in range(self.topic_list.count()):
             item = self.topic_list.item(i)
             topic = item.data(Qt.ItemDataRole.UserRole)
-            item.setText(topic_label(topic, lang))
+            label_text = topic_label(topic, lang)
+            item.setText(label_text)
+            key = topic_value(topic)
+            if key in self.topic_weight_labels:
+                label = self.topic_weight_labels[key]
+                label.setText(_compact_label_text(label_text, limit=34))
+                label.setToolTip(label_text)
 
         self.count_label.setText(self.lang_manager.get_text("数量:", "Count:"))
         self.diff_label.setText(self.lang_manager.get_text("整体难度:", "Overall difficulty:"))
@@ -469,6 +506,13 @@ class AIGenerationDialog(QDialog):
         )
         if hasattr(self, "topic_weight_group"):
             self.topic_weight_group.setTitle(self.lang_manager.get_text("知识点权重", "Topic Weights"))
+        if hasattr(self, "topic_weight_empty_label"):
+            self.topic_weight_empty_label.setText(
+                self.lang_manager.get_text(
+                    "选择左侧主题后显示对应权重。",
+                    "Select topics on the left to show their weights.",
+                )
+            )
         self._update_preview()
 
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
@@ -482,6 +526,24 @@ class AIGenerationDialog(QDialog):
         for i in range(self.topic_list.count()):
             item = self.topic_list.item(i)
             item.setCheckState(Qt.CheckState.Checked if selected else Qt.CheckState.Unchecked)
+
+    def _selected_topic_keys(self) -> list[str]:
+        return [topic_value(topic) for topic in self._get_selected_topics()]
+
+    def _on_topics_changed(self) -> None:
+        self._sync_topic_weight_rows()
+        self._update_preview()
+
+    def _sync_topic_weight_rows(self) -> None:
+        selected = set(self._selected_topic_keys())
+        for key, row in self.topic_weight_rows.items():
+            visible = key in selected
+            row.setVisible(visible)
+            label = self.topic_weight_labels.get(key)
+            if label is not None:
+                label.setVisible(visible)
+        if hasattr(self, "topic_weight_empty_label"):
+            self.topic_weight_empty_label.setVisible(not selected)
 
     def _get_selected_topics(self) -> list:
         """Get list of selected Topic enums."""
@@ -655,6 +717,8 @@ class AIGenerationDialog(QDialog):
         for topic, slider in self.topic_weight_sliders.items():
             if topic in plan.topic_weights:
                 slider.setValue(plan.topic_weights[topic])
+        self._sync_topic_weight_rows()
+        self._refresh_weight_labels()
         self._update_preview()
 
     def _open_exam_assistant(self):
@@ -741,6 +805,14 @@ class AIGenerationDialog(QDialog):
         # Disable UI during generation
         self._generation_failed = False
         self._generation_cancelled = False
+        self.generated_questions = []
+        self._generation_started_at = time.monotonic()
+        self._last_generation_progress = self.lang_manager.get_text(
+            "正在启动 AI 出题任务…",
+            "Starting AI generation...",
+        )
+        self._refresh_generation_status()
+        self.generation_status_timer.start()
         self.generate_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # Indeterminate
@@ -790,7 +862,24 @@ class AIGenerationDialog(QDialog):
     def _on_progress(self, message: str):
         if self._generation_cancelled:
             return
-        self.status_label.setText(message)
+        self._last_generation_progress = message
+        self._refresh_generation_status()
+
+    def _refresh_generation_status(self):
+        if self._generation_cancelled:
+            return
+        base = self._last_generation_progress or self.lang_manager.get_text(
+            "正在生成题目…",
+            "Generating questions...",
+        )
+        if self._generation_started_at is None:
+            self.status_label.setText(base)
+            return
+        elapsed = int(max(0, time.monotonic() - self._generation_started_at))
+        if self.lang_manager.current == "zh":
+            self.status_label.setText(f"{base}（已用 {elapsed}s，可取消）")
+        else:
+            self.status_label.setText(f"{base} ({elapsed}s elapsed, cancellable)")
 
     def _on_batch_done(self, questions: list[Question]):
         if self._generation_cancelled:
@@ -810,6 +899,8 @@ class AIGenerationDialog(QDialog):
             action_en="Check AI settings, network connectivity, or try again later.",
         )
         lang = self.lang_manager.current
+        self.generation_status_timer.stop()
+        self._generation_started_at = None
         self.status_label.setText(app_error.status_text(lang))
         QMessageBox.critical(
             self,
@@ -822,6 +913,8 @@ class AIGenerationDialog(QDialog):
     def _on_finished(self):
         if self._generation_cancelled:
             return
+        self.generation_status_timer.stop()
+        self._generation_started_at = None
         self.progress_bar.setVisible(False)
         self.generate_btn.setEnabled(True)
         if self._generation_failed:
@@ -860,5 +953,6 @@ class AIGenerationDialog(QDialog):
         """Cancel generation if the dialog is closed while a worker is running."""
         if self.worker and self.worker.isRunning():
             self._generation_cancelled = True
+            self.generation_status_timer.stop()
             self.worker.cancel()
         super().reject()

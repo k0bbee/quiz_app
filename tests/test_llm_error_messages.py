@@ -111,6 +111,38 @@ class LLMErrorMessageTests(unittest.TestCase):
         self.assertFalse(post.called)
         self.assertIn("HTTPS", client.last_error)
 
+    def test_openai_compatible_client_retries_without_response_format_when_provider_rejects_it(self):
+        class FakeResponse:
+            def __init__(self, status_code, payload=None, text=""):
+                self.status_code = status_code
+                self._payload = payload or {}
+                self.text = text
+
+            def json(self):
+                return self._payload
+
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://api.example.com/v1",
+            model="model",
+        )
+        first = FakeResponse(
+            400,
+            text="response_format json_object is not supported by this model",
+        )
+        second = FakeResponse(
+            200,
+            payload={"choices": [{"message": {"content": '{"questions":[]}'}}]},
+        )
+
+        with patch("ai.llm_client.requests.post", side_effect=[first, second]) as post:
+            result = client.generate([{"role": "user", "content": "Return JSON."}])
+
+        self.assertEqual('{"questions":[]}', result)
+        self.assertEqual(2, post.call_count)
+        self.assertIn("response_format", post.call_args_list[0].kwargs["json"])
+        self.assertNotIn("response_format", post.call_args_list[1].kwargs["json"])
+
 
 if __name__ == "__main__":
     unittest.main()

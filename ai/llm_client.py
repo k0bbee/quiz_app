@@ -157,6 +157,15 @@ class LLMClient:
 
         try:
             resp = requests.post(url, headers=headers, json=payload, timeout=120)
+            if resp.status_code == 400 and self._response_format_rejected(resp.text):
+                fallback_payload = dict(payload)
+                fallback_payload.pop("response_format", None)
+                resp = requests.post(
+                    url,
+                    headers=headers,
+                    json=fallback_payload,
+                    timeout=120,
+                )
             if resp.status_code == 200:
                 try:
                     data = resp.json()
@@ -176,6 +185,16 @@ class LLMClient:
             self.last_error = f"OpenAI-compatible API request failed: {e}"
             debug(self.last_error)
             return None
+
+    @staticmethod
+    def _response_format_rejected(text: str) -> bool:
+        normalized = (text or "").lower()
+        return "response_format" in normalized and (
+            "not support" in normalized
+            or "unsupported" in normalized
+            or "invalid" in normalized
+            or "json_object" in normalized
+        )
 
     def generate_with_json(
         self,

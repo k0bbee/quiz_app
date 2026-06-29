@@ -2,6 +2,7 @@
 from utils.logger import debug, warning, error
 
 import threading
+import re
 from math import floor
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -15,9 +16,10 @@ from models.question import Question
 from utils.constants import QuestionType, Difficulty, topic_value
 
 
-ACCEPT_TARGET_BATCH_SIZE = 10
-MAX_CANDIDATE_BATCH_SIZE = 25
-JSON_RECOVERY_BATCH_SIZE = 5
+ACCEPT_TARGET_BATCH_SIZE = 5
+MAX_CANDIDATE_BATCH_SIZE = 8
+JSON_RECOVERY_BATCH_SIZE = 3
+GENERATION_CONTEXT_MAX_CHARS = 12000
 
 
 def allocate_weighted_counts(weights: dict[str, int], count: int) -> dict[str, int]:
@@ -163,7 +165,8 @@ class GenerationWorker(QThread):
                 candidate_count = self._candidate_batch_count(batch_count)
                 self.progress.emit(
                     f"Generating {self.count} questions... "
-                    f"(requesting {candidate_count} candidates; "
+                    f"(batch {attempts}/{max_attempts}; "
+                    f"requesting {candidate_count} candidates; "
                     f"{len(all_questions)}/{self.count} accepted)"
                 )
 
@@ -205,6 +208,7 @@ class GenerationWorker(QThread):
                     if self._cancelled.is_set():
                         break
                     try:
+                        qdata = self._normalize_raw_question(qdata)
                         ok, reason = self._validate_raw_question(qdata)
                         if not ok:
                             rejected += 1
@@ -281,10 +285,13 @@ class GenerationWorker(QThread):
         """
         if accept_target <= 0:
             return 0
-        count = min(
-            MAX_CANDIDATE_BATCH_SIZE,
-            max(accept_target + 10, accept_target * 2),
-        )
+        if accept_target <= 3:
+            count = accept_target
+        else:
+            count = min(
+                MAX_CANDIDATE_BATCH_SIZE,
+                max(accept_target + 3, accept_target),
+            )
         if self._candidate_batch_limit is not None:
             count = min(count, self._candidate_batch_limit)
         return count
@@ -345,7 +352,7 @@ class GenerationWorker(QThread):
             return retrieve_course_context(
                 self.course_project,
                 [topic_value(t) for t in self.topics],
-                max_chars=30000,
+                max_chars=GENERATION_CONTEXT_MAX_CHARS,
             )
         return self.course_content
 
@@ -367,6 +374,22 @@ class GenerationWorker(QThread):
             if title:
                 keywords[title] = list(getattr(topic, "keywords", []) or [])
         return keywords
+
+    def _normalize_raw_question(self, qdata):
+        if not isinstance(qdata, dict):
+            return qdata
+        normalized = dict(qdata)
+        if normalized.get("type") == QuestionType.FILL_IN_BLANK.value:
+            answer = normalized.get("correct_answer")
+            if isinstance(answer, str):
+                normalized["correct_answer"] = [answer.strip()] if answer.strip() else []
+            elif isinstance(answer, (list, tuple)):
+                normalized["correct_answer"] = [
+                    str(item).strip()
+                    for item in answer
+                    if str(item).strip()
+                ]
+        return normalized
 
     def _validate_raw_question(self, qdata: dict) -> tuple[bool, str]:
         """Validate raw model output before converting it to a Question."""
@@ -410,6 +433,10 @@ class GenerationWorker(QThread):
                     options = bilingual.get(lang, {}).get("options", [])
                     if len(options) != 4:
                         return False, f"{lang} choice question must have 4 options"
+        elif question_type == QuestionType.FILL_IN_BLANK:
+            answer = qdata.get("correct_answer")
+            if not isinstance(answer, list) or not answer:
+                return False, "fill_in_blank answer must be a non-empty list"
 
         return True, ""
 
@@ -418,11 +445,22 @@ class GenerationWorker(QThread):
         if not self.topics:
             return str(raw_topic or "general")
         raw = str(raw_topic or "").strip().lower()
+        raw_key = _topic_match_key(raw)
         selected = {topic_value(t).lower(): t for t in self.topics}
         if raw in selected:
             return selected[raw]
+        canonical_selected = {_topic_match_key(topic_value(t)): t for t in self.topics}
+        if raw_key in canonical_selected:
+            return canonical_selected[raw_key]
         for topic in self.topics:
             label = topic_value(topic).lower()
+            label_key = _topic_match_key(label)
             if raw and (raw in label or label in raw):
                 return topic
+            if raw_key and (raw_key in label_key or label_key in raw_key):
+                return topic
         return None
+
+
+def _topic_match_key(value: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", str(value or "").lower()))

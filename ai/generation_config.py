@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from config import DEFAULT_DIFFICULTY_WEIGHTS, DEFAULT_QUESTION_TYPE_WEIGHTS
@@ -36,7 +37,9 @@ class GenerationConfig:
         if not topics:
             return {}
         if self.topic_weights:
-            return _normalize_weights({str(k): int(v) for k, v in self.topic_weights.items()}, None)
+            selected = [str(topic) for topic in topics]
+            weighted = _match_topic_weights_to_selected(self.topic_weights, selected)
+            return _normalize_weights(weighted, None)
         share = 100 // len(topics)
         weights = {str(topic): share for topic in topics}
         weights[str(topics[-1])] += 100 - sum(weights.values())
@@ -58,3 +61,29 @@ def _normalize_weights(weights: dict[str, int], defaults: dict[str, int] | None)
         first_key = next(iter(normalized))
         normalized[first_key] += delta
     return normalized
+
+
+def _match_topic_weights_to_selected(weights: dict[str, int], selected_topics: list[str]) -> dict[str, int]:
+    result = {topic: 0 for topic in selected_topics}
+    exact = {topic.lower(): topic for topic in selected_topics}
+    canonical = {_topic_key(topic): topic for topic in selected_topics}
+    for raw_key, raw_value in weights.items():
+        key = str(raw_key)
+        key_canonical = _topic_key(key)
+        target = exact.get(key.lower()) or canonical.get(key_canonical)
+        if target is None and key_canonical:
+            for selected_key, selected in canonical.items():
+                if key_canonical in selected_key or selected_key in key_canonical:
+                    target = selected
+                    break
+        if target is not None:
+            result[target] = max(0, int(raw_value))
+    if sum(result.values()) <= 0:
+        share = 100 // len(selected_topics)
+        result = {topic: share for topic in selected_topics}
+        result[selected_topics[-1]] += 100 - sum(result.values())
+    return result
+
+
+def _topic_key(value: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9]+", str(value or "").lower()))

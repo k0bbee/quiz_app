@@ -52,6 +52,24 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("cache mapping: 70%", prompt)
         self.assertIn("Final exam style", prompt)
 
+    def test_prompt_specifies_fill_in_blank_answer_list_format(self):
+        prompt = PromptBuilder.build_user_prompt(
+            "## Cache\nA cache line stores a block.",
+            ["cache"],
+            count=3,
+            generation_config=GenerationConfig(
+                question_type_weights={
+                    "multiple_choice": 0,
+                    "scenario_choice": 0,
+                    "true_false": 0,
+                    "fill_in_blank": 100,
+                }
+            ),
+        )
+
+        self.assertIn("fill_in_blank", prompt)
+        self.assertIn('"correct_answer": ["accepted answer"', prompt)
+
     def test_prompt_context_can_use_topic_keywords_to_respect_selected_topic(self):
         content = (
             "## Cache Mapping\n"
@@ -203,12 +221,35 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(70, dialog.medium_slider.value())
         self.assertEqual(20, dialog.hard_slider.value())
 
+    def test_dialog_topic_weight_rows_follow_selected_topics(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache", "process", "memory"],
+        )
+
+        self.assertTrue(dialog.topic_weight_rows["cache"].isHidden())
+        self.assertTrue(dialog.topic_weight_rows["process"].isHidden())
+        self.assertTrue(dialog.topic_weight_labels["cache"].isHidden())
+
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+
+        self.assertFalse(dialog.topic_weight_rows["cache"].isHidden())
+        self.assertFalse(dialog.topic_weight_labels["cache"].isHidden())
+        self.assertTrue(dialog.topic_weight_rows["process"].isHidden())
+
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Unchecked)
+
+        self.assertTrue(dialog.topic_weight_rows["cache"].isHidden())
+
     def test_dialog_weight_labels_update_normalized_effective_percentages_after_confirmation(self):
         dialog = AIGenerationDialog(
             "course content",
             {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
             available_topics=["cache", "process"],
         )
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+        dialog.topic_list.item(1).setCheckState(Qt.CheckState.Checked)
 
         self.assertEqual("50%", dialog.weight_value_labels[dialog.topic_weight_sliders["cache"]].text())
         self.assertEqual("50%", dialog.weight_value_labels[dialog.topic_weight_sliders["process"]].text())
@@ -221,8 +262,25 @@ class GenerationConfigTests(unittest.TestCase):
 
         dialog.refresh_weight_preview_btn.click()
 
-        self.assertEqual("100 → 56%", dialog.weight_value_labels[dialog.topic_weight_sliders["cache"]].text())
-        self.assertEqual("80 → 44%", dialog.weight_value_labels[dialog.topic_weight_sliders["process"]].text())
+        self.assertEqual("100 (56%)", dialog.weight_value_labels[dialog.topic_weight_sliders["cache"]].text())
+        self.assertEqual("80 (44%)", dialog.weight_value_labels[dialog.topic_weight_sliders["process"]].text())
+        self.assertNotIn("→", dialog.weight_value_labels[dialog.topic_weight_sliders["cache"]].text())
+
+    def test_generation_status_keeps_latest_progress_and_elapsed_hint(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog._generation_started_at = 100.0
+
+        with patch("ui.dialogs.ai_generation_dialog.time.monotonic", return_value=106.4):
+            dialog._on_progress("Requesting batch 1/3 from AI...")
+
+        text = dialog.status_label.text()
+        self.assertIn("Requesting batch 1/3", text)
+        self.assertIn("6s", text)
+        self.assertIn("可取消", text)
 
     def test_local_agent_generation_start_does_not_read_persisted_api_key(self):
         class ForbiddenSecrets:
