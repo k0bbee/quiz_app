@@ -1671,6 +1671,94 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIsNone(snapshot_manager.get(snapshot.snapshot_id))
             self.assertEqual(record.progress_id, shown["record"].progress_id)
 
+    def test_home_resume_draft_deletes_snapshot_when_questions_are_missing(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            set_manager = SetManager(str(root / "sets"))
+            snapshot_manager = QuizSnapshotManager(str(root / "snapshots"))
+            existing = self._make_question("q1")
+            question_bank.save(existing)
+            qset = QuestionSet.create_new(
+                title={"zh": "系统结构练习", "en": "Architecture Practice"},
+                description={"zh": "", "en": ""},
+                topics=["cache"],
+                question_ids=["q1", "q-missing"],
+            )
+            set_manager.save(qset)
+            snapshot = QuizSessionSnapshot.create_new(
+                set_id=qset.set_id,
+                title="系统结构练习",
+                question_order=["q1", "q-missing"],
+            )
+            snapshot_manager.save(snapshot)
+            shown = {}
+
+            class FakeHomeScreen:
+                def set_resume_draft(self, *args, **kwargs):
+                    shown["shown"] = True
+
+                def clear_resume_draft(self):
+                    shown["cleared"] = True
+
+            shell = types.SimpleNamespace(
+                home_screen=FakeHomeScreen(),
+                snapshot_manager=snapshot_manager,
+                set_manager=set_manager,
+                question_bank=question_bank,
+                progress_manager=ProgressManager(str(root / "progress")),
+                lang_manager=LanguageManager.instance(),
+                _current_course_id=lambda: "",
+            )
+
+            MainWindow._update_home_resume_draft(shell)
+
+            self.assertTrue(shown.get("cleared"))
+            self.assertNotIn("shown", shown)
+            self.assertIsNone(snapshot_manager.get(snapshot.snapshot_id))
+
+    def test_resume_snapshot_missing_set_shows_warning_and_deletes_snapshot(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            snapshot_manager = QuizSnapshotManager(str(root / "snapshots"))
+            snapshot = QuizSessionSnapshot.create_new(
+                set_id="missing-set",
+                title="损坏草稿",
+                question_order=["q1"],
+            )
+            snapshot_manager.save(snapshot)
+
+            class FakeSetManager:
+                def get(self, set_id):
+                    return None
+
+            shell = types.SimpleNamespace(
+                progress_manager=ProgressManager(str(root / "progress")),
+                snapshot_manager=snapshot_manager,
+                set_manager=FakeSetManager(),
+                question_bank=QuestionBank(str(root / "questions")),
+                lang_manager=LanguageManager.instance(),
+                quiz_screen=types.SimpleNamespace(),
+                _active_questions={},
+                SCREEN_QUIZ=2,
+                _current_course_id=lambda: "",
+                _show_timer_setting=lambda: False,
+                navigate_to=lambda screen: None,
+            )
+
+            with patch("ui.main_window.QMessageBox.warning") as warning:
+                MainWindow._on_resume_abandoned(shell)
+
+            self.assertTrue(warning.called)
+            message = warning.call_args.args[2]
+            self.assertIn("草稿", message)
+            self.assertIn("题目集", message)
+            self.assertIsNone(snapshot_manager.get(snapshot.snapshot_id))
+
 
 if __name__ == "__main__":
     unittest.main()

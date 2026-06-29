@@ -331,6 +331,7 @@ class MainWindow(QMainWindow):
     def _resume_snapshot_draft(self):
         """Return the latest full quiz snapshot details, or None."""
         snapshot_manager = getattr(self, "snapshot_manager", None)
+        self._resume_snapshot_error = ""
         if snapshot_manager is None:
             return None
         snapshot = snapshot_manager.load_latest()
@@ -338,12 +339,22 @@ class MainWindow(QMainWindow):
             return None
         question_set = self.set_manager.get(snapshot.set_id)
         if not question_set:
+            snapshot_manager.delete(snapshot.snapshot_id)
+            self._resume_snapshot_error = self.lang_manager.get_text(
+                "练习草稿引用的题目集已不存在，无法恢复，已清理该草稿。",
+                "The draft's question set no longer exists, so it cannot be restored. The draft was removed.",
+            )
             return None
         questions = self.question_bank.get_many(
             snapshot.question_order,
             course_id=self._current_course_id(),
         )
         if len(questions) != len(snapshot.question_order):
+            snapshot_manager.delete(snapshot.snapshot_id)
+            self._resume_snapshot_error = self.lang_manager.get_text(
+                "练习草稿中的部分题目已不存在，无法完整恢复，已清理该草稿。",
+                "Some questions in the draft no longer exist, so it cannot be fully restored. The draft was removed.",
+            )
             return None
         return snapshot, question_set, questions
 
@@ -389,11 +400,20 @@ class MainWindow(QMainWindow):
 
         resume = MainWindow._resume_abandoned_draft(self)
         if not resume:
-            QMessageBox.information(
-                self,
-                gm("没有草稿", "No Draft"),
-                gm("当前没有可恢复的练习草稿。", "There is no resumable quiz draft."),
-            )
+            snapshot_error = getattr(self, "_resume_snapshot_error", "")
+            parent = self if isinstance(self, QWidget) else None
+            if snapshot_error:
+                QMessageBox.warning(
+                    parent,
+                    gm("草稿无法恢复", "Draft Cannot Be Restored"),
+                    snapshot_error,
+                )
+            else:
+                QMessageBox.information(
+                    parent,
+                    gm("没有草稿", "No Draft"),
+                    gm("当前没有可恢复的练习草稿。", "There is no resumable quiz draft."),
+                )
             return
         draft, question_set, remaining = resume
         self._active_questions = {question.question_id: question for question in remaining}
