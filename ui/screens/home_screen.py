@@ -13,6 +13,7 @@ class HomeScreen(QWidget):
     """Welcome screen with navigation to main features."""
 
     start_practice = pyqtSignal()
+    resume_practice = pyqtSignal()
     practice_incorrect = pyqtSignal()
     ai_generate = pyqtSignal()
     view_progress = pyqtSignal()
@@ -24,6 +25,8 @@ class HomeScreen(QWidget):
         self.question_bank = question_bank
         self.lang_manager = LanguageManager.instance()
         self._current_course_id = ""
+        self._resume_title = ""
+        self._resume_remaining_count = 0
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -73,33 +76,41 @@ class HomeScreen(QWidget):
         self.start_btn.clicked.connect(self.start_practice.emit)
         self.action_layout.addWidget(self.start_btn, 0, 0, 1, 2)
 
+        self.resume_btn = QPushButton()
+        self.resume_btn.setObjectName("secondaryButton")
+        self.resume_btn.setProperty("homeAction", "secondary")
+        self.resume_btn.setMinimumHeight(40)
+        self.resume_btn.clicked.connect(self.resume_practice.emit)
+        self.resume_btn.hide()
+        self.action_layout.addWidget(self.resume_btn, 1, 0, 1, 2)
+
         self.incorrect_btn = QPushButton(self.lang_manager.get_text("练习历史错题", "Practice Incorrect"))
         self.incorrect_btn.setObjectName("secondaryButton")
         self.incorrect_btn.setProperty("homeAction", "secondary")
         self.incorrect_btn.setMinimumHeight(40)
         self.incorrect_btn.clicked.connect(self.practice_incorrect.emit)
-        self.action_layout.addWidget(self.incorrect_btn, 1, 0)
+        self.action_layout.addWidget(self.incorrect_btn, 2, 0)
 
         self.ai_btn = QPushButton(self.lang_manager.get_text("AI 生成题目", "Generate Questions"))
         self.ai_btn.setObjectName("secondaryButton")
         self.ai_btn.setProperty("homeAction", "secondary")
         self.ai_btn.setMinimumHeight(40)
         self.ai_btn.clicked.connect(self.ai_generate.emit)
-        self.action_layout.addWidget(self.ai_btn, 1, 1)
+        self.action_layout.addWidget(self.ai_btn, 2, 1)
 
         self.progress_btn = QPushButton(self.lang_manager.get_text("查看进度", "View Progress"))
         self.progress_btn.setObjectName("secondaryButton")
         self.progress_btn.setProperty("homeAction", "secondary")
         self.progress_btn.setMinimumHeight(40)
         self.progress_btn.clicked.connect(self.view_progress.emit)
-        self.action_layout.addWidget(self.progress_btn, 2, 0)
+        self.action_layout.addWidget(self.progress_btn, 3, 0)
 
         self.settings_btn = QPushButton(self.lang_manager.get_text("设置", "Settings"))
         self.settings_btn.setObjectName("secondaryButton")
         self.settings_btn.setProperty("homeAction", "secondary")
         self.settings_btn.setMinimumHeight(40)
         self.settings_btn.clicked.connect(self.open_settings.emit)
-        self.action_layout.addWidget(self.settings_btn, 2, 1)
+        self.action_layout.addWidget(self.settings_btn, 3, 1)
 
         # Center the button frame horizontally
         btn_row = QHBoxLayout()
@@ -129,6 +140,7 @@ class HomeScreen(QWidget):
             "Generate summaries, question banks and self-tests from courseware"
         ))
         self.start_btn.setText(self.lang_manager.get_text("开始练习", "Start Practice"))
+        self._update_resume_text()
         self.incorrect_btn.setText(self.lang_manager.get_text("练习历史错题", "Practice Incorrect"))
         self.ai_btn.setText(self.lang_manager.get_text("AI 生成题目", "Generate Questions"))
         self.progress_btn.setText(self.lang_manager.get_text("查看进度", "View Progress"))
@@ -177,6 +189,19 @@ class HomeScreen(QWidget):
             )
         )
 
+    def set_resume_draft(self, title: str, remaining_count: int):
+        """Show the resume draft action for an unfinished quiz."""
+        self._resume_title = title
+        self._resume_remaining_count = max(0, remaining_count)
+        self._update_resume_text()
+        self.resume_btn.show()
+
+    def clear_resume_draft(self):
+        """Hide the resume draft action."""
+        self._resume_title = ""
+        self._resume_remaining_count = 0
+        self.resume_btn.hide()
+
     def set_current_course(self, course_id: str | None):
         """Restrict home quick stats to the active course."""
         course_id = course_id or ""
@@ -197,3 +222,10 @@ class HomeScreen(QWidget):
         )
         self.incorrect_btn.style().unpolish(self.incorrect_btn)
         self.incorrect_btn.style().polish(self.incorrect_btn)
+
+    def _update_resume_text(self):
+        label = self.lang_manager.get_text(
+            f"继续草稿：{self._resume_title}（剩余 {self._resume_remaining_count} 题）",
+            f"Resume Draft: {self._resume_title} ({self._resume_remaining_count} left)",
+        )
+        self.resume_btn.setText(label)

@@ -47,6 +47,11 @@ class ProgressManager:
             return ProgressRecord.from_dict(data)
         return None
 
+    def get_latest_abandoned_record(self) -> Optional[ProgressRecord]:
+        """Return the newest abandoned quiz draft, if any."""
+        abandoned = [record for record in self.load_all() if record.status == "abandoned"]
+        return abandoned[0] if abandoned else None
+
     def save(self, record: ProgressRecord) -> bool:
         """Save a progress record to JSON."""
         safe_id = sanitize_filename_part(record.progress_id)

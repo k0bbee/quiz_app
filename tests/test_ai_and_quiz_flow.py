@@ -13,7 +13,7 @@ from ai.llm_client import LLMClient
 from models.progress import AnswerRecord, ProgressRecord, SessionSummary
 from models.question import Question
 from models.question import QuestionBank
-from models.question_set import QuestionSet
+from models.question_set import QuestionSet, SetManager
 from core.quiz_engine import QuizSession
 from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
@@ -268,6 +268,30 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertEqual(record.status, "abandoned")
         self.assertEqual(record.set_id, qset.set_id)
 
+    def test_progress_manager_returns_latest_abandoned_record(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            progress_manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            old = ProgressRecord.create_new("set-old")
+            old.progress_id = "old"
+            old.status = "abandoned"
+            old.started_at = "2026-06-01T00:00:00+00:00"
+            progress_manager.save(old)
+            completed = ProgressRecord.create_new("set-completed")
+            completed.progress_id = "completed"
+            completed.status = "completed"
+            completed.started_at = "2026-06-20T00:00:00+00:00"
+            progress_manager.save(completed)
+            latest = ProgressRecord.create_new("set-latest")
+            latest.progress_id = "latest"
+            latest.status = "abandoned"
+            latest.started_at = "2026-06-15T00:00:00+00:00"
+            progress_manager.save(latest)
+
+            draft = progress_manager.get_latest_abandoned_record()
+
+            self.assertIsNotNone(draft)
+            self.assertEqual("latest", draft.progress_id)
+
     def test_home_screen_counts_incorrect_questions_for_current_course(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
@@ -311,6 +335,25 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIn("累计 1 题", screen.stats_label.text())
             self.assertIn("历史错题 1 题", screen.stats_label.text())
             self.assertIn("题库总量 1 题", screen.stats_label.text())
+
+    def test_home_screen_can_show_and_clear_resume_draft_action(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = HomeScreen(
+                ProgressManager(str(Path(tmpdir) / "progress")),
+                QuestionBank(str(Path(tmpdir) / "questions")),
+            )
+
+            self.assertTrue(screen.resume_btn.isHidden())
+
+            screen.set_resume_draft("系统结构练习", 3)
+
+            self.assertFalse(screen.resume_btn.isHidden())
+            self.assertIn("继续草稿", screen.resume_btn.text())
+            self.assertIn("3", screen.resume_btn.text())
+
+            screen.clear_resume_draft()
+
+            self.assertTrue(screen.resume_btn.isHidden())
 
     def test_progress_stats_can_filter_by_question_ids(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -709,6 +752,79 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             MainWindow._on_practice_incorrect(shell)
 
             self.assertEqual([active.question_id], [q.question_id for q in started["questions"]])
+
+    def test_resume_abandoned_practice_starts_only_remaining_questions_and_removes_draft(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            set_manager = SetManager(str(root / "sets"))
+            progress_manager = ProgressManager(str(root / "progress"))
+            answered = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "Answered", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Answered", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            remaining = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "Remaining", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Remaining", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            for question in (answered, remaining):
+                question.metadata["course_id"] = "course-a"
+            question_bank.save_many([answered, remaining])
+            qset = QuestionSet.create_new(
+                title={"zh": "系统结构练习", "en": "Architecture Practice"},
+                description={"zh": "", "en": ""},
+                topics=["cache"],
+                question_ids=[answered.question_id, remaining.question_id],
+            )
+            set_manager.save(qset)
+            draft = ProgressRecord.create_new(qset.set_id)
+            draft.progress_id = "draft"
+            draft.status = "abandoned"
+            draft.answers = [
+                AnswerRecord(question_id=answered.question_id, index_in_session=0, user_answer="A", is_correct=True),
+            ]
+            draft.summary = SessionSummary.compute(draft.answers, total_questions=2, total_time=10)
+            progress_manager.save(draft)
+            started = {}
+
+            class FakeQuizScreen:
+                def start_quiz_custom(self, questions, label, show_timer=False):
+                    started["questions"] = questions
+                    started["label"] = label
+                    started["show_timer"] = show_timer
+
+            shell = types.SimpleNamespace(
+                progress_manager=progress_manager,
+                set_manager=set_manager,
+                question_bank=question_bank,
+                lang_manager=LanguageManager.instance(),
+                quiz_screen=FakeQuizScreen(),
+                _active_questions={},
+                SCREEN_QUIZ=2,
+                _current_course_id=lambda: "course-a",
+                _show_timer_setting=lambda: False,
+                navigate_to=lambda screen: started.setdefault("screen", screen),
+            )
+
+            MainWindow._on_resume_abandoned(shell)
+
+            self.assertEqual([remaining.question_id], [q.question_id for q in started["questions"]])
+            self.assertIn("系统结构练习", started["label"])
+            self.assertIsNone(progress_manager.get("draft"))
 
 
 if __name__ == "__main__":

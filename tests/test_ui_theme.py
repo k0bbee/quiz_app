@@ -273,7 +273,7 @@ class UiThemeTests(unittest.TestCase):
             )
 
             self.assertEqual("primary", home.start_btn.property("homeAction"))
-            for button in (home.incorrect_btn, home.ai_btn, home.progress_btn, home.settings_btn):
+            for button in (home.resume_btn, home.incorrect_btn, home.ai_btn, home.progress_btn, home.settings_btn):
                 self.assertEqual("secondary", button.property("homeAction"))
 
     def test_home_incorrect_action_stays_clickable_when_no_incorrect_questions_exist(self):
@@ -336,7 +336,7 @@ class UiThemeTests(unittest.TestCase):
             settings = SettingsScreen()
 
             self.assertEqual("primaryButton", home.start_btn.objectName())
-            for button in (home.incorrect_btn, home.ai_btn, home.progress_btn, home.settings_btn):
+            for button in (home.resume_btn, home.incorrect_btn, home.ai_btn, home.progress_btn, home.settings_btn):
                 self.assertEqual("secondaryButton", button.objectName())
             self.assertEqual("primaryButton", settings.save_btn.objectName())
             for button in (
@@ -396,10 +396,11 @@ class UiThemeTests(unittest.TestCase):
                 return home.action_layout.getItemPosition(home.action_layout.indexOf(button))
 
             self.assertEqual((0, 0, 1, 2), position(home.start_btn))
-            self.assertEqual((1, 0, 1, 1), position(home.incorrect_btn))
-            self.assertEqual((1, 1, 1, 1), position(home.ai_btn))
-            self.assertEqual((2, 0, 1, 1), position(home.progress_btn))
-            self.assertEqual((2, 1, 1, 1), position(home.settings_btn))
+            self.assertEqual((1, 0, 1, 2), position(home.resume_btn))
+            self.assertEqual((2, 0, 1, 1), position(home.incorrect_btn))
+            self.assertEqual((2, 1, 1, 1), position(home.ai_btn))
+            self.assertEqual((3, 0, 1, 1), position(home.progress_btn))
+            self.assertEqual((3, 1, 1, 1), position(home.settings_btn))
 
     def test_settings_content_and_actions_follow_desktop_form_layout(self):
         settings = SettingsScreen()

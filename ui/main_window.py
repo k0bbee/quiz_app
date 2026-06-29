@@ -199,6 +199,7 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         # Home screen
         self.home_screen.start_practice.connect(self._on_start_practice)
+        self.home_screen.resume_practice.connect(self._on_resume_abandoned)
         self.home_screen.practice_incorrect.connect(self._on_practice_incorrect)
         self.home_screen.ai_generate.connect(self._on_ai_generate)
         self.home_screen.view_progress.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
@@ -301,6 +302,62 @@ class MainWindow(QMainWindow):
 
     def _on_start_practice(self):
         self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+
+    def _resume_abandoned_draft(self):
+        """Return the latest resumable abandoned draft details, or None."""
+        draft = self.progress_manager.get_latest_abandoned_record()
+        if not draft:
+            return None
+        question_set = self.set_manager.get(draft.set_id)
+        if not question_set:
+            return None
+        questions = self.question_bank.get_many(
+            question_set.questions,
+            course_id=self._current_course_id(),
+        )
+        answered_ids = {answer.question_id for answer in draft.answers}
+        remaining = [question for question in questions if question.question_id not in answered_ids]
+        if not remaining:
+            return None
+        return draft, question_set, remaining
+
+    def _update_home_resume_draft(self):
+        """Reflect the latest abandoned draft on the home screen."""
+        if not hasattr(self, "home_screen"):
+            return
+        resume = MainWindow._resume_abandoned_draft(self)
+        if not resume:
+            self.home_screen.clear_resume_draft()
+            return
+        _draft, question_set, remaining = resume
+        self.home_screen.set_resume_draft(question_set.get_title(self.lang_manager.current), len(remaining))
+
+    def _on_resume_abandoned(self):
+        """Resume the latest abandoned quiz draft with only unanswered questions."""
+        gm = self.lang_manager.get_text
+        resume = MainWindow._resume_abandoned_draft(self)
+        if not resume:
+            QMessageBox.information(
+                self,
+                gm("没有草稿", "No Draft"),
+                gm("当前没有可恢复的练习草稿。", "There is no resumable quiz draft."),
+            )
+            return
+        draft, question_set, remaining = resume
+        self._active_questions = {question.question_id: question for question in remaining}
+        label = gm(
+            f"继续草稿：{question_set.get_title('zh')}",
+            f"Resume Draft: {question_set.get_title('en')}",
+        )
+        self.quiz_screen.start_quiz_custom(
+            remaining,
+            label,
+            show_timer=self._show_timer_setting(),
+        )
+        self.progress_manager.delete(draft.progress_id)
+        if hasattr(self, "home_screen"):
+            self.home_screen.clear_resume_draft()
+        self.navigate_to(self.SCREEN_QUIZ)
 
     def _on_quiz_start(self, set_id: str, question_ids: list[str]):
         """Start a quiz session with the given question set."""
@@ -698,6 +755,7 @@ class MainWindow(QMainWindow):
 
     def _sync_home_screen_course(self):
         self.home_screen.set_current_course(self._current_course_id())
+        self._update_home_resume_draft()
 
     def _sync_progress_screen_course(self):
         self.progress_screen.set_current_course(self._current_course_id())
