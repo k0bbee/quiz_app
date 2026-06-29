@@ -18,6 +18,7 @@ class ResultsScreen(QWidget):
 
     retry_incorrect = pyqtSignal()
     retry_unsure = pyqtSignal()
+    retry_review = pyqtSignal()
     retry_all = pyqtSignal()
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -106,6 +107,15 @@ class ResultsScreen(QWidget):
         self.retry_unsure_btn.clicked.connect(self.retry_unsure.emit)
         btn_layout.addWidget(self.retry_unsure_btn)
 
+        self.retry_review_btn = QPushButton(
+            self.lang_manager.get_text("重做复查题", "Retry Review")
+        )
+        self.retry_review_btn.setObjectName("secondaryButton")
+        self.retry_review_btn.setMinimumHeight(40)
+        self.retry_review_btn.setMinimumWidth(150)
+        self.retry_review_btn.clicked.connect(self.retry_review.emit)
+        btn_layout.addWidget(self.retry_review_btn)
+
         self.retry_all_btn = QPushButton(
             self.lang_manager.get_text("重新练习全部", "Retry Entire Set")
         )
@@ -125,6 +135,9 @@ class ResultsScreen(QWidget):
         )
         self.retry_unsure_btn.setText(
             self.lang_manager.get_text("重做不确定题", "Retry Unsure")
+        )
+        self.retry_review_btn.setText(
+            self.lang_manager.get_text("重做复查题", "Retry Review")
         )
         self.retry_all_btn.setText(
             self.lang_manager.get_text("重新练习全部", "Retry Entire Set")
@@ -175,15 +188,18 @@ class ResultsScreen(QWidget):
             for answer in record.answers
             if answer.is_correct and getattr(answer, "confidence", "sure") == "unsure"
         )
+        review_count = len(getattr(record, "marked_review_question_ids", []))
         self.stats_label.setText(
             self.lang_manager.get_text(
                 f"正确: {summary.correct} | 错误: {summary.incorrect} | "
                 f"答对但不确定: {unsure_correct} | "
+                f"复查: {review_count} | "
                 f"总计: {summary.total_questions} | "
                 f"用时: {summary.total_time_seconds:.0f}秒 | "
                 f"平均: {summary.average_time_per_question:.1f}秒/题",
                 f"Correct: {summary.correct} | Incorrect: {summary.incorrect} | "
                 f"Correct but unsure: {unsure_correct} | "
+                f"Review: {review_count} | "
                 f"Total: {summary.total_questions} | "
                 f"Time: {summary.total_time_seconds:.0f}s | "
                 f"Avg: {summary.average_time_per_question:.1f}s/question"
@@ -226,8 +242,10 @@ class ResultsScreen(QWidget):
         # Update retry buttons
         has_incorrect = any(not a.is_correct for a in record.answers)
         has_unsure = any(getattr(a, "confidence", "sure") == "unsure" for a in record.answers)
+        has_review = bool(getattr(record, "marked_review_question_ids", []))
         self.retry_incorrect_btn.setEnabled(has_incorrect)
         self.retry_unsure_btn.setEnabled(has_unsure)
+        self.retry_review_btn.setEnabled(has_review)
 
     def _build_next_action_text(self, record: ProgressRecord) -> str:
         """Return a compact recommendation for the next learning action."""

@@ -803,6 +803,8 @@ class QuizScreen(QWidget):
         record = self.session.get_progress_record()
         if record and self._question_set:
             record.set_id = self._question_set.set_id
+        if record:
+            record.marked_review_question_ids = sorted(self._marked_question_ids)
 
         self.progress_bar.setValue(self.session.total_questions)
         self.session_timer.stop()

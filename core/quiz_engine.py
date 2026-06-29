@@ -327,11 +327,10 @@ class QuizSession(QObject):
             answers=list(self._answers),
             summary=summary,
         )
-        self._set_state(QuizState.COMPLETED)
-        self.session_completed.emit(self._progress_id)
-
         # Store the record for later retrieval
         self._final_record = record
+        self._set_state(QuizState.COMPLETED)
+        self.session_completed.emit(self._progress_id)
 
     def get_progress_record(self) -> Optional[ProgressRecord]:
         """Get the completed progress record (only available after finalize)."""

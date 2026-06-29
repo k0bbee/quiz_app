@@ -113,6 +113,7 @@ class ProgressRecord:
     status: str = "in_progress"  # "in_progress", "completed", "abandoned"
     answers: list[AnswerRecord] = field(default_factory=list)
     summary: Optional[SessionSummary] = None
+    marked_review_question_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -124,6 +125,7 @@ class ProgressRecord:
             "status": self.status,
             "answers": [a.to_dict() for a in self.answers],
             "summary": self.summary.to_dict() if self.summary is not None else None,
+            "marked_review_question_ids": list(self.marked_review_question_ids),
         }
 
     @classmethod
@@ -139,6 +141,7 @@ class ProgressRecord:
             status=data.get("status", "in_progress"),
             answers=answers,
             summary=summary,
+            marked_review_question_ids=list(data.get("marked_review_question_ids", [])),
         )
 
     @classmethod

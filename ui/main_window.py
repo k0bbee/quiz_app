@@ -228,6 +228,7 @@ class MainWindow(QMainWindow):
         # Results screen
         self.results_screen.retry_incorrect.connect(self._on_retry_incorrect)
         self.results_screen.retry_unsure.connect(self._on_retry_unsure)
+        self.results_screen.retry_review.connect(self._on_retry_review)
         self.results_screen.retry_all.connect(self._on_retry_all)
         # Language manager
         self.lang_manager.language_changed.connect(self._on_language_changed)
@@ -622,6 +623,32 @@ class MainWindow(QMainWindow):
             self.quiz_screen.start_quiz_custom(
                 questions,
                 gm("重做：不确定题", "Retry: Unsure Questions"),
+                show_timer=self._show_timer_setting(),
+            )
+            self.navigate_to(self.SCREEN_QUIZ)
+
+    def _on_retry_review(self):
+        """Retry questions the user marked for review in the completed session."""
+        gm = self.lang_manager.get_text
+        record = self.results_screen.current_record
+        if not record:
+            return
+
+        review_ids = list(dict.fromkeys(getattr(record, "marked_review_question_ids", [])))
+        if not review_ids:
+            QMessageBox.information(
+                self if isinstance(self, QWidget) else None,
+                gm("没有复查题", "No Review Questions"),
+                gm("本次练习没有标记为复查的题目。", "No questions were marked for review in this session."),
+            )
+            return
+
+        questions = self.question_bank.get_many(review_ids, course_id=self._current_course_id())
+        if questions:
+            self._active_questions = {q.question_id: q for q in questions}
+            self.quiz_screen.start_quiz_custom(
+                questions,
+                gm("重做：复查题", "Retry: Review Questions"),
                 show_timer=self._show_timer_setting(),
             )
             self.navigate_to(self.SCREEN_QUIZ)

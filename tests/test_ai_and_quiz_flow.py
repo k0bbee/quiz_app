@@ -111,6 +111,14 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
         self.assertEqual("unsure", loaded.confidence)
 
+    def test_progress_record_persists_marked_review_questions(self):
+        record = ProgressRecord.create_new("set-1")
+        record.marked_review_question_ids = ["q1", "q3"]
+
+        loaded = ProgressRecord.from_dict(record.to_dict())
+
+        self.assertEqual(["q1", "q3"], loaded.marked_review_question_ids)
+
     def test_quiz_session_can_restore_order_answers_index_and_elapsed_time(self):
         qset = QuestionSet.create_new(
             title={"zh": "测试", "en": "Test"},
@@ -565,6 +573,30 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual("B", snapshot.draft_answers[current_id])
             self.assertIsNone(progress_manager.get_latest_abandoned_record())
 
+    def test_quiz_screen_completed_record_includes_marked_review_questions(self):
+        question = self._make_question("q1")
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=[question.question_id],
+        )
+        finished = []
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.quiz_finished.connect(finished.append)
+            screen.start_quiz(qset, [question], show_timer=False)
+            screen.mark_review_btn.click()
+            screen.answer_area.choice_widget.buttons[0].setChecked(True)
+            screen._submit_answer()
+            screen._next_question()
+
+            self.assertEqual([question.question_id], finished[0].marked_review_question_ids)
+
     def test_results_screen_shows_correct_but_unsure_count(self):
         record = ProgressRecord.create_new("set-1")
         record.status = "completed"
@@ -618,6 +650,26 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertTrue(screen.retry_unsure_btn.isEnabled())
         screen.retry_unsure_btn.click()
 
+        self.assertEqual([True], emitted)
+
+    def test_results_screen_shows_and_retries_marked_review_questions(self):
+        record = ProgressRecord.create_new("set-1")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord(question_id="q1", index_in_session=0, user_answer="A", is_correct=True),
+            AnswerRecord(question_id="q2", index_in_session=1, user_answer="B", is_correct=False),
+        ]
+        record.marked_review_question_ids = ["q2"]
+        record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
+
+        screen = ResultsScreen()
+        emitted = []
+        screen.retry_review.connect(lambda: emitted.append(True))
+        screen.set_results(record, {}, "zh")
+
+        self.assertIn("复查: 1", screen.stats_label.text())
+        self.assertTrue(screen.retry_review_btn.isEnabled())
+        screen.retry_review_btn.click()
         self.assertEqual([True], emitted)
 
     def test_results_screen_shows_next_action_recommendation(self):
@@ -736,6 +788,57 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             self.assertEqual([unsure_current.question_id], [q.question_id for q in started["questions"]])
             self.assertIn("不确定", started["label"])
+
+    def test_retry_review_starts_only_marked_review_questions_for_current_course(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            marked_current = self._make_question("review-current")
+            marked_current.metadata["course_id"] = "course-a"
+            marked_other_course = self._make_question("review-other")
+            marked_other_course.metadata["course_id"] = "course-b"
+            unmarked_current = self._make_question("review-unmarked")
+            unmarked_current.metadata["course_id"] = "course-a"
+            question_bank.save_many([marked_current, marked_other_course, unmarked_current])
+
+            record = ProgressRecord.create_new("set-1")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(question_id=marked_current.question_id, index_in_session=0, user_answer="A", is_correct=True),
+                AnswerRecord(question_id=marked_other_course.question_id, index_in_session=1, user_answer="A", is_correct=True),
+                AnswerRecord(question_id=unmarked_current.question_id, index_in_session=2, user_answer="A", is_correct=True),
+            ]
+            record.marked_review_question_ids = [
+                marked_current.question_id,
+                marked_other_course.question_id,
+            ]
+            record.summary = SessionSummary.compute(record.answers, total_questions=3, total_time=30)
+
+            started = {}
+
+            class FakeQuizScreen:
+                def start_quiz_custom(self, questions, label, show_timer=False):
+                    started["questions"] = questions
+                    started["label"] = label
+                    started["show_timer"] = show_timer
+
+            shell = types.SimpleNamespace(
+                results_screen=types.SimpleNamespace(current_record=record),
+                question_bank=question_bank,
+                lang_manager=LanguageManager.instance(),
+                quiz_screen=FakeQuizScreen(),
+                _active_questions={},
+                SCREEN_QUIZ=2,
+                _current_course_id=lambda: "course-a",
+                _show_timer_setting=lambda: False,
+                navigate_to=lambda screen: started.setdefault("screen", screen),
+            )
+
+            MainWindow._on_retry_review(shell)
+
+            self.assertEqual([marked_current.question_id], [q.question_id for q in started["questions"]])
+            self.assertIn("复查", started["label"])
 
     def test_quiz_screen_timer_visibility_follows_setting(self):
         question = Question.create_new(
