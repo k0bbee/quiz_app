@@ -365,6 +365,127 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
         self.assertIn("答对但不确定: 1", screen.stats_label.text())
 
+    def test_results_screen_enables_retry_unsure_action_when_needed(self):
+        record = ProgressRecord.create_new("set-1")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord(
+                question_id="q1",
+                index_in_session=0,
+                user_answer="A",
+                is_correct=True,
+                confidence="unsure",
+            ),
+            AnswerRecord(
+                question_id="q2",
+                index_in_session=1,
+                user_answer="B",
+                is_correct=True,
+            ),
+        ]
+        record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
+
+        screen = ResultsScreen()
+        emitted = []
+        screen.retry_unsure.connect(lambda: emitted.append(True))
+        screen.set_results(record, {}, "zh")
+
+        self.assertTrue(screen.retry_unsure_btn.isEnabled())
+        screen.retry_unsure_btn.click()
+
+        self.assertEqual([True], emitted)
+
+    def test_retry_unsure_starts_only_unsure_questions_for_current_course(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            unsure_current = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.EASY,
+                bilingual={
+                    "zh": {"stem": "当前课程不确定", "options": ["A. 对", "B. 错"], "explanation": "解释说明"},
+                    "en": {"stem": "Current unsure", "options": ["A. Right", "B. Wrong"], "explanation": "Explanation text"},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            unsure_current.metadata["course_id"] = "course-a"
+            unsure_other_course = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.EASY,
+                bilingual={
+                    "zh": {"stem": "其他课程不确定", "options": ["A. 对", "B. 错"], "explanation": "解释说明"},
+                    "en": {"stem": "Other unsure", "options": ["A. Right", "B. Wrong"], "explanation": "Explanation text"},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            unsure_other_course.metadata["course_id"] = "course-b"
+            sure_current = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.EASY,
+                bilingual={
+                    "zh": {"stem": "当前课程确定", "options": ["A. 对", "B. 错"], "explanation": "解释说明"},
+                    "en": {"stem": "Current sure", "options": ["A. Right", "B. Wrong"], "explanation": "Explanation text"},
+                },
+                correct_answer="A",
+                topic="process",
+            )
+            sure_current.metadata["course_id"] = "course-a"
+            question_bank.save_many([unsure_current, unsure_other_course, sure_current])
+
+            record = ProgressRecord.create_new("set-1")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(
+                    question_id=unsure_current.question_id,
+                    index_in_session=0,
+                    user_answer="A",
+                    is_correct=True,
+                    confidence="unsure",
+                ),
+                AnswerRecord(
+                    question_id=unsure_other_course.question_id,
+                    index_in_session=1,
+                    user_answer="A",
+                    is_correct=True,
+                    confidence="unsure",
+                ),
+                AnswerRecord(
+                    question_id=sure_current.question_id,
+                    index_in_session=2,
+                    user_answer="A",
+                    is_correct=True,
+                ),
+            ]
+            record.summary = SessionSummary.compute(record.answers, total_questions=3, total_time=30)
+
+            started = {}
+
+            class FakeQuizScreen:
+                def start_quiz_custom(self, questions, label, show_timer=False):
+                    started["questions"] = questions
+                    started["label"] = label
+                    started["show_timer"] = show_timer
+
+            shell = types.SimpleNamespace(
+                results_screen=types.SimpleNamespace(current_record=record),
+                question_bank=question_bank,
+                lang_manager=LanguageManager.instance(),
+                quiz_screen=FakeQuizScreen(),
+                _active_questions={},
+                SCREEN_QUIZ=2,
+                _current_course_id=lambda: "course-a",
+                _show_timer_setting=lambda: False,
+                navigate_to=lambda screen: started.setdefault("screen", screen),
+            )
+
+            MainWindow._on_retry_unsure(shell)
+
+            self.assertEqual([unsure_current.question_id], [q.question_id for q in started["questions"]])
+            self.assertIn("不确定", started["label"])
+
     def test_quiz_screen_timer_visibility_follows_setting(self):
         question = Question.create_new(
             qtype=QuestionType.MULTIPLE_CHOICE,

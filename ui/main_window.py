@@ -221,6 +221,7 @@ class MainWindow(QMainWindow):
 
         # Results screen
         self.results_screen.retry_incorrect.connect(self._on_retry_incorrect)
+        self.results_screen.retry_unsure.connect(self._on_retry_unsure)
         self.results_screen.retry_all.connect(self._on_retry_all)
         # Language manager
         self.lang_manager.language_changed.connect(self._on_language_changed)
@@ -517,6 +518,36 @@ class MainWindow(QMainWindow):
             self.quiz_screen.start_quiz_custom(
                 questions,
                 gm("重做：错题", "Retry: Incorrect Questions"),
+                show_timer=self._show_timer_setting(),
+            )
+            self.navigate_to(self.SCREEN_QUIZ)
+
+    def _on_retry_unsure(self):
+        """Retry questions the user marked as unsure in the completed session."""
+        gm = self.lang_manager.get_text
+        record = self.results_screen.current_record
+        if not record:
+            return
+
+        unsure_ids = [
+            answer.question_id
+            for answer in record.answers
+            if getattr(answer, "confidence", "sure") == "unsure"
+        ]
+        if not unsure_ids:
+            QMessageBox.information(
+                self,
+                gm("没有不确定题", "No Unsure Questions"),
+                gm("本次练习没有标记为不确定的题目。", "No questions were marked unsure in this session."),
+            )
+            return
+
+        questions = self.question_bank.get_many(unsure_ids, course_id=self._current_course_id())
+        if questions:
+            self._active_questions = {q.question_id: q for q in questions}
+            self.quiz_screen.start_quiz_custom(
+                questions,
+                gm("重做：不确定题", "Retry: Unsure Questions"),
                 show_timer=self._show_timer_setting(),
             )
             self.navigate_to(self.SCREEN_QUIZ)

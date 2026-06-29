@@ -17,6 +17,7 @@ class ResultsScreen(QWidget):
     """Shows quiz results with review and retry options."""
 
     retry_incorrect = pyqtSignal()
+    retry_unsure = pyqtSignal()
     retry_all = pyqtSignal()
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -90,6 +91,15 @@ class ResultsScreen(QWidget):
         self.retry_incorrect_btn.clicked.connect(self.retry_incorrect.emit)
         btn_layout.addWidget(self.retry_incorrect_btn)
 
+        self.retry_unsure_btn = QPushButton(
+            self.lang_manager.get_text("重做不确定题", "Retry Unsure")
+        )
+        self.retry_unsure_btn.setObjectName("secondaryButton")
+        self.retry_unsure_btn.setMinimumHeight(40)
+        self.retry_unsure_btn.setMinimumWidth(150)
+        self.retry_unsure_btn.clicked.connect(self.retry_unsure.emit)
+        btn_layout.addWidget(self.retry_unsure_btn)
+
         self.retry_all_btn = QPushButton(
             self.lang_manager.get_text("重新练习全部", "Retry Entire Set")
         )
@@ -106,6 +116,9 @@ class ResultsScreen(QWidget):
         self.review_label.setText(self.lang_manager.get_text("回顾:", "Review:"))
         self.retry_incorrect_btn.setText(
             self.lang_manager.get_text("只重做错题", "Retry Incorrect Only")
+        )
+        self.retry_unsure_btn.setText(
+            self.lang_manager.get_text("重做不确定题", "Retry Unsure")
         )
         self.retry_all_btn.setText(
             self.lang_manager.get_text("重新练习全部", "Retry Entire Set")
@@ -205,7 +218,9 @@ class ResultsScreen(QWidget):
 
         # Update retry buttons
         has_incorrect = any(not a.is_correct for a in record.answers)
+        has_unsure = any(getattr(a, "confidence", "sure") == "unsure" for a in record.answers)
         self.retry_incorrect_btn.setEnabled(has_incorrect)
+        self.retry_unsure_btn.setEnabled(has_unsure)
 
     def set_questions(self, questions: dict):
         """Provide question data for review rendering."""
