@@ -11,6 +11,7 @@ from PyQt6.QtGui import QKeySequence, QShortcut
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet
 from models.progress import ProgressRecord
+from models.quiz_snapshot import QuizSessionSnapshot
 from core.quiz_engine import QuizSession
 from core.language_manager import LanguageManager
 from core.progress_tracker import ProgressManager
@@ -291,6 +292,76 @@ class QuizScreen(QWidget):
         )
         self.start_quiz(qs, questions, show_timer=show_timer)
 
+    def capture_snapshot(self) -> QuizSessionSnapshot:
+        """Capture the full in-progress quiz UI/session state for draft recovery."""
+        self._save_current_draft_answer()
+        lang = self.session.language
+        question_order = [question.question_id for question in self.session.questions]
+        title = ""
+        set_id = ""
+        if self._question_set is not None:
+            set_id = self._question_set.set_id
+            title = self._question_set.get_title(lang) or self._question_set.get_title("zh")
+        snapshot = QuizSessionSnapshot.create_new(
+            set_id=set_id,
+            title=title,
+            question_order=question_order,
+            language=lang,
+        )
+        snapshot.current_index = self.session.current_index
+        snapshot.submitted_answers = self.session.answers
+        snapshot.draft_answers = dict(self._draft_answers_by_question_id)
+        snapshot.unsure_question_ids = sorted(self._unsure_question_ids)
+        snapshot.marked_review_question_ids = sorted(self._marked_question_ids)
+        snapshot.started_at = self.session.started_at_iso
+        snapshot.elapsed_seconds = self.session.elapsed_seconds
+        return snapshot
+
+    def restore_snapshot(
+        self,
+        snapshot: QuizSessionSnapshot,
+        questions: list[Question],
+        question_set: QuestionSet,
+        show_timer: bool = False,
+    ):
+        """Restore a full quiz UI/session state from a saved snapshot."""
+        question_by_id = {question.question_id: question for question in questions}
+        ordered_questions = [
+            question_by_id[question_id]
+            for question_id in snapshot.question_order
+            if question_id in question_by_id
+        ]
+        self._question_set = question_set
+        self._last_user_answer = None
+        self._marked_question_ids = set(snapshot.marked_review_question_ids)
+        self._unsure_question_ids = set(snapshot.unsure_question_ids)
+        self._draft_answers_by_question_id = dict(snapshot.draft_answers)
+        self.answer_area.clear()
+        self.feedback_frame.hide()
+        self._set_correct_indicator_state("")
+        self.timer_label.setVisible(show_timer)
+
+        progress_id = snapshot.snapshot_id.replace("snapshot-", "progress-", 1)
+        self.session.restore(
+            question_set=question_set,
+            questions=ordered_questions,
+            current_index=snapshot.current_index,
+            answers=snapshot.submitted_answers,
+            language=snapshot.language,
+            progress_id=progress_id,
+            elapsed_seconds=snapshot.elapsed_seconds,
+        )
+        self._populate_question_filter()
+        self._refresh_question_nav()
+        self._refresh_navigation_button_state()
+        self._refresh_mark_review_state()
+        self._refresh_unsure_state()
+        self._update_timer()
+        if show_timer:
+            self.session_timer.start()
+        else:
+            self.session_timer.stop()
+
     # --- Internal UI logic ---
 
     def _display_current_question(self, preserve_answer: bool = False):
@@ -394,9 +465,12 @@ class QuizScreen(QWidget):
             return
         if question.question_id in self._unsure_question_ids:
             self._unsure_question_ids.discard(question.question_id)
+            self.session.set_answer_confidence(question.question_id, "sure")
         else:
             self._unsure_question_ids.add(question.question_id)
+            self.session.set_answer_confidence(question.question_id, "unsure")
         self._refresh_unsure_state()
+        self._refresh_question_nav()
 
     def _toggle_mark_review(self):
         """Toggle the review marker for the current question."""
@@ -408,6 +482,7 @@ class QuizScreen(QWidget):
         else:
             self._marked_question_ids.add(question.question_id)
         self._refresh_mark_review_state()
+        self._refresh_question_nav()
 
     def _refresh_mark_review_state(self):
         """Keep the mark-for-review button aligned with the current question."""

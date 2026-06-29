@@ -14,6 +14,7 @@ from ai.llm_client import LLMClient
 from models.progress import AnswerRecord, ProgressRecord, SessionSummary
 from models.question import Question
 from models.question import QuestionBank
+from models.quiz_snapshot import QuizSessionSnapshot
 from models.question_set import QuestionSet, SetManager
 from core.quiz_engine import QuizSession
 from core.mastery_overrides import MasteryOverrideStore
@@ -413,6 +414,116 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen._submit_answer()
 
             self.assertEqual("unsure", screen.session.answers[0].confidence)
+
+    def test_quiz_screen_captures_snapshot_with_current_state(self):
+        qset = QuestionSet.create_new(
+            title={"zh": "测试题集", "en": "Test Set"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=["q1", "q2"],
+        )
+        q1 = self._make_question("q1")
+        q2 = self._make_question("q2")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [q1, q2], show_timer=False)
+            screen._jump_to_question(1)
+            current_id = screen.session.current_question.question_id
+            screen.answer_area.choice_widget.buttons[1].setChecked(True)
+            screen.unsure_btn.click()
+            screen.mark_review_btn.click()
+
+            snapshot = screen.capture_snapshot()
+
+            self.assertEqual(qset.set_id, snapshot.set_id)
+            self.assertEqual("测试题集", snapshot.title)
+            self.assertEqual(
+                [question.question_id for question in screen.session.questions],
+                snapshot.question_order,
+            )
+            self.assertEqual(1, snapshot.current_index)
+            self.assertEqual({"B"}, set(snapshot.draft_answers.values()))
+            self.assertEqual([current_id], snapshot.unsure_question_ids)
+            self.assertEqual([current_id], snapshot.marked_review_question_ids)
+
+    def test_quiz_screen_restores_snapshot_state_and_draft_answer(self):
+        qset = QuestionSet.create_new(
+            title={"zh": "测试题集", "en": "Test Set"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=["q1", "q2"],
+        )
+        q1 = self._make_question("q1")
+        q2 = self._make_question("q2")
+        snapshot = QuizSessionSnapshot.create_new(
+            set_id=qset.set_id,
+            title="测试题集",
+            question_order=["q1", "q2"],
+            language="zh",
+        )
+        snapshot.current_index = 1
+        snapshot.submitted_answers = [
+            AnswerRecord(
+                question_id="q1",
+                index_in_session=0,
+                user_answer="A",
+                is_correct=True,
+                confidence="sure",
+            )
+        ]
+        snapshot.draft_answers = {"q2": "B"}
+        snapshot.unsure_question_ids = ["q2"]
+        snapshot.marked_review_question_ids = ["q2"]
+        snapshot.elapsed_seconds = 12.0
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+
+            screen.restore_snapshot(snapshot, [q1, q2], qset, show_timer=False)
+
+            self.assertEqual("q2", screen.session.current_question.question_id)
+            self.assertEqual(["q1", "q2"], [q.question_id for q in screen.session.questions])
+            self.assertEqual(1, screen.session.answered_count)
+            self.assertEqual("B", screen.answer_area.get_answer())
+            self.assertEqual({"q2"}, screen._unsure_question_ids)
+            self.assertEqual({"q2"}, screen._marked_question_ids)
+            self.assertEqual("取消不确定", screen.unsure_btn.text())
+            self.assertEqual("取消标记", screen.mark_review_btn.text())
+
+    def test_quiz_screen_updates_submitted_confidence_when_unsure_toggles(self):
+        question = self._make_question("q1")
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=[question.question_id],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [question], show_timer=False)
+            screen.answer_area.choice_widget.buttons[0].setChecked(True)
+            screen._submit_answer()
+
+            screen.unsure_btn.click()
+
+            self.assertEqual({"q1"}, screen._unsure_question_ids)
+            self.assertEqual("unsure", screen.session.answers[0].confidence)
+
+            screen.unsure_btn.click()
+
+            self.assertEqual(set(), screen._unsure_question_ids)
+            self.assertEqual("sure", screen.session.answers[0].confidence)
 
     def test_results_screen_shows_correct_but_unsure_count(self):
         record = ProgressRecord.create_new("set-1")
