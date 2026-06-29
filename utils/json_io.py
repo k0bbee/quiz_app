@@ -4,6 +4,7 @@ from utils.logger import debug, warning, error
 import json
 import os
 import re
+import tempfile
 from typing import Any, Optional
 
 
@@ -43,16 +44,61 @@ def read_json(filepath: str) -> Optional[dict]:
 
 
 def write_json(filepath: str, data: Any, indent: int = 2) -> bool:
-    """Write data to a JSON file. Creates parent directories if needed.
-    Returns True on success."""
+    """Atomically write data to a JSON file. Creates parent directories if needed.
+    Returns True on success.
+
+    Writes to a temporary file in the same directory, flushes it, then replaces
+    the target with ``os.replace`` so crashes or serialization errors do not
+    leave a half-written target JSON file.
+    """
+    tmp_path = ""
     try:
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        with open(filepath, "w", encoding="utf-8") as f:
+        target_path = os.path.abspath(filepath)
+        directory = os.path.dirname(target_path) or "."
+        os.makedirs(directory, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=directory,
+            prefix=f".{os.path.basename(target_path)}.",
+            suffix=".tmp",
+            delete=False,
+        ) as f:
+            tmp_path = f.name
             json.dump(data, f, ensure_ascii=False, indent=indent)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, target_path)
+        _fsync_parent_directory(directory)
         return True
     except (OSError, TypeError) as e:
         error(f"Failed to write {filepath}: {e}")
+        if tmp_path:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError as cleanup_error:
+                warning(f"Failed to remove temporary JSON file {tmp_path}: {cleanup_error}")
         return False
+
+
+def _fsync_parent_directory(directory: str):
+    """Best-effort directory fsync for platforms that support it."""
+    flags = getattr(os, "O_RDONLY", 0)
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    else:
+        return
+    try:
+        fd = os.open(directory, flags)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 
 def list_json_files(directory: str) -> list[str]:
