@@ -15,7 +15,7 @@ import zipfile
 
 BUNDLE_FORMAT = "quiz_app_data_bundle"
 BUNDLE_VERSION = 1
-DATA_DIRECTORIES = ("courses", "questions", "question_sets", "progress")
+DATA_DIRECTORIES = ("courses", "questions", "question_sets", "quiz_snapshots", "progress")
 DATA_FILES = ("current_course.json", "settings.json", "mastery_overrides.json")
 SECRET_FILENAMES = {".api_key.dpapi"}
 SECRET_SETTING_KEYS = {"ai_api_key"}
