@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import re
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QListWidget, QListWidgetItem, QTextEdit, QMessageBox, QSplitter
+    QListWidget, QListWidgetItem, QTextEdit, QMessageBox, QSplitter,
+    QAbstractItemView,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -33,6 +35,7 @@ class QuestionBankScreen(QWidget):
         self.total = 0
         self.current_question_id = ""
         self._current_course_id = ""
+        self._list_title_limit = 96
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self.refresh()
@@ -67,7 +70,8 @@ class QuestionBankScreen(QWidget):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         self.question_list = QListWidget()
-        self.question_list.currentItemChanged.connect(self._on_question_selected)
+        self.question_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.question_list.itemSelectionChanged.connect(self._on_selection_changed)
         left_layout.addWidget(self.question_list, 1)
 
         page_row = QHBoxLayout()
@@ -155,13 +159,20 @@ class QuestionBankScreen(QWidget):
             offset=self.page * self.page_size,
             limit=self.page_size,
         )
+        selected_ids = set(self._selected_question_ids())
+        if not selected_ids and self.current_question_id:
+            selected_ids.add(self.current_question_id)
+        self.question_list.blockSignals(True)
         self.question_list.clear()
         for q in items:
-            stem = q.get_stem("zh") or q.get_stem("en")
-            short = stem[:90] + "..." if len(stem) > 90 else stem
-            item = QListWidgetItem(f"{q.difficulty.value} | {topic_value(q.topic)} | {short}")
+            item = QListWidgetItem(self._question_list_title(q))
             item.setData(Qt.ItemDataRole.UserRole, q.question_id)
+            item.setToolTip(self._question_list_tooltip(q))
             self.question_list.addItem(item)
+            if q.question_id in selected_ids:
+                item.setSelected(True)
+        self.question_list.blockSignals(False)
+        self._on_selection_changed()
 
         max_page = max(1, (self.total + self.page_size - 1) // self.page_size)
         page_pattern = self.lang_manager.get_text(
@@ -171,7 +182,7 @@ class QuestionBankScreen(QWidget):
         self.page_label.setText(page_pattern.format(page=self.page + 1, max=max_page, total=self.total))
         self.prev_btn.setEnabled(self.page > 0)
         self.next_btn.setEnabled((self.page + 1) * self.page_size < self.total)
-        self.delete_btn.setEnabled(bool(self.current_question_id))
+        self.delete_btn.setEnabled(bool(self._selected_question_ids()) or bool(self.current_question_id))
 
     def set_current_course(self, course_id: str | None):
         """Restrict generated questions to the active course."""
@@ -198,15 +209,36 @@ class QuestionBankScreen(QWidget):
             self.page += 1
             self.refresh()
 
-    def _on_question_selected(self, current, previous):
-        if current is None:
+    def _on_selection_changed(self):
+        selected_ids = self._selected_question_ids()
+        if not selected_ids:
+            self.current_question_id = ""
+            self.editor.setReadOnly(False)
+            self.editor.clear()
+            self.save_btn.setEnabled(True)
+            self.delete_btn.setEnabled(False)
             return
-        qid = current.data(Qt.ItemDataRole.UserRole)
+        if len(selected_ids) > 1:
+            self.current_question_id = ""
+            self.editor.setReadOnly(True)
+            self.editor.setPlainText(
+                self.lang_manager.get_text(
+                    f"已选择 {len(selected_ids)} 道题。批量删除可用；编辑请只选择一道题。",
+                    f"{len(selected_ids)} questions selected. Batch delete is available; select one question to edit.",
+                )
+            )
+            self.save_btn.setEnabled(False)
+            self.delete_btn.setEnabled(True)
+            return
+
+        qid = selected_ids[0]
         q = self.question_bank.get(qid)
         if not q:
             return
         self.current_question_id = q.question_id
+        self.editor.setReadOnly(False)
         self.editor.setPlainText(json.dumps(q.to_dict(), ensure_ascii=False, indent=2))
+        self.save_btn.setEnabled(True)
         self.delete_btn.setEnabled(True)
 
     def _new_question(self):
@@ -231,8 +263,14 @@ class QuestionBankScreen(QWidget):
             },
             "metadata": {"source": "manual", "version": 1},
         }
+        self.question_list.blockSignals(True)
+        self.question_list.clearSelection()
+        self.question_list.setCurrentItem(None)
+        self.question_list.blockSignals(False)
         self.current_question_id = ""
+        self.editor.setReadOnly(False)
         self.editor.setPlainText(json.dumps(template, ensure_ascii=False, indent=2))
+        self.save_btn.setEnabled(True)
         self.delete_btn.setEnabled(False)
 
     def _save_question(self):
@@ -280,25 +318,89 @@ class QuestionBankScreen(QWidget):
         )
 
     def _delete_question(self):
-        if not self.current_question_id:
+        selected_ids = self._selected_question_ids()
+        if not selected_ids and self.current_question_id:
+            selected_ids = [self.current_question_id]
+        if not selected_ids:
             return
+        count = len(selected_ids)
+        message = self.lang_manager.get_text(
+            f"确定要删除选中的 {count} 道题目吗？此操作会同时从题目集中移除引用。",
+            f"Delete the selected {count} questions? References will also be removed from question sets.",
+        ) if count > 1 else self.lang_manager.get_text(
+            "确定要删除这道题目吗？此操作会同时从题目集中移除引用。",
+            "Delete this question? References will also be removed from question sets.",
+        )
         reply = QMessageBox.question(
             self,
             self.lang_manager.get_text("删除题目", "Delete Question"),
-            self.lang_manager.get_text(
-                "确定要删除这道题目吗？",
-                "Delete this question?"
-            ),
+            message,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
         if reply != QMessageBox.StandardButton.Yes:
             return
-        deleted_question_id = self.current_question_id
-        self.question_bank.delete(deleted_question_id)
-        if self.set_manager is not None:
-            remove_question_from_sets(self.set_manager, deleted_question_id)
+        for deleted_question_id in selected_ids:
+            self.question_bank.delete(deleted_question_id)
+            if self.set_manager is not None:
+                remove_question_from_sets(self.set_manager, deleted_question_id)
         self.current_question_id = ""
+        self.editor.setReadOnly(False)
         self.editor.clear()
+        self.save_btn.setEnabled(True)
         self.question_bank_changed.emit()
         self.refresh()
+
+    def _selected_question_ids(self) -> list[str]:
+        ids: list[str] = []
+        seen: set[str] = set()
+        for item in self.question_list.selectedItems():
+            qid = item.data(Qt.ItemDataRole.UserRole)
+            if qid and qid not in seen:
+                ids.append(qid)
+                seen.add(qid)
+        return ids
+
+    def _question_list_title(self, question: Question) -> str:
+        difficulty = self._compact_text(question.difficulty.value, 12)
+        topic = self._compact_text(topic_value(question.topic), 24)
+        stem = self._compact_text(self._stem_preview(question), 56)
+        return self._compact_text(f"{difficulty} · {topic} · {stem}", self._list_title_limit)
+
+    def _question_list_tooltip(self, question: Question) -> str:
+        stem = question.get_stem("zh") or question.get_stem("en") or ""
+        topic = topic_value(question.topic)
+        return f"{question.difficulty.value} · {topic}\n{stem}"
+
+    def _stem_preview(self, question: Question) -> str:
+        stem = question.get_stem("zh") or question.get_stem("en") or ""
+        lines: list[str] = []
+        for raw_line in str(stem).splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            if self._looks_like_secondary_content(line):
+                if lines:
+                    break
+                continue
+            lines.append(line)
+        preview = " ".join(lines) if lines else str(stem)
+        return self._normalize_inline_text(preview)
+
+    @staticmethod
+    def _looks_like_secondary_content(line: str) -> bool:
+        return bool(
+            re.match(r"^([A-Ha-h][\.\)、)]|[①②③④⑤⑥⑦⑧])\s+", line)
+            or re.match(r"^(解析|答案|正确答案|解释|选项|options?|answer|explanation)\s*[:：]", line, re.IGNORECASE)
+        )
+
+    @classmethod
+    def _compact_text(cls, text: object, limit: int) -> str:
+        normalized = cls._normalize_inline_text(str(text or ""))
+        if len(normalized) <= limit:
+            return normalized
+        return normalized[: max(0, limit - 1)].rstrip() + "…"
+
+    @staticmethod
+    def _normalize_inline_text(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()

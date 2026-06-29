@@ -8,7 +8,7 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication, QMessageBox, QAbstractItemView
 
 from core.progress_tracker import ProgressManager
 from core.question_bank_maintenance import (
@@ -222,6 +222,77 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
             self.assertIsNone(question_bank.get("q1"))
             self.assertEqual(["q2"], set_manager.get(qset.set_id).questions)
+
+    def test_question_bank_screen_uses_compact_single_line_titles(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            noisy = self._question("q-noisy", "输入输出系统与中断控制" * 3)
+            noisy.bilingual["zh"]["stem"] = (
+                "I/O 中断流程中 CPU、设备控制器和内存之间的核心协作是什么？\n"
+                "A. 这是选项噪音，不应该进入列表标题\n"
+                "B. 这也是选项噪音\n"
+                "解析：这是题目解析噪音，也不应该进入标题"
+            )
+            question_bank.save(noisy)
+
+            screen = QuestionBankScreen(question_bank)
+            item = screen.question_list.item(0)
+
+            self.assertLessEqual(len(item.text()), 96)
+            self.assertNotIn("\n", item.text())
+            self.assertNotIn("选项噪音", item.text())
+            self.assertNotIn("解析", item.text())
+            self.assertIn("I/O 中断流程", item.toolTip())
+            self.assertIn("选项噪音", item.toolTip())
+
+    def test_question_bank_screen_multi_selection_disables_ambiguous_editing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            question_bank.save_many([self._question("q1"), self._question("q2")])
+
+            screen = QuestionBankScreen(question_bank)
+            self.assertEqual(
+                QAbstractItemView.SelectionMode.ExtendedSelection,
+                screen.question_list.selectionMode(),
+            )
+
+            screen.question_list.item(0).setSelected(True)
+            screen.question_list.item(1).setSelected(True)
+            screen._on_selection_changed()
+
+            self.assertEqual("", screen.current_question_id)
+            self.assertIn("2", screen.editor.toPlainText())
+            self.assertFalse(screen.save_btn.isEnabled())
+            self.assertTrue(screen.delete_btn.isEnabled())
+
+    def test_question_bank_screen_batch_delete_prunes_question_sets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            set_manager = SetManager(str(Path(tmpdir) / "sets"))
+            q1 = self._question("q1")
+            q2 = self._question("q2")
+            q3 = self._question("q3")
+            question_bank.save_many([q1, q2, q3])
+            qset = self._set("set-a", ["q1", "q2", "q3"])
+            set_manager.save(qset)
+
+            screen = QuestionBankScreen(question_bank, set_manager=set_manager)
+            changed = []
+            screen.question_bank_changed.connect(lambda: changed.append(True))
+            for row in range(screen.question_list.count()):
+                item = screen.question_list.item(row)
+                if item.data(Qt.ItemDataRole.UserRole) in {"q1", "q2"}:
+                    item.setSelected(True)
+            screen._on_selection_changed()
+
+            with patch("ui.screens.question_bank_screen.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
+                screen.delete_btn.click()
+
+            self.assertIsNone(question_bank.get("q1"))
+            self.assertIsNone(question_bank.get("q2"))
+            self.assertIsNotNone(question_bank.get("q3"))
+            self.assertEqual(["q3"], set_manager.get(qset.set_id).questions)
+            self.assertEqual(1, len(changed))
 
     def test_regeneration_cleanup_deletes_only_truly_orphaned_ai_questions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
