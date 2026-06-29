@@ -56,6 +56,12 @@ class ResultsScreen(QWidget):
         self.topic_stats_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.topic_stats_label)
 
+        self.next_action_label = QLabel()
+        self.next_action_label.setWordWrap(True)
+        self.next_action_label.setObjectName("resultsNextActionLabel")
+        self.next_action_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.next_action_label)
+
         # Divider
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
@@ -185,6 +191,7 @@ class ResultsScreen(QWidget):
         )
 
         self.topic_stats_label.setText(self._build_topic_summary(record, lang))
+        self.next_action_label.setText(self._build_next_action_text(record))
 
         # Review cards
         self._clear_reviews()
@@ -221,6 +228,29 @@ class ResultsScreen(QWidget):
         has_unsure = any(getattr(a, "confidence", "sure") == "unsure" for a in record.answers)
         self.retry_incorrect_btn.setEnabled(has_incorrect)
         self.retry_unsure_btn.setEnabled(has_unsure)
+
+    def _build_next_action_text(self, record: ProgressRecord) -> str:
+        """Return a compact recommendation for the next learning action."""
+        incorrect_count = sum(1 for answer in record.answers if not answer.is_correct)
+        unsure_count = sum(
+            1
+            for answer in record.answers
+            if getattr(answer, "confidence", "sure") == "unsure"
+        )
+        if incorrect_count > 0:
+            return self.lang_manager.get_text(
+                f"下一步建议：先重做错题（{incorrect_count} 题），再处理不确定题。",
+                f"Recommended next step: retry incorrect questions first ({incorrect_count}), then review unsure ones.",
+            )
+        if unsure_count > 0:
+            return self.lang_manager.get_text(
+                f"下一步建议：重做不确定题（{unsure_count} 题），确认这些知识点不是靠猜对。",
+                f"Recommended next step: retry unsure questions ({unsure_count}) to confirm they were not guesses.",
+            )
+        return self.lang_manager.get_text(
+            "下一步建议：本次没有错题或不确定题，可以重新练习整套题或返回首页继续学习。",
+            "Recommended next step: no incorrect or unsure questions; retry the set or return home to continue learning.",
+        )
 
     def set_questions(self, questions: dict):
         """Provide question data for review rendering."""

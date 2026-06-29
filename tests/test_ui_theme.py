@@ -664,6 +664,7 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual("primaryButton", results.retry_incorrect_btn.objectName())
         self.assertEqual("secondaryButton", results.retry_unsure_btn.objectName())
         self.assertEqual("secondaryButton", results.retry_all_btn.objectName())
+        self.assertEqual("resultsNextActionLabel", results.next_action_label.objectName())
         self.assertFalse(hasattr(results, "back_btn"))
         self.assertNotRegex(results.retry_incorrect_btn.text(), r"[^\w\s]")
         self.assertNotRegex(results.retry_unsure_btn.text(), r"[^\w\s]")
