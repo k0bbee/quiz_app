@@ -22,6 +22,7 @@ from core.language_manager import LanguageManager
 from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.quiz_screen import QuizScreen
+from ui.screens.results_screen import ResultsScreen
 from ui.widgets.answer_area import AnswerArea, MatchingWidget
 from utils.constants import Difficulty, QuestionType, QuizState
 
@@ -74,6 +75,19 @@ class LocalAgentTests(unittest.TestCase):
 
 
 class QuizWidgetAndSessionTests(unittest.TestCase):
+    def test_answer_record_persists_confidence_marker(self):
+        record = AnswerRecord(
+            question_id="q1",
+            index_in_session=0,
+            user_answer="A",
+            is_correct=True,
+            confidence="unsure",
+        )
+
+        loaded = AnswerRecord.from_dict(record.to_dict())
+
+        self.assertEqual("unsure", loaded.confidence)
+
     def test_quiz_session_can_jump_between_unfinished_questions(self):
         first = Question.create_new(
             qtype=QuestionType.MULTIPLE_CHOICE,
@@ -294,6 +308,62 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertTrue(confirm.called)
             self.assertEqual(QuizState.SHOWING_FEEDBACK, screen.session.state)
             self.assertEqual(1, screen.session.answered_count)
+
+    def test_quiz_screen_records_unsure_confidence_for_current_answer(self):
+        question = Question.create_new(
+            qtype=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "问题", "options": ["A. 对", "B. 错"], "explanation": "解释说明"},
+                "en": {"stem": "Question", "options": ["A. Right", "B. Wrong"], "explanation": "Explanation text"},
+            },
+            correct_answer="A",
+            topic="test",
+        )
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=[question.question_id],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [question], show_timer=False)
+
+            screen.unsure_btn.click()
+            screen.answer_area.choice_widget.buttons[0].setChecked(True)
+            screen._submit_answer()
+
+            self.assertEqual("unsure", screen.session.answers[0].confidence)
+
+    def test_results_screen_shows_correct_but_unsure_count(self):
+        record = ProgressRecord.create_new("set-1")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord(
+                question_id="q1",
+                index_in_session=0,
+                user_answer="A",
+                is_correct=True,
+                confidence="unsure",
+            ),
+            AnswerRecord(
+                question_id="q2",
+                index_in_session=1,
+                user_answer="B",
+                is_correct=False,
+            ),
+        ]
+        record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
+
+        screen = ResultsScreen()
+        screen.set_results(record, {}, "zh")
+
+        self.assertIn("答对但不确定: 1", screen.stats_label.text())
 
     def test_quiz_screen_timer_visibility_follows_setting(self):
         question = Question.create_new(

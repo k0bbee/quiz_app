@@ -36,6 +36,7 @@ class QuizScreen(QWidget):
         self._question_set: QuestionSet = None
         self._last_user_answer = None
         self._marked_question_ids: set[str] = set()
+        self._unsure_question_ids: set[str] = set()
         self._draft_answers_by_question_id: dict[str, object] = {}
 
         self._setup_ui()
@@ -160,6 +161,14 @@ class QuizScreen(QWidget):
         self.next_question_btn.setEnabled(False)
         action_layout.addWidget(self.next_question_btn)
 
+        self.unsure_btn = QPushButton(
+            self.lang_manager.get_text("标记不确定", "Mark Unsure")
+        )
+        self.unsure_btn.setObjectName("secondaryButton")
+        self.unsure_btn.clicked.connect(self._toggle_unsure)
+        self.unsure_btn.setEnabled(False)
+        action_layout.addWidget(self.unsure_btn)
+
         self.mark_review_btn = QPushButton(
             self.lang_manager.get_text("标记复查", "Mark Review")
         )
@@ -250,6 +259,7 @@ class QuizScreen(QWidget):
         lang = self.lang_manager.current
         self._last_user_answer = None
         self._marked_question_ids.clear()
+        self._unsure_question_ids.clear()
         self._draft_answers_by_question_id.clear()
         self.answer_area.clear()
         self.feedback_frame.hide()
@@ -305,6 +315,7 @@ class QuizScreen(QWidget):
             self._show_feedback_for_answer(submitted_answer, q)
             self._refresh_navigation_button_state()
             self._refresh_mark_review_state()
+            self._refresh_unsure_state()
             return
 
         draft_answer = self._draft_answers_by_question_id.get(q.question_id)
@@ -319,8 +330,10 @@ class QuizScreen(QWidget):
         self.submit_btn.show()
         self.skip_btn.setEnabled(True)
         self.mark_review_btn.setEnabled(True)
+        self.unsure_btn.setEnabled(True)
         self._refresh_navigation_button_state()
         self._refresh_mark_review_state()
+        self._refresh_unsure_state()
 
         self._refresh_feedback_next_text()
 
@@ -344,9 +357,11 @@ class QuizScreen(QWidget):
             return
         self._last_user_answer = user_answer
         q = self.session.current_question
+        confidence = "sure"
         if q is not None:
+            confidence = "unsure" if q.question_id in self._unsure_question_ids else "sure"
             self._draft_answers_by_question_id.pop(q.question_id, None)
-        is_correct, normalized = self.session.submit_answer(user_answer)
+        is_correct, normalized = self.session.submit_answer(user_answer, confidence=confidence)
 
     def _skip_question(self):
         """Skip the current question."""
@@ -371,6 +386,17 @@ class QuizScreen(QWidget):
             QMessageBox.StandardButton.No,
         )
         return reply == QMessageBox.StandardButton.Yes
+
+    def _toggle_unsure(self):
+        """Toggle whether the current answer was guessed or uncertain."""
+        question = self.session.current_question
+        if question is None:
+            return
+        if question.question_id in self._unsure_question_ids:
+            self._unsure_question_ids.discard(question.question_id)
+        else:
+            self._unsure_question_ids.add(question.question_id)
+        self._refresh_unsure_state()
 
     def _toggle_mark_review(self):
         """Toggle the review marker for the current question."""
@@ -402,6 +428,26 @@ class QuizScreen(QWidget):
         self.mark_review_btn.setProperty("marked", marked)
         self.mark_review_btn.style().unpolish(self.mark_review_btn)
         self.mark_review_btn.style().polish(self.mark_review_btn)
+
+    def _refresh_unsure_state(self):
+        """Keep the unsure marker aligned with the current question."""
+        question = self.session.current_question
+        if question is None:
+            self.unsure_btn.setEnabled(False)
+            self.unsure_btn.setText(self.lang_manager.get_text("标记不确定", "Mark Unsure"))
+            self.unsure_btn.setProperty("marked", False)
+            self.unsure_btn.style().unpolish(self.unsure_btn)
+            self.unsure_btn.style().polish(self.unsure_btn)
+            return
+        marked = question.question_id in self._unsure_question_ids
+        self.unsure_btn.setText(
+            self.lang_manager.get_text("取消不确定", "Clear Unsure")
+            if marked
+            else self.lang_manager.get_text("标记不确定", "Mark Unsure")
+        )
+        self.unsure_btn.setProperty("marked", marked)
+        self.unsure_btn.style().unpolish(self.unsure_btn)
+        self.unsure_btn.style().polish(self.unsure_btn)
 
     def _type_label(self, qtype: QuestionType) -> str:
         """Return the current-language label for a question type."""
@@ -561,6 +607,7 @@ class QuizScreen(QWidget):
         """Update all UI text when language changes."""
         self.lang_btn.setText("English" if lang == "zh" else "中文")
         self._refresh_mark_review_state()
+        self._refresh_unsure_state()
         self.skip_btn.setText(self.lang_manager.get_text("跳过", "Skip"))
         self.prev_question_btn.setText(self.lang_manager.get_text("上一题", "Previous"))
         self.next_question_btn.setText(self.lang_manager.get_text("下一题", "Next Question"))
@@ -652,6 +699,7 @@ class QuizScreen(QWidget):
         self.answer_area.set_enabled(False)
         self.submit_btn.hide()
         self.skip_btn.setEnabled(False)
+        self.unsure_btn.setEnabled(True)
         self.mark_review_btn.setEnabled(True)
 
     def _on_session_completed(self, progress_id: str):

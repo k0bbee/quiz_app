@@ -146,7 +146,7 @@ class QuizSession(QObject):
         self._question_start_time = time.time()
         self.question_changed.emit(self._current_index + 1, len(self._questions))
 
-    def submit_answer(self, user_answer) -> tuple[bool, object]:
+    def submit_answer(self, user_answer, confidence: str = "sure") -> tuple[bool, object]:
         """Submit an answer for the current question. Returns (is_correct, normalized_answer)."""
         # Guard: reject if not in IN_PROGRESS (prevents double-submit)
         if self._state != QuizState.IN_PROGRESS:
@@ -173,6 +173,7 @@ class QuizSession(QObject):
             index_in_session=self._current_index,
             user_answer=normalized,
             is_correct=is_correct,
+            confidence=confidence if confidence in ("sure", "unsure") else "sure",
             time_spent_seconds=round(time_spent, 1),
             attempted_at=datetime.now(timezone.utc).isoformat(),
         )

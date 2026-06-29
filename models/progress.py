@@ -17,6 +17,7 @@ class AnswerRecord:
     user_answer: object  # str for choice, list for matching/ordering, etc.
     is_correct: bool
     skipped: bool = False
+    confidence: str = "sure"  # "sure" or "unsure"
     time_spent_seconds: float = 0.0
     attempted_at: str = ""
 
@@ -27,6 +28,7 @@ class AnswerRecord:
             "user_answer": self.user_answer,
             "is_correct": self.is_correct,
             "skipped": self.skipped,
+            "confidence": self.confidence,
             "time_spent_seconds": self.time_spent_seconds,
             "attempted_at": self.attempted_at,
         }
@@ -39,6 +41,7 @@ class AnswerRecord:
             user_answer=data.get("user_answer"),
             is_correct=data.get("is_correct", False),
             skipped=data.get("skipped", False),
+            confidence=data.get("confidence", "sure"),
             time_spent_seconds=data.get("time_spent_seconds", 0.0),
             attempted_at=data.get("attempted_at", ""),
         )

@@ -151,13 +151,20 @@ class ResultsScreen(QWidget):
         self.summary_bar.set_values(summary.correct, summary.incorrect, 0)
 
         # Stats
+        unsure_correct = sum(
+            1
+            for answer in record.answers
+            if answer.is_correct and getattr(answer, "confidence", "sure") == "unsure"
+        )
         self.stats_label.setText(
             self.lang_manager.get_text(
                 f"正确: {summary.correct} | 错误: {summary.incorrect} | "
+                f"答对但不确定: {unsure_correct} | "
                 f"总计: {summary.total_questions} | "
                 f"用时: {summary.total_time_seconds:.0f}秒 | "
                 f"平均: {summary.average_time_per_question:.1f}秒/题",
                 f"Correct: {summary.correct} | Incorrect: {summary.incorrect} | "
+                f"Correct but unsure: {unsure_correct} | "
                 f"Total: {summary.total_questions} | "
                 f"Time: {summary.total_time_seconds:.0f}s | "
                 f"Avg: {summary.average_time_per_question:.1f}s/question"
