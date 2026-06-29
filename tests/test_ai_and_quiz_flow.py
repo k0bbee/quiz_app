@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from ai.llm_client import LLMClient
@@ -22,7 +23,7 @@ from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.quiz_screen import QuizScreen
 from ui.widgets.answer_area import MatchingWidget
-from utils.constants import Difficulty, QuestionType
+from utils.constants import Difficulty, QuestionType, QuizState
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -73,6 +74,147 @@ class LocalAgentTests(unittest.TestCase):
 
 
 class QuizWidgetAndSessionTests(unittest.TestCase):
+    def test_quiz_session_can_jump_between_unfinished_questions(self):
+        first = Question.create_new(
+            qtype=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "问题 1", "options": ["A. 对", "B. 错"], "explanation": "解释说明"},
+                "en": {"stem": "Question 1", "options": ["A. Right", "B. Wrong"], "explanation": "Explanation text"},
+            },
+            correct_answer="A",
+            topic="test",
+        )
+        second = Question.create_new(
+            qtype=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "问题 2", "options": ["正确", "错误"], "explanation": "解释说明"},
+                "en": {"stem": "Question 2", "options": ["True", "False"], "explanation": "Explanation text"},
+            },
+            correct_answer="true",
+            topic="test",
+        )
+        third = Question.create_new(
+            qtype=QuestionType.FILL_IN_BLANK,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "问题 3", "options": [], "explanation": "解释说明"},
+                "en": {"stem": "Question 3", "options": [], "explanation": "Explanation text"},
+            },
+            correct_answer="answer",
+            topic="test",
+        )
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=[first.question_id, second.question_id, third.question_id],
+        )
+        session = QuizSession()
+        session.start(qset, [first, second, third], "zh")
+
+        self.assertTrue(session.jump_to(2))
+        self.assertEqual(2, session.current_index)
+        self.assertEqual(QuizState.IN_PROGRESS, session.state)
+
+        session.submit_answer("answer")
+        self.assertEqual(QuizState.SHOWING_FEEDBACK, session.state)
+
+        self.assertTrue(session.jump_to(0))
+        self.assertEqual(0, session.current_index)
+        self.assertEqual(QuizState.IN_PROGRESS, session.state)
+
+        self.assertTrue(session.jump_to(2))
+        self.assertEqual(2, session.current_index)
+        self.assertEqual(QuizState.SHOWING_FEEDBACK, session.state)
+
+    def test_quiz_screen_supports_question_preview_filter_and_free_navigation(self):
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
+
+        first = Question.create_new(
+            qtype=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "选择题题干", "options": ["A. 对", "B. 错"], "explanation": "解释说明"},
+                "en": {"stem": "Choice stem", "options": ["A. Right", "B. Wrong"], "explanation": "Explanation text"},
+            },
+            correct_answer="A",
+            topic="test",
+        )
+        second = Question.create_new(
+            qtype=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "判断题题干", "options": ["正确", "错误"], "explanation": "解释说明"},
+                "en": {"stem": "True false stem", "options": ["True", "False"], "explanation": "Explanation text"},
+            },
+            correct_answer="true",
+            topic="test",
+        )
+        third = Question.create_new(
+            qtype=QuestionType.FILL_IN_BLANK,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "填空题题干", "options": [], "explanation": "解释说明"},
+                "en": {"stem": "Blank stem", "options": [], "explanation": "Explanation text"},
+            },
+            correct_answer="answer",
+            topic="test",
+        )
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=[first.question_id, second.question_id, third.question_id],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [first, second, third], show_timer=False)
+
+            self.assertEqual(3, screen.question_nav_list.count())
+            self.assertEqual("全部题型", screen.question_filter_combo.itemText(0))
+            self.assertFalse(screen.prev_question_btn.isEnabled())
+            self.assertTrue(screen.next_question_btn.isEnabled())
+
+            screen.question_filter_combo.setCurrentText("判断题")
+
+            self.assertEqual(1, screen.question_nav_list.count())
+            self.assertIn("判断题", screen.question_nav_list.item(0).text())
+
+            screen.question_filter_combo.setCurrentIndex(0)
+            true_false_row = next(
+                row
+                for row in range(screen.question_nav_list.count())
+                if "判断题" in screen.question_nav_list.item(row).text()
+            )
+            true_false_index = screen.question_nav_list.item(true_false_row).data(
+                Qt.ItemDataRole.UserRole
+            )
+            screen.question_nav_list.setCurrentRow(true_false_row)
+            self.assertEqual(true_false_index, screen.session.current_index)
+            self.assertIn("判断题题干", screen.question_card.stem_label.text())
+
+            if true_false_index > 0:
+                screen.prev_question_btn.click()
+                self.assertEqual(true_false_index - 1, screen.session.current_index)
+
+                screen.next_question_btn.click()
+                self.assertEqual(true_false_index, screen.session.current_index)
+            else:
+                screen.next_question_btn.click()
+                self.assertEqual(1, screen.session.current_index)
+
+                screen.prev_question_btn.click()
+                self.assertEqual(0, screen.session.current_index)
+
     def test_matching_widget_populates_left_items(self):
         widget = MatchingWidget()
         widget.set_options({"left": ["CPU", "GPU"], "right": ["Processor", "Graphics"]})

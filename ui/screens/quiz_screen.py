@@ -2,7 +2,8 @@
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QProgressBar, QFrame, QScrollArea, QMessageBox
+    QProgressBar, QFrame, QScrollArea, QMessageBox,
+    QListWidget, QListWidgetItem
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
@@ -16,6 +17,7 @@ from core.progress_tracker import ProgressManager
 from utils.constants import QuestionType, QuizState
 from ui.widgets.question_card import QuestionCard
 from ui.widgets.answer_area import AnswerArea
+from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 
 
 class QuizScreen(QWidget):
@@ -34,6 +36,7 @@ class QuizScreen(QWidget):
         self._question_set: QuestionSet = None
         self._last_user_answer = None
         self._marked_question_ids: set[str] = set()
+        self._draft_answers_by_question_id: dict[str, object] = {}
 
         self._setup_ui()
         self._connect_session()
@@ -105,6 +108,30 @@ class QuizScreen(QWidget):
         practice_layout.setContentsMargins(16, 16, 16, 16)
         practice_layout.setSpacing(12)
 
+        # Compact full-paper preview and question-type filter.
+        nav_header = QHBoxLayout()
+        nav_header.setSpacing(8)
+        self.question_preview_label = QLabel(
+            self.lang_manager.get_text("整卷预览", "Paper Preview")
+        )
+        self.question_preview_label.setObjectName("sectionTitle")
+        nav_header.addWidget(self.question_preview_label)
+        nav_header.addStretch()
+
+        self.question_filter_combo = WheelSafeComboBox()
+        self.question_filter_combo.setObjectName("quizQuestionFilterCombo")
+        self.question_filter_combo.setMinimumWidth(150)
+        self.question_filter_combo.currentIndexChanged.connect(self._refresh_question_nav)
+        nav_header.addWidget(self.question_filter_combo)
+        practice_layout.addLayout(nav_header)
+
+        self.question_nav_list = QListWidget()
+        self.question_nav_list.setObjectName("quizQuestionNavList")
+        self.question_nav_list.setMaximumHeight(112)
+        self.question_nav_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.question_nav_list.currentItemChanged.connect(self._on_nav_item_selected)
+        practice_layout.addWidget(self.question_nav_list)
+
         # Question card
         self.question_card = QuestionCard()
         practice_layout.addWidget(self.question_card)
@@ -116,6 +143,22 @@ class QuizScreen(QWidget):
 
         # === Action buttons ===
         action_layout = QHBoxLayout()
+
+        self.prev_question_btn = QPushButton(
+            self.lang_manager.get_text("上一题", "Previous")
+        )
+        self.prev_question_btn.setObjectName("secondaryButton")
+        self.prev_question_btn.clicked.connect(self._previous_question_preview)
+        self.prev_question_btn.setEnabled(False)
+        action_layout.addWidget(self.prev_question_btn)
+
+        self.next_question_btn = QPushButton(
+            self.lang_manager.get_text("下一题", "Next Question")
+        )
+        self.next_question_btn.setObjectName("secondaryButton")
+        self.next_question_btn.clicked.connect(self._next_question_preview)
+        self.next_question_btn.setEnabled(False)
+        action_layout.addWidget(self.next_question_btn)
 
         self.mark_review_btn = QPushButton(
             self.lang_manager.get_text("标记复查", "Mark Review")
@@ -207,15 +250,19 @@ class QuizScreen(QWidget):
         lang = self.lang_manager.current
         self._last_user_answer = None
         self._marked_question_ids.clear()
+        self._draft_answers_by_question_id.clear()
         self.answer_area.clear()
         self.feedback_frame.hide()
         self._set_correct_indicator_state("")
         self.timer_label.setVisible(show_timer)
         self.session.start(question_set, questions, lang)
+        self._populate_question_filter()
+        self._refresh_question_nav()
         self.submit_btn.setText(self.lang_manager.get_text("提交答案", "Submit Answer"))
         self.submit_btn.setEnabled(False)
         self.skip_btn.setEnabled(True)
         self.mark_review_btn.setEnabled(True)
+        self._refresh_navigation_button_state()
         self._refresh_mark_review_state()
         self._update_timer()
         if show_timer:
@@ -246,20 +293,24 @@ class QuizScreen(QWidget):
         stem = q.get_stem(lang)
         options = q.get_options(lang)
 
-        # Type labels
-        type_names = {
-            QuestionType.MULTIPLE_CHOICE: self.lang_manager.get_text("单选题", "Single Choice"),
-            QuestionType.SCENARIO_CHOICE: self.lang_manager.get_text("情景题", "Scenario Choice"),
-            QuestionType.TRUE_FALSE: self.lang_manager.get_text("判断题", "True/False"),
-            QuestionType.MATCHING: self.lang_manager.get_text("配对题", "Matching"),
-            QuestionType.ORDERING: self.lang_manager.get_text("排序题", "Ordering"),
-            QuestionType.FILL_IN_BLANK: self.lang_manager.get_text("填空题", "Fill in the Blank"),
-            QuestionType.SHORT_ANSWER: self.lang_manager.get_text("简答题", "Short Answer"),
-        }
-        type_label = type_names.get(q.type, "")
+        type_label = self._type_label(q.type)
+        self._refresh_feedback_next_text()
 
         self.question_card.set_question(stem, type_label)
         self.answer_area.set_question_type(q.type, options, preserve_answer=preserve_answer)
+
+        submitted_answer = self.session.answer_for_question_id(q.question_id)
+        if submitted_answer is not None:
+            self.answer_area.set_answer(submitted_answer.user_answer)
+            self._show_feedback_for_answer(submitted_answer, q)
+            self._refresh_navigation_button_state()
+            self._refresh_mark_review_state()
+            return
+
+        draft_answer = self._draft_answers_by_question_id.get(q.question_id)
+        if draft_answer is not None and not preserve_answer:
+            self.answer_area.set_answer(draft_answer)
+
         self.answer_area.set_enabled(True)
         self.feedback_frame.hide()
         self._set_correct_indicator_state("")
@@ -268,13 +319,10 @@ class QuizScreen(QWidget):
         self.submit_btn.show()
         self.skip_btn.setEnabled(True)
         self.mark_review_btn.setEnabled(True)
+        self._refresh_navigation_button_state()
         self._refresh_mark_review_state()
 
-        is_last = self.session.current_index == self.session.total_questions - 1
-        self.next_btn.setText(
-            self.lang_manager.get_text("完成", "Finish") if is_last
-            else self.lang_manager.get_text("下一题", "Next")
-        )
+        self._refresh_feedback_next_text()
 
     def _submit_answer(self):
         """Grade the current answer and show feedback."""
@@ -293,6 +341,9 @@ class QuizScreen(QWidget):
             )
             return
         self._last_user_answer = user_answer
+        q = self.session.current_question
+        if q is not None:
+            self._draft_answers_by_question_id.pop(q.question_id, None)
         is_correct, normalized = self.session.submit_answer(user_answer)
 
     def _skip_question(self):
@@ -329,6 +380,116 @@ class QuizScreen(QWidget):
         self.mark_review_btn.setProperty("marked", marked)
         self.mark_review_btn.style().unpolish(self.mark_review_btn)
         self.mark_review_btn.style().polish(self.mark_review_btn)
+
+    def _type_label(self, qtype: QuestionType) -> str:
+        """Return the current-language label for a question type."""
+        type_names = {
+            QuestionType.MULTIPLE_CHOICE: self.lang_manager.get_text("单选题", "Single Choice"),
+            QuestionType.SCENARIO_CHOICE: self.lang_manager.get_text("情景题", "Scenario Choice"),
+            QuestionType.TRUE_FALSE: self.lang_manager.get_text("判断题", "True/False"),
+            QuestionType.MATCHING: self.lang_manager.get_text("配对题", "Matching"),
+            QuestionType.ORDERING: self.lang_manager.get_text("排序题", "Ordering"),
+            QuestionType.FILL_IN_BLANK: self.lang_manager.get_text("填空题", "Fill in the Blank"),
+            QuestionType.SHORT_ANSWER: self.lang_manager.get_text("简答题", "Short Answer"),
+        }
+        return type_names.get(qtype, "")
+
+    def _populate_question_filter(self):
+        """Populate the type filter from the current session question set."""
+        self.question_filter_combo.blockSignals(True)
+        self.question_filter_combo.clear()
+        self.question_filter_combo.addItem(
+            self.lang_manager.get_text("全部题型", "All Types"),
+            None,
+        )
+        added_types = set()
+        for question in self.session.questions:
+            if question.type in added_types:
+                continue
+            added_types.add(question.type)
+            self.question_filter_combo.addItem(self._type_label(question.type), question.type.value)
+        self.question_filter_combo.blockSignals(False)
+
+    def _refresh_question_nav(self, *args):
+        """Refresh the full-paper preview list and keep current selection visible."""
+        self.question_nav_list.blockSignals(True)
+        self.question_nav_list.clear()
+
+        selected_type = self.question_filter_combo.currentData()
+        current_row = None
+        for index, question in enumerate(self.session.questions):
+            if selected_type and question.type.value != selected_type:
+                continue
+            status = self.lang_manager.get_text("未答", "Open")
+            if self.session.answer_for_question_id(question.question_id):
+                status = self.lang_manager.get_text("已答", "Answered")
+            if question.question_id in self._marked_question_ids:
+                status = self.lang_manager.get_text(f"{status} 复查", f"{status} Review")
+
+            stem = question.get_stem(self.session.language).replace("\n", " ").strip()
+            if len(stem) > 44:
+                stem = stem[:43] + "…"
+            item = QListWidgetItem(
+                f"{index + 1}. {self._type_label(question.type)} · {status} · {stem}"
+            )
+            item.setData(Qt.ItemDataRole.UserRole, index)
+            self.question_nav_list.addItem(item)
+            if index == self.session.current_index:
+                current_row = self.question_nav_list.count() - 1
+
+        if current_row is not None:
+            self.question_nav_list.setCurrentRow(current_row)
+        self.question_nav_list.blockSignals(False)
+
+    def _refresh_feedback_next_text(self):
+        """Keep the feedback progression button aligned with the current position."""
+        is_last = self.session.current_index == self.session.total_questions - 1
+        self.next_btn.setText(
+            self.lang_manager.get_text("完成", "Finish") if is_last
+            else self.lang_manager.get_text("下一题", "Next")
+        )
+
+    def _refresh_navigation_button_state(self):
+        """Enable free-navigation buttons only when the target question exists."""
+        has_questions = self.session.total_questions > 0
+        self.prev_question_btn.setEnabled(has_questions and self.session.current_index > 0)
+        self.next_question_btn.setEnabled(
+            has_questions and self.session.current_index < self.session.total_questions - 1
+        )
+
+    def _on_nav_item_selected(self, current: QListWidgetItem, previous: QListWidgetItem = None):
+        """Jump to the selected preview item."""
+        if current is None:
+            return
+        index = current.data(Qt.ItemDataRole.UserRole)
+        if isinstance(index, int):
+            self._jump_to_question(index)
+
+    def _save_current_draft_answer(self):
+        """Preserve an unsubmitted answer before preview navigation."""
+        if self.session.state != QuizState.IN_PROGRESS:
+            return
+        question = self.session.current_question
+        if question is None:
+            return
+        if self.answer_area.has_answer():
+            self._draft_answers_by_question_id[question.question_id] = self.answer_area.get_answer()
+        else:
+            self._draft_answers_by_question_id.pop(question.question_id, None)
+
+    def _jump_to_question(self, index: int):
+        """Navigate freely without treating next/previous as quiz progression."""
+        self._save_current_draft_answer()
+        if self.session.jump_to(index):
+            self._refresh_question_nav()
+
+    def _previous_question_preview(self):
+        """Navigate to the previous question without submitting."""
+        self._jump_to_question(self.session.current_index - 1)
+
+    def _next_question_preview(self):
+        """Navigate to the next question without completing the quiz."""
+        self._jump_to_question(self.session.current_index + 1)
 
     def _next_question(self):
         """Move to the next question."""
@@ -379,8 +540,13 @@ class QuizScreen(QWidget):
         self.lang_btn.setText("English" if lang == "zh" else "中文")
         self._refresh_mark_review_state()
         self.skip_btn.setText(self.lang_manager.get_text("跳过", "Skip"))
+        self.prev_question_btn.setText(self.lang_manager.get_text("上一题", "Previous"))
+        self.next_question_btn.setText(self.lang_manager.get_text("下一题", "Next Question"))
+        self.question_preview_label.setText(self.lang_manager.get_text("整卷预览", "Paper Preview"))
         self.submit_btn.setText(self.lang_manager.get_text("提交答案", "Submit Answer"))
         self.next_btn.setText(self.lang_manager.get_text("下一题", "Next"))
+        self._populate_question_filter()
+        self._refresh_question_nav()
 
         if self.session.state in (
             QuizState.IN_PROGRESS,
@@ -418,6 +584,7 @@ class QuizScreen(QWidget):
             self._last_user_answer = None
             self.answer_area.clear()
             self._display_current_question()
+            self._refresh_question_nav()
 
     def _on_question_graded(self, question_id: str, is_correct: bool):
         """Show feedback after grading."""
@@ -425,39 +592,45 @@ class QuizScreen(QWidget):
         if q is None:
             return
 
-        lang = self.session.language
-
         # Update progress bar
         self.progress_bar.setValue(self.session.answered_count)
 
-        # Feedback
-        if is_correct:
+        record = self.session.answer_for_question_id(question_id)
+        if record is not None:
+            self._show_feedback_for_answer(record, q)
+        self._refresh_question_nav()
+
+    def _show_feedback_for_answer(self, record, question: Question):
+        """Render feedback for a stored answer record."""
+        lang = self.session.language
+
+        if record.is_correct:
             self.correct_indicator.setText(
-                self.lang_manager.get_text("✅ 正确！", "✅ Correct!")
+                self.lang_manager.get_text("正确", "Correct")
             )
             self._set_correct_indicator_state("correct")
         else:
             self.correct_indicator.setText(
-                self.lang_manager.get_text("❌ 错误", "❌ Incorrect")
+                self.lang_manager.get_text("错误", "Incorrect")
             )
             self._set_correct_indicator_state("incorrect")
 
-        user_answer = self._format_answer(self._last_user_answer, q)
-        correct_answer = self._format_answer(q.correct_answer, q)
+        user_answer = self._format_answer(record.user_answer, question)
+        correct_answer = self._format_answer(question.correct_answer, question)
 
         your_answer_text = self.lang_manager.get_text("你的答案", "Your answer")
         correct_answer_text = self.lang_manager.get_text("正确答案", "Correct answer")
         self.explanation_label.setText(
             f"<b>{your_answer_text}:</b> {user_answer}<br>"
             f"<b>{correct_answer_text}:</b> {correct_answer}<br><br>"
-            f"💡 {q.get_explanation(lang)}"
+            f"{question.get_explanation(lang)}"
         )
 
         self.feedback_frame.show()
         self.answer_area.set_enabled(False)
         self.submit_btn.hide()
         self.skip_btn.setEnabled(False)
-        self.mark_review_btn.setEnabled(False)
+        self.mark_review_btn.setEnabled(True)
 
     def _on_session_completed(self, progress_id: str):
         """Handle quiz completion."""

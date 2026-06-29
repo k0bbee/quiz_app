@@ -102,6 +102,12 @@ class AnswerArea(QWidget):
             return widget.get_answer()
         return None
 
+    def set_answer(self, answer):
+        """Restore an answer into the active type-specific widget."""
+        widget = self.stack.currentWidget()
+        if hasattr(widget, "set_answer"):
+            widget.set_answer(answer)
+
     def has_answer(self) -> bool:
         """Return whether the active widget currently contains a meaningful answer."""
         answer = self.get_answer()

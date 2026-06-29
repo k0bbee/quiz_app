@@ -72,6 +72,11 @@ class QuizSession(QObject):
         return None
 
     @property
+    def questions(self) -> list[Question]:
+        """Return the current session question order."""
+        return list(self._questions)
+
+    @property
     def answers(self) -> list[AnswerRecord]:
         return list(self._answers)
 
@@ -151,6 +156,10 @@ class QuizSession(QObject):
         if question is None:
             self.error_occurred.emit("No current question.")
             return False, None
+        existing = self.answer_for_question_id(question.question_id)
+        if existing is not None:
+            self._set_state(QuizState.SHOWING_FEEDBACK)
+            return existing.is_correct, existing.user_answer
 
         # Re-entrancy guard: prevent signal handlers from calling
         # next_question() mid-submit (which would corrupt the index).
@@ -220,11 +229,42 @@ class QuizSession(QObject):
         self._question_start_time = time.time()
         self.question_changed.emit(self._current_index + 1, len(self._questions))
 
-    def jump_to(self, index: int):
-        """Jump to a specific question index for review."""
-        if 0 <= index < len(self._questions) and self._state == QuizState.COMPLETED:
-            self._current_index = index
-            self.question_changed.emit(index + 1, len(self._questions))
+    def jump_to(self, index: int) -> bool:
+        """Jump to a question index without implicitly submitting or finalizing."""
+        if not (0 <= index < len(self._questions)):
+            return False
+        if self._state not in (
+            QuizState.IN_PROGRESS,
+            QuizState.SHOWING_FEEDBACK,
+            QuizState.COMPLETED,
+        ):
+            return False
+
+        self._current_index = index
+        if self._state != QuizState.COMPLETED:
+            question = self.current_question
+            if question is not None and self.answer_for_question_id(question.question_id):
+                self._set_state(QuizState.SHOWING_FEEDBACK)
+            else:
+                self._set_state(QuizState.IN_PROGRESS)
+                self._question_start_time = time.time()
+        self.question_changed.emit(index + 1, len(self._questions))
+        return True
+
+    def previous_question(self) -> bool:
+        """Jump to the previous question in the session order."""
+        return self.jump_to(self._current_index - 1)
+
+    def preview_next_question(self) -> bool:
+        """Jump to the next question for preview/navigation without finishing the quiz."""
+        return self.jump_to(self._current_index + 1)
+
+    def answer_for_question_id(self, question_id: str) -> Optional[AnswerRecord]:
+        """Return the latest submitted/skipped answer for a question, if any."""
+        for answer in reversed(self._answers):
+            if answer.question_id == question_id:
+                return answer
+        return None
 
     def finalize(self):
         """Complete the session, compute summary, save progress.
