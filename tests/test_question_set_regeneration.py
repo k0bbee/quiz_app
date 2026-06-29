@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from core.question_set_regenerator import (
     apply_regenerated_questions,
+    persist_new_question_set,
     persist_regenerated_question_set,
 )
 from models.question import Question, QuestionBank
@@ -172,6 +173,55 @@ class QuestionSetRegenerationTests(unittest.TestCase):
             self.assertIsNone(bank.get("new-2"))
             self.assertIsNotNone(bank.get("old-ai"))
             self.assertEqual(["old-ai"], sets.get(qset.set_id).questions)
+
+    def test_persist_new_question_set_rolls_back_questions_when_set_save_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bank = QuestionBank(str(root / "questions"))
+            sets = SetManager(str(root / "sets"))
+            questions = [self._question("new-1", "cache"), self._question("new-2", "process")]
+            qset = QuestionSet.create_new(
+                title={"zh": "AI 练习", "en": "AI Practice"},
+                description={"zh": "", "en": ""},
+                topics=["cache", "process"],
+                question_ids=[question.question_id for question in questions],
+            )
+
+            with patch.object(sets, "save", return_value=False):
+                with self.assertRaisesRegex(RuntimeError, "question set could not be saved"):
+                    persist_new_question_set(bank, sets, qset, questions)
+
+            self.assertIsNone(bank.get("new-1"))
+            self.assertIsNone(bank.get("new-2"))
+            self.assertIsNone(sets.get(qset.set_id))
+
+    def test_persist_new_question_set_rolls_back_when_question_save_is_incomplete(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bank = QuestionBank(str(root / "questions"))
+            sets = SetManager(str(root / "sets"))
+            questions = [self._question("new-1", "cache"), self._question("new-2", "process")]
+            qset = QuestionSet.create_new(
+                title={"zh": "AI 练习", "en": "AI Practice"},
+                description={"zh": "", "en": ""},
+                topics=["cache", "process"],
+                question_ids=[question.question_id for question in questions],
+            )
+            original_save = bank.save
+            calls = 0
+
+            def flaky_save(question):
+                nonlocal calls
+                calls += 1
+                return original_save(question) if calls == 1 else False
+
+            with patch.object(bank, "save", side_effect=flaky_save):
+                with self.assertRaisesRegex(RuntimeError, "1 of 2"):
+                    persist_new_question_set(bank, sets, qset, questions)
+
+            self.assertIsNone(bank.get("new-1"))
+            self.assertIsNone(bank.get("new-2"))
+            self.assertIsNone(sets.get(qset.set_id))
 
 
 if __name__ == "__main__":

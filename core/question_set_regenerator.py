@@ -87,3 +87,45 @@ def persist_regenerated_question_set(
         progress_manager=progress_manager,
     )
     return updated, len(saved_ids), deleted
+
+
+def persist_new_question_set(
+    question_bank,
+    set_manager,
+    question_set: QuestionSet,
+    questions: list[Question],
+) -> tuple[QuestionSet, int]:
+    """Persist a new generated question set transactionally.
+
+    If any question save fails, or if the question set save fails after question
+    files were written, all questions created by this call are removed so the
+    bank does not accumulate invisible orphan questions.
+    """
+    if not questions:
+        raise RuntimeError("Generation produced no questions to save.")
+
+    collisions = [q.question_id for q in questions if question_bank.get(q.question_id) is not None]
+    if collisions:
+        raise RuntimeError(
+            "Generation produced question ID collision(s): " + ", ".join(collisions)
+        )
+
+    saved_ids: list[str] = []
+    for question in questions:
+        if not question_bank.save(question):
+            for question_id in saved_ids:
+                question_bank.delete(question_id)
+            raise RuntimeError(
+                f"Only {len(saved_ids)} of {len(questions)} generated questions could be saved; "
+                "the new batch was rolled back."
+            )
+        saved_ids.append(question.question_id)
+
+    if not set_manager.save(question_set):
+        for question_id in saved_ids:
+            question_bank.delete(question_id)
+        raise RuntimeError(
+            "The generated question set could not be saved; the new batch was rolled back."
+        )
+
+    return question_set, len(saved_ids)

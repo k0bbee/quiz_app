@@ -11,7 +11,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from core.language_manager import LanguageManager
 from models.question import QuestionBank
 from models.question_set import SetManager
-from core.question_set_regenerator import persist_regenerated_question_set
+from core.question_set_regenerator import persist_new_question_set, persist_regenerated_question_set
 from core.question_set_builder import build_ai_question_set
 from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
@@ -708,7 +708,6 @@ class MainWindow(QMainWindow):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             questions = dialog.generated_questions
             if questions:
-                saved = self.question_bank.save_many(questions)
                 lang = self.lang_manager.current
                 qset = build_ai_question_set(
                     questions,
@@ -718,7 +717,20 @@ class MainWindow(QMainWindow):
                     course_project=course_project,
                     custom_title=dialog.question_set_title(),
                 )
-                self.set_manager.save(qset)
+                try:
+                    qset, saved = persist_new_question_set(
+                        self.question_bank,
+                        self.set_manager,
+                        qset,
+                        questions,
+                    )
+                except RuntimeError as exc:
+                    QMessageBox.critical(
+                        self if isinstance(self, QWidget) else None,
+                        gm("保存失败", "Save Failed"),
+                        str(exc),
+                    )
+                    return
                 QMessageBox.information(
                     self,
                     gm("已保存", "Saved"),

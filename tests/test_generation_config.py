@@ -1,5 +1,7 @@
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -610,6 +612,80 @@ class GenerationConfigTests(unittest.TestCase):
             MainWindow._on_ai_generate(shell)
 
         dialog_class.return_value.configure_from_course_profile.assert_called_once_with(course)
+
+    def test_main_generation_flow_rolls_back_questions_when_question_set_save_fails(self):
+        from core.language_manager import LanguageManager
+        from models.question import QuestionBank
+        from models.question_set import SetManager
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            set_manager = SetManager(str(root / "sets"))
+            question = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {
+                        "stem": "Cache 题",
+                        "options": ["A. one", "B. two"],
+                        "explanation": "解释说明足够完整。",
+                    },
+                    "en": {
+                        "stem": "Cache question",
+                        "options": ["A. one", "B. two"],
+                        "explanation": "Explanation text with enough detail.",
+                    },
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            settings = {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            }
+            navigated = {}
+
+            class FakeDialog:
+                generated_questions = [question]
+                diff_combo = SimpleNamespace(currentData=lambda: "medium")
+
+                def __init__(self, *args, **kwargs):
+                    pass
+
+                def configure_from_course_profile(self, course_project):
+                    pass
+
+                def exec(self):
+                    return QDialog.DialogCode.Accepted
+
+                def _build_generation_config(self):
+                    return GenerationConfig(topic_weights={"cache": 100})
+
+                def question_set_title(self):
+                    return "AI 事务测试"
+
+            shell = SimpleNamespace(
+                settings_screen=SimpleNamespace(_settings=settings),
+                lang_manager=LanguageManager.instance(),
+                question_bank=question_bank,
+                set_manager=set_manager,
+                SCREEN_TOPIC_SELECTION=1,
+                _load_generation_context=lambda: ("summary", ["cache"], None),
+                navigate_to=lambda screen: navigated.setdefault("screen", screen),
+            )
+
+            with patch("ui.main_window._ai_generation_settings_error", return_value=""), \
+                 patch("ui.dialogs.ai_generation_dialog.AIGenerationDialog", FakeDialog), \
+                 patch.object(set_manager, "save", return_value=False), \
+                 patch("ui.main_window.QMessageBox.critical") as critical:
+                MainWindow._on_ai_generate(shell)
+
+            self.assertTrue(critical.called)
+            self.assertIsNone(question_bank.get(question.question_id))
+            self.assertEqual({}, navigated)
 
 
 if __name__ == "__main__":
