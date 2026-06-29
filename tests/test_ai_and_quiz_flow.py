@@ -75,6 +75,27 @@ class LocalAgentTests(unittest.TestCase):
 
 
 class QuizWidgetAndSessionTests(unittest.TestCase):
+    def _make_question(self, qid: str, topic: str = "cache") -> Question:
+        return Question(
+            question_id=qid,
+            type=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": {
+                    "stem": f"{qid}?",
+                    "options": ["A. 对", "B. 错"],
+                    "explanation": "解释说明",
+                },
+                "en": {
+                    "stem": f"{qid}?",
+                    "options": ["A. Right", "B. Wrong"],
+                    "explanation": "Explanation text",
+                },
+            },
+            correct_answer="A",
+            topic=topic,
+        )
+
     def test_answer_record_persists_confidence_marker(self):
         record = AnswerRecord(
             question_id="q1",
@@ -87,6 +108,59 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         loaded = AnswerRecord.from_dict(record.to_dict())
 
         self.assertEqual("unsure", loaded.confidence)
+
+    def test_quiz_session_can_restore_order_answers_index_and_elapsed_time(self):
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["cache"],
+            question_ids=[],
+        )
+        q1 = self._make_question("q1")
+        q2 = self._make_question("q2")
+        q3 = self._make_question("q3")
+        answer = AnswerRecord(
+            question_id="q1",
+            index_in_session=0,
+            user_answer="A",
+            is_correct=True,
+            confidence="sure",
+        )
+        session = QuizSession()
+
+        session.restore(
+            question_set=qset,
+            questions=[q1, q2, q3],
+            current_index=1,
+            answers=[answer],
+            language="zh",
+            progress_id="progress-restored",
+            elapsed_seconds=42.0,
+        )
+
+        self.assertEqual(["q1", "q2", "q3"], [question.question_id for question in session.questions])
+        self.assertEqual(1, session.current_index)
+        self.assertEqual("q2", session.current_question.question_id)
+        self.assertEqual("progress-restored", session.progress_id)
+        self.assertEqual(1, session.answered_count)
+        self.assertGreaterEqual(session.elapsed_seconds, 42.0)
+
+    def test_quiz_session_updates_submitted_answer_confidence(self):
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["cache"],
+            question_ids=[],
+        )
+        q1 = self._make_question("q1")
+        session = QuizSession()
+        session.start_fixed_order(qset, [q1], language="zh")
+        session.submit_answer("A", confidence="sure")
+
+        changed = session.set_answer_confidence("q1", "unsure")
+
+        self.assertTrue(changed)
+        self.assertEqual("unsure", session.answers[0].confidence)
 
     def test_quiz_session_can_jump_between_unfinished_questions(self):
         first = Question.create_new(

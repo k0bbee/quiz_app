@@ -94,10 +94,31 @@ class QuizSession(QObject):
             return 0.0
         return time.time() - self._start_time
 
+    @property
+    def started_at_iso(self) -> str:
+        """Return the session start timestamp as ISO text."""
+        if self._start_time == 0:
+            return ""
+        return datetime.fromtimestamp(self._start_time, tz=timezone.utc).isoformat()
+
     # --- Session lifecycle ---
 
     def start(self, question_set: QuestionSet, questions: list[Question], language: str = "zh"):
         """Initialize and start a new quiz session."""
+        self._start_session(question_set, questions, language=language, shuffle=True)
+
+    def start_fixed_order(self, question_set: QuestionSet, questions: list[Question], language: str = "zh"):
+        """Start a quiz session without shuffling; used for snapshot restore."""
+        self._start_session(question_set, questions, language=language, shuffle=False)
+
+    def _start_session(
+        self,
+        question_set: QuestionSet | None,
+        questions: list[Question],
+        language: str = "zh",
+        shuffle: bool = True,
+        set_id: str = "",
+    ):
         if self._state == QuizState.IN_PROGRESS:
             self.error_occurred.emit("A quiz session is already in progress.")
             return
@@ -107,14 +128,16 @@ class QuizSession(QObject):
 
         self._set = question_set
         self._questions = list(questions)  # copy
-        random.shuffle(self._questions)  # shuffle for fresh experience
+        if shuffle:
+            random.shuffle(self._questions)  # shuffle for fresh experience
         self._current_index = 0
         self._answers.clear()
         self._language = language
         self._start_time = time.time()
 
         # Create progress record
-        record = ProgressRecord.create_new(question_set.set_id, language)
+        sid = question_set.set_id if question_set else (set_id or f"custom-{datetime.now(timezone.utc).strftime('%Y%m%d')}")
+        record = ProgressRecord.create_new(sid, language)
         self._progress_id = record.progress_id
 
         self._set_state(QuizState.IN_PROGRESS)
@@ -123,27 +146,36 @@ class QuizSession(QObject):
 
     def start_with_questions(self, questions: list[Question], language: str = "zh", set_id: str = ""):
         """Start a session with a direct list of questions (e.g., retry incorrect)."""
-        if self._state == QuizState.IN_PROGRESS:
-            self.error_occurred.emit("A quiz session is already in progress.")
-            return
+        self._start_session(None, questions, language=language, shuffle=True, set_id=set_id)
+
+    def restore(
+        self,
+        question_set: QuestionSet,
+        questions: list[Question],
+        current_index: int,
+        answers: list[AnswerRecord],
+        language: str,
+        progress_id: str,
+        elapsed_seconds: float = 0.0,
+    ):
+        """Restore an in-progress session from a persisted snapshot."""
         if not questions:
             self.error_occurred.emit("No questions available.")
             return
-
-        self._set = None
+        self._set = question_set
         self._questions = list(questions)
-        random.shuffle(self._questions)
-        self._current_index = 0
-        self._answers.clear()
-        self._language = language
-        self._start_time = time.time()
-
-        sid = set_id or f"custom-{datetime.now(timezone.utc).strftime('%Y%m%d')}"
-        record = ProgressRecord.create_new(sid, language)
-        self._progress_id = record.progress_id
-
-        self._set_state(QuizState.IN_PROGRESS)
+        self._current_index = max(0, min(current_index, len(self._questions) - 1))
+        self._answers = list(answers)
+        self._language = language if language in ("zh", "en") else "zh"
+        self._progress_id = progress_id
+        self._start_time = time.time() - max(0.0, float(elapsed_seconds or 0.0))
         self._question_start_time = time.time()
+        current = self.current_question
+        self._set_state(
+            QuizState.SHOWING_FEEDBACK
+            if current is not None and self.answer_for_question_id(current.question_id)
+            else QuizState.IN_PROGRESS
+        )
         self.question_changed.emit(self._current_index + 1, len(self._questions))
 
     def submit_answer(self, user_answer, confidence: str = "sure") -> tuple[bool, object]:
@@ -266,6 +298,16 @@ class QuizSession(QObject):
             if answer.question_id == question_id:
                 return answer
         return None
+
+    def set_answer_confidence(self, question_id: str, confidence: str) -> bool:
+        """Update confidence for an already submitted answer."""
+        if confidence not in ("sure", "unsure"):
+            return False
+        for answer in reversed(self._answers):
+            if answer.question_id == question_id:
+                answer.confidence = confidence
+                return True
+        return False
 
     def finalize(self):
         """Complete the session, compute summary, save progress.
