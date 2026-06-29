@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QComboBox, QSpinBox,
     QProgressBar, QTextEdit, QMessageBox, QGroupBox, QCheckBox,
     QAbstractItemView, QScrollArea, QFrame, QWidget, QSlider, QFormLayout,
-    QSplitter
+    QSplitter, QLineEdit
 )
 import time
 
@@ -153,6 +153,13 @@ class AIGenerationDialog(QDialog):
         )
         config_layout.setHorizontalSpacing(16)
         config_layout.setVerticalSpacing(10)
+
+        self.set_title_label = QLabel(self.lang_manager.get_text("题集名称:", "Set name:"))
+        self.set_title_input = QLineEdit()
+        self.set_title_input.setPlaceholderText(
+            self.lang_manager.get_text("留空则自动命名", "Leave blank to name automatically")
+        )
+        config_layout.addRow(self.set_title_label, self.set_title_input)
 
         self.count_label = QLabel(self.lang_manager.get_text("数量:", "Count:"))
         self.count_spin = WheelSafeSpinBox()
@@ -454,6 +461,10 @@ class AIGenerationDialog(QDialog):
                 label.setToolTip(label_text)
 
         self.count_label.setText(self.lang_manager.get_text("数量:", "Count:"))
+        self.set_title_label.setText(self.lang_manager.get_text("题集名称:", "Set name:"))
+        self.set_title_input.setPlaceholderText(
+            self.lang_manager.get_text("留空则自动命名", "Leave blank to name automatically")
+        )
         self.diff_label.setText(self.lang_manager.get_text("整体难度:", "Overall difficulty:"))
         self.config_group.setTitle(self.lang_manager.get_text("生成参数", "Generation Settings"))
         self.template_label.setText(self.lang_manager.get_text("模板:", "Template:"))
@@ -858,6 +869,10 @@ class AIGenerationDialog(QDialog):
             topic_weights=topic_weights,
             template=self.template_combo.currentData() or "quick_review",
         )
+
+    def question_set_title(self) -> str:
+        """Return the optional user-supplied title for the new question set."""
+        return self.set_title_input.text().strip()
 
     def _on_progress(self, message: str):
         if self._generation_cancelled:

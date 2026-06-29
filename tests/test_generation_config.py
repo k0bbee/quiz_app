@@ -13,9 +13,11 @@ from ai.generation_config import GenerationConfig
 from ai.exam_plan import ExamGenerationPlan
 from ai.llm_client import LLMClient
 from ai.prompt_templates import PromptBuilder
+from core.question_set_builder import build_ai_question_set
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
+from models.question import Question
 from models.question_set import QuestionSet
-from utils.constants import Difficulty
+from utils.constants import Difficulty, QuestionType
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -194,6 +196,42 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(config.topic_weights["cache"], 80)
         self.assertEqual(config.topic_weights["process"], 20)
         self.assertEqual(config.template, "final_exam")
+
+    def test_dialog_exposes_question_set_title(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+
+        dialog.set_title_input.setText("  I/O 中断专项  ")
+
+        self.assertEqual("I/O 中断专项", dialog.question_set_title())
+
+    def test_ai_question_set_uses_user_supplied_title(self):
+        question = Question.create_new(
+            QuestionType.MULTIPLE_CHOICE,
+            Difficulty.MEDIUM,
+            {
+                "zh": {"stem": "题干", "options": ["A. 对", "B. 错"], "explanation": "解释"},
+                "en": {"stem": "Stem", "options": ["A. True", "B. False"], "explanation": "Explanation"},
+            },
+            "A",
+            "interrupts",
+            source="ai_generated",
+        )
+
+        qset = build_ai_question_set(
+            [question],
+            selected_difficulty="medium",
+            generation_config=GenerationConfig(),
+            custom_title="I/O 中断专项",
+            lang="zh",
+        )
+
+        self.assertEqual("I/O 中断专项", qset.get_title("zh"))
+        self.assertEqual("I/O 中断专项", qset.get_title("en"))
+        self.assertTrue(qset.metadata["renamed_by_user"])
 
     def test_dialog_uses_saved_practice_defaults_as_initial_generation_settings(self):
         dialog = AIGenerationDialog(

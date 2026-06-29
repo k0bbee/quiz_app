@@ -642,6 +642,7 @@ class MainWindow(QMainWindow):
                     generation_config=dialog._build_generation_config(),
                     lang=lang,
                     course_project=course_project,
+                    custom_title=dialog.question_set_title(),
                 )
                 self.set_manager.save(qset)
                 QMessageBox.information(

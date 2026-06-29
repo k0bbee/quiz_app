@@ -14,16 +14,23 @@ def build_ai_question_set(
     generation_config: GenerationConfig,
     lang: str = "en",
     course_project=None,
+    custom_title: str = "",
 ) -> QuestionSet:
     """Create a question set that preserves the user's AI generation choices."""
     topics = sorted({topic_value(question.topic) for question in questions})
     topic_names = ", ".join(topic_label(topic, lang) for topic in topics)
     display_difficulty = _display_difficulty(selected_difficulty)
-    qset = QuestionSet.create_new(
-        title={
+    title = str(custom_title or "").strip()
+    title_payload = (
+        {"zh": title, "en": title}
+        if title
+        else {
             "zh": f"AI生成练习：{topic_names or '综合'}",
             "en": f"AI Practice: {topic_names or 'Mixed'}",
-        },
+        }
+    )
+    qset = QuestionSet.create_new(
+        title=title_payload,
         description={
             "zh": "由当前课程项目生成，已通过本地结构校验。",
             "en": "Generated from the active course project and local validation rules.",
@@ -36,6 +43,8 @@ def build_ai_question_set(
     )
     qset.metadata.update(_generation_metadata(selected_difficulty, generation_config))
     qset.metadata.update(_course_metadata(course_project))
+    if title:
+        qset.metadata["renamed_by_user"] = True
     return qset
 
 
