@@ -42,6 +42,9 @@ quiz备选清单.md
 模拟卷_*.md
 AIPlan.md
 
+# Local implementation plans generated during agent workflows
+docs/superpowers/plans/*.md
+
 # OS files
 .DS_Store
 Thumbs.db
