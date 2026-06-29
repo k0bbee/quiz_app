@@ -17,6 +17,7 @@ from utils.constants import QuestionType, Difficulty, topic_value
 
 ACCEPT_TARGET_BATCH_SIZE = 10
 MAX_CANDIDATE_BATCH_SIZE = 25
+JSON_RECOVERY_BATCH_SIZE = 5
 
 
 def allocate_weighted_counts(weights: dict[str, int], count: int) -> dict[str, int]:
@@ -135,6 +136,8 @@ class GenerationWorker(QThread):
         self.generation_config = generation_config or GenerationConfig()
         self._cancelled = threading.Event()
         self._cached_context: str | None = None
+        self._candidate_batch_limit: int | None = None
+        self._last_json_truncation_detail: str = ""
 
     def run(self):
         """Execute generation in background thread."""
@@ -156,7 +159,7 @@ class GenerationWorker(QThread):
             while len(all_questions) < self.count and not self._cancelled.is_set() and attempts < max_attempts:
                 attempts += 1
                 remaining = self.count - len(all_questions)
-                batch_count = min(ACCEPT_TARGET_BATCH_SIZE, remaining)
+                batch_count = self._accept_target_count(remaining)
                 candidate_count = self._candidate_batch_count(batch_count)
                 self.progress.emit(
                     f"Generating {self.count} questions... "
@@ -177,8 +180,18 @@ class GenerationWorker(QThread):
 
                 if data is None:
                     detail = getattr(self.client, "last_error", "") or "Check your API key, model, provider, and network connection."
+                    if self._reduce_batch_after_json_truncation(detail, candidate_count):
+                        self._last_json_truncation_detail = detail
+                        self.progress.emit(
+                            "AI response looked truncated. Retrying with a smaller batch..."
+                        )
+                        continue
+                    if self._looks_like_json_truncation(detail):
+                        self.error.emit(self._json_truncation_error(detail))
+                        return
                     self.error.emit(detail)
                     return
+                self._last_json_truncation_detail = ""
 
                 # Parse questions from response
                 raw_questions = data.get("questions", [])
@@ -243,6 +256,9 @@ class GenerationWorker(QThread):
 
             if not self._cancelled.is_set():
                 if len(all_questions) != self.count:
+                    if self._last_json_truncation_detail:
+                        self.error.emit(self._json_truncation_error(self._last_json_truncation_detail))
+                        return
                     self.error.emit(quotas.shortfall_error(len(all_questions), self.count))
                     return
                 self.batch_done.emit(all_questions)
@@ -265,9 +281,62 @@ class GenerationWorker(QThread):
         """
         if accept_target <= 0:
             return 0
-        return min(
+        count = min(
             MAX_CANDIDATE_BATCH_SIZE,
             max(accept_target + 10, accept_target * 2),
+        )
+        if self._candidate_batch_limit is not None:
+            count = min(count, self._candidate_batch_limit)
+        return count
+
+    def _accept_target_count(self, remaining: int) -> int:
+        count = min(ACCEPT_TARGET_BATCH_SIZE, remaining)
+        if self._candidate_batch_limit is not None:
+            count = min(count, self._candidate_batch_limit)
+        return count
+
+    def _reduce_batch_after_json_truncation(self, detail: str, candidate_count: int) -> bool:
+        """Recover from likely output-token truncation by asking for fewer questions.
+
+        Authentication, network, and quota errors should still surface immediately.
+        This recovery is deliberately limited to JSON parse failures that match an
+        incomplete response shape.
+        """
+        if not self._looks_like_json_truncation(detail) or candidate_count <= 1:
+            return False
+
+        next_limit = max(1, min(JSON_RECOVERY_BATCH_SIZE, candidate_count // 2))
+        if self._candidate_batch_limit is not None and next_limit >= self._candidate_batch_limit:
+            next_limit = self._candidate_batch_limit - 1
+        if next_limit < 1:
+            return False
+        self._candidate_batch_limit = next_limit
+        return True
+
+    @staticmethod
+    def _looks_like_json_truncation(detail: str) -> bool:
+        normalized = detail.lower()
+        return (
+            "json parse error" in normalized
+            and (
+                "unterminated string" in normalized
+                or "expecting value" in normalized
+                or "expecting ',' delimiter" in normalized
+            )
+        )
+
+    @staticmethod
+    def _json_truncation_error(detail: str) -> AppError:
+        return AppError(
+            code="GEN-AI-JSON-001",
+            severity="error",
+            title_zh="AI 输出解析失败",
+            title_en="AI output parse failed",
+            message_zh="AI 返回的题目 JSON 可能输出过长或被截断，程序无法安全解析。",
+            message_en="The AI returned quiz JSON that appears too long or truncated, so it could not be parsed safely.",
+            action_zh="请减少题目数量，缩小知识点/题型覆盖范围，或换用支持更大输出上限的模型后重试。",
+            action_en="Reduce the question count, narrow topic/type coverage, or retry with a model/provider that supports a larger output limit.",
+            technical_detail=detail,
         )
 
     def _build_course_context(self) -> str:

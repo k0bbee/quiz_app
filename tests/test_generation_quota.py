@@ -72,6 +72,44 @@ class TopicDriftClient:
         return {"questions": questions}
 
 
+class TruncationThenSuccessClient:
+    model = "test-model"
+
+    def __init__(self):
+        self.last_error = ""
+        self.requested_counts = []
+
+    def generate_with_json(self, messages, **kwargs):
+        prompt = messages[-1]["content"]
+        match = re.search(r"Generate\s+(\d+)\s+bilingual quiz questions", prompt)
+        requested = int(match.group(1)) if match else 0
+        self.requested_counts.append(requested)
+        if requested > 5:
+            self.last_error = (
+                "JSON parse error (attempt 3/3): "
+                "Unterminated string starting at: line 410 column 13"
+            )
+            return None
+        self.last_error = ""
+        return {
+            "questions": [
+                raw_question("multiple_choice", "medium", "cache", index)
+                for index in range(requested)
+            ]
+        }
+
+
+class AlwaysTruncatedClient:
+    model = "test-model"
+    last_error = (
+        "JSON parse error (attempt 3/3): "
+        "Unterminated string starting at: line 410 column 13"
+    )
+
+    def generate_with_json(self, messages, **kwargs):
+        return None
+
+
 class GenerationQuotaTests(unittest.TestCase):
     def test_weighted_allocation_is_deterministic_and_sums_to_count(self):
         allocated = allocate_weighted_counts(
@@ -241,6 +279,69 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual(1, len(batches))
         self.assertEqual(15, len(batches[0]))
         self.assertTrue(any(count > 10 for count in client.requested_counts))
+
+    def test_worker_reduces_candidate_batch_after_truncated_json_response(self):
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 100},
+        )
+        client = TruncationThenSuccessClient()
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=["cache"],
+            count=8,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        batches = []
+        errors = []
+        worker.batch_done.connect(batches.append)
+        worker.error.connect(errors.append)
+
+        worker.run()
+
+        self.assertEqual([], errors)
+        self.assertEqual(1, len(batches))
+        self.assertEqual(8, len(batches[0]))
+        self.assertGreater(client.requested_counts[0], client.requested_counts[1])
+        self.assertTrue(all(count <= 5 for count in client.requested_counts[1:]))
+
+    def test_worker_reports_json_truncation_when_reduced_batches_still_fail(self):
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 100},
+        )
+        worker = GenerationWorker(
+            AlwaysTruncatedClient(),
+            course_content="content",
+            topics=["cache"],
+            count=3,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        errors = []
+        worker.error.connect(errors.append)
+
+        worker.run()
+
+        self.assertEqual(1, len(errors))
+        self.assertIsInstance(errors[0], AppError)
+        self.assertEqual("GEN-AI-JSON-001", errors[0].code)
+        self.assertIn("输出过长", errors[0].message_zh)
+        self.assertIn("减少题目数量", errors[0].action_zh)
 
 
 def _counts(values):
