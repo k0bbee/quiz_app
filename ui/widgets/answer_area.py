@@ -113,6 +113,8 @@ class AnswerArea(QWidget):
         answer = self.get_answer()
         if answer is None:
             return False
+        if self._current_type == QuestionType.MATCHING:
+            return self.matching_widget.is_complete()
         if isinstance(answer, str):
             return bool(answer.strip())
         if isinstance(answer, list):
@@ -357,6 +359,14 @@ class MatchingWidget(QWidget):
             pairs.append([left_text, right_text or ""])
         return pairs
 
+    def is_complete(self) -> bool:
+        """Return whether every left item has a selected right item."""
+        pairs = self.get_answer()
+        return bool(pairs) and all(
+            len(pair) >= 2 and bool(str(pair[1]).strip())
+            for pair in pairs
+        )
+
     def set_answer(self, answer):
         """Restore matching selections when labels are still comparable."""
         if not isinstance(answer, list):
@@ -399,12 +409,14 @@ class OrderingWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.lang_manager = LanguageManager.instance()
+        self._user_reordered = False
 
         layout = QVBoxLayout(self)
 
         self.list_widget = QListWidget()
         self.list_widget.setObjectName("orderingList")
         self.list_widget.setDragDropMode(QListWidget.DragDropMode.InternalMove)
+        self.list_widget.model().rowsMoved.connect(lambda *args: self._mark_user_reordered())
 
         btn_layout = QHBoxLayout()
         self.up_btn = QPushButton(self.lang_manager.get_text("上移", "Up"))
@@ -442,10 +454,12 @@ class OrderingWidget(QWidget):
         self.clear()
         for opt in options:
             self.list_widget.addItem(str(opt))
+        self._user_reordered = False
 
     def _move_up(self):
         row = self.list_widget.currentRow()
         if row > 0:
+            self._mark_user_reordered()
             item = self.list_widget.takeItem(row)
             self.list_widget.insertItem(row - 1, item)
             self.list_widget.setCurrentRow(row - 1)
@@ -454,10 +468,18 @@ class OrderingWidget(QWidget):
     def _move_down(self):
         row = self.list_widget.currentRow()
         if row < self.list_widget.count() - 1:
+            self._mark_user_reordered()
             item = self.list_widget.takeItem(row)
             self.list_widget.insertItem(row + 1, item)
             self.list_widget.setCurrentRow(row + 1)
             self._emit_order()
+
+    def _mark_user_reordered(self):
+        self._user_reordered = True
+
+    def has_user_reordered(self) -> bool:
+        """Return whether the user has explicitly changed the default order."""
+        return self._user_reordered
 
     def _emit_order(self):
         order = []
@@ -483,9 +505,11 @@ class OrderingWidget(QWidget):
         self.list_widget.clear()
         for item in answer:
             self.list_widget.addItem(str(item))
+        self._user_reordered = True
 
     def clear(self):
         self.list_widget.clear()
+        self._user_reordered = False
 
 
 class FillInBlankWidget(QWidget):

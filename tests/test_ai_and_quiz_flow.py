@@ -22,7 +22,7 @@ from core.language_manager import LanguageManager
 from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.quiz_screen import QuizScreen
-from ui.widgets.answer_area import MatchingWidget
+from ui.widgets.answer_area import AnswerArea, MatchingWidget
 from utils.constants import Difficulty, QuestionType, QuizState
 
 
@@ -222,6 +222,78 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertEqual(widget.left_list.count(), 2)
         self.assertEqual(widget.left_list.item(0).text(), "CPU")
         self.assertEqual(len(widget.get_answer()), 2)
+
+    def test_matching_answer_requires_every_pair_selected(self):
+        area = AnswerArea()
+        area.set_question_type(
+            QuestionType.MATCHING,
+            {"left": ["CPU", "GPU"], "right": ["Processor", "Graphics"]},
+        )
+
+        self.assertFalse(area.has_answer())
+
+        area.matching_widget.combos[0].setCurrentIndex(1)
+        self.assertFalse(area.has_answer())
+
+        area.matching_widget.combos[1].setCurrentIndex(1)
+        self.assertTrue(area.has_answer())
+
+    def test_ordering_question_confirms_when_submitting_default_order(self):
+        question = Question.create_new(
+            qtype=QuestionType.ORDERING,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": "按执行顺序排序",
+                    "options": ["取指", "译码", "执行"],
+                    "explanation": "解释说明",
+                },
+                "en": {
+                    "stem": "Order the execution stages",
+                    "options": ["Fetch", "Decode", "Execute"],
+                    "explanation": "Explanation text",
+                },
+            },
+            correct_answer=["取指", "译码", "执行"],
+            topic="pipeline",
+        )
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["pipeline"],
+            question_ids=[question.question_id],
+        )
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [question], show_timer=False)
+
+            with patch(
+                "ui.screens.quiz_screen.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.No,
+            ) as confirm:
+                screen._submit_answer()
+
+            self.assertTrue(confirm.called)
+            self.assertEqual(QuizState.IN_PROGRESS, screen.session.state)
+            self.assertEqual(0, screen.session.answered_count)
+
+            with patch(
+                "ui.screens.quiz_screen.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ) as confirm:
+                screen._submit_answer()
+
+            self.assertTrue(confirm.called)
+            self.assertEqual(QuizState.SHOWING_FEEDBACK, screen.session.state)
+            self.assertEqual(1, screen.session.answered_count)
 
     def test_quiz_screen_timer_visibility_follows_setting(self):
         question = Question.create_new(

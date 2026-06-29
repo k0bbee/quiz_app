@@ -340,6 +340,8 @@ class QuizScreen(QWidget):
                 )
             )
             return
+        if not self._confirm_default_ordering_answer():
+            return
         self._last_user_answer = user_answer
         q = self.session.current_question
         if q is not None:
@@ -349,6 +351,26 @@ class QuizScreen(QWidget):
     def _skip_question(self):
         """Skip the current question."""
         self.session.skip_question()
+
+    def _confirm_default_ordering_answer(self) -> bool:
+        """Ask before accepting an untouched ordering question's default order."""
+        question = self.session.current_question
+        if question is None or question.type != QuestionType.ORDERING:
+            return True
+        if self.answer_area.ordering_widget.has_user_reordered():
+            return True
+
+        reply = QMessageBox.question(
+            self,
+            self.lang_manager.get_text("确认排序答案", "Confirm Ordering Answer"),
+            self.lang_manager.get_text(
+                "你还没有调整排序。是否按当前顺序提交？",
+                "You have not changed the order. Submit the current order?",
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return reply == QMessageBox.StandardButton.Yes
 
     def _toggle_mark_review(self):
         """Toggle the review marker for the current question."""
