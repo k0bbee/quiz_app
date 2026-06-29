@@ -148,6 +148,30 @@ class QuestionBankCleanupTests(unittest.TestCase):
             }
             self.assertEqual({"q-course-a", "q-manual"}, visible_ids)
 
+    def test_question_bank_screen_filters_questions_by_selected_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            set_manager = SetManager(str(Path(tmpdir) / "sets"))
+            q1 = self._question("q1", "cache")
+            q2 = self._question("q2", "pipeline")
+            q3 = self._question("q3", "interrupt")
+            question_bank.save_many([q1, q2, q3])
+            set_manager.save(self._set("set-a", ["q1", "q3"]))
+            set_manager.save(self._set("set-b", ["q2"]))
+
+            screen = QuestionBankScreen(question_bank, set_manager=set_manager)
+            idx = screen.set_filter.findData("set-a")
+            self.assertGreaterEqual(idx, 0)
+
+            screen.set_filter.setCurrentIndex(idx)
+            screen.refresh()
+
+            visible_ids = {
+                screen.question_list.item(row).data(Qt.ItemDataRole.UserRole)
+                for row in range(screen.question_list.count())
+            }
+            self.assertEqual({"q1", "q3"}, visible_ids)
+
     def test_question_bank_screen_assigns_new_manual_question_to_current_course(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
@@ -222,6 +246,31 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
             self.assertIsNone(question_bank.get("q1"))
             self.assertEqual(["q2"], set_manager.get(qset.set_id).questions)
+
+    def test_question_bank_screen_delete_removes_empty_question_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            set_manager = SetManager(str(Path(tmpdir) / "sets"))
+            q1 = self._question("q1")
+            q2 = self._question("q2")
+            question_bank.save_many([q1, q2])
+            qset = self._set("set-empty-after-delete", ["q1", "q2"])
+            set_manager.save(qset)
+
+            screen = QuestionBankScreen(question_bank, set_manager=set_manager)
+            for row in range(screen.question_list.count()):
+                item = screen.question_list.item(row)
+                if item.data(Qt.ItemDataRole.UserRole) in {"q1", "q2"}:
+                    item.setSelected(True)
+            screen._on_selection_changed()
+
+            with patch("ui.screens.question_bank_screen.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
+                screen.delete_btn.click()
+
+            self.assertIsNone(question_bank.get("q1"))
+            self.assertIsNone(question_bank.get("q2"))
+            self.assertIsNone(set_manager.get(qset.set_id))
+            self.assertEqual(-1, screen.set_filter.findData(qset.set_id))
 
     def test_question_bank_screen_uses_compact_single_line_titles(self):
         with tempfile.TemporaryDirectory() as tmpdir:

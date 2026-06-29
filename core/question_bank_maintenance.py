@@ -7,14 +7,22 @@ from datetime import datetime, timezone
 from models.question_set import SetManager
 
 
-def remove_question_from_sets(set_manager: SetManager, question_id: str) -> int:
-    """Remove a deleted question id from every persisted question set."""
+def remove_question_from_sets(set_manager: SetManager, question_id: str, delete_empty: bool = False) -> int:
+    """Remove a deleted question id from every persisted question set.
+
+    When ``delete_empty`` is true, sets whose last question was removed are
+    deleted instead of being kept as unusable empty shells.
+    """
     changed = 0
     now = datetime.now(timezone.utc).isoformat()
     for qset in set_manager.load_all():
         if question_id not in qset.questions:
             continue
         qset.questions = [qid for qid in qset.questions if qid != question_id]
+        if delete_empty and not qset.questions:
+            set_manager.delete(qset.set_id)
+            changed += 1
+            continue
         qset.estimated_minutes = max(0, len(qset.questions) * 2)
         qset.metadata["updated_at"] = now
         qset.metadata["removed_question_id"] = question_id

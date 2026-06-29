@@ -36,6 +36,7 @@ class QuestionBankScreen(QWidget):
         self.current_question_id = ""
         self._current_course_id = ""
         self._list_title_limit = 96
+        self._refreshing_set_filter = False
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self.refresh()
@@ -55,6 +56,10 @@ class QuestionBankScreen(QWidget):
         )
         self.search_input.textChanged.connect(self._reset_and_refresh)
         filter_row.addWidget(self.search_input, 2)
+
+        self.set_filter = WheelSafeComboBox()
+        self.set_filter.currentIndexChanged.connect(self._reset_and_refresh)
+        filter_row.addWidget(self.set_filter, 1)
 
         self.difficulty_filter = WheelSafeComboBox()
         self.difficulty_filter.addItem(self.lang_manager.get_text("全部难度", "All difficulty"), None)
@@ -128,6 +133,7 @@ class QuestionBankScreen(QWidget):
         self.search_input.setPlaceholderText(
             self.lang_manager.get_text("搜索题干、解析、主题", "Search stem, explanation, topic")
         )
+        self._refresh_set_filter()
 
         # Rebuild difficulty filter, preserving current selection
         current_data = self.difficulty_filter.currentData()
@@ -152,13 +158,21 @@ class QuestionBankScreen(QWidget):
         """Reload current page."""
         query = self.search_input.text()
         difficulty = self.difficulty_filter.currentData()
-        items, self.total = self.question_bank.search(
-            query=query,
-            difficulty=difficulty,
-            course_id=self._current_course_id,
-            offset=self.page * self.page_size,
-            limit=self.page_size,
-        )
+        self._refresh_set_filter()
+        selected_set_id = self._selected_set_id()
+        if selected_set_id:
+            all_items = self._questions_for_set(selected_set_id, query=query, difficulty=difficulty)
+            self.total = len(all_items)
+            start = self.page * self.page_size
+            items = all_items[start:start + self.page_size]
+        else:
+            items, self.total = self.question_bank.search(
+                query=query,
+                difficulty=difficulty,
+                course_id=self._current_course_id,
+                offset=self.page * self.page_size,
+                limit=self.page_size,
+            )
         selected_ids = set(self._selected_question_ids())
         if not selected_ids and self.current_question_id:
             selected_ids.add(self.current_question_id)
@@ -343,7 +357,7 @@ class QuestionBankScreen(QWidget):
         for deleted_question_id in selected_ids:
             self.question_bank.delete(deleted_question_id)
             if self.set_manager is not None:
-                remove_question_from_sets(self.set_manager, deleted_question_id)
+                remove_question_from_sets(self.set_manager, deleted_question_id, delete_empty=True)
         self.current_question_id = ""
         self.editor.setReadOnly(False)
         self.editor.clear()
@@ -360,6 +374,72 @@ class QuestionBankScreen(QWidget):
                 ids.append(qid)
                 seen.add(qid)
         return ids
+
+    def _refresh_set_filter(self) -> None:
+        if self.set_manager is None or not hasattr(self, "set_filter") or self._refreshing_set_filter:
+            return
+        self._refreshing_set_filter = True
+        try:
+            current_data = self.set_filter.currentData()
+            self.set_filter.blockSignals(True)
+            self.set_filter.clear()
+            self.set_filter.addItem(self.lang_manager.get_text("全部题集", "All sets"), None)
+            lang = self.lang_manager.current
+            for qset in self.set_manager.load_all():
+                if not self._matches_current_course(qset):
+                    continue
+                label = (
+                    f"{qset.get_title(lang)}"
+                    f" ({qset.question_count} {self.lang_manager.get_text('题', 'questions')})"
+                )
+                self.set_filter.addItem(label, qset.set_id)
+            idx = self.set_filter.findData(current_data)
+            self.set_filter.setCurrentIndex(idx if idx >= 0 else 0)
+            self.set_filter.blockSignals(False)
+        finally:
+            self._refreshing_set_filter = False
+
+    def _selected_set_id(self) -> str:
+        if self.set_manager is None or not hasattr(self, "set_filter"):
+            return ""
+        return self.set_filter.currentData() or ""
+
+    def _questions_for_set(self, set_id: str, query: str = "", difficulty: str | None = None) -> list[Question]:
+        if self.set_manager is None:
+            return []
+        qset = self.set_manager.get(set_id)
+        if not qset:
+            return []
+        return [
+            question
+            for question in self.question_bank.get_many(qset.questions, course_id=self._current_course_id)
+            if self._matches_question_filters(question, query=query, difficulty=difficulty)
+        ]
+
+    def _matches_current_course(self, qset) -> bool:
+        source_course_id = (qset.metadata or {}).get("course_id", "")
+        if not source_course_id:
+            return True
+        if not self._current_course_id:
+            return True
+        return source_course_id == self._current_course_id
+
+    def _matches_question_filters(self, question: Question, query: str = "", difficulty: str | None = None) -> bool:
+        difficulty_filter = difficulty.value if isinstance(difficulty, Difficulty) else difficulty
+        if difficulty_filter and question.difficulty.value != difficulty_filter:
+            return False
+        query = (query or "").strip().lower()
+        if not query:
+            return True
+        haystack = " ".join([
+            question.get_stem("zh"),
+            question.get_stem("en"),
+            question.get_explanation("zh"),
+            question.get_explanation("en"),
+            question.subtopic,
+            topic_value(question.topic),
+        ]).lower()
+        return query in haystack
 
     def _question_list_title(self, question: Question) -> str:
         difficulty = self._compact_text(question.difficulty.value, 12)

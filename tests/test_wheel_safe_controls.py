@@ -131,7 +131,9 @@ class WheelSafeControlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as questions_dir, tempfile.TemporaryDirectory() as sets_dir:
             screen = QuestionBankScreen(QuestionBank(questions_dir), SetManager(sets_dir))
 
+            self.assertIsInstance(screen.set_filter, WheelSafeComboBox)
             self.assertIsInstance(screen.difficulty_filter, WheelSafeComboBox)
+            self.assertTrue(screen.set_filter.property("wheelSafe"))
             self.assertTrue(screen.difficulty_filter.property("wheelSafe"))
 
     def test_matching_answer_combos_are_wheel_safe(self):
