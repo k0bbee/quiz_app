@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from ai.llm_client import LLMClient
 from models.progress import AnswerRecord, ProgressRecord, SessionSummary
@@ -15,6 +15,7 @@ from models.question import Question
 from models.question import QuestionBank
 from models.question_set import QuestionSet
 from core.quiz_engine import QuizSession
+from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
 from core.language_manager import LanguageManager
 from ui.screens.home_screen import HomeScreen
@@ -377,7 +378,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIn("Questions: 1", screen.overall_label.text())
             self.assertIn("Correct: 1 / 1", screen.detail_label.text())
             self.assertEqual(1, screen.topic_table.rowCount())
-            self.assertEqual("1/1", screen.topic_table.item(0, 3).text())
+            self.assertEqual("100%", screen.topic_table.item(0, 2).text())
+            self.assertEqual("75%", screen.topic_table.item(0, 3).text())
+            self.assertEqual("1/1", screen.topic_table.item(0, 4).text())
             self.assertEqual("", screen.recommendation_label.text())
 
     def test_progress_dashboard_recommends_low_mastery_topics_for_current_course(self):
@@ -441,6 +444,85 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIn("cache", screen.recommendation_label.text())
             self.assertNotIn("process", screen.recommendation_label.text())
             self.assertNotIn("virtual memory", screen.recommendation_label.text())
+
+    def test_progress_dashboard_skips_topics_marked_fully_mastered(self):
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            progress_manager = ProgressManager(str(root / "progress"))
+            mastery_overrides = MasteryOverrideStore(root / "mastery_overrides.json")
+            cache = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "Cache", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Cache", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            cache.metadata["course_id"] = "course-a"
+            process = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "Process", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Process", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="process",
+            )
+            process.metadata["course_id"] = "course-a"
+            question_bank.save_many([cache, process])
+
+            record = ProgressRecord.create_new("set-any")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(question_id=cache.question_id, index_in_session=0, user_answer="B", is_correct=False),
+                AnswerRecord(question_id=process.question_id, index_in_session=1, user_answer="B", is_correct=False),
+            ]
+            record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
+            progress_manager.save(record)
+
+            screen = ProgressDashboard(progress_manager, question_bank, mastery_overrides=mastery_overrides)
+            screen.set_current_course("course-a")
+            screen.refresh()
+
+            self.assertIn("cache", screen.recommendation_label.text())
+
+            cache_row = 0
+            screen.topic_table.selectRow(cache_row)
+            screen.mark_mastered_btn.click()
+
+            self.assertTrue(mastery_overrides.is_topic_mastered("course-a", "cache"))
+            self.assertEqual("已掌握", screen.topic_table.item(cache_row, 3).text())
+            self.assertNotIn("cache", screen.recommendation_label.text())
+            self.assertIn("process", screen.recommendation_label.text())
+
+            screen.mark_mastered_btn.click()
+
+            self.assertFalse(mastery_overrides.is_topic_mastered("course-a", "cache"))
+            self.assertIn("cache", screen.recommendation_label.text())
+
+    def test_progress_reset_clears_mastered_topic_overrides(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            progress_manager = ProgressManager(str(root / "progress"))
+            question_bank = QuestionBank(str(root / "questions"))
+            mastery_overrides = MasteryOverrideStore(root / "mastery_overrides.json")
+            mastery_overrides.mark_topic_mastered("course-a", "cache")
+
+            screen = ProgressDashboard(progress_manager, question_bank, mastery_overrides=mastery_overrides)
+            screen.set_current_course("course-a")
+
+            with patch("ui.screens.progress_dashboard.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
+                screen._reset_progress()
+
+            self.assertFalse(mastery_overrides.is_topic_mastered("course-a", "cache"))
 
     def test_incorrect_review_uses_current_course_filter(self):
         from ui.main_window import MainWindow
@@ -568,6 +650,65 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 [higher_priority.question_id, lower_priority.question_id],
                 [q.question_id for q in started["questions"]],
             )
+
+    def test_incorrect_review_skips_fully_mastered_topics(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            mastered = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "Cache", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Cache", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            mastered.metadata["course_id"] = "course-a"
+            active = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "Process", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Process", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="process",
+            )
+            active.metadata["course_id"] = "course-a"
+            question_bank.save_many([mastered, active])
+
+            class FakeProgressManager:
+                def get_prioritized_review_question_ids(self):
+                    return [mastered.question_id, active.question_id]
+
+            mastery_overrides = MasteryOverrideStore(root / "mastery_overrides.json")
+            mastery_overrides.mark_topic_mastered("course-a", "cache")
+            started = {}
+
+            class FakeQuizScreen:
+                def start_quiz_custom(self, questions, label, show_timer=False):
+                    started["questions"] = questions
+
+            shell = types.SimpleNamespace(
+                progress_manager=FakeProgressManager(),
+                question_bank=question_bank,
+                mastery_overrides=mastery_overrides,
+                lang_manager=LanguageManager.instance(),
+                quiz_screen=FakeQuizScreen(),
+                _active_questions={},
+                SCREEN_QUIZ=2,
+                _current_course_id=lambda: "course-a",
+                _show_timer_setting=lambda: False,
+                navigate_to=lambda screen: started.setdefault("screen", screen),
+            )
+
+            MainWindow._on_practice_incorrect(shell)
+
+            self.assertEqual([active.question_id], [q.question_id for q in started["questions"]])
 
 
 if __name__ == "__main__":

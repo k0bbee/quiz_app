@@ -20,6 +20,10 @@ class AppDataBundleTests(unittest.TestCase):
             (data_dir / "question_sets" / "set1.json").write_text('{"set_id": "set1"}', encoding="utf-8")
             (data_dir / "progress" / "p1.json").write_text('{"progress_id": "p1"}', encoding="utf-8")
             (data_dir / "current_course.json").write_text('{"course_id": "course-a"}', encoding="utf-8")
+            (data_dir / "mastery_overrides.json").write_text(
+                '{"courses": {"course-a": ["cache"]}}',
+                encoding="utf-8",
+            )
             (data_dir / "settings.json").write_text(
                 json.dumps({"language": "zh", "ai_api_key": "secret", "ai_model": "model"}, ensure_ascii=False),
                 encoding="utf-8",
@@ -36,6 +40,7 @@ class AppDataBundleTests(unittest.TestCase):
                 self.assertIn("question_sets/set1.json", names)
                 self.assertIn("progress/p1.json", names)
                 self.assertIn("current_course.json", names)
+                self.assertIn("mastery_overrides.json", names)
                 self.assertIn("settings.json", names)
                 self.assertNotIn(".api_key.dpapi", names)
 
@@ -53,14 +58,16 @@ class AppDataBundleTests(unittest.TestCase):
                 archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
                 archive.writestr("courses/course-a/summary.md", "# 课程总结")
                 archive.writestr("questions/q1.json", '{"question_id": "q1"}')
+                archive.writestr("mastery_overrides.json", '{"courses": {"course-a": ["cache"]}}')
                 archive.writestr("settings.json", '{"language": "en", "ai_api_key": "must-not-import"}')
                 archive.writestr("../escape.txt", "bad")
 
             result = import_app_data_bundle(bundle_path, target_dir)
 
-            self.assertEqual(3, result.imported_files)
+            self.assertEqual(4, result.imported_files)
             self.assertTrue((target_dir / "courses" / "course-a" / "summary.md").exists())
             self.assertTrue((target_dir / "questions" / "q1.json").exists())
+            self.assertTrue((target_dir / "mastery_overrides.json").exists())
             imported_settings = json.loads((target_dir / "settings.json").read_text(encoding="utf-8"))
             self.assertEqual({"language": "en"}, imported_settings)
             self.assertFalse((Path(tmpdir) / "escape.txt").exists())

@@ -14,6 +14,7 @@ from models.question_set import SetManager
 from core.question_set_regenerator import persist_regenerated_question_set
 from core.question_set_builder import build_ai_question_set
 from core.progress_tracker import ProgressManager
+from core.mastery_overrides import MasteryOverrideStore
 from models.course_project import CourseProjectManager
 from config import QUESTIONS_DIR, QUESTION_SETS_DIR, PROGRESS_DIR, APP_NAME
 
@@ -70,6 +71,7 @@ class MainWindow(QMainWindow):
         self.question_bank = QuestionBank(QUESTIONS_DIR)
         self.set_manager = SetManager(QUESTION_SETS_DIR)
         self.progress_manager = ProgressManager(PROGRESS_DIR)
+        self.mastery_overrides = MasteryOverrideStore()
         self.course_manager = CourseProjectManager()
         self.lang_manager = LanguageManager.instance()
 
@@ -81,7 +83,11 @@ class MainWindow(QMainWindow):
         self.topic_screen = TopicSelectionScreen(self.set_manager, self.progress_manager)
         self.quiz_screen = QuizScreen(self.question_bank, self.progress_manager)
         self.results_screen = ResultsScreen()
-        self.progress_screen = ProgressDashboard(self.progress_manager, self.question_bank)
+        self.progress_screen = ProgressDashboard(
+            self.progress_manager,
+            self.question_bank,
+            mastery_overrides=self.mastery_overrides,
+        )
         self.settings_screen = SettingsScreen()
         self._course_screen = None
         self._question_bank_screen = None
@@ -474,11 +480,21 @@ class MainWindow(QMainWindow):
             incorrect_ids,
             course_id=self._current_course_id(),
         )
+        course_id = self._current_course_id()
+        mastery_overrides = getattr(self, "mastery_overrides", None)
+        if mastery_overrides is not None:
+            questions = [
+                question for question in questions
+                if not mastery_overrides.is_topic_mastered(course_id, question.topic)
+            ]
         if not questions:
             QMessageBox.warning(
                 self,
                 gm("没有题目", "No Questions"),
-                gm("存在错题记录，但题目文件缺失。", "Incorrect records exist, but the question files are missing."),
+                gm(
+                    "存在错题记录，但题目文件缺失，或相关主题已标记为已掌握。",
+                    "Incorrect records exist, but question files are missing or their topics are marked mastered.",
+                ),
             )
             return
 

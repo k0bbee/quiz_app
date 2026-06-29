@@ -1,5 +1,7 @@
 from models.progress import AnswerRecord, ProgressRecord, SessionSummary
-from core.mastery import build_question_mastery, prioritize_review_question_ids
+from models.question import Question
+from utils.constants import Difficulty, QuestionType
+from core.mastery import build_question_mastery, build_topic_mastery, prioritize_review_question_ids
 from core.progress_tracker import ProgressManager
 
 
@@ -26,6 +28,20 @@ def _answer(question_id: str, is_correct: bool, index: int = 0) -> AnswerRecord:
         index_in_session=index,
         user_answer="A" if is_correct else "B",
         is_correct=is_correct,
+    )
+
+
+def _question(question_id: str, topic: str) -> Question:
+    return Question(
+        question_id=question_id,
+        type=QuestionType.MULTIPLE_CHOICE,
+        difficulty=Difficulty.MEDIUM,
+        bilingual={
+            "zh": {"stem": question_id, "options": ["A. one", "B. two"], "explanation": "解释"},
+            "en": {"stem": question_id, "options": ["A. one", "B. two"], "explanation": "Explanation"},
+        },
+        correct_answer="A",
+        topic=topic,
     )
 
 
@@ -121,3 +137,40 @@ def test_progress_manager_returns_prioritized_review_ids(tmp_path):
     prioritized = progress_manager.get_prioritized_review_question_ids()
 
     assert prioritized == ["repeated-wrong", "recovered"]
+
+
+def test_build_topic_mastery_aggregates_question_states_by_topic():
+    records = [
+        _record(
+            "first",
+            "2026-06-01T00:00:00+00:00",
+            [
+                _answer("cache-a", False, 0),
+                _answer("cache-b", True, 1),
+                _answer("process-a", True, 2),
+            ],
+        ),
+        _record(
+            "second",
+            "2026-06-02T00:00:00+00:00",
+            [
+                _answer("cache-a", False, 0),
+                _answer("process-a", True, 1),
+            ],
+        ),
+    ]
+    questions = [
+        _question("cache-a", "cache"),
+        _question("cache-b", "cache"),
+        _question("process-a", "process"),
+    ]
+
+    states = build_topic_mastery(records, questions)
+
+    assert states["cache"].topic == "cache"
+    assert states["cache"].question_count == 2
+    assert states["cache"].attempts == 3
+    assert states["cache"].correct == 1
+    assert states["cache"].wrong_question_count == 1
+    assert states["cache"].mastery_score < states["process"].mastery_score
+    assert states["process"].mastery_score >= 0.8

@@ -667,9 +667,11 @@ class UiThemeTests(unittest.TestCase):
         self.assertNotRegex(results.retry_all_btn.text(), r"[^\w\s]")
 
         self.assertEqual("secondaryButton", progress.refresh_btn.objectName())
+        self.assertEqual("secondaryButton", progress.mark_mastered_btn.objectName())
         self.assertEqual("dangerButton", progress.reset_btn.objectName())
         self.assertEqual("dashboardRecommendationLabel", progress.recommendation_label.objectName())
         self.assertNotRegex(progress.refresh_btn.text(), r"[^\w\s]")
+        self.assertNotRegex(progress.mark_mastered_btn.text(), r"[^\w\s]")
         self.assertNotRegex(progress.reset_btn.text(), r"[^\w\s]")
 
         qss = Path("style.qss").read_text(encoding="utf-8").lower()

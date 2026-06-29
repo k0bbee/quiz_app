@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from models.progress import AnswerRecord, ProgressRecord
+from models.question import Question
+from utils.constants import topic_value
 
 
 @dataclass(frozen=True)
@@ -22,6 +24,18 @@ class MasteryState:
     last_wrong_at: str = ""
     mastery_score: float = 0.0
     review_priority: float = 0.0
+
+
+@dataclass(frozen=True)
+class TopicMasteryState:
+    """Derived learning state for one topic."""
+
+    topic: str
+    question_count: int = 0
+    attempts: int = 0
+    correct: int = 0
+    wrong_question_count: int = 0
+    mastery_score: float = 0.0
 
 
 @dataclass
@@ -70,6 +84,39 @@ def build_question_mastery(records: list[ProgressRecord]) -> dict[str, MasterySt
         question_id: _build_state(accumulator, total_events)
         for question_id, accumulator in accumulators.items()
     }
+
+
+def build_topic_mastery(records: list[ProgressRecord], questions: list[Question]) -> dict[str, TopicMasteryState]:
+    """Build per-topic mastery states from question metadata and progress records."""
+    question_states = build_question_mastery(records)
+    by_topic: dict[str, list[tuple[Question, MasteryState]]] = {}
+    for question in questions:
+        topic = topic_value(question.topic)
+        state = question_states.get(question.question_id)
+        if state is None:
+            state = MasteryState(question_id=question.question_id)
+        by_topic.setdefault(topic, []).append((question, state))
+
+    topic_states: dict[str, TopicMasteryState] = {}
+    for topic, rows in by_topic.items():
+        states = [state for _question, state in rows]
+        attempts = sum(state.attempts for state in states)
+        correct = sum(state.correct for state in states)
+        wrong_question_count = sum(1 for state in states if state.ever_wrong)
+        answered_states = [state for state in states if state.attempts > 0]
+        if answered_states:
+            mastery_score = sum(state.mastery_score for state in answered_states) / len(answered_states)
+        else:
+            mastery_score = 0.0
+        topic_states[topic] = TopicMasteryState(
+            topic=topic,
+            question_count=len(rows),
+            attempts=attempts,
+            correct=correct,
+            wrong_question_count=wrong_question_count,
+            mastery_score=round(mastery_score, 3),
+        )
+    return topic_states
 
 
 def prioritize_review_question_ids(

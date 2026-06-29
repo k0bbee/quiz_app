@@ -8,6 +8,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from core.progress_tracker import ProgressManager
+from core.mastery import build_topic_mastery
+from core.mastery_overrides import MasteryOverrideStore
 from models.question import QuestionBank
 from models.question_set import SetManager
 from utils.constants import topic_label, topic_value
@@ -18,12 +20,19 @@ from config import QUESTION_SETS_DIR
 class ProgressDashboard(QWidget):
     """Aggregated progress statistics and session history."""
 
-    def __init__(self, progress_manager: ProgressManager, question_bank: QuestionBank, parent=None):
+    def __init__(
+        self,
+        progress_manager: ProgressManager,
+        question_bank: QuestionBank,
+        parent=None,
+        mastery_overrides: MasteryOverrideStore | None = None,
+    ):
         super().__init__(parent)
         self.progress_manager = progress_manager
         self.question_bank = question_bank
         self.set_manager = SetManager(QUESTION_SETS_DIR)
         self.lang_manager = LanguageManager.instance()
+        self.mastery_overrides = mastery_overrides or MasteryOverrideStore()
         self._current_course_id = ""
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
@@ -60,14 +69,17 @@ class ProgressDashboard(QWidget):
         topic_layout = QVBoxLayout(self.topic_group)
 
         self.topic_table = QTableWidget()
-        self.topic_table.setColumnCount(4)
+        self.topic_table.setColumnCount(5)
         self.topic_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.topic_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         self.topic_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.topic_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.topic_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)
         self.topic_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.topic_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.topic_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.topic_table.verticalHeader().setVisible(False)
+        self.topic_table.itemSelectionChanged.connect(self._update_mastery_action_state)
         topic_layout.addWidget(self.topic_table)
 
         layout.addWidget(self.topic_group, 1)
@@ -91,6 +103,11 @@ class ProgressDashboard(QWidget):
         self.refresh_btn.clicked.connect(self.refresh)
         btn_layout.addWidget(self.refresh_btn)
 
+        self.mark_mastered_btn = QPushButton()
+        self.mark_mastered_btn.setObjectName("secondaryButton")
+        self.mark_mastered_btn.clicked.connect(self._toggle_selected_topic_mastery)
+        btn_layout.addWidget(self.mark_mastered_btn)
+
         self.reset_btn = QPushButton()
         self.reset_btn.setObjectName("dangerButton")
         self.reset_btn.clicked.connect(self._reset_progress)
@@ -107,11 +124,13 @@ class ProgressDashboard(QWidget):
         self.topic_group.setTitle(self.lang_manager.get_text("按主题", "By Topic"))
         self.recent_group.setTitle(self.lang_manager.get_text("最近记录", "Recent Sessions"))
         self.refresh_btn.setText(self.lang_manager.get_text("刷新", "Refresh"))
+        self._update_mastery_action_state()
         self.reset_btn.setText(self.lang_manager.get_text("重置全部进度", "Reset All Progress"))
         self.topic_table.setHorizontalHeaderLabels([
             self.lang_manager.get_text("主题", "Topic"),
             self.lang_manager.get_text("练习次数", "Sessions"),
             self.lang_manager.get_text("正确率", "Accuracy"),
+            self.lang_manager.get_text("掌握度", "Mastery"),
             self.lang_manager.get_text("题目数", "Questions"),
         ])
 
@@ -191,6 +210,7 @@ class ProgressDashboard(QWidget):
         questions = self.question_bank.load_all()
         if visible_question_ids is not None:
             questions = [q for q in questions if q.question_id in visible_question_ids]
+        topic_mastery = build_topic_mastery(completed, questions)
         for q in questions:
             qid_to_topic[q.question_id] = q.topic
 
@@ -212,11 +232,20 @@ class ProgressDashboard(QWidget):
         for row, (topic, stats) in enumerate(sorted(topic_stats.items(), key=lambda x: topic_value(x[0]))):
             label = topic_label(topic, lang)
             accuracy = (stats["correct"] / stats["total"] * 100) if stats["total"] > 0 else 0
+            mastery = topic_mastery.get(topic_value(topic))
+            is_mastered = self.mastery_overrides.is_topic_mastered(self._current_course_id, topic)
+            mastery_text = self.lang_manager.get_text("已掌握", "Mastered") if is_mastered else (
+                f"{mastery.mastery_score * 100:.0f}%" if mastery else "0%"
+            )
 
-            self.topic_table.setItem(row, 0, QTableWidgetItem(label))
+            topic_item = QTableWidgetItem(label)
+            topic_item.setData(Qt.ItemDataRole.UserRole, topic_value(topic))
+            self.topic_table.setItem(row, 0, topic_item)
             self.topic_table.setItem(row, 1, QTableWidgetItem(str(len(stats["sessions"]))))
             self.topic_table.setItem(row, 2, QTableWidgetItem(f"{accuracy:.0f}%"))
-            self.topic_table.setItem(row, 3, QTableWidgetItem(f"{stats['correct']}/{stats['total']}"))
+            self.topic_table.setItem(row, 3, QTableWidgetItem(mastery_text))
+            self.topic_table.setItem(row, 4, QTableWidgetItem(f"{stats['correct']}/{stats['total']}"))
+        self._update_mastery_action_state()
 
     def _update_recommendations(self, lang: str, visible_question_ids: set[str] | None):
         """Show compact next-review topic suggestions."""
@@ -229,6 +258,8 @@ class ProgressDashboard(QWidget):
         labels = []
         seen_topics = set()
         for question in questions:
+            if self.mastery_overrides.is_topic_mastered(self._current_course_id, question.topic):
+                continue
             value = topic_value(question.topic)
             if value in seen_topics:
                 continue
@@ -247,6 +278,36 @@ class ProgressDashboard(QWidget):
             f"Suggested review: {topics}",
         ))
 
+    def _selected_topic_key(self) -> str:
+        selected = self.topic_table.selectedItems()
+        if not selected:
+            return ""
+        row = selected[0].row()
+        item = self.topic_table.item(row, 0)
+        return str(item.data(Qt.ItemDataRole.UserRole) or "") if item else ""
+
+    def _update_mastery_action_state(self):
+        """Update the selected-topic mastery toggle button."""
+        if not hasattr(self, "mark_mastered_btn"):
+            return
+        topic_key = self._selected_topic_key()
+        self.mark_mastered_btn.setEnabled(bool(topic_key))
+        if topic_key and self.mastery_overrides.is_topic_mastered(self._current_course_id, topic_key):
+            self.mark_mastered_btn.setText(self.lang_manager.get_text("取消已掌握", "Unmark Mastered"))
+        else:
+            self.mark_mastered_btn.setText(self.lang_manager.get_text("标记已掌握", "Mark Mastered"))
+
+    def _toggle_selected_topic_mastery(self):
+        """Toggle the selected topic's user-managed mastered state."""
+        topic_key = self._selected_topic_key()
+        if not topic_key:
+            return
+        if self.mastery_overrides.is_topic_mastered(self._current_course_id, topic_key):
+            self.mastery_overrides.unmark_topic_mastered(self._current_course_id, topic_key)
+        else:
+            self.mastery_overrides.mark_topic_mastered(self._current_course_id, topic_key)
+        self.refresh()
+
     def _reset_progress(self):
         """Confirm and reset all progress."""
         reply = QMessageBox.question(
@@ -261,4 +322,5 @@ class ProgressDashboard(QWidget):
         )
         if reply == QMessageBox.StandardButton.Yes:
             self.progress_manager.reset_all()
+            self.mastery_overrides.clear()
             self.refresh()
