@@ -98,6 +98,12 @@ def _retrieve_cached(
 
     terms = []
     topic_keywords = data.get("topic_keywords", {})
+    selected_topic_keys = {_match_key(topic) for topic in topic_key}
+    other_topic_keys = {
+        _match_key(topic)
+        for topic in data.get("topic_titles", [])
+        if _match_key(topic) not in selected_topic_keys
+    }
     for topic in topic_key:
         terms.extend(extract_terms(topic, limit=12))
         terms.append(topic.lower())
@@ -110,8 +116,12 @@ def _retrieve_cached(
     scored = []
     term_set = {t.lower() for t in terms if t}
     for chunk in chunks:
+        if _heading_matches_any_topic(chunk.heading, other_topic_keys):
+            continue
         text_lower = f"{chunk.heading}\n{chunk.text}".lower()
         score = 0
+        if _heading_matches_any_topic(chunk.heading, selected_topic_keys):
+            score += 20
         for term in term_set:
             if term in chunk.terms:
                 score += 8
@@ -192,8 +202,9 @@ def _project_payload(project: CourseProject) -> str:
     return json.dumps(
         {
             "summary": project.summary_markdown,
-            "index": project.documents[0].get("_course_index", []) if project.documents else [],
+            "index": build_course_index(project.summary_markdown),
             "topic_keywords": _topic_keyword_payload(project),
+            "topic_titles": _topic_title_payload(project),
         },
         ensure_ascii=False,
         sort_keys=True,
@@ -211,6 +222,18 @@ def _topic_keyword_payload(project: CourseProject) -> dict[str, list[str]]:
         ):
             topic_keywords[key] = keywords
     return topic_keywords
+
+
+def _topic_title_payload(project: CourseProject) -> list[str]:
+    titles: list[str] = []
+    for topic in getattr(project, "topics", []) or []:
+        for value in (
+            str(getattr(topic, "title", "") or "").strip(),
+            str(getattr(topic, "topic_id", "") or "").strip(),
+        ):
+            if value and value not in titles:
+                titles.append(value)
+    return titles
 
 
 def _expanded_terms(values: list[str]) -> list[str]:
@@ -261,19 +284,32 @@ def extract_terms(text: str, limit: int = 20) -> list[str]:
 def _split_chunks(markdown: str) -> list[tuple[str, str]]:
     """Split Markdown by headings into bounded chunks."""
     chunks: list[tuple[str, str]] = []
-    heading = "Course Summary"
+    heading_stack: list[tuple[int, str]] = [(0, "Course Summary")]
     lines: list[str] = []
     for line in markdown.splitlines():
-        if re.match(r"^#{1,4}\s+", line):
+        match = re.match(r"^(#{1,4})\s+(.+)$", line)
+        if match:
             if lines:
-                chunks.extend(_bounded_chunks(heading, "\n".join(lines).strip()))
-            heading = re.sub(r"^#{1,4}\s+", "", line).strip()
+                chunks.extend(_bounded_chunks(_current_heading(heading_stack), "\n".join(lines).strip()))
+            level = len(match.group(1))
+            title = match.group(2).strip()
+            heading_stack = [
+                (existing_level, existing_title)
+                for existing_level, existing_title in heading_stack
+                if existing_level < level
+            ]
+            heading_stack.append((level, title))
             lines = []
         else:
             lines.append(line)
     if lines:
-        chunks.extend(_bounded_chunks(heading, "\n".join(lines).strip()))
+        chunks.extend(_bounded_chunks(_current_heading(heading_stack), "\n".join(lines).strip()))
     return [(h, t) for h, t in chunks if t]
+
+
+def _current_heading(heading_stack: list[tuple[int, str]]) -> str:
+    titles = [title for level, title in heading_stack if level > 0 and title]
+    return " / ".join(titles) if titles else "Course Summary"
 
 
 def _bounded_chunks(heading: str, text: str, size: int = 1800) -> list[tuple[str, str]]:
@@ -283,3 +319,14 @@ def _bounded_chunks(heading: str, text: str, size: int = 1800) -> list[tuple[str
     for i in range(0, len(text), size):
         parts.append((f"{heading} ({i // size + 1})", text[i:i + size]))
     return parts
+
+
+def _match_key(value: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9\u4e00-\u9fff]+", str(value or "").lower()))
+
+
+def _heading_matches_any_topic(heading: str, topic_keys: set[str]) -> bool:
+    heading_key = _match_key(heading)
+    if not heading_key:
+        return False
+    return any(topic_key and topic_key in heading_key for topic_key in topic_keys)

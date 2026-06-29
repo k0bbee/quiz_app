@@ -128,6 +128,73 @@ class CourseIndexCacheTests(unittest.TestCase):
         self.assertIn("Address Breakdown", context)
         self.assertIn("byte offset", context)
 
+    def test_course_index_preserves_parent_topic_for_repeated_subheadings(self):
+        summary = (
+            "## Input Output Improvements\n"
+            "### Core Concepts\n"
+            "Polling, interrupts, buffers, and DMA reduce CPU overhead for devices.\n\n"
+            "## Hard Disks & RAID\n"
+            "### Core Concepts\n"
+            "Seek time, rotational latency, and RAID levels describe disk storage.\n"
+        )
+
+        index = course_index.build_course_index(summary)
+        headings = [item["heading"] for item in index]
+
+        self.assertIn("Input Output Improvements / Core Concepts", headings)
+        self.assertIn("Hard Disks & RAID / Core Concepts", headings)
+
+    def test_retrieval_for_io_improvements_excludes_disk_and_raid_neighbor_topics(self):
+        summary = (
+            "## Input Output Improvements\n"
+            "### Core Concepts\n"
+            "Polling checks device status repeatedly. Interrupt-driven I/O lets the CPU continue "
+            "until a device raises an interrupt. Buffers reduce interrupt frequency. DMA transfers "
+            "data directly between an I/O device and memory with little CPU involvement.\n\n"
+            "## Hard Disks & RAID\n"
+            "### Core Concepts\n"
+            "Hard disks use platters, tracks, cylinders, seek time, rotational latency, and RAID "
+            "levels such as RAID 0, RAID 1, and RAID 5.\n\n"
+            "## Disk IO Characteristics and File Allocation\n"
+            "### Core Concepts\n"
+            "File allocation uses contiguous, linked, and indexed blocks. Random access depends "
+            "on logical-to-physical disk block mapping.\n"
+        )
+        project = CourseProject(
+            course_id="course-io-boundary",
+            title="Systems",
+            source_folder="",
+            summary_markdown=summary,
+            summary_path="",
+            topics=[
+                CourseTopic(topic_id="input_output_improvements", title="Input Output Improvements"),
+                CourseTopic(topic_id="hard_disks_raid", title="Hard Disks & RAID"),
+                CourseTopic(topic_id="disk_io_characteristics", title="Disk IO Characteristics and File Allocation"),
+            ],
+            documents=[
+                {
+                    "path": "summary.md",
+                    "title": "summary",
+                    "extension": ".md",
+                    "_course_index": course_index.build_course_index(summary),
+                }
+            ],
+            created_at="2026-06-29T00:00:00+00:00",
+            updated_at="2026-06-29T00:00:00+00:00",
+        )
+
+        context = course_index.retrieve_course_context(
+            project,
+            ["Input Output Improvements"],
+            max_chars=1400,
+        )
+
+        self.assertIn("Polling", context)
+        self.assertIn("DMA", context)
+        self.assertNotIn("RAID", context)
+        self.assertNotIn("seek time", context.lower())
+        self.assertNotIn("File allocation", context)
+
     def test_retrieval_matches_project_topic_keywords_by_topic_id(self):
         summary = (
             "## Cache Mapping\n"

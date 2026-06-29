@@ -70,6 +70,16 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("fill_in_blank", prompt)
         self.assertIn('"correct_answer": ["accepted answer"', prompt)
 
+    def test_prompt_marks_selected_topics_as_hard_generation_boundary(self):
+        prompt = PromptBuilder.build_user_prompt(
+            "## Input Output Improvements\nPolling, interrupts, buffers, and DMA.",
+            ["Input Output Improvements"],
+            count=3,
+        )
+
+        self.assertIn("Selected-topic boundary", prompt)
+        self.assertIn("Do not expand into neighboring course topics", prompt)
+
     def test_prompt_context_can_use_topic_keywords_to_respect_selected_topic(self):
         content = (
             "## Cache Mapping\n"
