@@ -19,6 +19,7 @@ from models.question_set import QuestionSet, SetManager
 from core.quiz_engine import QuizSession
 from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
+from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.language_manager import LanguageManager
 from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
@@ -525,6 +526,45 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual(set(), screen._unsure_question_ids)
             self.assertEqual("sure", screen.session.answers[0].confidence)
 
+    def test_quiz_screen_confirm_exit_saves_snapshot_without_abandoned_progress(self):
+        qset = QuestionSet.create_new(
+            title={"zh": "测试题集", "en": "Test Set"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=["q1", "q2"],
+        )
+        q1 = self._make_question("q1")
+        q2 = self._make_question("q2")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            progress_manager = ProgressManager(str(root / "progress"))
+            snapshot_manager = QuizSnapshotManager(str(root / "snapshots"))
+            screen = QuizScreen(
+                QuestionBank(str(root / "questions")),
+                progress_manager,
+                snapshot_manager=snapshot_manager,
+            )
+            screen.start_quiz(qset, [q1, q2], show_timer=False)
+            screen._jump_to_question(1)
+            current_id = screen.session.current_question.question_id
+            screen.answer_area.choice_widget.buttons[1].setChecked(True)
+
+            with patch(
+                "ui.screens.quiz_screen.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ):
+                confirmed = screen.confirm_exit()
+
+            snapshot = snapshot_manager.load_latest()
+
+            self.assertTrue(confirmed)
+            self.assertIsNotNone(snapshot)
+            self.assertEqual(qset.set_id, snapshot.set_id)
+            self.assertEqual(1, snapshot.current_index)
+            self.assertEqual("B", snapshot.draft_answers[current_id])
+            self.assertIsNone(progress_manager.get_latest_abandoned_record())
+
     def test_results_screen_shows_correct_but_unsure_count(self):
         record = ProgressRecord.create_new("set-1")
         record.status = "completed"
@@ -966,6 +1006,10 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertFalse(screen.resume_btn.isHidden())
             self.assertIn("继续草稿", screen.resume_btn.text())
             self.assertIn("3", screen.resume_btn.text())
+
+            screen.set_resume_draft("系统结构练习", 13, current_index=6, total_count=20)
+
+            self.assertIn("第 7/20 题", screen.resume_btn.text())
 
             screen.clear_resume_draft()
 
@@ -1441,6 +1485,191 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual([remaining.question_id], [q.question_id for q in started["questions"]])
             self.assertIn("系统结构练习", started["label"])
             self.assertIsNone(progress_manager.get("draft"))
+
+    def test_resume_practice_prefers_snapshot_and_restores_full_session(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            set_manager = SetManager(str(root / "sets"))
+            progress_manager = ProgressManager(str(root / "progress"))
+            snapshot_manager = QuizSnapshotManager(str(root / "snapshots"))
+            answered = self._make_question("q-answered")
+            remaining = self._make_question("q-remaining")
+            for question in (answered, remaining):
+                question.metadata["course_id"] = "course-a"
+            question_bank.save_many([answered, remaining])
+            qset = QuestionSet.create_new(
+                title={"zh": "系统结构练习", "en": "Architecture Practice"},
+                description={"zh": "", "en": ""},
+                topics=["cache"],
+                question_ids=[answered.question_id, remaining.question_id],
+            )
+            set_manager.save(qset)
+            snapshot = QuizSessionSnapshot.create_new(
+                set_id=qset.set_id,
+                title="系统结构练习",
+                question_order=[answered.question_id, remaining.question_id],
+                language="zh",
+            )
+            snapshot.current_index = 1
+            snapshot.submitted_answers = [
+                AnswerRecord(
+                    question_id=answered.question_id,
+                    index_in_session=0,
+                    user_answer="A",
+                    is_correct=True,
+                )
+            ]
+            snapshot.draft_answers = {remaining.question_id: "B"}
+            snapshot_manager.save(snapshot)
+            old_draft = ProgressRecord.create_new(qset.set_id)
+            old_draft.progress_id = "old-draft"
+            old_draft.status = "abandoned"
+            old_draft.answers = [
+                AnswerRecord(question_id=answered.question_id, index_in_session=0, user_answer="A", is_correct=True),
+            ]
+            old_draft.summary = SessionSummary.compute(old_draft.answers, total_questions=2, total_time=10)
+            progress_manager.save(old_draft)
+            started = {}
+
+            class FakeQuizScreen:
+                def restore_snapshot(self, snapshot_arg, questions, question_set, show_timer=False):
+                    started["snapshot"] = snapshot_arg
+                    started["questions"] = questions
+                    started["question_set"] = question_set
+                    started["show_timer"] = show_timer
+
+                def start_quiz_custom(self, questions, label, show_timer=False):
+                    started["legacy_questions"] = questions
+
+            shell = types.SimpleNamespace(
+                progress_manager=progress_manager,
+                snapshot_manager=snapshot_manager,
+                set_manager=set_manager,
+                question_bank=question_bank,
+                lang_manager=LanguageManager.instance(),
+                quiz_screen=FakeQuizScreen(),
+                _active_questions={},
+                SCREEN_QUIZ=2,
+                _current_course_id=lambda: "course-a",
+                _show_timer_setting=lambda: False,
+                navigate_to=lambda screen: started.setdefault("screen", screen),
+            )
+
+            MainWindow._on_resume_abandoned(shell)
+
+            self.assertEqual(snapshot.snapshot_id, started["snapshot"].snapshot_id)
+            self.assertEqual(
+                [answered.question_id, remaining.question_id],
+                [question.question_id for question in started["questions"]],
+            )
+            self.assertEqual(qset.set_id, started["question_set"].set_id)
+            self.assertNotIn("legacy_questions", started)
+            self.assertIsNotNone(snapshot_manager.get(snapshot.snapshot_id))
+
+    def test_home_resume_draft_prefers_snapshot_position_text(self):
+        from ui.main_window import MainWindow
+
+        qset = QuestionSet.create_new(
+            title={"zh": "系统结构练习", "en": "Architecture Practice"},
+            description={"zh": "", "en": ""},
+            topics=["cache"],
+            question_ids=["q1", "q2"],
+        )
+        snapshot = QuizSessionSnapshot.create_new(
+            set_id=qset.set_id,
+            title="系统结构练习",
+            question_order=["q1", "q2"],
+            language="zh",
+        )
+        snapshot.current_index = 1
+        shown = {}
+
+        class FakeSnapshotManager:
+            def load_latest(self):
+                return snapshot
+
+        class FakeSetManager:
+            def get(self, set_id):
+                return qset if set_id == qset.set_id else None
+
+        class FakeQuestionBank:
+            def get_many(self, question_ids, course_id=None):
+                return [self_outer._make_question(qid) for qid in question_ids]
+
+        self_outer = self
+
+        class FakeHomeScreen:
+            def set_resume_draft(self, title, remaining_count, current_index=None, total_count=None):
+                shown["title"] = title
+                shown["remaining_count"] = remaining_count
+                shown["current_index"] = current_index
+                shown["total_count"] = total_count
+
+            def clear_resume_draft(self):
+                shown["cleared"] = True
+
+        shell = types.SimpleNamespace(
+            home_screen=FakeHomeScreen(),
+            snapshot_manager=FakeSnapshotManager(),
+            set_manager=FakeSetManager(),
+            question_bank=FakeQuestionBank(),
+            lang_manager=LanguageManager.instance(),
+            _current_course_id=lambda: "",
+        )
+
+        MainWindow._update_home_resume_draft(shell)
+
+        self.assertEqual("系统结构练习", shown["title"])
+        self.assertEqual(1, shown["remaining_count"])
+        self.assertEqual(1, shown["current_index"])
+        self.assertEqual(2, shown["total_count"])
+
+    def test_quiz_finished_deletes_snapshot_for_completed_set(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            progress_manager = ProgressManager(str(root / "progress"))
+            snapshot_manager = QuizSnapshotManager(str(root / "snapshots"))
+            qset = QuestionSet.create_new(
+                title={"zh": "系统结构练习", "en": "Architecture Practice"},
+                description={"zh": "", "en": ""},
+                topics=["cache"],
+                question_ids=["q1"],
+            )
+            snapshot = QuizSessionSnapshot.create_new(
+                set_id=qset.set_id,
+                title="系统结构练习",
+                question_order=["q1"],
+            )
+            snapshot_manager.save(snapshot)
+            record = ProgressRecord.create_new(qset.set_id)
+            record.status = "completed"
+            shown = {}
+
+            class FakeResultsScreen:
+                def set_results(self, progress_record, questions, lang):
+                    shown["record"] = progress_record
+                    shown["questions"] = questions
+                    shown["lang"] = lang
+
+            shell = types.SimpleNamespace(
+                progress_manager=progress_manager,
+                snapshot_manager=snapshot_manager,
+                results_screen=FakeResultsScreen(),
+                _active_questions={},
+                lang_manager=LanguageManager.instance(),
+                SCREEN_RESULTS=3,
+                navigate_to=lambda screen: shown.setdefault("screen", screen),
+            )
+
+            MainWindow._on_quiz_finished(shell, record)
+
+            self.assertIsNone(snapshot_manager.get(snapshot.snapshot_id))
+            self.assertEqual(record.progress_id, shown["record"].progress_id)
 
 
 if __name__ == "__main__":

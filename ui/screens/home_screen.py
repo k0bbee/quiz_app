@@ -27,6 +27,8 @@ class HomeScreen(QWidget):
         self._current_course_id = ""
         self._resume_title = ""
         self._resume_remaining_count = 0
+        self._resume_current_index: int | None = None
+        self._resume_total_count: int | None = None
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -189,10 +191,18 @@ class HomeScreen(QWidget):
             )
         )
 
-    def set_resume_draft(self, title: str, remaining_count: int):
+    def set_resume_draft(
+        self,
+        title: str,
+        remaining_count: int,
+        current_index: int | None = None,
+        total_count: int | None = None,
+    ):
         """Show the resume draft action for an unfinished quiz."""
         self._resume_title = title
         self._resume_remaining_count = max(0, remaining_count)
+        self._resume_current_index = current_index
+        self._resume_total_count = total_count
         self._update_resume_text()
         self.resume_btn.show()
 
@@ -200,6 +210,8 @@ class HomeScreen(QWidget):
         """Hide the resume draft action."""
         self._resume_title = ""
         self._resume_remaining_count = 0
+        self._resume_current_index = None
+        self._resume_total_count = None
         self.resume_btn.hide()
 
     def set_current_course(self, course_id: str | None):
@@ -224,8 +236,15 @@ class HomeScreen(QWidget):
         self.incorrect_btn.style().polish(self.incorrect_btn)
 
     def _update_resume_text(self):
-        label = self.lang_manager.get_text(
-            f"继续草稿：{self._resume_title}（剩余 {self._resume_remaining_count} 题）",
-            f"Resume Draft: {self._resume_title} ({self._resume_remaining_count} left)",
-        )
+        if self._resume_current_index is not None and self._resume_total_count:
+            current = min(max(0, self._resume_current_index), self._resume_total_count - 1) + 1
+            label = self.lang_manager.get_text(
+                f"继续草稿：{self._resume_title}（第 {current}/{self._resume_total_count} 题）",
+                f"Resume Draft: {self._resume_title} (Question {current}/{self._resume_total_count})",
+            )
+        else:
+            label = self.lang_manager.get_text(
+                f"继续草稿：{self._resume_title}（剩余 {self._resume_remaining_count} 题）",
+                f"Resume Draft: {self._resume_title} ({self._resume_remaining_count} left)",
+            )
         self.resume_btn.setText(label)

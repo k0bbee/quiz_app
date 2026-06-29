@@ -27,10 +27,17 @@ class QuizScreen(QWidget):
     quiz_finished = pyqtSignal(object)  # ProgressRecord
     return_home = pyqtSignal()
 
-    def __init__(self, question_bank: QuestionBank, progress_manager: ProgressManager, parent=None):
+    def __init__(
+        self,
+        question_bank: QuestionBank,
+        progress_manager: ProgressManager,
+        parent=None,
+        snapshot_manager=None,
+    ):
         super().__init__(parent)
         self.question_bank = question_bank
         self.progress_manager = progress_manager
+        self.snapshot_manager = snapshot_manager
         self.lang_manager = LanguageManager.instance()
 
         self.session = QuizSession()
@@ -666,10 +673,24 @@ class QuizScreen(QWidget):
             QMessageBox.StandardButton.No,
         )
         if reply == QMessageBox.StandardButton.Yes:
-            # Save partial progress as abandoned without showing completed results.
-            record = self.session.abandon()
-            if record:
-                self.progress_manager.save(record)
+            if self.snapshot_manager is not None:
+                snapshot = self.capture_snapshot()
+                if not self.snapshot_manager.save(snapshot):
+                    QMessageBox.warning(
+                        self,
+                        self.lang_manager.get_text("保存失败", "Save Failed"),
+                        self.lang_manager.get_text(
+                            "练习草稿保存失败，已留在当前练习。",
+                            "Failed to save the quiz draft; staying in the current quiz.",
+                        ),
+                    )
+                    return False
+                self.session.abandon()
+            else:
+                # Compatibility path for tests/embedding without snapshot storage.
+                record = self.session.abandon()
+                if record:
+                    self.progress_manager.save(record)
             return True
         return False
 

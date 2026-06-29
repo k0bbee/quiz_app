@@ -14,9 +14,10 @@ from models.question_set import SetManager
 from core.question_set_regenerator import persist_regenerated_question_set
 from core.question_set_builder import build_ai_question_set
 from core.progress_tracker import ProgressManager
+from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.mastery_overrides import MasteryOverrideStore
 from models.course_project import CourseProjectManager
-from config import QUESTIONS_DIR, QUESTION_SETS_DIR, PROGRESS_DIR, APP_NAME
+from config import QUESTIONS_DIR, QUESTION_SETS_DIR, PROGRESS_DIR, QUIZ_SNAPSHOTS_DIR, APP_NAME
 
 from ui.screens.home_screen import HomeScreen
 from ui.screens.topic_selection_screen import TopicSelectionScreen
@@ -71,6 +72,7 @@ class MainWindow(QMainWindow):
         self.question_bank = QuestionBank(QUESTIONS_DIR)
         self.set_manager = SetManager(QUESTION_SETS_DIR)
         self.progress_manager = ProgressManager(PROGRESS_DIR)
+        self.snapshot_manager = QuizSnapshotManager(QUIZ_SNAPSHOTS_DIR)
         self.mastery_overrides = MasteryOverrideStore()
         self.course_manager = CourseProjectManager()
         self.lang_manager = LanguageManager.instance()
@@ -81,7 +83,11 @@ class MainWindow(QMainWindow):
         # Create screens
         self.home_screen = HomeScreen(self.progress_manager, self.question_bank)
         self.topic_screen = TopicSelectionScreen(self.set_manager, self.progress_manager)
-        self.quiz_screen = QuizScreen(self.question_bank, self.progress_manager)
+        self.quiz_screen = QuizScreen(
+            self.question_bank,
+            self.progress_manager,
+            snapshot_manager=self.snapshot_manager,
+        )
         self.results_screen = ResultsScreen()
         self.progress_screen = ProgressDashboard(
             self.progress_manager,
@@ -322,9 +328,39 @@ class MainWindow(QMainWindow):
             return None
         return draft, question_set, remaining
 
+    def _resume_snapshot_draft(self):
+        """Return the latest full quiz snapshot details, or None."""
+        snapshot_manager = getattr(self, "snapshot_manager", None)
+        if snapshot_manager is None:
+            return None
+        snapshot = snapshot_manager.load_latest()
+        if not snapshot:
+            return None
+        question_set = self.set_manager.get(snapshot.set_id)
+        if not question_set:
+            return None
+        questions = self.question_bank.get_many(
+            snapshot.question_order,
+            course_id=self._current_course_id(),
+        )
+        if len(questions) != len(snapshot.question_order):
+            return None
+        return snapshot, question_set, questions
+
     def _update_home_resume_draft(self):
         """Reflect the latest abandoned draft on the home screen."""
         if not hasattr(self, "home_screen"):
+            return
+        snapshot_resume = MainWindow._resume_snapshot_draft(self)
+        if snapshot_resume:
+            snapshot, question_set, questions = snapshot_resume
+            remaining_count = max(0, len(questions) - snapshot.current_index)
+            self.home_screen.set_resume_draft(
+                question_set.get_title(self.lang_manager.current),
+                remaining_count,
+                current_index=snapshot.current_index,
+                total_count=len(questions),
+            )
             return
         resume = MainWindow._resume_abandoned_draft(self)
         if not resume:
@@ -334,8 +370,23 @@ class MainWindow(QMainWindow):
         self.home_screen.set_resume_draft(question_set.get_title(self.lang_manager.current), len(remaining))
 
     def _on_resume_abandoned(self):
-        """Resume the latest abandoned quiz draft with only unanswered questions."""
+        """Resume the latest quiz draft, preferring full snapshots over legacy abandoned records."""
         gm = self.lang_manager.get_text
+        snapshot_resume = MainWindow._resume_snapshot_draft(self)
+        if snapshot_resume:
+            snapshot, question_set, questions = snapshot_resume
+            self._active_questions = {question.question_id: question for question in questions}
+            self.quiz_screen.restore_snapshot(
+                snapshot,
+                questions,
+                question_set,
+                show_timer=self._show_timer_setting(),
+            )
+            if hasattr(self, "home_screen"):
+                self.home_screen.clear_resume_draft()
+            self.navigate_to(self.SCREEN_QUIZ)
+            return
+
         resume = MainWindow._resume_abandoned_draft(self)
         if not resume:
             QMessageBox.information(
@@ -488,6 +539,9 @@ class MainWindow(QMainWindow):
         # Save progress
         if progress_record:
             self.progress_manager.save(progress_record)
+            snapshot_manager = getattr(self, "snapshot_manager", None)
+            if snapshot_manager is not None:
+                snapshot_manager.delete_for_set(progress_record.set_id)
 
         self.results_screen.set_results(
             progress_record,
