@@ -365,7 +365,7 @@ class UiThemeTests(unittest.TestCase):
 
             self.assertEqual("primaryButton", course.init_btn.objectName())
             self.assertEqual("dangerButton", course.delete_btn.objectName())
-            for button in (course.browse_btn, course.set_current_btn, course.regenerate_btn, course.refresh_btn):
+            for button in (course.browse_btn, course.set_current_btn, course.rename_btn, course.regenerate_btn, course.refresh_btn):
                 self.assertEqual("secondaryButton", button.objectName())
 
             self.assertEqual("primaryButton", bank.save_btn.objectName())
@@ -657,8 +657,10 @@ class UiThemeTests(unittest.TestCase):
 
         self.assertEqual("secondaryButton", topic.export_btn.objectName())
         self.assertEqual("secondaryButton", topic.regenerate_btn.objectName())
+        self.assertEqual("secondaryButton", topic.rename_btn.objectName())
         self.assertEqual("primaryButton", topic.start_btn.objectName())
         self.assertFalse(hasattr(topic, "back_btn"))
+        self.assertNotRegex(topic.rename_btn.text(), r"[^\w\s]")
         self.assertNotRegex(topic.start_btn.text(), r"[^\w\s]")
 
         self.assertEqual("primaryButton", results.retry_incorrect_btn.objectName())

@@ -675,6 +675,29 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 self.assertEqual(0, screen.project_list.count())
                 self.assertNotIn("Systems", screen.summary_label.text())
 
+    def test_course_screen_can_rename_selected_project(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source"
+            source.mkdir()
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            initializer = CourseInitializer(manager=manager)
+            initializer.parser = FakeParser(self._docs())
+            project = initializer.initialize(str(source), title="Systems", make_current=True)
+            screen = CourseScreen(manager)
+            screen.refresh()
+            screen.project_list.setCurrentRow(0)
+
+            with patch(
+                "ui.screens.course_screen.QInputDialog.getText",
+                return_value=("计算机系统期末", True),
+            ):
+                screen.rename_btn.click()
+
+            renamed = manager.get(project.course_id)
+            self.assertEqual("计算机系统期末", renamed.title)
+            self.assertIn("计算机系统期末", screen.project_list.item(0).text())
+            self.assertIn("计算机系统期末", screen.summary_label.text())
+
 
 if __name__ == "__main__":
     unittest.main()

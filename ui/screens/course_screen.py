@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QTextEdit,
-    QSplitter, QGroupBox, QProgressBar
+    QSplitter, QGroupBox, QProgressBar, QInputDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
@@ -57,6 +58,7 @@ class CourseScreen(QWidget):
         self.init_btn.setText(self.lang_manager.get_text("解析并生成总结", "Parse and generate summary"))
         self.list_label.setText(self.lang_manager.get_text("已导入的课程:", "Imported courses:"))
         self.set_current_btn.setText(self.lang_manager.get_text("设为当前", "Set Current"))
+        self.rename_btn.setText(self.lang_manager.get_text("重命名", "Rename"))
         self.regenerate_btn.setText(self.lang_manager.get_text("重新生成总结", "Regenerate Summary"))
         self.delete_btn.setText(self.lang_manager.get_text("删除课程", "Delete Course"))
         self.refresh_btn.setText(self.lang_manager.get_text("刷新", "Refresh"))
@@ -125,6 +127,10 @@ class CourseScreen(QWidget):
         self.set_current_btn.setObjectName("secondaryButton")
         self.set_current_btn.clicked.connect(self._set_current)
         btn_row.addWidget(self.set_current_btn)
+        self.rename_btn = QPushButton(self.lang_manager.get_text("重命名", "Rename"))
+        self.rename_btn.setObjectName("secondaryButton")
+        self.rename_btn.clicked.connect(self._rename_selected_project)
+        btn_row.addWidget(self.rename_btn)
         self.regenerate_btn = QPushButton(self.lang_manager.get_text("重新生成总结", "Regenerate Summary"))
         self.regenerate_btn.setObjectName("secondaryButton")
         self.regenerate_btn.clicked.connect(self._regenerate_selected_project)
@@ -167,6 +173,7 @@ class CourseScreen(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, project.course_id)
             self.project_list.addItem(item)
         self.set_current_btn.setEnabled(False)
+        self.rename_btn.setEnabled(False)
         self.regenerate_btn.setEnabled(False)
         self.delete_btn.setEnabled(False)
         if current:
@@ -297,6 +304,7 @@ class CourseScreen(QWidget):
     def _on_project_selected(self, current, previous):
         if current is None:
             self.set_current_btn.setEnabled(False)
+            self.rename_btn.setEnabled(False)
             self.regenerate_btn.setEnabled(False)
             self.delete_btn.setEnabled(False)
             return
@@ -305,11 +313,38 @@ class CourseScreen(QWidget):
         if not project:
             return
         self.set_current_btn.setEnabled(True)
+        self.rename_btn.setEnabled(True)
         self.regenerate_btn.setEnabled(True)
         self.delete_btn.setEnabled(True)
         self.summary_label.setText(project.title)
         self.summary_preview.setPlainText(project.summary_markdown[:20000])
 
+    def _rename_selected_project(self):
+        current = self.project_list.currentItem()
+        if not current:
+            return
+        course_id = current.data(Qt.ItemDataRole.UserRole)
+        project = self.manager.get(course_id)
+        if not project:
+            return
+        new_title, accepted = QInputDialog.getText(
+            self,
+            self.lang_manager.get_text("重命名课程", "Rename Course"),
+            self.lang_manager.get_text("课程名称:", "Course name:"),
+            text=project.title,
+        )
+        new_title = new_title.strip()
+        if not accepted or not new_title:
+            return
+        project.title = new_title
+        project.updated_at = datetime.now(timezone.utc).isoformat()
+        self.manager.save(project, make_current=False)
+        self.refresh()
+        for row in range(self.project_list.count()):
+            item = self.project_list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == course_id:
+                self.project_list.setCurrentRow(row)
+                break
 
     def _regenerate_selected_project(self):
         current = self.project_list.currentItem()
@@ -322,6 +357,7 @@ class CourseScreen(QWidget):
 
         self.regenerate_btn.setEnabled(False)
         self.delete_btn.setEnabled(False)
+        self.rename_btn.setEnabled(False)
         self.init_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
@@ -367,6 +403,7 @@ class CourseScreen(QWidget):
         self.init_btn.setEnabled(True)
         self.regenerate_btn.setEnabled(True)
         self.delete_btn.setEnabled(True)
+        self.rename_btn.setEnabled(self.project_list.currentItem() is not None)
         self.refresh()
         self.summary_label.setText(project.title)
         self.summary_preview.setPlainText(project.summary_markdown[:20000])
@@ -443,6 +480,7 @@ class CourseScreen(QWidget):
         self.init_btn.setEnabled(True)
         self.regenerate_btn.setEnabled(self.project_list.currentItem() is not None)
         self.delete_btn.setEnabled(self.project_list.currentItem() is not None)
+        self.rename_btn.setEnabled(self.project_list.currentItem() is not None)
         QMessageBox.critical(
             self,
             self.lang_manager.get_text("Regeneration Failed", "Regeneration Failed"),

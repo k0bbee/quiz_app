@@ -1,9 +1,11 @@
 """Topic selection screen — choose topics, difficulty, and question count."""
 
+from datetime import datetime, timezone
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QComboBox, QLineEdit,
-    QMessageBox, QAbstractItemView
+    QMessageBox, QAbstractItemView, QInputDialog
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 
@@ -95,6 +97,13 @@ class TopicSelectionScreen(QWidget):
         self.regenerate_btn.setEnabled(False)
         btn_layout.addWidget(self.regenerate_btn)
 
+        self.rename_btn = QPushButton(self.lang_manager.get_text("重命名", "Rename"))
+        self.rename_btn.setObjectName("secondaryButton")
+        self.rename_btn.setMinimumHeight(40)
+        self.rename_btn.clicked.connect(self._rename_selected_set)
+        self.rename_btn.setEnabled(False)
+        btn_layout.addWidget(self.rename_btn)
+
         self.start_btn = QPushButton(self.lang_manager.get_text("开始答题", "Start Quiz"))
         self.start_btn.setObjectName("primaryButton")
         self.start_btn.setMinimumHeight(40)
@@ -112,6 +121,7 @@ class TopicSelectionScreen(QWidget):
         self.list_label.setText(self.lang_manager.get_text("可用的题目集:", "Available question sets:"))
         self.export_btn.setText(self.lang_manager.get_text("Export Mock Exam", "Export Mock Exam"))
         self.regenerate_btn.setText(self.lang_manager.get_text("Regenerate Questions", "Regenerate Questions"))
+        self.rename_btn.setText(self.lang_manager.get_text("重命名", "Rename"))
         self.start_btn.setText(self.lang_manager.get_text("开始答题", "Start Quiz"))
         self.refresh()
 
@@ -122,6 +132,7 @@ class TopicSelectionScreen(QWidget):
             self.start_btn.setEnabled(False)
             self.export_btn.setEnabled(False)
             self.regenerate_btn.setEnabled(False)
+            self.rename_btn.setEnabled(False)
             return
 
         set_id = current.data(Qt.ItemDataRole.UserRole)
@@ -145,14 +156,17 @@ class TopicSelectionScreen(QWidget):
                 f"{self.lang_manager.get_text('最近:', 'Recent:')} {recent_score} | "
                 f"{self.lang_manager.get_text('最佳:', 'Best:')} {best_score}"
             )
-            self.start_btn.setEnabled(True)
-            self.regenerate_btn.setEnabled(True)
             self._on_set_selection_changed()
 
     def _on_set_selection_changed(self):
-        """Keep batch-export availability aligned with selected question sets."""
-        has_selection = bool(self._selected_set_ids())
+        """Keep action availability aligned with single vs batch selection."""
+        selected_ids = self._selected_set_ids()
+        has_selection = bool(selected_ids)
+        single_selection = len(selected_ids) == 1
         self.export_btn.setEnabled(has_selection)
+        self.start_btn.setEnabled(single_selection)
+        self.regenerate_btn.setEnabled(single_selection)
+        self.rename_btn.setEnabled(single_selection)
 
     def _start_quiz(self):
         """Emit signal to start the quiz with selected set."""
@@ -180,6 +194,36 @@ class TopicSelectionScreen(QWidget):
         if not current:
             return
         self.regenerate_questions.emit(current.data(Qt.ItemDataRole.UserRole))
+
+    def _rename_selected_set(self):
+        """Let the user rename the selected question set."""
+        set_ids = self._selected_set_ids()
+        if len(set_ids) != 1:
+            return
+        qset = self.set_manager.get(set_ids[0])
+        if not qset:
+            return
+        lang = self.lang_manager.current
+        new_title, accepted = QInputDialog.getText(
+            self,
+            self.lang_manager.get_text("重命名题目集", "Rename Question Set"),
+            self.lang_manager.get_text("题目集名称:", "Question set name:"),
+            text=qset.get_title(lang),
+        )
+        new_title = new_title.strip()
+        if not accepted or not new_title:
+            return
+        qset.title["zh"] = new_title
+        qset.title["en"] = new_title
+        qset.metadata["updated_at"] = datetime.now(timezone.utc).isoformat()
+        qset.metadata["renamed_by_user"] = True
+        self.set_manager.save(qset)
+        self.refresh()
+        for row in range(self.set_list.count()):
+            item = self.set_list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == qset.set_id:
+                self.set_list.setCurrentRow(row)
+                break
 
     def set_current_course(self, course_id: str | None):
         """Restrict generated question sets to the active course."""
@@ -238,6 +282,7 @@ class TopicSelectionScreen(QWidget):
         self.start_btn.setEnabled(False)
         self.export_btn.setEnabled(False)
         self.regenerate_btn.setEnabled(False)
+        self.rename_btn.setEnabled(False)
         self.info_label.clear()
 
     def _render_sets(self):
@@ -284,6 +329,7 @@ class TopicSelectionScreen(QWidget):
             self.start_btn.setEnabled(False)
             self.export_btn.setEnabled(False)
             self.regenerate_btn.setEnabled(False)
+            self.rename_btn.setEnabled(False)
 
     def _matches_filters(self, qset, query: str, topic_filters, diff_filter, lang: str) -> bool:
         """Return True if a question set should be shown."""

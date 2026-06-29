@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import os
 
@@ -225,6 +226,28 @@ class MockExamExporterTests(unittest.TestCase):
             screen.regenerate_btn.click()
 
             self.assertEqual([qset.set_id], emitted)
+
+    def test_topic_selection_screen_can_rename_selected_question_set(self):
+        from models.question_set import SetManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SetManager(tmpdir)
+            qset = self._make_question_set()
+            manager.save(qset)
+            screen = TopicSelectionScreen(manager)
+            screen.refresh()
+            screen.set_list.setCurrentRow(0)
+
+            with patch(
+                "ui.screens.topic_selection_screen.QInputDialog.getText",
+                return_value=("期末强化题集", True),
+            ):
+                screen.rename_btn.click()
+
+            renamed = manager.get(qset.set_id)
+            self.assertEqual("期末强化题集", renamed.get_title("zh"))
+            self.assertEqual("期末强化题集", renamed.get_title("en"))
+            self.assertIn("期末强化题集", screen.set_list.item(0).text())
 
     def test_topic_selection_screen_filters_generated_sets_by_current_course(self):
         from models.question_set import SetManager
