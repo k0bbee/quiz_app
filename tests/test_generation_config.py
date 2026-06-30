@@ -74,6 +74,18 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("fill_in_blank", prompt)
         self.assertIn('"correct_answer": ["accepted answer"', prompt)
 
+    def test_prompt_specifies_matching_and_ordering_stable_id_format(self):
+        prompt = PromptBuilder.build_user_prompt(
+            "## Pipeline\nFetch decode execute stages.",
+            ["pipeline"],
+            count=3,
+        )
+
+        self.assertIn('"id": "left_1"', prompt)
+        self.assertIn('"correct_answer": [["left_1", "right_1"]]', prompt)
+        self.assertIn('"correct_answer": ["item_1", "item_2"', prompt)
+        self.assertIn("stable IDs", prompt)
+
     def test_prompt_marks_selected_topics_as_hard_generation_boundary(self):
         prompt = PromptBuilder.build_user_prompt(
             "## Input Output Improvements\nPolling, interrupts, buffers, and DMA.",

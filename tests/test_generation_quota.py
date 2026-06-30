@@ -125,6 +125,83 @@ class GenerationQuotaTests(unittest.TestCase):
             allocated,
         )
 
+    def test_worker_normalizes_matching_options_and_answers_to_stable_ids(self):
+        worker = GenerationWorker(
+            SequenceClient([]),
+            course_content="content",
+            topics=["io"],
+            count=1,
+            difficulty="medium",
+        )
+        qdata = {
+            "type": "matching",
+            "difficulty": "medium",
+            "topic": "io",
+            "subtopic": "devices",
+            "correct_answer": [["CPU", "Processor"], ["GPU", "Graphics"]],
+            "bilingual": {
+                "zh": {
+                    "stem": "配对设备",
+                    "options": {
+                        "left": ["CPU", "GPU"],
+                        "right": ["Processor", "Graphics"],
+                    },
+                    "explanation": "这是足够长的中文解释，用于说明每一组配对关系。",
+                },
+                "en": {
+                    "stem": "Match devices",
+                    "options": {
+                        "left": ["Central Processing Unit", "Graphics Processor"],
+                        "right": ["Main processor", "Graphics unit"],
+                    },
+                    "explanation": "This is a sufficiently detailed explanation of every matching pair.",
+                },
+            },
+        }
+
+        normalized = worker._normalize_raw_question(qdata)
+
+        self.assertEqual([["left_1", "right_1"], ["left_2", "right_2"]], normalized["correct_answer"])
+        self.assertEqual({"id": "left_1", "text": "CPU"}, normalized["bilingual"]["zh"]["options"]["left"][0])
+        self.assertEqual(
+            {"id": "right_1", "text": "Main processor"},
+            normalized["bilingual"]["en"]["options"]["right"][0],
+        )
+
+    def test_worker_normalizes_ordering_options_and_answers_to_stable_ids(self):
+        worker = GenerationWorker(
+            SequenceClient([]),
+            course_content="content",
+            topics=["pipeline"],
+            count=1,
+            difficulty="medium",
+        )
+        qdata = {
+            "type": "ordering",
+            "difficulty": "medium",
+            "topic": "pipeline",
+            "subtopic": "stages",
+            "correct_answer": ["取指", "译码", "执行"],
+            "bilingual": {
+                "zh": {
+                    "stem": "排序",
+                    "options": ["取指", "译码", "执行"],
+                    "explanation": "这是足够长的中文解释，用于说明流水线阶段顺序。",
+                },
+                "en": {
+                    "stem": "Order",
+                    "options": ["Fetch", "Decode", "Execute"],
+                    "explanation": "This is a sufficiently detailed explanation of the pipeline order.",
+                },
+            },
+        }
+
+        normalized = worker._normalize_raw_question(qdata)
+
+        self.assertEqual(["item_1", "item_2", "item_3"], normalized["correct_answer"])
+        self.assertEqual({"id": "item_1", "text": "取指"}, normalized["bilingual"]["zh"]["options"][0])
+        self.assertEqual({"id": "item_3", "text": "Execute"}, normalized["bilingual"]["en"]["options"][2])
+
     def test_worker_retries_until_exact_type_difficulty_and_topic_quotas_are_met(self):
         wrong_batch = {
             "questions": [raw_question("multiple_choice", "medium", "cache", index) for index in range(4)]

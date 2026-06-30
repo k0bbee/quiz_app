@@ -64,6 +64,50 @@ class PromptBuilder:
           "explanation": "Explanation of why the correct answer is right and others are wrong..."
         }
       }
+    },
+    {
+      "type": "matching",
+      "difficulty": "medium",
+      "topic": "cache_mapping",
+      "subtopic": "terminology",
+      "correct_answer": [["left_1", "right_1"]],
+      "bilingual": {
+        "zh": {
+          "stem": "配对题干...",
+          "options": {
+            "left": [{"id": "left_1", "text": "中文左项"}],
+            "right": [{"id": "right_1", "text": "中文右项"}]
+          },
+          "explanation": "解释每一组配对为什么正确..."
+        },
+        "en": {
+          "stem": "Matching stem...",
+          "options": {
+            "left": [{"id": "left_1", "text": "English left item"}],
+            "right": [{"id": "right_1", "text": "English right item"}]
+          },
+          "explanation": "Explain why each pair is correct..."
+        }
+      }
+    },
+    {
+      "type": "ordering",
+      "difficulty": "medium",
+      "topic": "cache_mapping",
+      "subtopic": "process",
+      "correct_answer": ["item_1", "item_2", "item_3"],
+      "bilingual": {
+        "zh": {
+          "stem": "排序题干...",
+          "options": [{"id": "item_1", "text": "第一步"}, {"id": "item_2", "text": "第二步"}, {"id": "item_3", "text": "第三步"}],
+          "explanation": "解释顺序为什么正确..."
+        },
+        "en": {
+          "stem": "Ordering stem...",
+          "options": [{"id": "item_1", "text": "Step 1"}, {"id": "item_2", "text": "Step 2"}, {"id": "item_3", "text": "Step 3"}],
+          "explanation": "Explain why the order is correct..."
+        }
+      }
     }
   ]
 }
@@ -77,7 +121,9 @@ class PromptBuilder:
 
 12. **Fill-in-Blank Format**: For fill_in_blank, correct_answer MUST be an array of accepted strings, for example "correct_answer": ["accepted answer", "synonym"]. Options may be omitted for fill_in_blank.
 
-13. **Curriculum Boundary**: Stay inside the provided course excerpts and exam emphasis. Do not import outside textbook facts unless the course materials mention them."""
+13. **Stable IDs for Matching/Ordering**: Matching and ordering questions MUST use stable IDs in options and correct_answer. The same conceptual item must reuse the same ID across zh/en text. Use IDs like left_1/right_1 for matching and item_1/item_2 for ordering. correct_answer must contain IDs, not display text.
+
+14. **Curriculum Boundary**: Stay inside the provided course excerpts and exam emphasis. Do not import outside textbook facts unless the course materials mention them."""
 
     @staticmethod
     def build_user_prompt(
@@ -168,6 +214,9 @@ Selected-topic boundary:
 - Make distractors plausible and tricky
 - Include full bilingual explanations
 - For fill_in_blank, use "correct_answer": ["accepted answer", "synonym"] and omit options if they are not useful
+- For matching and ordering, use stable IDs in options and correct_answer; never put translated display text inside correct_answer
+  Example matching option: {{"id": "left_1", "text": "..."}} with "correct_answer": [["left_1", "right_1"]]
+  Example ordering answer: "correct_answer": ["item_1", "item_2", "item_3"]
 - NO topic labels in question stems
 - Output valid JSON matching the schema exactly
 - Ensure all Chinese text uses proper terminology with 中文术语(English Term) format
