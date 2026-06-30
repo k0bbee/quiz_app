@@ -199,6 +199,9 @@ class QuestionReviewDialog(QDialog):
             details += f"\nOptions:\n" + "\n".join(q.get_options('en'))
         details += f"\n--- Explanation (ZH) ---\n{q.get_explanation('zh')}"
         details += f"\n--- Explanation (EN) ---\n{q.get_explanation('en')}"
+        source_text = _format_source_refs((q.metadata or {}).get("source_refs", []))
+        if source_text:
+            details += f"\n--- Source Evidence ---\n{source_text}"
 
         self.detail_editor.setPlainText(details)
 
@@ -325,3 +328,29 @@ class QuestionReviewDialog(QDialog):
     def get_accepted_questions(self) -> list[Question]:
         """Return only the accepted questions."""
         return [self.questions[i] for i in sorted(self._accepted)]
+
+
+def _format_source_refs(source_refs) -> str:
+    """Format stored source references for review without exposing raw JSON."""
+    if not isinstance(source_refs, list):
+        return ""
+    lines = []
+    for index, ref in enumerate(source_refs, start=1):
+        if not isinstance(ref, dict):
+            continue
+        source_file = str(ref.get("source_file", "") or "").strip()
+        chunk_id = str(ref.get("chunk_id", "") or "").strip()
+        heading = str(ref.get("heading", "") or "").strip()
+        page_or_slide = ref.get("page_or_slide")
+        parts = []
+        if source_file:
+            parts.append(source_file)
+        if page_or_slide not in ("", None):
+            parts.append(f"page {page_or_slide}")
+        if chunk_id:
+            parts.append(chunk_id)
+        if heading:
+            parts.append(heading)
+        if parts:
+            lines.append(f"{index}. " + " · ".join(parts))
+    return "\n".join(lines)

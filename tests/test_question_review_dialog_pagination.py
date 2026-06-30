@@ -101,6 +101,27 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertIn("Topic: Interrupt-driven I/O", details)
         self.assertNotIn("Topic: interrupt_io", details)
 
+    def test_review_dialog_displays_source_refs_for_generated_question(self):
+        question = make_question(1)
+        question.metadata["source_refs"] = [
+            {
+                "chunk_id": "source-0007",
+                "source_file": "第21讲 Cache.pdf",
+                "page_or_slide": 8,
+                "heading": "Cache Address Breakdown",
+            }
+        ]
+
+        dialog = QuestionReviewDialog([question], page_size=10)
+        self.addCleanup(dialog.close)
+
+        details = dialog.detail_editor.toPlainText()
+        self.assertIn("Source Evidence", details)
+        self.assertIn("第21讲 Cache.pdf", details)
+        self.assertIn("page 8", details.lower())
+        self.assertIn("source-0007", details)
+        self.assertIn("Cache Address Breakdown", details)
+
     def _visible_question_indexes(self, dialog: QuestionReviewDialog) -> list[int]:
         return [
             dialog.question_list.item(row).data(Qt.ItemDataRole.UserRole)
