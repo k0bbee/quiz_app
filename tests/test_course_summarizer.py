@@ -376,6 +376,52 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertEqual(24, updated.generation_profile["question_count"])
             self.assertEqual("llm", updated.generation_profile_source)
 
+    def test_regenerate_summary_preserves_topic_id_when_inferred_title_changes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source"
+            source.mkdir()
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            initializer = CourseInitializer(manager=manager)
+            old_topic = CourseTopic(
+                topic_id="cache_mapping",
+                title="Cache Mapping",
+                keywords=["cache", "tag", "set"],
+                source_files=[str(source / "cache.pptx")],
+            )
+            project = CourseProject(
+                course_id="course-topic-stability",
+                title="Systems",
+                source_folder=str(source),
+                summary_markdown="# Old Summary",
+                summary_path="",
+                topics=[old_topic],
+                documents=[],
+                created_at="2026-06-18T00:00:00+00:00",
+                updated_at="2026-06-18T00:00:00+00:00",
+            )
+            new_text = " ".join(
+                ["cache", "mapping", "tag", "set", "offset", "hit", "miss", "line"] * 14
+            )
+            initializer.parser = FakeParser([
+                ExtractedDocument(
+                    path=str(source / "cache.pptx"),
+                    title="Cache Address Mapping",
+                    extension=".pptx",
+                    text=new_text,
+                    pages=[new_text],
+                )
+            ])
+
+            updated = initializer.regenerate_summary(project, make_current=False)
+
+            self.assertEqual(1, len(updated.topics))
+            self.assertEqual("cache_mapping", updated.topics[0].topic_id)
+            self.assertEqual("Cache Address Mapping", updated.topics[0].title)
+            self.assertIn("Cache Mapping", updated.topics[0].aliases)
+            self.assertIn("cache_address_mapping", updated.topics[0].aliases)
+            self.assertIn("cache_mapping", updated.generation_profile["selected_topics"])
+            self.assertIn("cache_mapping", updated.generation_profile["topic_weights"])
+
     def test_project_manager_repairs_stale_summary_path_on_save(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = CourseProjectManager(str(Path(tmpdir) / "projects"))

@@ -11,6 +11,7 @@ from core.document_parser import DocumentParser, ExtractedDocument
 from core.course_index import attach_index_to_project
 from core.term_extraction import extract_course_terms, is_low_value_keyword
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
+from utils.constants import topic_alias_values, topic_value
 from ai.course_generation_profile import (
     CourseGenerationProfileGenerator,
     build_local_course_profile,
@@ -133,7 +134,7 @@ class CourseInitializer:
         if not docs:
             raise ValueError("No supported course files found. Supported: docx, pptx, pdf, txt, md.")
 
-        topics = infer_topics(docs)
+        topics = reconcile_topic_identities(project.topics, infer_topics(docs))
         summary = build_summary_markdown(project.title, docs, topics)
         summary_source = "local"
         summary_warning = ""
@@ -311,6 +312,103 @@ def infer_topics(docs: list[ExtractedDocument]) -> list[CourseTopic]:
         topics.append(CourseTopic("general", "General Course Review", [],
                                    [doc.path for doc in docs]))
     return topics
+
+
+def reconcile_topic_identities(
+    previous_topics: list[CourseTopic],
+    inferred_topics: list[CourseTopic],
+) -> list[CourseTopic]:
+    """Preserve stable topic IDs when a course is re-parsed.
+
+    Topic titles can shift after OCR/parsing/summary regeneration. This keeps
+    the old topic_id when the new topic can be matched by identity, title,
+    source files, or keyword overlap, while recording old/new labels as aliases
+    for legacy question files and model outputs.
+    """
+    if not previous_topics or not inferred_topics:
+        return inferred_topics
+
+    used_previous: set[int] = set()
+    reconciled: list[CourseTopic] = []
+    for inferred in inferred_topics:
+        best_index = -1
+        best_score = 0.0
+        for index, previous in enumerate(previous_topics):
+            if index in used_previous:
+                continue
+            score = _topic_identity_score(previous, inferred)
+            if score > best_score:
+                best_score = score
+                best_index = index
+        if best_index >= 0 and best_score >= 50.0:
+            previous = previous_topics[best_index]
+            used_previous.add(best_index)
+            reconciled.append(_merge_topic_identity(previous, inferred))
+        else:
+            reconciled.append(inferred)
+    return reconciled
+
+
+def _merge_topic_identity(previous: CourseTopic, inferred: CourseTopic) -> CourseTopic:
+    aliases = _merged_topic_aliases(previous, inferred)
+    return CourseTopic(
+        topic_id=topic_value(previous),
+        title=inferred.title,
+        keywords=inferred.keywords,
+        source_files=inferred.source_files,
+        aliases=aliases,
+    )
+
+
+def _merged_topic_aliases(previous: CourseTopic, inferred: CourseTopic) -> list[str]:
+    candidates = [
+        previous.title,
+        inferred.title,
+        inferred.topic_id,
+        *list(getattr(previous, "aliases", []) or []),
+        *list(getattr(inferred, "aliases", []) or []),
+    ]
+    aliases: list[str] = []
+    seen: set[str] = {topic_value(previous), str(inferred.title or "").strip().lower()}
+    for candidate in candidates:
+        text = str(candidate or "").strip()
+        key = text.lower()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        aliases.append(text)
+    return aliases
+
+
+def _topic_identity_score(previous: CourseTopic, inferred: CourseTopic) -> float:
+    previous_aliases = topic_alias_values(previous)
+    inferred_aliases = topic_alias_values(inferred)
+    if previous_aliases & inferred_aliases:
+        return 100.0
+
+    score = 0.0
+    previous_sources = {str(path).lower() for path in previous.source_files or []}
+    inferred_sources = {str(path).lower() for path in inferred.source_files or []}
+    if previous_sources and inferred_sources:
+        overlap = previous_sources & inferred_sources
+        if overlap:
+            score += 70.0 * (len(overlap) / min(len(previous_sources), len(inferred_sources)))
+
+    previous_keywords = {str(keyword).lower() for keyword in previous.keywords or []}
+    inferred_keywords = {str(keyword).lower() for keyword in inferred.keywords or []}
+    if previous_keywords and inferred_keywords:
+        overlap = previous_keywords & inferred_keywords
+        if overlap:
+            score += 35.0 * (len(overlap) / min(len(previous_keywords), len(inferred_keywords)))
+
+    previous_title_key = _normalize_key(previous.title)
+    inferred_title_key = _normalize_key(inferred.title)
+    if previous_title_key and inferred_title_key and (
+        previous_title_key in inferred_title_key or inferred_title_key in previous_title_key
+    ):
+        score += 25.0
+
+    return min(score, 99.0)
 
 
 def _is_auxiliary_material(doc: ExtractedDocument) -> bool:
