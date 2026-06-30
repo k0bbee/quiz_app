@@ -16,6 +16,7 @@ from core.language_manager import LanguageManager
 from core.question_bank_maintenance import remove_question_from_sets
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
+from ui.widgets.source_refs import format_source_refs
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 from utils.constants import Difficulty, QuestionType, topic_value
 
@@ -97,6 +98,12 @@ class QuestionBankScreen(QWidget):
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
+        self.source_refs_label = QLabel()
+        self.source_refs_label.setObjectName("questionBankSourceRefs")
+        self.source_refs_label.setWordWrap(True)
+        self.source_refs_label.setVisible(False)
+        right_layout.addWidget(self.source_refs_label)
+
         self.json_label = QLabel(self.lang_manager.get_text("题目 JSON:", "Question JSON:"))
         right_layout.addWidget(self.json_label)
         self.editor = QTextEdit()
@@ -227,6 +234,7 @@ class QuestionBankScreen(QWidget):
         selected_ids = self._selected_question_ids()
         if not selected_ids:
             self.current_question_id = ""
+            self._set_source_refs_summary(None)
             self.editor.setReadOnly(False)
             self.editor.clear()
             self.save_btn.setEnabled(True)
@@ -234,6 +242,7 @@ class QuestionBankScreen(QWidget):
             return
         if len(selected_ids) > 1:
             self.current_question_id = ""
+            self._set_source_refs_summary(None)
             self.editor.setReadOnly(True)
             self.editor.setPlainText(
                 self.lang_manager.get_text(
@@ -251,6 +260,7 @@ class QuestionBankScreen(QWidget):
             return
         self.current_question_id = q.question_id
         self.editor.setReadOnly(False)
+        self._set_source_refs_summary(q)
         self.editor.setPlainText(json.dumps(q.to_dict(), ensure_ascii=False, indent=2))
         self.save_btn.setEnabled(True)
         self.delete_btn.setEnabled(True)
@@ -282,6 +292,7 @@ class QuestionBankScreen(QWidget):
         self.question_list.setCurrentItem(None)
         self.question_list.blockSignals(False)
         self.current_question_id = ""
+        self._set_source_refs_summary(None)
         self.editor.setReadOnly(False)
         self.editor.setPlainText(json.dumps(template, ensure_ascii=False, indent=2))
         self.save_btn.setEnabled(True)
@@ -359,6 +370,7 @@ class QuestionBankScreen(QWidget):
             if self.set_manager is not None:
                 remove_question_from_sets(self.set_manager, deleted_question_id, delete_empty=True)
         self.current_question_id = ""
+        self._set_source_refs_summary(None)
         self.editor.setReadOnly(False)
         self.editor.clear()
         self.save_btn.setEnabled(True)
@@ -452,6 +464,18 @@ class QuestionBankScreen(QWidget):
         stem = question.get_stem("zh") or question.get_stem("en") or ""
         topic = question.topic_title()
         return f"{question.difficulty.value} · {topic}\n{stem}"
+
+    def _set_source_refs_summary(self, question: Question | None) -> None:
+        if question is None:
+            self.source_refs_label.clear()
+            self.source_refs_label.setVisible(False)
+            return
+        text = format_source_refs(
+            (question.metadata or {}).get("source_refs", []),
+            label=self.lang_manager.get_text("来源", "Source Evidence"),
+        )
+        self.source_refs_label.setText(text)
+        self.source_refs_label.setVisible(bool(text))
 
     def _stem_preview(self, question: Question) -> str:
         stem = question.get_stem("zh") or question.get_stem("en") or ""

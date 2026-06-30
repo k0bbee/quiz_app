@@ -311,6 +311,32 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertIn("Interrupt-driven I/O", item.toolTip())
             self.assertNotIn("interrupt_io", item.text())
 
+    def test_question_bank_screen_displays_source_refs_in_detail_panel(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            question = self._question("q-source", "cache")
+            question.metadata["source_refs"] = [
+                {
+                    "chunk_id": "source-0007",
+                    "source_file": "第21讲 Cache.pdf",
+                    "page_or_slide": 8,
+                    "heading": "Cache Address Breakdown",
+                }
+            ]
+            question_bank.save(question)
+
+            screen = QuestionBankScreen(question_bank)
+            item = screen.question_list.item(0)
+            screen.question_list.setCurrentItem(item)
+            screen._on_selection_changed()
+
+            source_text = screen.source_refs_label.text()
+            self.assertIn("第21讲 Cache.pdf", source_text)
+            self.assertIn("page 8", source_text.lower())
+            self.assertIn("source-0007", source_text)
+            self.assertIn("Cache Address Breakdown", source_text)
+            self.assertFalse(screen.source_refs_label.isHidden())
+
     def test_question_bank_screen_multi_selection_disables_ambiguous_editing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
