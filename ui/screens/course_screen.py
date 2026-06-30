@@ -14,6 +14,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
 from core.course_initializer import CourseInitializer
 from core.ocr_runtime import OCR_REMEDIATION
+from core.topic_identity_migration import TopicIdentityRepairReport, repair_question_topic_identities
 from models.course_project import CourseProjectManager
 from core.language_manager import LanguageManager
 from config import SETTINGS_FILE
@@ -32,9 +33,10 @@ class CourseScreen(QWidget):
 
     current_course_changed = pyqtSignal()
 
-    def __init__(self, manager: CourseProjectManager, parent=None):
+    def __init__(self, manager: CourseProjectManager, question_bank=None, parent=None):
         super().__init__(parent)
         self.manager = manager
+        self.question_bank = question_bank
         self.initializer = CourseInitializer(manager)
         self.lang_manager = LanguageManager.instance()
         self._setup_ui()
@@ -289,15 +291,19 @@ class CourseScreen(QWidget):
         finished = pyqtSignal(object)
         error = pyqtSignal(str)
 
-        def __init__(self, project, initializer):
+        def __init__(self, project, initializer, question_bank=None):
             super().__init__()
             self._project = project
             self._initializer = initializer
+            self._question_bank = question_bank
 
         def run(self):
             try:
                 project = self._initializer.regenerate_summary(self._project)
-                self.finished.emit(project)
+                report = None
+                if self._question_bank is not None:
+                    report = repair_question_topic_identities(self._question_bank, project)
+                self.finished.emit((project, report))
             except Exception as exc:
                 self.error.emit(str(exc))
 
@@ -362,7 +368,11 @@ class CourseScreen(QWidget):
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)
 
-        self._regen_worker = CourseScreen._RegenWorker(project, self._build_initializer())
+        self._regen_worker = CourseScreen._RegenWorker(
+            project,
+            self._build_initializer(),
+            question_bank=self.question_bank,
+        )
         self._regen_worker.finished.connect(self._on_regen_done)
         self._regen_worker.error.connect(self._on_regen_error)
         self._regen_worker.start()
@@ -398,7 +408,12 @@ class CourseScreen(QWidget):
         self.current_course_changed.emit()
         self.refresh()
 
-    def _on_regen_done(self, project):
+    def _on_regen_done(self, result):
+        if isinstance(result, tuple):
+            project, repair_report = result
+        else:
+            project = result
+            repair_report = None
         self.progress_bar.setVisible(False)
         self.init_btn.setEnabled(True)
         self.regenerate_btn.setEnabled(True)
@@ -409,6 +424,7 @@ class CourseScreen(QWidget):
         self.summary_preview.setPlainText(project.summary_markdown[:20000])
         self.current_course_changed.emit()
         msg = self.lang_manager.get_text("课程总结已重新生成。", "Course summary regenerated.")
+        msg = self._with_topic_repair_report(msg, repair_report)
         msg = self._with_summary_warning(msg, project)
         msg = self._with_profile_warning(msg, project)
         msg = self._with_document_warnings(msg, project)
@@ -417,6 +433,33 @@ class CourseScreen(QWidget):
             self.lang_manager.get_text("Summary Updated", "Summary Updated"),
             msg,
         )
+
+    def _with_topic_repair_report(self, message, report: TopicIdentityRepairReport | None):
+        """Append a localized summary of automatic topic-ID repairs."""
+        if report is None:
+            return message
+        parts = []
+        if report.updated:
+            parts.append(self.lang_manager.get_text(
+                f"已修复 {report.updated} 道题目的知识点身份。",
+                f"Repaired topic identity for {report.updated} question(s).",
+            ))
+        if report.unmatched:
+            parts.append(self.lang_manager.get_text(
+                f"{len(report.unmatched)} 道题无法自动映射，请在题库中人工检查。",
+                f"{len(report.unmatched)} question(s) could not be mapped automatically; review them in the question bank.",
+            ))
+        if report.save_failed:
+            parts.append(self.lang_manager.get_text(
+                f"{len(report.save_failed)} 道题保存修复结果失败。",
+                f"Failed to save topic repairs for {len(report.save_failed)} question(s).",
+            ))
+        if not parts:
+            parts.append(self.lang_manager.get_text(
+                "题库知识点身份已检查，无需修复。",
+                "Question topic identities were checked; no repairs were needed.",
+            ))
+        return f"{message}\n\n" + "\n".join(parts)
 
     def _with_summary_warning(self, message, project):
         """Append a localized notice when LLM generation used the local fallback."""
