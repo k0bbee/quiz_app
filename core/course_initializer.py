@@ -187,6 +187,7 @@ def _document_records(docs: list[ExtractedDocument]) -> list[dict]:
             "extension": doc.extension,
             "word_count": doc.word_count,
             "page_count": len(doc.pages),
+            "pages": list(doc.pages),
             "warnings": doc.warnings,
         }
         for doc in docs

@@ -273,6 +273,87 @@ class CourseIndexCacheTests(unittest.TestCase):
         self.assertIn("Byte Offset Detail", context)
         self.assertIn("sentinel detail", context)
 
+    def test_build_source_index_creates_page_level_chunks_with_stable_refs(self):
+        project = CourseProject(
+            course_id="course-source",
+            title="Systems",
+            source_folder="",
+            summary_markdown="## I/O\nDMA transfers reduce CPU involvement.",
+            summary_path="",
+            topics=[
+                CourseTopic(
+                    topic_id="io_improvements",
+                    title="Input Output Improvements",
+                    keywords=["DMA", "interrupt"],
+                    source_files=["io.pdf"],
+                )
+            ],
+            documents=[
+                {
+                    "path": r"C:\slides\io.pdf",
+                    "title": "I/O lecture",
+                    "extension": ".pdf",
+                    "pages": [
+                        "Polling checks device status repeatedly.",
+                        "DMA transfers data directly between device and memory.",
+                    ],
+                }
+            ],
+            created_at="2026-06-30T00:00:00+00:00",
+            updated_at="2026-06-30T00:00:00+00:00",
+        )
+
+        index = course_index.build_source_index(project)
+
+        self.assertEqual(2, len(index))
+        self.assertEqual("source-0000", index[0]["chunk_id"])
+        self.assertEqual("io.pdf", index[0]["source_file"])
+        self.assertEqual("pdf", index[0]["source_type"])
+        self.assertEqual(1, index[0]["page_or_slide"])
+        self.assertIn("content_hash", index[0])
+        self.assertEqual(["io_improvements"], index[1]["topic_ids"])
+        self.assertIn("DMA", index[1]["text"])
+
+    def test_retrieval_context_includes_source_chunk_references(self):
+        project = CourseProject(
+            course_id="course-source-context",
+            title="Systems",
+            source_folder="",
+            summary_markdown="## Input Output Improvements\nDMA transfers reduce CPU overhead.",
+            summary_path="",
+            topics=[
+                CourseTopic(
+                    topic_id="io_improvements",
+                    title="Input Output Improvements",
+                    keywords=["DMA"],
+                    source_files=["io.pdf"],
+                )
+            ],
+            documents=[
+                {
+                    "path": "io.pdf",
+                    "title": "I/O lecture",
+                    "extension": ".pdf",
+                    "pages": [
+                        "DMA transfers data directly between an I/O device and main memory.",
+                    ],
+                }
+            ],
+            created_at="2026-06-30T00:00:00+00:00",
+            updated_at="2026-06-30T00:00:00+00:00",
+        )
+
+        context = course_index.retrieve_course_context(
+            project,
+            ["io_improvements"],
+            max_chars=800,
+        )
+
+        self.assertIn("source-0000", context)
+        self.assertIn("io.pdf", context)
+        self.assertIn("page 1", context.lower())
+        self.assertIn("DMA transfers", context)
+
 
 if __name__ == "__main__":
     unittest.main()

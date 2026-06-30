@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import hashlib
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -43,6 +44,59 @@ class CourseChunk:
         )
 
 
+@dataclass
+class SourceChunk:
+    """A page/slide-level chunk tied to an original course source file."""
+
+    chunk_id: str
+    course_id: str
+    source_file: str
+    source_type: str
+    page_or_slide: int | None
+    heading: str
+    text: str
+    terms: list[str]
+    topic_ids: list[str]
+    content_hash: str
+
+    def to_dict(self) -> dict:
+        return {
+            "chunk_id": self.chunk_id,
+            "course_id": self.course_id,
+            "source_file": self.source_file,
+            "source_type": self.source_type,
+            "page_or_slide": self.page_or_slide,
+            "heading": self.heading,
+            "text": self.text,
+            "terms": self.terms,
+            "topic_ids": self.topic_ids,
+            "content_hash": self.content_hash,
+        }
+
+    def to_ref(self) -> dict:
+        return {
+            "chunk_id": self.chunk_id,
+            "source_file": self.source_file,
+            "page_or_slide": self.page_or_slide,
+            "heading": self.heading,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SourceChunk":
+        return cls(
+            chunk_id=data.get("chunk_id", ""),
+            course_id=data.get("course_id", ""),
+            source_file=data.get("source_file", ""),
+            source_type=data.get("source_type", ""),
+            page_or_slide=data.get("page_or_slide"),
+            heading=data.get("heading", ""),
+            text=data.get("text", ""),
+            terms=data.get("terms", []),
+            topic_ids=data.get("topic_ids", []),
+            content_hash=data.get("content_hash", ""),
+        )
+
+
 def build_course_index(summary_markdown: str, documents: list[dict] | None = None) -> list[dict]:
     """Build serialized chunk index from summary Markdown.
 
@@ -63,6 +117,46 @@ def build_course_index(summary_markdown: str, documents: list[dict] | None = Non
     return [chunk.to_dict() for chunk in chunks]
 
 
+def build_source_index(project: CourseProject) -> list[dict]:
+    """Build page/slide-level chunks from original document text stored on a project."""
+    stored_index = [
+        item
+        for document in getattr(project, "documents", []) or []
+        for item in (document.get("_source_index", []) or [])
+        if isinstance(item, dict)
+    ]
+    if stored_index:
+        return stored_index
+
+    chunks: list[SourceChunk] = []
+    for document in getattr(project, "documents", []) or []:
+        pages = document.get("pages", []) or []
+        if not pages:
+            continue
+        source_file = _source_file_name(document)
+        source_type = _source_type(document)
+        title = str(document.get("title") or source_file or "source").strip()
+        for page_index, page_text in enumerate(pages, start=1):
+            text = str(page_text or "").strip()
+            if not text:
+                continue
+            chunk_id = f"source-{len(chunks):04d}"
+            heading = f"{title} {_page_label(source_type, page_index)}"
+            chunks.append(SourceChunk(
+                chunk_id=chunk_id,
+                course_id=getattr(project, "course_id", ""),
+                source_file=source_file,
+                source_type=source_type,
+                page_or_slide=page_index,
+                heading=heading,
+                text=text,
+                terms=extract_terms(f"{heading}\n{text}", limit=24),
+                topic_ids=_source_topic_ids(project, source_file, text),
+                content_hash=_content_hash(text),
+            ))
+    return [chunk.to_dict() for chunk in chunks]
+
+
 def retrieve_course_context(
     project: CourseProject,
     selected_topics: list[str],
@@ -75,6 +169,30 @@ def retrieve_course_context(
         _PAYLOAD_CACHE[payload_key] = _project_payload(project)
         _trim_payload_cache()
     return _retrieve_cached(project.course_id, project.updated_at, topic_key, max_chars)
+
+
+def retrieve_course_source_refs(
+    project: CourseProject,
+    selected_topics: list[str],
+    limit: int = 3,
+) -> list[dict]:
+    """Return the strongest original-source references for selected topics."""
+    source_chunks = _source_chunks_for_project(project)
+    if not source_chunks:
+        return []
+    topic_values = {str(topic or "").strip() for topic in selected_topics if str(topic or "").strip()}
+    topic_keys = {_match_key(topic) for topic in topic_values}
+    terms: list[str] = []
+    for topic in topic_values:
+        terms.extend(extract_terms(topic, limit=12))
+        terms.append(topic.lower())
+    topic_keywords = _topic_keyword_payload(project)
+    for topic in topic_values:
+        terms.extend(_expanded_terms(topic_keywords.get(topic, [])))
+        terms.extend(_expanded_terms(topic_keywords.get(topic.lower(), [])))
+    term_set = {term.lower() for term in terms if term}
+    scored = _score_source_chunks(source_chunks, topic_keys, term_set)
+    return [chunk.to_ref() for _, chunk in scored[:limit]]
 
 
 @lru_cache(maxsize=128)
@@ -93,7 +211,8 @@ def _retrieve_cached(
     except (json.JSONDecodeError, TypeError):
         return ""
     chunks = [CourseChunk.from_dict(item) for item in data.get("index", [])]
-    if not chunks:
+    source_chunks = [SourceChunk.from_dict(item) for item in data.get("source_index", [])]
+    if not chunks and not source_chunks:
         return data.get("summary", "")[:max_chars]
 
     terms = []
@@ -134,19 +253,27 @@ def _retrieve_cached(
     if not scored:
         scored = [(1, chunk) for chunk in chunks[:8]]
     scored.sort(key=lambda item: item[0], reverse=True)
+    scored_sources = _score_source_chunks(source_chunks, selected_topic_keys, term_set)
 
     parts = ["以下是当前课程项目中与所选主题最相关的缓存检索片段："]
     used = len(parts[0])
-    excerpt_count = max(1, min(len(scored), 4))
+    combined_count = len(scored) + len(scored_sources)
+    excerpt_count = max(1, min(combined_count or 1, 5))
     per_chunk_budget = max(180, max_chars // excerpt_count)
-    for index, (_, chunk) in enumerate(scored):
+    combined = [("summary", score, chunk) for score, chunk in scored[:3]]
+    combined.extend(("source", score, chunk) for score, chunk in scored_sources[:3])
+    combined.sort(key=lambda item: item[1], reverse=True)
+    for index, (kind, _, chunk) in enumerate(combined):
         remaining = max_chars - used
         if remaining <= 0:
             break
         block_budget = remaining
-        if index < len(scored) - 1:
+        if index < len(combined) - 1:
             block_budget = min(remaining, per_chunk_budget)
-        block = _chunk_block(chunk, term_set, block_budget)
+        if kind == "source":
+            block = _source_chunk_block(chunk, term_set, block_budget)
+        else:
+            block = _chunk_block(chunk, term_set, block_budget)
         if block.strip():
             parts.append(block)
             used += len(block)
@@ -195,6 +322,22 @@ def _focused_excerpt(text: str, term_set: set[str], limit: int) -> str:
     return f"{prefix}{excerpt}{suffix}"[:limit]
 
 
+def _source_chunk_block(chunk: SourceChunk, term_set: set[str], budget: int) -> str:
+    """Format a source chunk with stable evidence metadata."""
+    location = ""
+    if chunk.page_or_slide:
+        label = "slide" if chunk.source_type == "pptx" else "page"
+        location = f" {label} {chunk.page_or_slide}"
+    heading = f"\n\n## Evidence {chunk.chunk_id} — {chunk.source_file}{location}\n\n"
+    if budget <= len(heading):
+        return heading[:budget]
+    body_budget = budget - len(heading)
+    text = chunk.text.strip()
+    if len(text) <= body_budget:
+        return f"{heading}{text}"
+    return f"{heading}{_focused_excerpt(text, term_set, body_budget)}"
+
+
 def _project_payload(project: CourseProject) -> str:
     """Serialize stable fields for cache key payload."""
     import json
@@ -203,6 +346,7 @@ def _project_payload(project: CourseProject) -> str:
         {
             "summary": project.summary_markdown,
             "index": build_course_index(project.summary_markdown),
+            "source_index": build_source_index(project),
             "topic_keywords": _topic_keyword_payload(project),
             "topic_titles": _topic_title_payload(project),
         },
@@ -270,9 +414,11 @@ def _trim_payload_cache() -> None:
 def attach_index_to_project(project: CourseProject) -> CourseProject:
     """Attach/rebuild retrieval index inside project metadata."""
     index = build_course_index(project.summary_markdown, project.documents)
+    source_index = build_source_index(project)
     if not project.documents:
         project.documents = [{"path": "", "title": "summary", "extension": ".md"}]
     project.documents[0]["_course_index"] = index
+    project.documents[0]["_source_index"] = source_index
     return project
 
 
@@ -330,3 +476,79 @@ def _heading_matches_any_topic(heading: str, topic_keys: set[str]) -> bool:
     if not heading_key:
         return False
     return any(topic_key and topic_key in heading_key for topic_key in topic_keys)
+
+
+def _source_chunks_for_project(project: CourseProject) -> list[SourceChunk]:
+    return [SourceChunk.from_dict(item) for item in build_source_index(project)]
+
+
+def _score_source_chunks(
+    source_chunks: list[SourceChunk],
+    selected_topic_keys: set[str],
+    term_set: set[str],
+) -> list[tuple[int, SourceChunk]]:
+    scored: list[tuple[int, SourceChunk]] = []
+    for chunk in source_chunks:
+        text_lower = f"{chunk.heading}\n{chunk.text}".lower()
+        score = 0
+        chunk_topic_keys = {_match_key(topic_id) for topic_id in chunk.topic_ids}
+        if selected_topic_keys & chunk_topic_keys:
+            score += 30
+        for term in term_set:
+            if term in chunk.terms:
+                score += 8
+            count = text_lower.count(term)
+            if count:
+                score += min(count, 5)
+        if score > 0:
+            scored.append((score, chunk))
+    if not scored:
+        scored = [(1, chunk) for chunk in source_chunks[:3]]
+    return sorted(scored, key=lambda item: item[0], reverse=True)
+
+
+def _source_file_name(document: dict) -> str:
+    path = str(document.get("path") or "").strip()
+    if not path:
+        return str(document.get("title") or "source").strip()
+    return re.split(r"[\\/]", path)[-1]
+
+
+def _source_type(document: dict) -> str:
+    extension = str(document.get("extension") or "").strip().lower().lstrip(".")
+    if extension:
+        return extension
+    source_file = _source_file_name(document)
+    if "." in source_file:
+        return source_file.rsplit(".", 1)[-1].lower()
+    return "text"
+
+
+def _page_label(source_type: str, number: int) -> str:
+    if source_type == "pptx":
+        return f"slide {number}"
+    if source_type in {"docx", "txt", "md"}:
+        return f"section {number}"
+    return f"page {number}"
+
+
+def _source_topic_ids(project: CourseProject, source_file: str, text: str) -> list[str]:
+    matches: list[str] = []
+    source_key = source_file.lower()
+    text_lower = text.lower()
+    for topic in getattr(project, "topics", []) or []:
+        topic_id = str(getattr(topic, "topic_id", "") or "").strip()
+        if not topic_id:
+            continue
+        source_files = [str(value or "").lower() for value in getattr(topic, "source_files", []) or []]
+        keywords = [str(value or "").lower() for value in getattr(topic, "keywords", []) or []]
+        if any(source_key == re.split(r"[\\/]", value)[-1] for value in source_files):
+            matches.append(topic_id)
+        elif any(keyword and keyword in text_lower for keyword in keywords):
+            matches.append(topic_id)
+    return matches
+
+
+def _content_hash(text: str) -> str:
+    normalized = _match_key(text)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()

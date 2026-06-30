@@ -11,7 +11,7 @@ from ai.llm_client import LLMClient
 from ai.generation_config import GenerationConfig
 from ai.prompt_templates import PromptBuilder
 from core.app_errors import AppError
-from core.course_index import retrieve_course_context
+from core.course_index import retrieve_course_context, retrieve_course_source_refs
 from models.question import Question
 from utils.constants import QuestionType, Difficulty, topic_alias_values, topic_label, topic_value
 
@@ -140,6 +140,7 @@ class GenerationWorker(QThread):
         self._cached_context: str | None = None
         self._candidate_batch_limit: int | None = None
         self._last_json_truncation_detail: str = ""
+        self._cached_source_refs: list[dict] = []
 
     def run(self):
         """Execute generation in background thread."""
@@ -227,6 +228,9 @@ class GenerationWorker(QThread):
                         # Set AI model in metadata
                         q.metadata["ai_model"] = self.client.model
                         q.metadata.update(self._course_metadata())
+                        source_refs = self._question_source_refs(qdata)
+                        if source_refs:
+                            q.metadata["source_refs"] = source_refs
                         errors = q.validate()
                         if not errors:
                             quota_reason = quotas.rejection_reason(
@@ -349,12 +353,26 @@ class GenerationWorker(QThread):
     def _build_course_context(self) -> str:
         """Retrieve the best context for currently selected topics."""
         if self.course_project is not None:
+            self._cached_source_refs = retrieve_course_source_refs(
+                self.course_project,
+                [topic_value(t) for t in self.topics],
+            )
             return retrieve_course_context(
                 self.course_project,
                 [topic_value(t) for t in self.topics],
                 max_chars=GENERATION_CONTEXT_MAX_CHARS,
             )
         return self.course_content
+
+    def _question_source_refs(self, qdata: dict) -> list[dict]:
+        """Return sanitized model source refs, falling back to retrieved evidence."""
+        refs = qdata.get("source_refs")
+        if isinstance(refs, list):
+            sanitized = [_sanitize_source_ref(ref) for ref in refs]
+            sanitized = [ref for ref in sanitized if ref]
+            if sanitized:
+                return sanitized
+        return [dict(ref) for ref in self._cached_source_refs[:1]]
 
     def _course_metadata(self) -> dict:
         if self.course_project is None:
@@ -628,3 +646,25 @@ def _normalize_answer_token(value, label_to_id: dict[str, str]) -> str:
 
 def _has_option_id(option) -> bool:
     return isinstance(option, dict) and bool(str(option.get("id", "") or "").strip())
+
+
+def _sanitize_source_ref(ref) -> dict:
+    if not isinstance(ref, dict):
+        return {}
+    chunk_id = str(ref.get("chunk_id", "") or "").strip()
+    source_file = str(ref.get("source_file", "") or "").strip()
+    if not chunk_id and not source_file:
+        return {}
+    page_or_slide = ref.get("page_or_slide")
+    if page_or_slide is not None:
+        try:
+            page_or_slide = int(page_or_slide)
+        except (TypeError, ValueError):
+            page_or_slide = None
+    clean = {
+        "chunk_id": chunk_id,
+        "source_file": source_file,
+        "page_or_slide": page_or_slide,
+        "heading": str(ref.get("heading", "") or "").strip(),
+    }
+    return {key: value for key, value in clean.items() if value not in ("", None)}

@@ -17,6 +17,7 @@ from ai.llm_client import LLMClient
 from ai.prompt_templates import PromptBuilder
 from core.question_set_builder import build_ai_question_set
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
+from models.course_project import CourseProject, CourseTopic
 from models.question import Question
 from models.question_set import QuestionSet
 from utils.constants import Difficulty, QuestionType
@@ -182,6 +183,143 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual("Systems 2B", question.metadata["course_title"])
         self.assertEqual("2026-06-18T12:00:00+00:00", question.metadata["course_updated_at"])
         self.assertEqual("test-model", question.metadata["ai_model"])
+
+    def test_worker_records_model_source_refs_on_generated_questions(self):
+        class FakeClient:
+            model = "test-model"
+            last_error = ""
+
+            def generate_with_json(self, *_args, **_kwargs):
+                return {
+                    "questions": [
+                        {
+                            "type": "multiple_choice",
+                            "difficulty": "medium",
+                            "topic": "cache",
+                            "subtopic": "mapping",
+                            "correct_answer": "A",
+                            "source_refs": [
+                                {
+                                    "chunk_id": "source-0002",
+                                    "source_file": "cache.pdf",
+                                    "page_or_slide": 3,
+                                    "heading": "Cache lecture p3",
+                                }
+                            ],
+                            "bilingual": {
+                                "zh": {
+                                    "stem": "哪一个说法正确？",
+                                    "options": ["A. 正确", "B. 错误", "C. 错误", "D. 错误"],
+                                    "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
+                                },
+                                "en": {
+                                    "stem": "Which statement is correct?",
+                                    "options": ["A. Right", "B. Wrong", "C. Wrong", "D. Wrong"],
+                                    "explanation": "This is a sufficiently detailed English explanation for the answer.",
+                                },
+                            },
+                        }
+                    ]
+                }
+
+        worker = GenerationWorker(
+            FakeClient(),
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="medium",
+        )
+        batches = []
+        worker.batch_done.connect(batches.append)
+
+        worker.run()
+
+        self.assertEqual(
+            [
+                {
+                    "chunk_id": "source-0002",
+                    "source_file": "cache.pdf",
+                    "page_or_slide": 3,
+                    "heading": "Cache lecture p3",
+                }
+            ],
+            batches[0][0].metadata["source_refs"],
+        )
+
+    def test_worker_falls_back_to_retrieved_source_refs_when_model_omits_them(self):
+        class FakeClient:
+            model = "test-model"
+            last_error = ""
+
+            def generate_with_json(self, messages, **_kwargs):
+                self.prompt = messages[-1]["content"]
+                return {
+                    "questions": [
+                        {
+                            "type": "multiple_choice",
+                            "difficulty": "medium",
+                            "topic": "io_improvements",
+                            "subtopic": "dma",
+                            "correct_answer": "A",
+                            "bilingual": {
+                                "zh": {
+                                    "stem": "DMA 的作用是什么？",
+                                    "options": ["A. 减少 CPU 搬运", "B. 增加轮询", "C. 只用于 RAID", "D. 禁用中断"],
+                                    "explanation": "这是一个足够长的中文解释，用来说明 DMA 为什么可以减少 CPU 搬运。",
+                                },
+                                "en": {
+                                    "stem": "What does DMA do?",
+                                    "options": ["A. Reduces CPU copying", "B. Increases polling", "C. Only uses RAID", "D. Disables interrupts"],
+                                    "explanation": "This is a sufficiently detailed English explanation for why DMA reduces CPU copying.",
+                                },
+                            },
+                        }
+                    ]
+                }
+
+        client = FakeClient()
+        topic = CourseTopic(
+            topic_id="io_improvements",
+            title="Input Output Improvements",
+            keywords=["DMA"],
+            source_files=["io.pdf"],
+        )
+        project = CourseProject(
+            course_id="course-io",
+            title="Systems",
+            source_folder="",
+            summary_markdown="## Input Output Improvements\nDMA transfers reduce CPU overhead.",
+            summary_path="",
+            topics=[topic],
+            documents=[
+                {
+                    "path": "io.pdf",
+                    "title": "I/O lecture",
+                    "extension": ".pdf",
+                    "pages": ["DMA transfers directly between device and memory."],
+                }
+            ],
+            created_at="2026-06-30T00:00:00+00:00",
+            updated_at="2026-06-30T00:00:00+00:00",
+        )
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=[topic],
+            count=1,
+            difficulty="medium",
+            course_project=project,
+        )
+        batches = []
+        worker.batch_done.connect(batches.append)
+
+        worker.run()
+
+        refs = batches[0][0].metadata["source_refs"]
+        self.assertEqual("source-0000", refs[0]["chunk_id"])
+        self.assertEqual("io.pdf", refs[0]["source_file"])
+        self.assertEqual(1, refs[0]["page_or_slide"])
+        self.assertIn("source-0000", client.prompt)
 
     def test_dialog_returns_generation_config_from_controls(self):
         dialog = AIGenerationDialog(
