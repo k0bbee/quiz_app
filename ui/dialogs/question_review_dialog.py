@@ -9,7 +9,6 @@ from PyQt6.QtCore import Qt
 
 from models.question import Question
 from core.language_manager import LanguageManager
-from utils.constants import topic_value
 
 
 class QuestionReviewDialog(QDialog):
@@ -189,7 +188,7 @@ class QuestionReviewDialog(QDialog):
         lang = self.lang_manager.current
         details = f"Type: {q.type.value}\n"
         details += f"Difficulty: {q.difficulty.value}\n"
-        details += f"Topic: {topic_value(q.topic)}\n"
+        details += f"Topic: {q.topic_title()}\n"
         details += f"Subtopic: {q.subtopic}\n"
         details += f"Correct Answer: {q.correct_answer}\n"
         details += f"\n--- ZH Stem ---\n{q.get_stem('zh')}\n"

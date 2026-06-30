@@ -38,6 +38,15 @@ class Question:
         """Get the explanation in the given language."""
         return self.bilingual.get(lang, {}).get("explanation", "")
 
+    def topic_id(self) -> str:
+        """Return the stable topic identity used for storage and comparison."""
+        return topic_value(self.topic)
+
+    def topic_title(self) -> str:
+        """Return the best human-readable topic title available for display."""
+        title = str((self.metadata or {}).get("topic_title", "") or "").strip()
+        return title or topic_label(self.topic)
+
     def is_auto_gradeable(self) -> bool:
         """Whether this question can be auto-graded."""
         return self.type in {
@@ -51,8 +60,8 @@ class Question:
 
     def to_dict(self) -> dict:
         """Serialize to dictionary for JSON storage."""
-        topic_id = topic_value(self.topic)
-        topic_title = self.metadata.get("topic_title") or topic_label(self.topic)
+        topic_id = self.topic_id()
+        topic_title = self.topic_title()
         metadata = dict(self.metadata)
         if topic_title and topic_title != topic_id:
             metadata.setdefault("topic_title", topic_title)

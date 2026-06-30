@@ -438,18 +438,19 @@ class QuestionBankScreen(QWidget):
             question.get_explanation("en"),
             question.subtopic,
             topic_value(question.topic),
+            question.topic_title(),
         ]).lower()
         return query in haystack
 
     def _question_list_title(self, question: Question) -> str:
         difficulty = self._compact_text(question.difficulty.value, 12)
-        topic = self._compact_text(topic_value(question.topic), 24)
+        topic = self._compact_text(question.topic_title(), 24)
         stem = self._compact_text(self._stem_preview(question), 56)
         return self._compact_text(f"{difficulty} · {topic} · {stem}", self._list_title_limit)
 
     def _question_list_tooltip(self, question: Question) -> str:
         stem = question.get_stem("zh") or question.get_stem("en") or ""
-        topic = topic_value(question.topic)
+        topic = question.topic_title()
         return f"{question.difficulty.value} · {topic}\n{stem}"
 
     def _stem_preview(self, question: Question) -> str:

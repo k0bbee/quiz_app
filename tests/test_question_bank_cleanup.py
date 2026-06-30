@@ -15,6 +15,7 @@ from core.question_bank_maintenance import (
     delete_unreferenced_ai_questions,
     remove_question_from_sets,
 )
+from models.course_project import CourseTopic
 from models.progress import AnswerRecord, ProgressRecord
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
@@ -293,6 +294,22 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertNotIn("解析", item.text())
             self.assertIn("I/O 中断流程", item.toolTip())
             self.assertIn("选项噪音", item.toolTip())
+
+    def test_question_bank_screen_displays_topic_title_not_internal_topic_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            topic = CourseTopic(topic_id="interrupt_io", title="Interrupt-driven I/O")
+            question = self._question("q-topic-title", topic)
+            question.bilingual["zh"]["stem"] = "中断驱动 I/O 的核心流程是什么？"
+            question.bilingual["en"]["stem"] = "What is the core flow of interrupt-driven I/O?"
+            question_bank.save(question)
+
+            screen = QuestionBankScreen(question_bank)
+            item = screen.question_list.item(0)
+
+            self.assertIn("Interrupt-driven I/O", item.text())
+            self.assertIn("Interrupt-driven I/O", item.toolTip())
+            self.assertNotIn("interrupt_io", item.text())
 
     def test_question_bank_screen_multi_selection_disables_ambiguous_editing(self):
         with tempfile.TemporaryDirectory() as tmpdir:

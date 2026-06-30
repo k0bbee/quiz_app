@@ -6,6 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
+from models.course_project import CourseTopic
 from models.question import Question
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
 from utils.constants import Difficulty, QuestionType
@@ -87,6 +88,18 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
 
         self.assertEqual([question.question_id for question in questions],
                          [question.question_id for question in dialog.get_accepted_questions()])
+
+    def test_review_dialog_displays_topic_title_not_internal_id(self):
+        topic = CourseTopic(topic_id="interrupt_io", title="Interrupt-driven I/O")
+        question = make_question(1)
+        question.topic = topic
+
+        dialog = QuestionReviewDialog([question], page_size=10)
+        self.addCleanup(dialog.close)
+
+        details = dialog.detail_editor.toPlainText()
+        self.assertIn("Topic: Interrupt-driven I/O", details)
+        self.assertNotIn("Topic: interrupt_io", details)
 
     def _visible_question_indexes(self, dialog: QuestionReviewDialog) -> list[int]:
         return [
