@@ -3,7 +3,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout,
     QButtonGroup, QRadioButton, QCheckBox, QComboBox,
-    QListWidget, QPushButton, QLineEdit, QPlainTextEdit,
+    QListWidget, QListWidgetItem, QPushButton, QLineEdit, QPlainTextEdit,
     QLabel, QFrame
 )
 from PyQt6.QtCore import pyqtSignal, Qt
@@ -12,6 +12,35 @@ from PyQt6.QtGui import QFont
 from utils.constants import QuestionType
 from core.language_manager import LanguageManager
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
+
+
+def _option_id(option) -> str:
+    """Return the stable ID for a question option, falling back to its label."""
+    if isinstance(option, dict):
+        value = option.get("id") or option.get("value") or option.get("key")
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return _option_label(option)
+
+
+def _option_label(option, lang: str | None = None) -> str:
+    """Return the display label for a question option."""
+    if isinstance(option, dict):
+        candidates = []
+        if lang:
+            candidates.append(option.get(lang))
+        candidates.extend([
+            option.get("text"),
+            option.get("label"),
+            option.get("title"),
+            option.get("name"),
+            option.get("id"),
+            option.get("value"),
+        ])
+        for candidate in candidates:
+            if candidate is not None and str(candidate).strip():
+                return str(candidate).strip()
+    return str(option)
 
 
 class AnswerArea(QWidget):
@@ -315,26 +344,32 @@ class MatchingWidget(QWidget):
         """options = {"left": [...], "right": [...]}"""
         self.clear()
         right_opts = options.get("right", []) if isinstance(options, dict) else []
-        self.right_items = [str(r) for r in right_opts]
+        lang = self.lang_manager.current
+        right_records = [(_option_id(option), _option_label(option, lang)) for option in right_opts]
+        self.right_items = [option_id for option_id, _label in right_records]
 
         if isinstance(options, dict) and "left" in options:
             import random
-            shuffled_right = list(self.right_items)
+            shuffled_right = list(right_records)
             random.shuffle(shuffled_right)
 
             # Remove the stretch from right layout temporarily
             stretch = self._right_layout.takeAt(self._right_layout.count() - 1)
 
             for item in options["left"]:
-                self.left_list.addItem(str(item))
-                left_lbl = QLabel(str(item))
+                left_id = _option_id(item)
+                left_text = _option_label(item, lang)
+                list_item = QListWidgetItem(left_text)
+                list_item.setData(Qt.ItemDataRole.UserRole, left_id)
+                self.left_list.addItem(list_item)
+                left_lbl = QLabel(left_text)
                 left_lbl.setObjectName("matchingLeftItem")
                 left_lbl.setMinimumWidth(120)
                 combo = WheelSafeComboBox()
                 combo.setObjectName("matchingCombo")
                 combo.addItem("---", "")
-                for r in shuffled_right:
-                    combo.addItem(r, r)
+                for right_id, right_label in shuffled_right:
+                    combo.addItem(right_label, right_id)
                 combo.currentIndexChanged.connect(lambda idx: self._emit_pairs())
                 self.left_item_labels.append(left_lbl)
                 self.combos.append(combo)
@@ -351,12 +386,13 @@ class MatchingWidget(QWidget):
         self.answer_ready.emit(pairs)
 
     def get_answer(self) -> list:
-        """Return pairs as [[left_text, selected_right_text], ...]."""
+        """Return pairs as [[left_id, selected_right_id], ...]."""
         pairs = []
         for i in range(self.left_list.count()):
-            left_text = self.left_list.item(i).text()
-            right_text = self.combos[i].currentData() if i < len(self.combos) else ""
-            pairs.append([left_text, right_text or ""])
+            item = self.left_list.item(i)
+            left_id = item.data(Qt.ItemDataRole.UserRole) or item.text()
+            right_id = self.combos[i].currentData() if i < len(self.combos) else ""
+            pairs.append([str(left_id), str(right_id or "")])
         return pairs
 
     def is_complete(self) -> bool:
@@ -377,10 +413,14 @@ class MatchingWidget(QWidget):
             if isinstance(pair, list) and len(pair) >= 2
         }
         for row in range(self.left_list.count()):
-            left_text = self.left_list.item(row).text()
-            selected = selected_by_left.get(left_text, "")
+            item = self.left_list.item(row)
+            left_id = str(item.data(Qt.ItemDataRole.UserRole) or item.text())
+            left_text = item.text()
+            selected = selected_by_left.get(left_id) or selected_by_left.get(left_text, "")
             if selected and row < len(self.combos):
                 index = self.combos[row].findData(selected)
+                if index < 0:
+                    index = self.combos[row].findText(selected)
                 if index >= 0:
                     self.combos[row].setCurrentIndex(index)
 
@@ -452,8 +492,11 @@ class OrderingWidget(QWidget):
 
     def set_options(self, options: list):
         self.clear()
+        lang = self.lang_manager.current
         for opt in options:
-            self.list_widget.addItem(str(opt))
+            item = QListWidgetItem(_option_label(opt, lang))
+            item.setData(Qt.ItemDataRole.UserRole, _option_id(opt))
+            self.list_widget.addItem(item)
         self._user_reordered = False
 
     def _move_up(self):
@@ -482,29 +525,42 @@ class OrderingWidget(QWidget):
         return self._user_reordered
 
     def _emit_order(self):
-        order = []
-        for i in range(self.list_widget.count()):
-            order.append(self.list_widget.item(i).text())
-        self.answer_ready.emit(order)
+        self.answer_ready.emit(self.get_answer())
 
     def get_answer(self) -> list:
         order = []
         for i in range(self.list_widget.count()):
-            order.append(self.list_widget.item(i).text())
+            item = self.list_widget.item(i)
+            order.append(str(item.data(Qt.ItemDataRole.UserRole) or item.text()))
         return order
 
     def set_answer(self, answer):
-        """Restore ordering when item labels are still comparable."""
+        """Restore ordering by stable IDs, falling back to labels for legacy answers."""
         if not isinstance(answer, list):
             return
-        available = []
+        available: dict[str, QListWidgetItem] = {}
         for index in range(self.list_widget.count()):
-            available.append(self.list_widget.item(index).text())
-        if set(str(item) for item in answer) != set(available):
+            item = self.list_widget.item(index)
+            item_id = str(item.data(Qt.ItemDataRole.UserRole) or item.text())
+            available[item_id] = item
+            available[item.text()] = item
+        selected_items = []
+        for raw in answer:
+            item = available.get(str(raw))
+            if item is None or item in selected_items:
+                return
+            selected_items.append(item)
+        if len(selected_items) != self.list_widget.count():
             return
+        selected_payload = [
+            (item.text(), item.data(Qt.ItemDataRole.UserRole) or item.text())
+            for item in selected_items
+        ]
         self.list_widget.clear()
-        for item in answer:
-            self.list_widget.addItem(str(item))
+        for text, item_id in selected_payload:
+            item = QListWidgetItem(text)
+            item.setData(Qt.ItemDataRole.UserRole, item_id)
+            self.list_widget.addItem(item)
         self._user_reordered = True
 
     def clear(self):

@@ -62,10 +62,19 @@ class Grader:
             for p in user_answer:
                 if not isinstance(p, (list, tuple)) or len(p) != 2:
                     return False, user_answer
+        option_map = _option_label_to_id_map(question)
+        normalized_user = [
+            [_normalize_option_answer_value(pair[0], option_map), _normalize_option_answer_value(pair[1], option_map)]
+            for pair in user_answer
+        ] if user_answer else []
+        normalized_correct = [
+            [_normalize_option_answer_value(pair[0], option_map), _normalize_option_answer_value(pair[1], option_map)]
+            for pair in correct_pairs
+        ]
         # Sort both for order-independent comparison
-        user_sorted = sorted([tuple(p) for p in user_answer]) if user_answer else []
-        correct_sorted = sorted([tuple(p) for p in correct_pairs])
-        return user_sorted == correct_sorted, user_answer
+        user_sorted = sorted([tuple(p) for p in normalized_user]) if normalized_user else []
+        correct_sorted = sorted([tuple(p) for p in normalized_correct])
+        return user_sorted == correct_sorted, normalized_user
 
     @staticmethod
     def grade_ordering(question: Question, user_answer: list) -> tuple[bool, list]:
@@ -75,7 +84,16 @@ class Grader:
         correct_order = question.correct_answer
         if not isinstance(correct_order, list):
             return False, user_answer
-        return user_answer == correct_order, user_answer
+        option_map = _option_label_to_id_map(question)
+        normalized_user = [
+            _normalize_option_answer_value(item, option_map)
+            for item in user_answer
+        ]
+        normalized_correct = [
+            _normalize_option_answer_value(item, option_map)
+            for item in correct_order
+        ]
+        return normalized_user == normalized_correct, normalized_user
 
     @staticmethod
     def grade_fill_in_blank(question: Question, user_answer: str) -> tuple[bool, str]:
@@ -98,3 +116,50 @@ class Grader:
         """Short answer always requires manual review. Returns False with stored answer."""
         return False, user_answer if user_answer else ""
 
+
+def _option_label_to_id_map(question: Question) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for content in (question.bilingual or {}).values():
+        options = content.get("options", {}) if isinstance(content, dict) else {}
+        for option in _iter_option_payloads(options):
+            option_id = _option_id(option)
+            for label in _option_labels(option):
+                if label:
+                    mapping.setdefault(label.strip().lower(), option_id)
+            mapping.setdefault(option_id.strip().lower(), option_id)
+    return mapping
+
+
+def _iter_option_payloads(options):
+    if isinstance(options, dict):
+        for key in ("left", "right", "items"):
+            for option in options.get(key, []) or []:
+                yield option
+    elif isinstance(options, list):
+        for option in options:
+            yield option
+
+
+def _option_id(option) -> str:
+    if isinstance(option, dict):
+        for key in ("id", "value", "key"):
+            value = option.get(key)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+    return _option_labels(option)[0]
+
+
+def _option_labels(option) -> list[str]:
+    if isinstance(option, dict):
+        labels = []
+        for key in ("text", "label", "title", "name", "zh", "en", "id", "value"):
+            value = option.get(key)
+            if value is not None and str(value).strip():
+                labels.append(str(value).strip())
+        return labels or [str(option)]
+    return [str(option)]
+
+
+def _normalize_option_answer_value(value, option_map: dict[str, str]) -> str:
+    text = str(value or "").strip()
+    return option_map.get(text.lower(), text)
