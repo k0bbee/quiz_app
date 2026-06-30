@@ -18,6 +18,7 @@ from core.progress_tracker import ProgressManager
 from utils.constants import QuestionType, QuizState
 from ui.widgets.question_card import QuestionCard
 from ui.widgets.answer_area import AnswerArea
+from ui.widgets.source_refs import format_source_refs
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 
 
@@ -785,11 +786,19 @@ class QuizScreen(QWidget):
 
         your_answer_text = self.lang_manager.get_text("你的答案", "Your answer")
         correct_answer_text = self.lang_manager.get_text("正确答案", "Correct answer")
-        self.explanation_label.setText(
+        feedback = (
             f"<b>{your_answer_text}:</b> {user_answer}<br>"
             f"<b>{correct_answer_text}:</b> {correct_answer}<br><br>"
             f"{question.get_explanation(lang)}"
         )
+        source_text = format_source_refs(
+            (question.metadata or {}).get("source_refs", []),
+            label=self.lang_manager.get_text("来源", "Source Evidence"),
+            html=True,
+        )
+        if source_text:
+            feedback += f"<br><br>{source_text}"
+        self.explanation_label.setText(feedback)
 
         self.feedback_frame.show()
         self.answer_area.set_enabled(False)

@@ -5,6 +5,7 @@ from PyQt6.QtCore import Qt
 
 from models.question import Question
 from core.language_manager import LanguageManager
+from ui.widgets.source_refs import format_source_refs
 
 
 class QuestionReviewCard(QFrame):
@@ -56,6 +57,11 @@ class QuestionReviewCard(QFrame):
         self.explanation_label.setWordWrap(True)
         layout.addWidget(self.explanation_label)
 
+        self.source_label = QLabel()
+        self.source_label.setObjectName("reviewSourceRefs")
+        self.source_label.setWordWrap(True)
+        layout.addWidget(self.source_label)
+
 
     def _on_language_changed(self, lang):
         """Re-render card text when language changes."""
@@ -103,6 +109,11 @@ class QuestionReviewCard(QFrame):
             "💡 解析: {}",
             "💡 Explanation: {}"
         ).format(self._question.get_explanation(current_lang)))
+        self.source_label.setText(format_source_refs(
+            (self._question.metadata or {}).get("source_refs", []),
+            label=self.lang_manager.get_text("来源", "Source Evidence"),
+        ))
+        self.source_label.setVisible(bool(self.source_label.text()))
 
     def _format_answer(self, question: Question, answer, lang: str) -> str:
         """Render answer letters with their option text when possible."""

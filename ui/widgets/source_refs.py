@@ -1,0 +1,36 @@
+"""Formatting helpers for displaying course source references in UI."""
+
+
+def format_source_refs(source_refs, label: str = "Source Evidence", html: bool = False) -> str:
+    """Format stored source_refs without exposing raw JSON."""
+    lines = _source_ref_lines(source_refs)
+    if not lines:
+        return ""
+    separator = "<br>" if html else "\n"
+    title = f"<b>{label}:</b>" if html else f"{label}:"
+    return separator.join([title, *lines])
+
+
+def _source_ref_lines(source_refs) -> list[str]:
+    if not isinstance(source_refs, list):
+        return []
+    lines = []
+    for index, ref in enumerate(source_refs, start=1):
+        if not isinstance(ref, dict):
+            continue
+        source_file = str(ref.get("source_file", "") or "").strip()
+        chunk_id = str(ref.get("chunk_id", "") or "").strip()
+        heading = str(ref.get("heading", "") or "").strip()
+        page_or_slide = ref.get("page_or_slide")
+        parts = []
+        if source_file:
+            parts.append(source_file)
+        if page_or_slide not in ("", None):
+            parts.append(f"page {page_or_slide}")
+        if chunk_id:
+            parts.append(chunk_id)
+        if heading:
+            parts.append(heading)
+        if parts:
+            lines.append(f"{index}. " + " · ".join(parts))
+    return lines

@@ -597,6 +597,38 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             self.assertEqual([question.question_id], finished[0].marked_review_question_ids)
 
+    def test_quiz_feedback_shows_source_refs_after_answer_submission(self):
+        question = self._make_question("q-source")
+        question.metadata["source_refs"] = [
+            {
+                "chunk_id": "source-0007",
+                "source_file": "第21讲 Cache.pdf",
+                "page_or_slide": 8,
+                "heading": "Cache Address Breakdown",
+            }
+        ]
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["cache"],
+            question_ids=[question.question_id],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [question], show_timer=False)
+            screen.answer_area.choice_widget.buttons[1].setChecked(True)
+            screen._submit_answer()
+
+            feedback = screen.explanation_label.text()
+            self.assertIn("第21讲 Cache.pdf", feedback)
+            self.assertIn("page 8", feedback.lower())
+            self.assertIn("source-0007", feedback)
+            self.assertIn("Cache Address Breakdown", feedback)
+
     def test_results_screen_shows_correct_but_unsure_count(self):
         record = ProgressRecord.create_new("set-1")
         record.status = "completed"
@@ -697,6 +729,38 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
         self.assertIn("下一步建议", screen.next_action_label.text())
         self.assertIn("先重做错题", screen.next_action_label.text())
+
+    def test_results_screen_review_card_shows_source_refs(self):
+        question = self._make_question("q-source")
+        question.metadata["source_refs"] = [
+            {
+                "chunk_id": "source-0007",
+                "source_file": "第21讲 Cache.pdf",
+                "page_or_slide": 8,
+                "heading": "Cache Address Breakdown",
+            }
+        ]
+        record = ProgressRecord.create_new("set-1")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord(
+                question_id=question.question_id,
+                index_in_session=0,
+                user_answer="B",
+                is_correct=False,
+            ),
+        ]
+        record.summary = SessionSummary.compute(record.answers, total_questions=1, total_time=10)
+
+        screen = ResultsScreen()
+        screen.set_results(record, {question.question_id: question}, "zh")
+
+        card = screen.review_layout.itemAt(0).widget()
+        source_text = card.source_label.text()
+        self.assertIn("第21讲 Cache.pdf", source_text)
+        self.assertIn("page 8", source_text.lower())
+        self.assertIn("source-0007", source_text)
+        self.assertIn("Cache Address Breakdown", source_text)
 
     def test_retry_unsure_starts_only_unsure_questions_for_current_course(self):
         from ui.main_window import MainWindow
