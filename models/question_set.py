@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from models.question import Question
-from utils.constants import Difficulty, coerce_topic, topic_value
+from utils.constants import Difficulty, coerce_topic, topic_label, topic_value
 from utils.json_io import read_json, write_json, sanitize_filename_part
 
 
@@ -37,12 +37,16 @@ class QuestionSet:
         return len(self.questions)
 
     def to_dict(self) -> dict:
+        topic_ids = [topic_value(t) for t in self.topics]
+        topic_titles = [topic_label(t) for t in self.topics]
         return {
             "set_id": self.set_id,
             "version": self.version,
             "title": self.title,
             "description": self.description,
-            "topics": [topic_value(t) for t in self.topics],
+            "topics": topic_ids,
+            "topic_ids": topic_ids,
+            "topic_titles": topic_titles,
             "difficulty": self.difficulty.value,
             "estimated_minutes": self.estimated_minutes,
             "questions": self.questions,
@@ -56,7 +60,7 @@ class QuestionSet:
             version=data.get("version", 1),
             title=data.get("title", {"zh": "", "en": ""}),
             description=data.get("description", {"zh": "", "en": ""}),
-            topics=[coerce_topic(t) for t in data.get("topics", [])],
+            topics=[coerce_topic(t) for t in data.get("topic_ids") or data.get("topics", [])],
             difficulty=Difficulty(data.get("difficulty", "medium")),
             estimated_minutes=data.get("estimated_minutes", 15),
             questions=data.get("questions", []),

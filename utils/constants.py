@@ -44,12 +44,12 @@ def coerce_topic(raw):
         return "general"
     if isinstance(raw, Enum):
         return raw.value
-    title = _object_text_attr(raw, "title")
-    if title:
-        return title.strip().lower()
     topic_id = _object_text_attr(raw, "topic_id")
     if topic_id:
         return topic_id.strip().lower()
+    title = _object_text_attr(raw, "title")
+    if title:
+        return title.strip().lower()
     return str(raw).strip().lower()
 
 
@@ -58,7 +58,7 @@ def topic_value(topic):
 
     For string topics: the lowercase string itself.
     For enum topics: the .value.
-    For course-topic-like objects: the normalized title, falling back to topic_id.
+    For course-topic-like objects: the normalized topic_id, falling back to title.
     For None: returns "general" (consistent with coerce_topic).
     """
     if topic is None:
@@ -67,12 +67,12 @@ def topic_value(topic):
         return topic.strip().lower()
     if isinstance(topic, Enum):
         return topic.value
-    title = _object_text_attr(topic, "title")
-    if title:
-        return title.strip().lower()
     topic_id = _object_text_attr(topic, "topic_id")
     if topic_id:
         return topic_id.strip().lower()
+    title = _object_text_attr(topic, "title")
+    if title:
+        return title.strip().lower()
     return str(topic).strip().lower()
 
 
@@ -87,6 +87,30 @@ def topic_label(topic, lang="zh"):
         return title.strip()
     t = topic_value(topic)
     return t
+
+
+def topic_alias_values(topic) -> set[str]:
+    """Return normalized identity and legacy aliases that may refer to a topic."""
+    values = {topic_value(topic)}
+    title = _object_text_attr(topic, "title")
+    if title:
+        values.add(title.strip().lower())
+    aliases = getattr(topic, "aliases", []) or []
+    if isinstance(aliases, (list, tuple, set)):
+        for alias in aliases:
+            alias_text = str(alias or "").strip().lower()
+            if alias_text:
+                values.add(alias_text)
+    return {value for value in values if value}
+
+
+def topic_matches(candidate, selected) -> bool:
+    """Return whether candidate and selected refer to the same topic.
+
+    This supports new topic_id-based storage while preserving old question files
+    that stored the mutable topic title as their only topic value.
+    """
+    return bool(topic_alias_values(candidate) & topic_alias_values(selected))
 
 
 def _object_text_attr(obj, name: str) -> str:

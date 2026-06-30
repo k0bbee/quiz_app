@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from ai.generation_config import GenerationConfig
 from core.question_set_builder import build_ai_question_set
+from models.course_project import CourseTopic
 from models.question import Question
 from utils.constants import Difficulty, QuestionType
 
@@ -82,6 +83,19 @@ class QuestionSetBuilderTests(unittest.TestCase):
         self.assertEqual("course-20260618-demo", qset.metadata["course_id"])
         self.assertEqual("Systems 2B", qset.metadata["course_title"])
         self.assertEqual("2026-06-18T12:00:00+00:00", qset.metadata["course_updated_at"])
+
+    def test_build_ai_question_set_uses_topic_ids_for_storage_and_titles_for_display(self):
+        topic = CourseTopic(topic_id="interrupt_io", title="Interrupt-driven I/O")
+
+        qset = build_ai_question_set(
+            [self._question("q1", topic)],
+            selected_difficulty="medium",
+            generation_config=GenerationConfig(template="quick_review"),
+            lang="en",
+        )
+
+        self.assertEqual(["interrupt_io"], qset.topics)
+        self.assertIn("Interrupt-driven I/O", qset.get_title("en"))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@ import re
 from ai.batch_generator import GenerationWorker, allocate_weighted_counts
 from ai.generation_config import GenerationConfig
 from core.app_errors import AppError
+from models.course_project import CourseTopic
+from utils.constants import topic_value
 
 
 def raw_question(qtype, difficulty, topic, index=0):
@@ -393,6 +395,48 @@ class GenerationQuotaTests(unittest.TestCase):
 
         self.assertEqual([], errors)
         self.assertEqual("Input Output Improvements", batches[0][0].topic)
+
+    def test_worker_maps_model_title_to_selected_course_topic_id(self):
+        topic = CourseTopic(topic_id="io_interrupts", title="Interrupt-driven I/O")
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"io_interrupts": 100},
+        )
+        client = SequenceClient([
+            {
+                "questions": [
+                    raw_question(
+                        "multiple_choice",
+                        "medium",
+                        "Interrupt-driven I/O",
+                        1,
+                    )
+                ]
+            }
+        ])
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=[topic],
+            count=1,
+            difficulty="medium",
+            generation_config=config,
+        )
+        batches = []
+        errors = []
+        worker.batch_done.connect(batches.append)
+        worker.error.connect(errors.append)
+
+        worker.run()
+
+        self.assertEqual([], errors)
+        self.assertEqual("io_interrupts", topic_value(batches[0][0].topic))
 
     def test_worker_reduces_candidate_batch_after_truncated_json_response(self):
         config = GenerationConfig(

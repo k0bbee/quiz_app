@@ -13,7 +13,7 @@ from ai.prompt_templates import PromptBuilder
 from core.app_errors import AppError
 from core.course_index import retrieve_course_context
 from models.question import Question
-from utils.constants import QuestionType, Difficulty, topic_value
+from utils.constants import QuestionType, Difficulty, topic_alias_values, topic_label, topic_value
 
 
 ACCEPT_TARGET_BATCH_SIZE = 5
@@ -370,9 +370,9 @@ class GenerationWorker(QThread):
             return {}
         keywords: dict[str, list[str]] = {}
         for topic in getattr(self.course_project, "topics", []) or []:
-            title = topic_value(getattr(topic, "title", ""))
-            if title:
-                keywords[title] = list(getattr(topic, "keywords", []) or [])
+            key = topic_value(topic)
+            if key:
+                keywords[key] = list(getattr(topic, "keywords", []) or [])
         return keywords
 
     def _normalize_raw_question(self, qdata):
@@ -446,19 +446,24 @@ class GenerationWorker(QThread):
             return str(raw_topic or "general")
         raw = str(raw_topic or "").strip().lower()
         raw_key = _topic_match_key(raw)
-        selected = {topic_value(t).lower(): t for t in self.topics}
+        selected = {value.lower(): t for t in self.topics for value in topic_alias_values(t)}
         if raw in selected:
             return selected[raw]
-        canonical_selected = {_topic_match_key(topic_value(t)): t for t in self.topics}
+        canonical_selected = {
+            _topic_match_key(value): t
+            for t in self.topics
+            for value in topic_alias_values(t) | {topic_label(t)}
+        }
         if raw_key in canonical_selected:
             return canonical_selected[raw_key]
         for topic in self.topics:
-            label = topic_value(topic).lower()
-            label_key = _topic_match_key(label)
-            if raw and (raw in label or label in raw):
-                return topic
-            if raw_key and (raw_key in label_key or label_key in raw_key):
-                return topic
+            for label in topic_alias_values(topic) | {topic_label(topic)}:
+                label = str(label or "").lower()
+                label_key = _topic_match_key(label)
+                if raw and (raw in label or label in raw):
+                    return topic
+                if raw_key and (raw_key in label_key or label_key in raw_key):
+                    return topic
         return None
 
 

@@ -17,8 +17,12 @@ def build_ai_question_set(
     custom_title: str = "",
 ) -> QuestionSet:
     """Create a question set that preserves the user's AI generation choices."""
-    topics = sorted({topic_value(question.topic) for question in questions})
-    topic_names = ", ".join(topic_label(topic, lang) for topic in topics)
+    topic_labels_by_id = {
+        topic_value(question.topic): topic_label(question.topic, lang)
+        for question in questions
+    }
+    topics = sorted(topic_labels_by_id)
+    topic_names = ", ".join(topic_labels_by_id.get(topic, topic) for topic in topics)
     display_difficulty = _display_difficulty(selected_difficulty)
     title = str(custom_title or "").strip()
     title_payload = (
@@ -43,6 +47,10 @@ def build_ai_question_set(
     )
     qset.metadata.update(_generation_metadata(selected_difficulty, generation_config))
     qset.metadata.update(_course_metadata(course_project))
+    qset.metadata["topic_titles"] = {
+        topic: topic_labels_by_id.get(topic, topic)
+        for topic in topics
+    }
     if title:
         qset.metadata["renamed_by_user"] = True
     return qset

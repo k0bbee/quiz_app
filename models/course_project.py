@@ -21,6 +21,7 @@ class CourseTopic:
     title: str
     keywords: list[str] = field(default_factory=list)
     source_files: list[str] = field(default_factory=list)
+    aliases: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -28,6 +29,7 @@ class CourseTopic:
             "title": self.title,
             "keywords": self.keywords,
             "source_files": self.source_files,
+            "aliases": self.aliases,
         }
 
     @classmethod
@@ -37,6 +39,7 @@ class CourseTopic:
             title=data.get("title", ""),
             keywords=data.get("keywords", []),
             source_files=data.get("source_files", []),
+            aliases=data.get("aliases", []),
         )
 
 

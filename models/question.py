@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from utils.constants import QuestionType, Difficulty, coerce_topic, topic_value
+from utils.constants import QuestionType, Difficulty, coerce_topic, topic_label, topic_matches, topic_value
 from utils.json_io import read_json, write_json, sanitize_filename_part
 
 
@@ -51,29 +51,44 @@ class Question:
 
     def to_dict(self) -> dict:
         """Serialize to dictionary for JSON storage."""
+        topic_id = topic_value(self.topic)
+        topic_title = self.metadata.get("topic_title") or topic_label(self.topic)
+        metadata = dict(self.metadata)
+        if topic_title and topic_title != topic_id:
+            metadata.setdefault("topic_title", topic_title)
         return {
             "question_id": self.question_id,
             "type": self.type.value,
             "difficulty": self.difficulty.value,
             "bilingual": self.bilingual,
             "correct_answer": self.correct_answer,
-            "topic": topic_value(self.topic),
+            "topic": topic_id,
+            "topic_id": topic_id,
+            "topic_title": topic_title,
             "subtopic": self.subtopic,
-            "metadata": self.metadata,
+            "metadata": metadata,
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> Question:
         """Deserialize from dictionary."""
+        metadata = dict(data.get("metadata", {}) or {})
+        topic_title = str(data.get("topic_title", "") or "").strip()
+        legacy_topic = str(data.get("topic", "") or "").strip()
+        if topic_title:
+            metadata.setdefault("topic_title", topic_title)
+        topic_source = data.get("topic_id") or data.get("topic", "general")
+        if not data.get("topic_id") and legacy_topic:
+            metadata.setdefault("legacy_topic", legacy_topic)
         return cls(
             question_id=data.get("question_id", ""),
             type=QuestionType(data.get("type", "multiple_choice")),
             difficulty=Difficulty(data.get("difficulty", "medium")),
             bilingual=data.get("bilingual", {}),
             correct_answer=data.get("correct_answer"),
-            topic=coerce_topic(data.get("topic", "general")),
+            topic=coerce_topic(topic_source),
             subtopic=data.get("subtopic", ""),
-            metadata=data.get("metadata", {}),
+            metadata=metadata,
         )
 
     @classmethod
@@ -247,14 +262,16 @@ class QuestionBank:
     def filter_by_topic(self, topic: object) -> list[Question]:
         """Get all questions for a specific topic."""
         all_qs = self.load_all()
-        wanted = topic_value(topic)
-        return [q for q in all_qs if topic_value(q.topic) == wanted]
+        return [q for q in all_qs if topic_matches(q.topic, topic)]
 
     def filter_by_topics(self, topics: list) -> list[Question]:
         """Get all questions matching any of the given topics."""
         all_qs = self.load_all()
-        topic_set = {topic_value(t) for t in topics}
-        return [q for q in all_qs if topic_value(q.topic) in topic_set]
+        return [
+            q
+            for q in all_qs
+            if any(topic_matches(q.topic, selected_topic) for selected_topic in topics)
+        ]
 
     def search(
         self,
@@ -273,7 +290,7 @@ class QuestionBank:
 
         matches: list[Question] = []
         for q in self.load_all():
-            if topic_filter is not None and topic_value(q.topic) != topic_filter:
+            if topic_filter is not None and not topic_matches(q.topic, topic):
                 continue
             if difficulty_filter and q.difficulty.value != difficulty_filter:
                 continue
@@ -288,6 +305,8 @@ class QuestionBank:
                     q.get_explanation("en"),
                     q.subtopic,
                     topic_value(q.topic),
+                    str((q.metadata or {}).get("topic_title", "")),
+                    str((q.metadata or {}).get("legacy_topic", "")),
                 ]).lower()
                 if query not in haystack:
                     continue
