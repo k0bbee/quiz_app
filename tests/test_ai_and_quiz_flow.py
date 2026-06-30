@@ -1314,6 +1314,77 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIn("cache", screen.recommendation_label.text())
             self.assertNotIn("process", screen.recommendation_label.text())
             self.assertNotIn("virtual memory", screen.recommendation_label.text())
+            self.assertEqual("", screen.source_refs_label.text())
+            self.assertTrue(screen.source_refs_label.isHidden())
+
+    def test_progress_dashboard_shows_source_refs_for_recommended_topics(self):
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            progress_manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            cache = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "Cache", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Cache", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            cache.metadata["course_id"] = "course-a"
+            cache.metadata["source_refs"] = [
+                {
+                    "chunk_id": "cache-chunk-8",
+                    "source_file": "Cache.pdf",
+                    "page_or_slide": 8,
+                    "heading": "Cache Address Breakdown",
+                }
+            ]
+            process = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "Process", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Process", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="process",
+            )
+            process.metadata["course_id"] = "course-a"
+            process.metadata["source_refs"] = [
+                {
+                    "chunk_id": "process-chunk-1",
+                    "source_file": "Process.pdf",
+                    "page_or_slide": 1,
+                    "heading": "Process States",
+                }
+            ]
+            question_bank.save_many([cache, process])
+
+            record = ProgressRecord.create_new("set-any")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(question_id=cache.question_id, index_in_session=0, user_answer="B", is_correct=False),
+                AnswerRecord(question_id=process.question_id, index_in_session=1, user_answer="A", is_correct=True),
+            ]
+            record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
+            progress_manager.save(record)
+
+            screen = ProgressDashboard(progress_manager, question_bank)
+            screen.set_current_course("course-a")
+            screen.refresh()
+
+            source_text = screen.source_refs_label.text()
+            self.assertFalse(screen.source_refs_label.isHidden())
+            self.assertIn("相关来源", source_text)
+            self.assertIn("Cache.pdf", source_text)
+            self.assertIn("page 8", source_text)
+            self.assertIn("cache-chunk-8", source_text)
+            self.assertNotIn("Process.pdf", source_text)
 
     def test_progress_dashboard_skips_topics_marked_fully_mastered(self):
         language_manager = LanguageManager.instance()

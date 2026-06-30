@@ -12,6 +12,7 @@ from core.mastery import build_topic_mastery
 from core.mastery_overrides import MasteryOverrideStore
 from models.question import QuestionBank
 from models.question_set import SetManager
+from ui.widgets.source_refs import format_source_refs
 from utils.constants import topic_label, topic_value
 from core.language_manager import LanguageManager
 from config import QUESTION_SETS_DIR
@@ -61,6 +62,12 @@ class ProgressDashboard(QWidget):
         self.recommendation_label.setObjectName("dashboardRecommendationLabel")
         self.recommendation_label.setWordWrap(True)
         summary_layout.addWidget(self.recommendation_label)
+
+        self.source_refs_label = QLabel()
+        self.source_refs_label.setObjectName("dashboardSourceRefsLabel")
+        self.source_refs_label.setWordWrap(True)
+        self.source_refs_label.setHidden(True)
+        summary_layout.addWidget(self.source_refs_label)
 
         layout.addWidget(self.summary_group)
 
@@ -153,6 +160,7 @@ class ProgressDashboard(QWidget):
             ))
             self.detail_label.clear()
             self.recommendation_label.clear()
+            self._set_source_refs([])
         else:
             self.overall_label.setText(self.lang_manager.get_text(
                 f"练习: {stats['total_sessions']} 次 | 题目: {stats['total_questions']} 题 | 正确率: {stats['overall_accuracy']:.1f}%",
@@ -257,6 +265,7 @@ class ProgressDashboard(QWidget):
 
         labels = []
         seen_topics = set()
+        recommended_topic_values = []
         for question in questions:
             if self.mastery_overrides.is_topic_mastered(self._current_course_id, question.topic):
                 continue
@@ -264,12 +273,14 @@ class ProgressDashboard(QWidget):
             if value in seen_topics:
                 continue
             seen_topics.add(value)
+            recommended_topic_values.append(value)
             labels.append(topic_label(question.topic, lang))
             if len(labels) >= 3:
                 break
 
         if not labels:
             self.recommendation_label.clear()
+            self._set_source_refs([])
             return
 
         topics = ", ".join(labels)
@@ -277,6 +288,40 @@ class ProgressDashboard(QWidget):
             f"建议复习: {topics}",
             f"Suggested review: {topics}",
         ))
+        self._set_source_refs(self._source_refs_for_topics(questions, set(recommended_topic_values)))
+
+    def _set_source_refs(self, source_refs: list[dict]) -> None:
+        """Show source refs only when they add useful information."""
+        text = format_source_refs(
+            source_refs,
+            label=self.lang_manager.get_text("相关来源", "Related sources"),
+        )
+        self.source_refs_label.setText(text)
+        self.source_refs_label.setHidden(not bool(text))
+
+    def _source_refs_for_topics(self, questions: list, topic_values: set[str]) -> list[dict]:
+        """Return de-duplicated source refs for the currently recommended topics."""
+        refs = []
+        seen = set()
+        for question in questions:
+            if topic_value(question.topic) not in topic_values:
+                continue
+            for ref in (question.metadata or {}).get("source_refs", []):
+                if not isinstance(ref, dict):
+                    continue
+                key = (
+                    str(ref.get("source_file", "") or ""),
+                    str(ref.get("page_or_slide", "") or ""),
+                    str(ref.get("chunk_id", "") or ""),
+                    str(ref.get("heading", "") or ""),
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                refs.append(ref)
+                if len(refs) >= 5:
+                    return refs
+        return refs
 
     def _selected_topic_key(self) -> str:
         selected = self.topic_table.selectedItems()

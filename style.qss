@@ -689,6 +689,14 @@ QLabel#dashboardRecommendationLabel {
     padding: 8px 10px;
 }
 
+QLabel#dashboardSourceRefsLabel {
+    color: #9d9d9d;
+    background-color: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 2px;
+    padding: 8px 10px;
+}
+
 QListWidget#topicSetList {
     font-size: 14px;
 }
