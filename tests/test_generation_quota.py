@@ -254,7 +254,7 @@ class GenerationQuotaTests(unittest.TestCase):
             _counts(str(question.topic) for question in batches[0]),
         )
 
-    def test_worker_reports_quota_shortfall_and_does_not_emit_partial_batch(self):
+    def test_worker_emits_partial_result_when_quota_shortfall_has_accepted_questions(self):
         repeated = {
             "questions": [raw_question("multiple_choice", "easy", "cache", index) for index in range(4)]
         }
@@ -277,21 +277,26 @@ class GenerationQuotaTests(unittest.TestCase):
             generation_config=config,
         )
         batches = []
+        partials = []
         errors = []
         worker.batch_done.connect(batches.append)
+        worker.partial_done.connect(lambda questions, reason: partials.append((questions, reason)))
         worker.error.connect(errors.append)
 
         worker.run()
 
         self.assertEqual([], batches)
-        self.assertEqual(1, len(errors))
-        self.assertIsInstance(errors[0], AppError)
-        self.assertEqual("GEN-QUOTA-001", errors[0].code)
-        self.assertIn("requested distribution", errors[0].technical_detail)
-        self.assertIn("true_false", errors[0].technical_detail)
-        self.assertIn("hard", errors[0].technical_detail)
-        self.assertIn("process", errors[0].technical_detail)
-        self.assertIn("放宽", errors[0].action_zh)
+        self.assertEqual([], errors)
+        self.assertEqual(1, len(partials))
+        questions, reason = partials[0]
+        self.assertEqual(2, len(questions))
+        self.assertIsInstance(reason, AppError)
+        self.assertEqual("GEN-QUOTA-001", reason.code)
+        self.assertIn("requested distribution", reason.technical_detail)
+        self.assertIn("true_false", reason.technical_detail)
+        self.assertIn("hard", reason.technical_detail)
+        self.assertIn("process", reason.technical_detail)
+        self.assertIn("放宽", reason.action_zh)
 
     def test_worker_progress_reports_total_requested_count_not_batch_size(self):
         config = GenerationConfig(

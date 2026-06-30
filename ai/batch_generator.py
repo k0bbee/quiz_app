@@ -122,6 +122,7 @@ class GenerationWorker(QThread):
 
     progress = pyqtSignal(str)  # Status message
     batch_done = pyqtSignal(list)  # List of Question objects
+    partial_done = pyqtSignal(list, object)  # Accepted questions plus shortfall reason
     error = pyqtSignal(object)
     finished = pyqtSignal()
 
@@ -267,7 +268,12 @@ class GenerationWorker(QThread):
                     if self._last_json_truncation_detail:
                         self.error.emit(self._json_truncation_error(self._last_json_truncation_detail))
                         return
-                    self.error.emit(quotas.shortfall_error(len(all_questions), self.count))
+                    shortfall = quotas.shortfall_error(len(all_questions), self.count)
+                    if all_questions:
+                        self.progress.emit(shortfall.status_text("en"))
+                        self.partial_done.emit(all_questions, shortfall)
+                    else:
+                        self.error.emit(shortfall)
                     return
                 self.batch_done.emit(all_questions)
 

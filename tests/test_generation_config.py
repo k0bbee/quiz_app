@@ -15,6 +15,7 @@ from ai.generation_config import GenerationConfig
 from ai.exam_plan import ExamGenerationPlan
 from ai.llm_client import LLMClient
 from ai.prompt_templates import PromptBuilder
+from core.app_errors import AppError
 from core.question_set_builder import build_ai_question_set
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from models.course_project import CourseProject, CourseTopic
@@ -495,6 +496,7 @@ class GenerationConfigTests(unittest.TestCase):
             def __init__(self, *args, **kwargs):
                 self.progress = FakeSignal()
                 self.batch_done = FakeSignal()
+                self.partial_done = FakeSignal()
                 self.error = FakeSignal()
                 self.finished = FakeSignal()
                 self.args = args
@@ -564,6 +566,59 @@ class GenerationConfigTests(unittest.TestCase):
 
         self.assertFalse(dialog.progress_bar.isVisible())
         self.assertTrue(dialog.generate_btn.isEnabled())
+
+    def test_generation_partial_result_opens_review_without_error_modal(self):
+        question = Question.create_new(
+            qtype=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": {"stem": "Cache?", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                "en": {"stem": "Cache?", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+            },
+            correct_answer="A",
+            topic="cache",
+        )
+        reason = AppError(
+            code="GEN-QUOTA-001",
+            severity="warning",
+            title_zh="生成未完成",
+            title_en="Generation incomplete",
+            message_zh="已接受 1/3 道题。",
+            message_en="Accepted 1/3 questions.",
+            action_zh="可先保存已生成题目，或稍后继续补齐。",
+            action_en="Save generated questions now, or continue later.",
+            technical_detail="Missing: true_false [2]",
+        )
+        reviewed = {}
+
+        class AcceptingReviewDialog:
+            def __init__(self, questions, parent=None):
+                reviewed["questions"] = questions
+
+            def exec(self):
+                return QDialog.DialogCode.Accepted
+
+            def get_accepted_questions(self):
+                return reviewed["questions"]
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog._generation_started_at = 100.0
+        dialog.worker = object()
+
+        with patch("ui.dialogs.ai_generation_dialog.QMessageBox.critical") as critical, \
+             patch("ui.dialogs.ai_generation_dialog.QuestionReviewDialog", AcceptingReviewDialog):
+            dialog._on_partial_done([question], reason)
+            dialog._on_finished()
+
+        self.assertFalse(critical.called)
+        self.assertEqual([question], reviewed["questions"])
+        self.assertEqual([question], dialog.generated_questions)
+        self.assertIn("生成未完成", dialog.status_label.text())
+        self.assertTrue(dialog.result() == QDialog.DialogCode.Accepted)
 
     def test_dialog_can_prefill_from_existing_question_set(self):
         dialog = AIGenerationDialog(

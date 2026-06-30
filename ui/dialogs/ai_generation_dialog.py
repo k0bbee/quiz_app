@@ -53,6 +53,7 @@ class AIGenerationDialog(QDialog):
         self.worker: GenerationWorker = None
         self._generation_failed = False
         self._generation_cancelled = False
+        self._partial_generation_error = None
         self.weight_value_labels: dict[QSlider, QLabel] = {}
         self.topic_weight_labels: dict[str, QLabel] = {}
         self.topic_weight_rows: dict[str, QWidget] = {}
@@ -816,6 +817,7 @@ class AIGenerationDialog(QDialog):
         # Disable UI during generation
         self._generation_failed = False
         self._generation_cancelled = False
+        self._partial_generation_error = None
         self.generated_questions = []
         self._generation_started_at = time.monotonic()
         self._last_generation_progress = self.lang_manager.get_text(
@@ -837,6 +839,7 @@ class AIGenerationDialog(QDialog):
         )
         self.worker.progress.connect(self._on_progress)
         self.worker.batch_done.connect(self._on_batch_done)
+        self.worker.partial_done.connect(self._on_partial_done)
         self.worker.error.connect(self._on_error)
         self.worker.finished.connect(self._on_finished)
         self.worker.start()
@@ -899,7 +902,24 @@ class AIGenerationDialog(QDialog):
     def _on_batch_done(self, questions: list[Question]):
         if self._generation_cancelled:
             return
+        self._partial_generation_error = None
         self.generated_questions = questions
+
+    def _on_partial_done(self, questions: list[Question], reason):
+        if self._generation_cancelled:
+            return
+        self.generated_questions = questions
+        self._partial_generation_error = coerce_app_error(
+            reason,
+            default_code="GEN-PARTIAL-001",
+            title_zh="生成未完成",
+            title_en="Generation incomplete",
+            action_zh="可先审核并保存已生成题目，稍后再继续补齐。",
+            action_en="Review and save the generated questions now, then continue later.",
+        )
+        self.status_label.setText(
+            self._partial_generation_error.status_text(self.lang_manager.current)
+        )
 
     def _on_error(self, message):
         if self._generation_cancelled:
@@ -936,10 +956,21 @@ class AIGenerationDialog(QDialog):
             return
 
         if self.generated_questions:
+            partial_error = self._partial_generation_error
             if self.lang_manager.current == "zh":
-                self.status_label.setText(f"已生成 {len(self.generated_questions)} 道题目。正在打开预览...")
+                if partial_error:
+                    self.status_label.setText(
+                        f"{partial_error.status_text('zh')} 正在打开预览..."
+                    )
+                else:
+                    self.status_label.setText(f"已生成 {len(self.generated_questions)} 道题目。正在打开预览...")
             else:
-                self.status_label.setText(f"Generated {len(self.generated_questions)} questions. Opening review...")
+                if partial_error:
+                    self.status_label.setText(
+                        f"{partial_error.status_text('en')} Opening review..."
+                    )
+                else:
+                    self.status_label.setText(f"Generated {len(self.generated_questions)} questions. Opening review...")
             # Open review dialog
             review_dialog = QuestionReviewDialog(self.generated_questions, self)
             if review_dialog.exec() == QDialog.DialogCode.Accepted:
