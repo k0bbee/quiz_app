@@ -389,6 +389,15 @@ class AIGenerationDialog(QDialog):
 
         self.footer_action_layout.addStretch()
 
+        self.review_partial_btn = QPushButton(
+            self.lang_manager.get_text("审核并保存已生成题目", "Review and Save Generated")
+        )
+        self.review_partial_btn.setObjectName("primaryButton")
+        self.review_partial_btn.setMinimumHeight(34)
+        self.review_partial_btn.setHidden(True)
+        self.review_partial_btn.clicked.connect(self._review_generated_questions)
+        self.footer_action_layout.addWidget(self.review_partial_btn)
+
         self.generate_btn = QPushButton(self.lang_manager.get_text("生成题目", "Generate Questions"))
         self.generate_btn.setObjectName("primaryButton")
         self.generate_btn.setMinimumHeight(34)
@@ -595,6 +604,9 @@ class AIGenerationDialog(QDialog):
         self._update_preview()
 
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
+        self.review_partial_btn.setText(
+            self.lang_manager.get_text("审核并保存已生成题目", "Review and Save Generated")
+        )
         self.generate_btn.setText(self.lang_manager.get_text("生成题目", "Generate Questions"))
         self.partial_recovery_label.setText(self._partial_recovery_hint(self.lang_manager.current))
         self.exam_assistant_btn.setText(
@@ -968,6 +980,8 @@ class AIGenerationDialog(QDialog):
         )
         self.partial_recovery_label.setHidden(True)
         self.partial_recovery_label.clear()
+        self.review_partial_btn.setHidden(True)
+        self._set_generate_button_role("primaryButton")
         self._reset_generation_log()
         self._append_generation_event(self._last_generation_progress)
         self._refresh_generation_status()
@@ -1068,6 +1082,8 @@ class AIGenerationDialog(QDialog):
         self.generated_questions = questions
         self.partial_recovery_label.setHidden(True)
         self.partial_recovery_label.clear()
+        self.review_partial_btn.setHidden(True)
+        self._set_generate_button_role("primaryButton")
         self._append_generation_event(
             self.lang_manager.get_text(
                 f"已收到 {len(questions)} 道候选题，准备进入审核。",
@@ -1100,6 +1116,9 @@ class AIGenerationDialog(QDialog):
             )
         self.partial_recovery_label.setText(self._partial_recovery_hint(self.lang_manager.current))
         self.partial_recovery_label.setHidden(False)
+        self.review_partial_btn.setHidden(False)
+        self.review_partial_btn.setEnabled(True)
+        self._set_generate_button_role("secondaryButton")
         self.status_label.setText(self._partial_status_text(self.lang_manager.current))
 
     def _on_error(self, message):
@@ -1120,6 +1139,8 @@ class AIGenerationDialog(QDialog):
         self._generation_started_at = None
         self.partial_recovery_label.setHidden(True)
         self.partial_recovery_label.clear()
+        self.review_partial_btn.setHidden(True)
+        self._set_generate_button_role("primaryButton")
         self.status_label.setText(app_error.status_text(lang))
         QMessageBox.critical(
             self,
@@ -1140,44 +1161,65 @@ class AIGenerationDialog(QDialog):
             return
 
         if self.generated_questions:
-            partial_error = self._partial_generation_error
+            is_partial = self._has_partial_generation()
             if self.lang_manager.current == "zh":
-                if partial_error:
+                if is_partial:
                     self.status_label.setText(
-                        f"{self._partial_status_text('zh')} 正在打开预览..."
+                        f"{self._partial_status_text('zh')} 可先审核保存已生成题目。"
                     )
                 else:
                     self.status_label.setText(f"已生成 {len(self.generated_questions)} 道题目。正在打开预览...")
             else:
-                if partial_error:
+                if is_partial:
                     self.status_label.setText(
-                        f"{self._partial_status_text('en')} Opening review..."
+                        f"{self._partial_status_text('en')} You can review and save generated questions now."
                     )
                 else:
                     self.status_label.setText(f"Generated {len(self.generated_questions)} questions. Opening review...")
-            # Open review dialog
-            review_dialog = QuestionReviewDialog(self.generated_questions, self)
-            if review_dialog.exec() == QDialog.DialogCode.Accepted:
-                accepted = review_dialog.get_accepted_questions()
-                if not accepted:
-                    QMessageBox.warning(
-                        self,
-                        self.lang_manager.get_text("没有接受的题目", "No Questions Accepted"),
-                        self.lang_manager.get_text(
-                            "没有题目被接受，请至少接受一道题目或取消操作。",
-                            "No questions were accepted. Please accept at least one or cancel."
-                        )
-                    )
-                    self.generate_btn.setEnabled(True)
-                    self.progress_bar.setVisible(False)
-                    return
-                self.generated_questions = accepted
-                self.accept()
+            if is_partial:
+                self.review_partial_btn.setHidden(False)
+                self.review_partial_btn.setEnabled(True)
+                self._set_generate_button_role("secondaryButton")
+                return
+            self._set_generate_button_role("primaryButton")
+            self._review_generated_questions()
         else:
             self.status_label.setText(self.lang_manager.get_text("未生成任何题目。", "No questions were generated."))
 
         if not self.worker:
             self.status_label.setText(self.lang_manager.get_text("未生成任何题目。", "No questions were generated."))
+
+    def _has_partial_generation(self) -> bool:
+        return self._partial_generation_report is not None or self._partial_generation_error is not None
+
+    def _set_generate_button_role(self, role: str) -> None:
+        if self.generate_btn.objectName() == role:
+            return
+        self.generate_btn.setObjectName(role)
+        self.generate_btn.style().unpolish(self.generate_btn)
+        self.generate_btn.style().polish(self.generate_btn)
+
+    def _review_generated_questions(self) -> None:
+        if not self.generated_questions:
+            return
+        review_dialog = QuestionReviewDialog(self.generated_questions, self)
+        if review_dialog.exec() == QDialog.DialogCode.Accepted:
+            accepted = review_dialog.get_accepted_questions()
+            if not accepted:
+                QMessageBox.warning(
+                    self,
+                    self.lang_manager.get_text("没有接受的题目", "No Questions Accepted"),
+                    self.lang_manager.get_text(
+                        "没有题目被接受，请至少接受一道题目或取消操作。",
+                        "No questions were accepted. Please accept at least one or cancel."
+                    )
+                )
+                self.generate_btn.setEnabled(True)
+                self.review_partial_btn.setEnabled(True)
+                self.progress_bar.setVisible(False)
+                return
+            self.generated_questions = accepted
+            self.accept()
 
     def _partial_status_text(self, lang: str) -> str:
         if self._partial_generation_report is not None:

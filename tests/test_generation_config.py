@@ -662,7 +662,7 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertFalse(dialog.progress_bar.isVisible())
         self.assertTrue(dialog.generate_btn.isEnabled())
 
-    def test_generation_partial_result_opens_review_without_error_modal(self):
+    def test_generation_partial_result_shows_explicit_review_action_without_error_modal(self):
         question = Question.create_new(
             qtype=QuestionType.MULTIPLE_CHOICE,
             difficulty=Difficulty.MEDIUM,
@@ -719,7 +719,16 @@ class GenerationConfigTests(unittest.TestCase):
             dialog._on_partial_done([question], report)
             dialog._on_finished()
 
-        self.assertFalse(critical.called)
+            self.assertFalse(critical.called)
+            self.assertNotIn("questions", reviewed)
+            self.assertNotEqual(QDialog.DialogCode.Accepted, dialog.result())
+            self.assertFalse(dialog.review_partial_btn.isHidden())
+            self.assertTrue(dialog.review_partial_btn.isEnabled())
+            self.assertEqual("primaryButton", dialog.review_partial_btn.objectName())
+            self.assertEqual("secondaryButton", dialog.generate_btn.objectName())
+            self.assertIn("审核并保存", dialog.review_partial_btn.text())
+            dialog.review_partial_btn.click()
+
         self.assertEqual([question], reviewed["questions"])
         self.assertEqual([question], dialog.generated_questions)
         self.assertIn("生成未完成", dialog.status_label.text())
