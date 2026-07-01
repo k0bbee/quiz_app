@@ -63,6 +63,8 @@ class AIGenerationDialog(QDialog):
         self._generation_cancelled = False
         self._partial_generation_error = None
         self._partial_generation_report: GenerationReport | None = None
+        self._retry_carryover_questions: list[Question] = []
+        self._retry_source_report: GenerationReport | None = None
         self.weight_value_labels: dict[QSlider, QLabel] = {}
         self.topic_weight_labels: dict[str, QLabel] = {}
         self.topic_weight_rows: dict[str, QWidget] = {}
@@ -389,6 +391,15 @@ class AIGenerationDialog(QDialog):
 
         self.footer_action_layout.addStretch()
 
+        self.fill_missing_btn = QPushButton(
+            self.lang_manager.get_text("补齐缺口", "Fill Missing")
+        )
+        self.fill_missing_btn.setObjectName("secondaryButton")
+        self.fill_missing_btn.setMinimumHeight(34)
+        self.fill_missing_btn.setHidden(True)
+        self.fill_missing_btn.clicked.connect(self._start_retry_generation)
+        self.footer_action_layout.addWidget(self.fill_missing_btn)
+
         self.review_partial_btn = QPushButton(
             self.lang_manager.get_text("审核并保存已生成题目", "Review and Save Generated")
         )
@@ -401,7 +412,7 @@ class AIGenerationDialog(QDialog):
         self.generate_btn = QPushButton(self.lang_manager.get_text("生成题目", "Generate Questions"))
         self.generate_btn.setObjectName("primaryButton")
         self.generate_btn.setMinimumHeight(34)
-        self.generate_btn.clicked.connect(self._start_generation)
+        self.generate_btn.clicked.connect(lambda: self._start_generation())
         self.footer_action_layout.addWidget(self.generate_btn)
 
         bottom_layout.addLayout(self.footer_action_layout)
@@ -607,6 +618,7 @@ class AIGenerationDialog(QDialog):
         self.review_partial_btn.setText(
             self.lang_manager.get_text("审核并保存已生成题目", "Review and Save Generated")
         )
+        self._refresh_fill_missing_button()
         self.generate_btn.setText(self.lang_manager.get_text("生成题目", "Generate Questions"))
         self.partial_recovery_label.setText(self._partial_recovery_hint(self.lang_manager.current))
         self.exam_assistant_btn.setText(
@@ -939,9 +951,15 @@ class AIGenerationDialog(QDialog):
             for (question_type, difficulty, skill), amount in groups.items():
                 lines.append(f"- {amount} x {difficulty} / {question_type} / {skill}")
 
-    def _start_generation(self):
+    def _start_generation(
+        self,
+        *,
+        retry_plan=None,
+        retry_topics: list | None = None,
+        carryover_questions: list[Question] | None = None,
+    ):
         """Start the background generation process."""
-        topics = self._get_selected_topics()
+        topics = retry_topics if retry_plan is not None else self._get_selected_topics()
         if not topics:
             QMessageBox.warning(
                 self,
@@ -963,15 +981,23 @@ class AIGenerationDialog(QDialog):
 
         base_url = self.settings.get("ai_base_url", "https://api.anthropic.com/v1")
         model = self.settings.get("ai_model", "claude-sonnet-4-6")
-        count = self.count_spin.value()
-        difficulty = self.diff_combo.currentData()
-        generation_config = self._build_generation_config()
+        if retry_plan is not None:
+            count = retry_plan.count
+            difficulty = "mixed"
+            generation_config = retry_plan.config
+            carryover_questions = list(carryover_questions or [])
+        else:
+            count = self.count_spin.value()
+            difficulty = self.diff_combo.currentData()
+            generation_config = self._build_generation_config()
+            carryover_questions = []
 
         # Disable UI during generation
         self._generation_failed = False
         self._generation_cancelled = False
         self._partial_generation_error = None
         self._partial_generation_report = None
+        self._retry_carryover_questions = carryover_questions
         self.generated_questions = []
         self._generation_started_at = time.monotonic()
         self._last_generation_progress = self.lang_manager.get_text(
@@ -980,6 +1006,8 @@ class AIGenerationDialog(QDialog):
         )
         self.partial_recovery_label.setHidden(True)
         self.partial_recovery_label.clear()
+        self.fill_missing_btn.setHidden(True)
+        self.fill_missing_btn.setEnabled(False)
         self.review_partial_btn.setHidden(True)
         self._set_generate_button_role("primaryButton")
         self._reset_generation_log()
@@ -1003,6 +1031,38 @@ class AIGenerationDialog(QDialog):
         self.worker.error.connect(self._on_error)
         self.worker.finished.connect(self._on_finished)
         self.worker.start()
+
+    def _start_retry_generation(self):
+        """Generate only the remaining failed plan slots from a partial run."""
+        if self._partial_generation_report is None:
+            return
+        retry_plan = self._partial_generation_report.retry_plan()
+        if retry_plan.count <= 0:
+            self.fill_missing_btn.setHidden(True)
+            return
+        retry_topics = self._topics_for_retry(retry_plan.topics)
+        self._retry_source_report = self._partial_generation_report
+        self._append_generation_event(
+            self.lang_manager.get_text(
+                f"继续补齐 {retry_plan.count} 道缺口题目。",
+                f"Filling {retry_plan.count} missing question(s).",
+            )
+        )
+        self._start_generation(
+            retry_plan=retry_plan,
+            retry_topics=retry_topics,
+            carryover_questions=list(self.generated_questions),
+        )
+
+    def _topics_for_retry(self, topic_ids: list[str]) -> list:
+        """Map retry topic ids back to current topic objects when available."""
+        by_key = {topic_value(topic): topic for topic in self.available_topics}
+        topics = []
+        for topic_id in topic_ids:
+            key = str(topic_id or "").strip()
+            if key:
+                topics.append(by_key.get(key, key))
+        return topics
 
     def _build_generation_config(self) -> GenerationConfig:
         topics = self._get_selected_topics()
@@ -1079,9 +1139,12 @@ class AIGenerationDialog(QDialog):
             return
         self._partial_generation_error = None
         self._partial_generation_report = None
-        self.generated_questions = questions
+        self._retry_source_report = None
+        self.generated_questions = self._merge_retry_carryover(questions)
         self.partial_recovery_label.setHidden(True)
         self.partial_recovery_label.clear()
+        self.fill_missing_btn.setHidden(True)
+        self.fill_missing_btn.setEnabled(False)
         self.review_partial_btn.setHidden(True)
         self._set_generate_button_role("primaryButton")
         self._append_generation_event(
@@ -1094,14 +1157,15 @@ class AIGenerationDialog(QDialog):
     def _on_partial_done(self, questions: list[Question], report_or_reason):
         if self._generation_cancelled:
             return
-        self.generated_questions = questions
+        self.generated_questions = self._merge_retry_carryover(questions)
         self._append_generation_event(
             self.lang_manager.get_text(
-                f"生成未完成，但保留了 {len(questions)} 道可审核题目。",
-                f"Generation incomplete; kept {len(questions)} reviewable question(s).",
+                f"生成未完成，但保留了 {len(self.generated_questions)} 道可审核题目。",
+                f"Generation incomplete; kept {len(self.generated_questions)} reviewable question(s).",
             )
         )
         if isinstance(report_or_reason, GenerationReport):
+            self._retry_source_report = None
             self._partial_generation_report = report_or_reason
             self._partial_generation_error = report_or_reason.error
         else:
@@ -1116,6 +1180,7 @@ class AIGenerationDialog(QDialog):
             )
         self.partial_recovery_label.setText(self._partial_recovery_hint(self.lang_manager.current))
         self.partial_recovery_label.setHidden(False)
+        self._refresh_fill_missing_button()
         self.review_partial_btn.setHidden(False)
         self.review_partial_btn.setEnabled(True)
         self._set_generate_button_role("secondaryButton")
@@ -1134,11 +1199,21 @@ class AIGenerationDialog(QDialog):
             action_en="Check AI settings, network connectivity, or try again later.",
         )
         lang = self.lang_manager.current
+        retry_carryover = list(self._retry_carryover_questions)
+        retry_source_report = self._retry_source_report
         self._append_generation_event(app_error.status_text(lang))
         self.generation_status_timer.stop()
         self._generation_started_at = None
         self.partial_recovery_label.setHidden(True)
         self.partial_recovery_label.clear()
+        if retry_carryover and not self.generated_questions:
+            self.generated_questions = retry_carryover
+            self._retry_carryover_questions = []
+            self._partial_generation_report = retry_source_report
+            self._partial_generation_error = retry_source_report.error if retry_source_report else None
+            self._retry_source_report = None
+        self.fill_missing_btn.setHidden(True)
+        self.fill_missing_btn.setEnabled(False)
         self.review_partial_btn.setHidden(True)
         self._set_generate_button_role("primaryButton")
         self.status_label.setText(app_error.status_text(lang))
@@ -1149,6 +1224,13 @@ class AIGenerationDialog(QDialog):
         )
         self.generate_btn.setEnabled(True)
         self.progress_bar.setVisible(False)
+        if retry_carryover:
+            self.partial_recovery_label.setText(self._partial_recovery_hint(lang))
+            self.partial_recovery_label.setHidden(False)
+            self._refresh_fill_missing_button()
+            self.review_partial_btn.setHidden(False)
+            self.review_partial_btn.setEnabled(True)
+            self._set_generate_button_role("secondaryButton")
 
     def _on_finished(self):
         if self._generation_cancelled:
@@ -1177,6 +1259,7 @@ class AIGenerationDialog(QDialog):
                 else:
                     self.status_label.setText(f"Generated {len(self.generated_questions)} questions. Opening review...")
             if is_partial:
+                self._refresh_fill_missing_button()
                 self.review_partial_btn.setHidden(False)
                 self.review_partial_btn.setEnabled(True)
                 self._set_generate_button_role("secondaryButton")
@@ -1191,6 +1274,34 @@ class AIGenerationDialog(QDialog):
 
     def _has_partial_generation(self) -> bool:
         return self._partial_generation_report is not None or self._partial_generation_error is not None
+
+    def _merge_retry_carryover(self, questions: list[Question]) -> list[Question]:
+        if not self._retry_carryover_questions:
+            return questions
+        merged = [*self._retry_carryover_questions, *questions]
+        self._retry_carryover_questions = []
+        return merged
+
+    def _refresh_fill_missing_button(self) -> None:
+        if self._partial_generation_report is None:
+            self.fill_missing_btn.setHidden(True)
+            self.fill_missing_btn.setEnabled(False)
+            self.fill_missing_btn.setText(self.lang_manager.get_text("补齐缺口", "Fill Missing"))
+            return
+        retry_plan = self._partial_generation_report.retry_plan()
+        if retry_plan.count <= 0:
+            self.fill_missing_btn.setHidden(True)
+            self.fill_missing_btn.setEnabled(False)
+            self.fill_missing_btn.setText(self.lang_manager.get_text("补齐缺口", "Fill Missing"))
+            return
+        self.fill_missing_btn.setText(
+            self.lang_manager.get_text(
+                f"补齐缺口 {retry_plan.count} 题",
+                f"Fill {retry_plan.count} Missing",
+            )
+        )
+        self.fill_missing_btn.setHidden(False)
+        self.fill_missing_btn.setEnabled(True)
 
     def _set_generate_button_role(self, role: str) -> None:
         if self.generate_btn.objectName() == role:

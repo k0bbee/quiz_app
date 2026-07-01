@@ -12,7 +12,7 @@ from PyQt6.QtCore import Qt
 
 from ai.batch_generator import GenerationWorker
 from ai.generation_config import GenerationConfig
-from ai.question_plan import build_question_plan
+from ai.question_plan import QuestionPlanItem, build_question_plan
 from ai.exam_plan import ExamGenerationPlan
 from ai.llm_client import LLMClient
 from ai.generation_report import GenerationReport
@@ -741,6 +741,178 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("放宽约束", dialog.partial_recovery_label.text())
         self.assertIn("重新生成", dialog.partial_recovery_label.text())
         self.assertTrue(dialog.result() == QDialog.DialogCode.Accepted)
+
+    def test_generation_partial_result_can_fill_missing_slots_and_merge_for_review(self):
+        first_question = Question.create_new(
+            qtype=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": {"stem": "Cache?", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                "en": {"stem": "Cache?", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+            },
+            correct_answer="A",
+            topic="cache",
+        )
+        retry_question = Question.create_new(
+            qtype=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.HARD,
+            bilingual={
+                "zh": {"stem": "DMA?", "options": ["True", "False"], "explanation": "A valid explanation text."},
+                "en": {"stem": "DMA?", "options": ["True", "False"], "explanation": "A valid explanation text."},
+            },
+            correct_answer="True",
+            topic="cache",
+        )
+        report = GenerationReport(
+            requested_count=3,
+            accepted_count=1,
+            rejected_count=2,
+            attempts=3,
+            max_attempts=3,
+            status="partial",
+            failed_plan_items=[
+                QuestionPlanItem(
+                    plan_id="plan-002",
+                    topic_id="cache",
+                    topic_title="Cache",
+                    question_type="true_false",
+                    difficulty="hard",
+                    target_skill="application",
+                ),
+                QuestionPlanItem(
+                    plan_id="plan-003",
+                    topic_id="cache",
+                    topic_title="Cache",
+                    question_type="true_false",
+                    difficulty="hard",
+                    target_skill="comparison",
+                ),
+            ],
+            template="final_exam",
+        )
+        reviewed = {}
+
+        class FakeSignal:
+            def connect(self, _callback):
+                pass
+
+        class FakeWorker:
+            def __init__(self, *args, **kwargs):
+                self.progress = FakeSignal()
+                self.batch_done = FakeSignal()
+                self.partial_done = FakeSignal()
+                self.error = FakeSignal()
+                self.finished = FakeSignal()
+                self.args = args
+                self.kwargs = kwargs
+                self.started = False
+
+            def start(self):
+                self.started = True
+
+        class AcceptingReviewDialog:
+            def __init__(self, questions, parent=None):
+                reviewed["questions"] = questions
+
+            def exec(self):
+                return QDialog.DialogCode.Accepted
+
+            def get_accepted_questions(self):
+                return reviewed["questions"]
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache", "process"],
+        )
+        dialog._on_partial_done([first_question], report)
+        dialog._on_finished()
+
+        self.assertFalse(dialog.fill_missing_btn.isHidden())
+        self.assertTrue(dialog.fill_missing_btn.isEnabled())
+        self.assertIn("2", dialog.fill_missing_btn.text())
+
+        with patch("ui.dialogs.ai_generation_dialog.GenerationWorker", FakeWorker), \
+             patch("ui.dialogs.ai_generation_dialog.QuestionReviewDialog", AcceptingReviewDialog):
+            dialog.fill_missing_btn.click()
+
+            self.assertIsInstance(dialog.worker, FakeWorker)
+            self.assertTrue(dialog.worker.started)
+            self.assertEqual(["cache"], dialog.worker.args[2])
+            self.assertEqual(2, dialog.worker.args[3])
+            self.assertEqual("mixed", dialog.worker.args[4])
+            retry_config = dialog.worker.kwargs["generation_config"]
+            self.assertEqual("final_exam", retry_config.template)
+            self.assertEqual({"true_false": 2}, {k: v for k, v in retry_config.question_type_weights.items() if v})
+            self.assertEqual({"hard": 2}, {k: v for k, v in retry_config.difficulty_weights.items() if v})
+
+            dialog._on_batch_done([retry_question])
+            dialog._on_finished()
+
+        self.assertEqual([first_question, retry_question], reviewed["questions"])
+        self.assertEqual([first_question, retry_question], dialog.generated_questions)
+
+    def test_retry_generation_error_keeps_partial_questions_reviewable(self):
+        question = Question.create_new(
+            qtype=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": {"stem": "Cache?", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                "en": {"stem": "Cache?", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+            },
+            correct_answer="A",
+            topic="cache",
+        )
+        report = GenerationReport(
+            requested_count=2,
+            accepted_count=1,
+            status="partial",
+            failed_plan_items=[
+                QuestionPlanItem(
+                    plan_id="plan-002",
+                    topic_id="cache",
+                    topic_title="Cache",
+                    question_type="true_false",
+                    difficulty="hard",
+                    target_skill="application",
+                )
+            ],
+        )
+
+        class FakeSignal:
+            def connect(self, _callback):
+                pass
+
+        class FakeWorker:
+            def __init__(self, *args, **kwargs):
+                self.progress = FakeSignal()
+                self.batch_done = FakeSignal()
+                self.partial_done = FakeSignal()
+                self.error = FakeSignal()
+                self.finished = FakeSignal()
+
+            def start(self):
+                pass
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog._on_partial_done([question], report)
+        dialog._on_finished()
+
+        with patch("ui.dialogs.ai_generation_dialog.GenerationWorker", FakeWorker), \
+             patch("ui.dialogs.ai_generation_dialog.QMessageBox.critical"):
+            dialog.fill_missing_btn.click()
+            dialog._on_error("network timeout")
+
+        self.assertEqual([question], dialog.generated_questions)
+        self.assertFalse(dialog.review_partial_btn.isHidden())
+        self.assertTrue(dialog.review_partial_btn.isEnabled())
+        self.assertFalse(dialog.partial_recovery_label.isHidden())
+        self.assertFalse(dialog.fill_missing_btn.isHidden())
+        self.assertTrue(dialog.fill_missing_btn.isEnabled())
 
     def test_dialog_can_prefill_from_existing_question_set(self):
         dialog = AIGenerationDialog(
