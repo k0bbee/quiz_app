@@ -351,6 +351,7 @@ class GenerationQuotaTests(unittest.TestCase):
             },
             difficulty_weights={"easy": 50, "medium": 0, "hard": 50},
             topic_weights={"cache": 50, "process": 50},
+            template="final_exam",
         )
         worker = GenerationWorker(
             SequenceClient([repeated]),
@@ -376,6 +377,7 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual(2, len(questions))
         self.assertIsInstance(report, GenerationReport)
         self.assertEqual("partial", report.status)
+        self.assertEqual("final_exam", report.template)
         self.assertEqual(4, report.requested_count)
         self.assertEqual(2, report.accepted_count)
         self.assertGreaterEqual(report.rejected_count, 1)

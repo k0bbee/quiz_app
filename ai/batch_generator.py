@@ -325,6 +325,7 @@ class GenerationWorker(QThread):
                             missing_quotas=quotas.missing_quotas(),
                             failed_plan_items=quotas.missing_plan_items(),
                             rejection_reasons=dict(rejection_reasons),
+                            template=self.generation_config.template,
                             error=shortfall,
                         )
                         self.progress.emit(report.summary_text("en"))

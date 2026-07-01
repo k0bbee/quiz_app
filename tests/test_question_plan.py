@@ -1,9 +1,9 @@
 import unittest
 from collections import Counter
 
-from ai.generation_config import GenerationConfig
+from ai.generation_config import GenerationConfig, planned_generation_counts
 from ai.generation_report import GenerationReport
-from ai.question_plan import build_question_plan, summarize_plan_items
+from ai.question_plan import QuestionPlanItem, build_question_plan, summarize_plan_items
 
 
 class QuestionPlanTests(unittest.TestCase):
@@ -89,6 +89,53 @@ class QuestionPlanTests(unittest.TestCase):
         self.assertIn("cache", text)
         self.assertIn("hard / scenario_choice / application", text)
         self.assertIn("hard / scenario_choice / scenario", text)
+
+    def test_generation_report_builds_retry_plan_from_failed_plan_items_only(self):
+        failed = [
+            QuestionPlanItem(
+                plan_id="plan-003",
+                topic_id="process",
+                topic_title="Process",
+                question_type="true_false",
+                difficulty="hard",
+                target_skill="application",
+            ),
+            QuestionPlanItem(
+                plan_id="plan-004",
+                topic_id="cache",
+                topic_title="Cache",
+                question_type="fill_in_blank",
+                difficulty="easy",
+                target_skill="definition",
+            ),
+        ]
+        report = GenerationReport(
+            requested_count=4,
+            accepted_count=2,
+            status="partial",
+            failed_plan_items=failed,
+            template="final_exam",
+        )
+
+        retry = report.retry_plan()
+
+        self.assertEqual(2, retry.count)
+        self.assertEqual(["process", "cache"], retry.topics)
+        self.assertEqual("final_exam", retry.config.template)
+        self.assertEqual(
+            Counter(item.topic_id for item in failed),
+            Counter(planned_generation_counts(retry.config, retry.topics, retry.count)["topics"]),
+        )
+        self.assertEqual(
+            Counter(item.question_type for item in failed),
+            Counter(planned_generation_counts(retry.config, retry.topics, retry.count)["question_types"]),
+        )
+        self.assertEqual(
+            Counter(item.difficulty for item in failed),
+            Counter(planned_generation_counts(retry.config, retry.topics, retry.count)["difficulties"]),
+        )
+        self.assertEqual(0, retry.config.question_type_weights["multiple_choice"])
+        self.assertEqual(0, retry.config.difficulty_weights["medium"])
 
 
 if __name__ == "__main__":
