@@ -3,6 +3,7 @@
 from utils.constants import topic_label
 from ai.course_context import extract_relevant_course_context
 from ai.generation_config import GenerationConfig
+from ai.question_plan import QuestionPlanItem
 
 
 class PromptBuilder:
@@ -136,6 +137,7 @@ class PromptBuilder:
         difficulty: str = "medium",
         generation_config: GenerationConfig | None = None,
         topic_keywords: dict[str, list[str]] | None = None,
+        question_plan_items: list[QuestionPlanItem] | None = None,
         max_context_chars: int = 22000,
     ) -> str:
         """Build the user prompt for question generation.
@@ -172,6 +174,7 @@ class PromptBuilder:
         type_lines = "\n".join(f"  - {key}: {value}%" for key, value in type_weights.items())
         difficulty_lines = "\n".join(f"  - {key}: {value}%" for key, value in difficulty_weights.items())
         topic_weight_lines = "\n".join(f"  - {key}: {value}%" for key, value in topic_weights.items())
+        plan_slot_block = PromptBuilder._question_plan_block(question_plan_items)
 
         prompt = f"""Generate {count} bilingual quiz questions for the following course topics:
 
@@ -191,6 +194,8 @@ Difficulty distribution:
 
 Topic coverage weights:
 {topic_weight_lines}
+
+{plan_slot_block}
 
 ## Course Content Reference
 
@@ -213,6 +218,7 @@ Selected-topic boundary:
 - Follow the requested topic coverage weights as closely as possible
 - Follow the requested question type distribution as closely as possible; avoid short_answer
 - Follow the requested difficulty distribution as closely as possible
+- If question plan slots are provided, generate questions matching those slots in order as closely as possible
 - Ensure natural answer distribution (not all B/C)
 - Make distractors plausible and tricky
 - Include full bilingual explanations
@@ -237,6 +243,7 @@ Selected-topic boundary:
         difficulty: str = "medium",
         generation_config: GenerationConfig | None = None,
         topic_keywords: dict[str, list[str]] | None = None,
+        question_plan_items: list[QuestionPlanItem] | None = None,
     ) -> list[dict]:
         """Build the complete messages array for the LLM API call."""
         return [
@@ -248,5 +255,25 @@ Selected-topic boundary:
                 difficulty,
                 generation_config,
                 topic_keywords=topic_keywords,
+                question_plan_items=question_plan_items,
             )},
         ]
+
+    @staticmethod
+    def _question_plan_block(question_plan_items: list[QuestionPlanItem] | None) -> str:
+        if not question_plan_items:
+            return ""
+        lines = [
+            "Question plan slots:",
+            "Generate one question for each slot below when possible. Match topic/type/difficulty/skill exactly.",
+        ]
+        for item in question_plan_items:
+            lines.append(
+                "  - "
+                f"{item.plan_id}: "
+                f"topic={item.topic_id}; "
+                f"type={item.question_type}; "
+                f"difficulty={item.difficulty}; "
+                f"skill={item.target_skill}"
+            )
+        return "\n".join(lines)

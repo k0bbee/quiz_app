@@ -12,6 +12,7 @@ from PyQt6.QtCore import Qt
 
 from ai.batch_generator import GenerationWorker
 from ai.generation_config import GenerationConfig
+from ai.question_plan import build_question_plan
 from ai.exam_plan import ExamGenerationPlan
 from ai.llm_client import LLMClient
 from ai.generation_report import GenerationReport
@@ -98,6 +99,30 @@ class GenerationConfigTests(unittest.TestCase):
 
         self.assertIn("Selected-topic boundary", prompt)
         self.assertIn("Do not expand into neighboring course topics", prompt)
+
+    def test_prompt_includes_question_plan_slots_when_provided(self):
+        config = GenerationConfig(
+            question_type_weights={"multiple_choice": 100},
+            difficulty_weights={"medium": 100},
+            topic_weights={"cache": 100},
+            template="quick_review",
+        )
+        plan_items = build_question_plan(config, ["cache"], 2)
+
+        prompt = PromptBuilder.build_user_prompt(
+            "## Cache\nA cache line stores a block.",
+            ["cache"],
+            count=2,
+            generation_config=config,
+            question_plan_items=plan_items,
+        )
+
+        self.assertIn("Question plan slots", prompt)
+        self.assertIn("plan-001", prompt)
+        self.assertIn("topic=cache", prompt)
+        self.assertIn("type=multiple_choice", prompt)
+        self.assertIn("difficulty=medium", prompt)
+        self.assertIn("skill=definition", prompt)
 
     def test_prompt_context_can_use_topic_keywords_to_respect_selected_topic(self):
         content = (

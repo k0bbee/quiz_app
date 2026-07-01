@@ -10,6 +10,7 @@ from ai.llm_client import LLMClient
 from ai.generation_config import GenerationConfig, allocate_weighted_counts
 from ai.generation_report import GenerationReport
 from ai.prompt_templates import PromptBuilder
+from ai.question_plan import QuestionPlanItem, build_question_plan
 from core.app_errors import AppError
 from core.course_index import retrieve_course_context, retrieve_course_source_refs
 from models.question import Question
@@ -37,6 +38,13 @@ class GenerationQuotaTracker:
         self.remaining_topics = allocate_weighted_counts(
             config.normalized_topic_weights(topic_keys), count
         )
+        topic_titles = {topic_value(topic): topic_label(topic) for topic in topics}
+        self.remaining_plan_items = build_question_plan(
+            config,
+            topic_keys,
+            count,
+            topic_titles,
+        )
 
     def rejection_reason(self, qtype: str, difficulty: str, topic: str) -> str:
         filled = []
@@ -52,6 +60,7 @@ class GenerationQuotaTracker:
         self.remaining_types[qtype] -= 1
         self.remaining_difficulties[difficulty] -= 1
         self.remaining_topics[topic] -= 1
+        self._mark_plan_item_accepted(qtype, difficulty, topic)
 
     def remaining_config(self) -> GenerationConfig:
         return GenerationConfig(
@@ -102,6 +111,46 @@ class GenerationQuotaTracker:
                 key: value for key, value in self.remaining_topics.items() if value > 0
             },
         }
+
+    def missing_plan_items(self) -> list[QuestionPlanItem]:
+        """Return the remaining planned slots for item-level shortfall reports."""
+        return list(self.remaining_plan_items)
+
+    def pending_plan_items(self, limit: int) -> list[QuestionPlanItem]:
+        """Return the next planned slots for the upcoming LLM request."""
+        return list(self.remaining_plan_items[: max(0, int(limit))])
+
+    def _mark_plan_item_accepted(self, qtype: str, difficulty: str, topic: str) -> None:
+        if not self.remaining_plan_items:
+            return
+        exact_index = next(
+            (
+                index
+                for index, item in enumerate(self.remaining_plan_items)
+                if item.question_type == qtype
+                and item.difficulty == difficulty
+                and item.topic_id == topic
+            ),
+            None,
+        )
+        if exact_index is not None:
+            self.remaining_plan_items.pop(exact_index)
+            return
+
+        ranked = sorted(
+            enumerate(self.remaining_plan_items),
+            key=lambda pair: (
+                -_plan_match_score(pair[1], qtype, difficulty, topic),
+                pair[0],
+            ),
+        )
+        self.remaining_plan_items.pop(ranked[0][0])
+
+
+def _plan_match_score(
+    item: QuestionPlanItem, qtype: str, difficulty: str, topic: str
+) -> int:
+    return int(item.topic_id == topic) + int(item.question_type == qtype) + int(item.difficulty == difficulty)
 
 
 class GenerationWorker(QThread):
@@ -167,6 +216,7 @@ class GenerationWorker(QThread):
                     self.difficulty,
                     quotas.remaining_config(),
                     topic_keywords=self._topic_keywords(),
+                    question_plan_items=quotas.pending_plan_items(candidate_count),
                 )
 
                 data = self.client.generate_with_json(messages, max_retries=3)
@@ -267,6 +317,7 @@ class GenerationWorker(QThread):
                             max_attempts=max_attempts,
                             status="partial",
                             missing_quotas=quotas.missing_quotas(),
+                            failed_plan_items=quotas.missing_plan_items(),
                             error=shortfall,
                         )
                         self.progress.emit(report.summary_text("en"))
