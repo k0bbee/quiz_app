@@ -373,6 +373,12 @@ class AIGenerationDialog(QDialog):
         self.status_label = QLabel()
         bottom_layout.addWidget(self.status_label)
 
+        self.partial_recovery_label = QLabel()
+        self.partial_recovery_label.setObjectName("generationPartialRecoveryLabel")
+        self.partial_recovery_label.setWordWrap(True)
+        self.partial_recovery_label.setHidden(True)
+        bottom_layout.addWidget(self.partial_recovery_label)
+
         # Action buttons
         self.footer_action_layout = QHBoxLayout()
 
@@ -590,6 +596,7 @@ class AIGenerationDialog(QDialog):
 
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
         self.generate_btn.setText(self.lang_manager.get_text("生成题目", "Generate Questions"))
+        self.partial_recovery_label.setText(self._partial_recovery_hint(self.lang_manager.current))
         self.exam_assistant_btn.setText(
             self.lang_manager.get_text("试卷助手…", "Exam Assistant…")
         )
@@ -959,6 +966,8 @@ class AIGenerationDialog(QDialog):
             "正在启动 AI 出题任务…",
             "Starting AI generation...",
         )
+        self.partial_recovery_label.setHidden(True)
+        self.partial_recovery_label.clear()
         self._reset_generation_log()
         self._append_generation_event(self._last_generation_progress)
         self._refresh_generation_status()
@@ -1057,6 +1066,8 @@ class AIGenerationDialog(QDialog):
         self._partial_generation_error = None
         self._partial_generation_report = None
         self.generated_questions = questions
+        self.partial_recovery_label.setHidden(True)
+        self.partial_recovery_label.clear()
         self._append_generation_event(
             self.lang_manager.get_text(
                 f"已收到 {len(questions)} 道候选题，准备进入审核。",
@@ -1087,6 +1098,8 @@ class AIGenerationDialog(QDialog):
                 action_zh="可先审核并保存已生成题目，稍后再继续补齐。",
                 action_en="Review and save the generated questions now, then continue later.",
             )
+        self.partial_recovery_label.setText(self._partial_recovery_hint(self.lang_manager.current))
+        self.partial_recovery_label.setHidden(False)
         self.status_label.setText(self._partial_status_text(self.lang_manager.current))
 
     def _on_error(self, message):
@@ -1105,6 +1118,8 @@ class AIGenerationDialog(QDialog):
         self._append_generation_event(app_error.status_text(lang))
         self.generation_status_timer.stop()
         self._generation_started_at = None
+        self.partial_recovery_label.setHidden(True)
+        self.partial_recovery_label.clear()
         self.status_label.setText(app_error.status_text(lang))
         QMessageBox.critical(
             self,
@@ -1172,6 +1187,11 @@ class AIGenerationDialog(QDialog):
         if self._partial_generation_error is not None:
             return self._partial_generation_error.status_text(lang)
         return ""
+
+    def _partial_recovery_hint(self, lang: str) -> str:
+        if lang == "zh":
+            return "下一步: 可保存已生成题目；也可放宽约束后重新生成。"
+        return "Next: save generated questions, or relax constraints and generate again."
 
     def reject(self):
         """Cancel generation if the dialog is closed while a worker is running."""

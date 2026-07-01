@@ -697,6 +697,14 @@ QLabel#dashboardSourceRefsLabel {
     padding: 8px 10px;
 }
 
+QLabel#generationPartialRecoveryLabel {
+    color: #dcdcaa;
+    background-color: #2a2718;
+    border: 1px solid #5a4d1f;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
 QListWidget#topicSetList {
     font-size: 14px;
 }

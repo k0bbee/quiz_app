@@ -684,6 +684,7 @@ class UiThemeTests(unittest.TestCase):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
         self.assertIn("qlabel#dashboardrecommendationlabel", qss)
         self.assertIn("qlabel#dashboardsourcerefslabel", qss)
+        self.assertIn("qlabel#generationpartialrecoverylabel", qss)
 
         for button in (main_window.topics_btn, main_window.progress_btn, main_window.courses_btn):
             self.assertEqual("toolbarButton", button.objectName())

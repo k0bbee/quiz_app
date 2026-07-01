@@ -726,6 +726,11 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("已生成 1/3", dialog.status_label.text())
         self.assertIn("true_false", dialog.status_label.text())
         self.assertIn("已拒绝候选 4", dialog.status_label.text())
+        self.assertFalse(dialog.partial_recovery_label.isHidden())
+        self.assertEqual("generationPartialRecoveryLabel", dialog.partial_recovery_label.objectName())
+        self.assertIn("可保存已生成题目", dialog.partial_recovery_label.text())
+        self.assertIn("放宽约束", dialog.partial_recovery_label.text())
+        self.assertIn("重新生成", dialog.partial_recovery_label.text())
         self.assertTrue(dialog.result() == QDialog.DialogCode.Accepted)
 
     def test_dialog_can_prefill_from_existing_question_set(self):
