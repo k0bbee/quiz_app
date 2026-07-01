@@ -66,6 +66,7 @@ class AIGenerationDialog(QDialog):
         self.topic_weight_rows: dict[str, QWidget] = {}
         self._generation_started_at: float | None = None
         self._last_generation_progress = ""
+        self._generation_events: list[str] = []
         self.generation_status_timer = QTimer(self)
         self.generation_status_timer.setInterval(1000)
         self.generation_status_timer.timeout.connect(self._refresh_generation_status)
@@ -318,6 +319,24 @@ class AIGenerationDialog(QDialog):
         plan_layout.addWidget(self.plan_preview)
         right_layout.addWidget(self.plan_group)
 
+        self.generation_log_group = QGroupBox(
+            self.lang_manager.get_text("生成过程", "Generation Activity")
+        )
+        generation_log_layout = QVBoxLayout(self.generation_log_group)
+        generation_log_layout.setContentsMargins(10, 10, 10, 10)
+        self.generation_log = QTextEdit()
+        self.generation_log.setObjectName("generationProgressLog")
+        self.generation_log.setReadOnly(True)
+        self.generation_log.setMaximumHeight(130)
+        self.generation_log.setPlaceholderText(
+            self.lang_manager.get_text(
+                "开始生成后显示批次、接受、拒绝和错误摘要。",
+                "Generation batches, accepted counts, rejections, and errors will appear here.",
+            )
+        )
+        generation_log_layout.addWidget(self.generation_log)
+        right_layout.addWidget(self.generation_log_group)
+
         self.count_spin.valueChanged.connect(lambda _value: self._update_preview())
         self.diff_combo.currentIndexChanged.connect(lambda _index: self._update_preview())
         self.template_combo.currentIndexChanged.connect(lambda _index: self._update_preview())
@@ -548,6 +567,15 @@ class AIGenerationDialog(QDialog):
             self.topic_weight_group.setTitle(self.lang_manager.get_text("知识点权重", "Topic Weights"))
         self.plan_group.setTitle(
             self.lang_manager.get_text("生成计划预览", "Generation Plan Preview")
+        )
+        self.generation_log_group.setTitle(
+            self.lang_manager.get_text("生成过程", "Generation Activity")
+        )
+        self.generation_log.setPlaceholderText(
+            self.lang_manager.get_text(
+                "开始生成后显示批次、接受、拒绝和错误摘要。",
+                "Generation batches, accepted counts, rejections, and errors will appear here.",
+            )
         )
         if hasattr(self, "topic_weight_empty_label"):
             self.topic_weight_empty_label.setText(
@@ -896,6 +924,8 @@ class AIGenerationDialog(QDialog):
             "正在启动 AI 出题任务…",
             "Starting AI generation...",
         )
+        self._reset_generation_log()
+        self._append_generation_event(self._last_generation_progress)
         self._refresh_generation_status()
         self.generation_status_timer.start()
         self.generate_btn.setEnabled(False)
@@ -953,7 +983,22 @@ class AIGenerationDialog(QDialog):
         if self._generation_cancelled:
             return
         self._last_generation_progress = message
+        self._append_generation_event(message)
         self._refresh_generation_status()
+
+    def _reset_generation_log(self) -> None:
+        self._generation_events = []
+        if hasattr(self, "generation_log"):
+            self.generation_log.clear()
+
+    def _append_generation_event(self, message: str) -> None:
+        clean = " ".join(str(message or "").split())
+        if not clean:
+            return
+        self._generation_events.append(clean)
+        self._generation_events = self._generation_events[-40:]
+        if hasattr(self, "generation_log"):
+            self.generation_log.setPlainText("\n".join(self._generation_events))
 
     def _refresh_generation_status(self):
         if self._generation_cancelled:
@@ -977,11 +1022,23 @@ class AIGenerationDialog(QDialog):
         self._partial_generation_error = None
         self._partial_generation_report = None
         self.generated_questions = questions
+        self._append_generation_event(
+            self.lang_manager.get_text(
+                f"已收到 {len(questions)} 道候选题，准备进入审核。",
+                f"Received {len(questions)} question(s); preparing review.",
+            )
+        )
 
     def _on_partial_done(self, questions: list[Question], report_or_reason):
         if self._generation_cancelled:
             return
         self.generated_questions = questions
+        self._append_generation_event(
+            self.lang_manager.get_text(
+                f"生成未完成，但保留了 {len(questions)} 道可审核题目。",
+                f"Generation incomplete; kept {len(questions)} reviewable question(s).",
+            )
+        )
         if isinstance(report_or_reason, GenerationReport):
             self._partial_generation_report = report_or_reason
             self._partial_generation_error = report_or_reason.error
@@ -1010,6 +1067,7 @@ class AIGenerationDialog(QDialog):
             action_en="Check AI settings, network connectivity, or try again later.",
         )
         lang = self.lang_manager.current
+        self._append_generation_event(app_error.status_text(lang))
         self.generation_status_timer.stop()
         self._generation_started_at = None
         self.status_label.setText(app_error.status_text(lang))

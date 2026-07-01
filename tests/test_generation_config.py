@@ -534,6 +534,21 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("6s", text)
         self.assertIn("可取消", text)
 
+    def test_generation_progress_log_keeps_recent_events(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+
+        dialog._on_progress("Building prompt...")
+        dialog._on_progress("Accepted 2 question(s), rejected 1.")
+
+        log_text = dialog.generation_log.toPlainText()
+        self.assertIn("Building prompt...", log_text)
+        self.assertIn("Accepted 2 question(s), rejected 1.", log_text)
+        self.assertEqual("generationProgressLog", dialog.generation_log.objectName())
+
     def test_local_agent_generation_start_does_not_read_persisted_api_key(self):
         class ForbiddenSecrets:
             def get_key(self):
