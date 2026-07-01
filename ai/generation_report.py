@@ -20,6 +20,7 @@ class GenerationReport:
     status: str = "complete"
     missing_quotas: dict[str, dict[str, int]] = field(default_factory=dict)
     failed_plan_items: list[QuestionPlanItem] = field(default_factory=list)
+    rejection_reasons: dict[str, int] = field(default_factory=dict)
     error: AppError | None = None
 
     @property
@@ -36,6 +37,9 @@ class GenerationReport:
             ]
             if self.rejected_count:
                 lines.append(f"已拒绝候选 {self.rejected_count} 个")
+            reasons = self._rejection_summary()
+            if reasons:
+                lines.append(f"拒绝原因: {reasons}")
             missing = self._missing_summary()
             if missing:
                 lines.append(f"缺口: {missing}")
@@ -52,6 +56,9 @@ class GenerationReport:
         ]
         if self.rejected_count:
             lines.append(f"Rejected candidates: {self.rejected_count}")
+        reasons = self._rejection_summary()
+        if reasons:
+            lines.append(f"Rejected reasons: {reasons}")
         missing = self._missing_summary()
         if missing:
             lines.append(f"Missing: {missing}")
@@ -61,6 +68,15 @@ class GenerationReport:
         if self.error and self.error.action_en:
             lines.append(f"Suggestion: {self.error.action_en}")
         return "; ".join(lines)
+
+    def _rejection_summary(self) -> str:
+        reasons = [
+            (reason, count)
+            for reason, count in self.rejection_reasons.items()
+            if count > 0
+        ]
+        reasons.sort(key=lambda item: (-item[1], item[0]))
+        return ", ".join(f"{reason}: {count}" for reason, count in reasons[:3])
 
     def _missing_summary(self) -> str:
         groups = []

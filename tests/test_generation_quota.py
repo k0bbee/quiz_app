@@ -379,6 +379,10 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual(4, report.requested_count)
         self.assertEqual(2, report.accepted_count)
         self.assertGreaterEqual(report.rejected_count, 1)
+        self.assertGreaterEqual(
+            report.rejection_reasons.get("quota already filled", 0),
+            1,
+        )
         self.assertEqual(2, report.shortfall)
         self.assertEqual(2, report.missing_quotas["question_types"]["true_false"])
         self.assertEqual(2, report.missing_quotas["difficulties"]["hard"])
@@ -389,6 +393,8 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual({"hard"}, {item.difficulty for item in report.failed_plan_items})
         self.assertIsInstance(report.error, AppError)
         self.assertEqual("GEN-QUOTA-001", report.error.code)
+        self.assertIn("Rejected reasons", report.summary_text("en"))
+        self.assertIn("quota already filled", report.summary_text("en"))
         self.assertIn("true_false", report.summary_text("en"))
         self.assertIn("已生成 2/4", report.summary_text("zh"))
 

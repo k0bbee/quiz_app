@@ -188,6 +188,7 @@ class GenerationWorker(QThread):
 
             all_questions = []
             total_rejected = 0
+            rejection_reasons: dict[str, int] = {}
             attempts = 0
             max_attempts = max(3, (self.count // ACCEPT_TARGET_BATCH_SIZE + 1) * 3)
             quotas = self._make_quota_tracker()
@@ -253,6 +254,7 @@ class GenerationWorker(QThread):
                         ok, reason = self._validate_raw_question(qdata)
                         if not ok:
                             rejected += 1
+                            _record_rejection(rejection_reasons, reason)
                             debug(f"Skipping invalid generated question: {reason}")
                             continue
 
@@ -280,6 +282,7 @@ class GenerationWorker(QThread):
                             )
                             if quota_reason:
                                 rejected += 1
+                                _record_rejection(rejection_reasons, quota_reason)
                                 debug(f"Skipping generated question: {quota_reason}")
                                 continue
                             quotas.accept(
@@ -290,9 +293,11 @@ class GenerationWorker(QThread):
                             batch_questions.append(q)
                         else:
                             rejected += 1
+                            _record_rejection(rejection_reasons, "question validation failed")
                             debug(f"Skipping invalid question: {errors}")
                     except (ValueError, KeyError) as e:
                         rejected += 1
+                        _record_rejection(rejection_reasons, "malformed question")
                         debug(f"Skipping malformed question: {e}")
                         continue
 
@@ -319,6 +324,7 @@ class GenerationWorker(QThread):
                             status="partial",
                             missing_quotas=quotas.missing_quotas(),
                             failed_plan_items=quotas.missing_plan_items(),
+                            rejection_reasons=dict(rejection_reasons),
                             error=shortfall,
                         )
                         self.progress.emit(report.summary_text("en"))
@@ -582,6 +588,29 @@ class GenerationWorker(QThread):
 
 def _topic_match_key(value: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", str(value or "").lower()))
+
+
+def _record_rejection(reasons: dict[str, int], reason: str) -> None:
+    key = _rejection_reason_key(reason)
+    reasons[key] = reasons.get(key, 0) + 1
+
+
+def _rejection_reason_key(reason: str) -> str:
+    normalized = str(reason or "").strip()
+    lower = normalized.lower()
+    if lower.startswith("quota already filled"):
+        return "quota already filled"
+    if lower.startswith("no remaining plan slot"):
+        return "no remaining plan slot"
+    if "not selected" in lower:
+        return "topic not selected"
+    if "missing" in lower or "weak" in lower:
+        return "incomplete question content"
+    if "unknown question type" in lower:
+        return "unknown question type"
+    if not normalized:
+        return "unknown rejection"
+    return normalized
 
 
 def _normalize_matching_option_ids(qdata: dict) -> dict:
