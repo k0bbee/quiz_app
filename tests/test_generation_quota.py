@@ -288,12 +288,20 @@ class GenerationQuotaTests(unittest.TestCase):
         )
         batches = []
         errors = []
+        progress_messages = []
         worker.batch_done.connect(batches.append)
         worker.error.connect(errors.append)
+        worker.progress.connect(progress_messages.append)
 
         worker.run()
 
         self.assertEqual([], errors)
+        refill_messages = [
+            message for message in progress_messages if "Filling plan slots" in message
+        ]
+        self.assertTrue(refill_messages)
+        self.assertIn("cache/multiple_choice/easy", refill_messages[-1])
+        self.assertIn("process/true_false/hard", refill_messages[-1])
         self.assertEqual(
             {
                 ("cache", "multiple_choice", "easy"),
@@ -304,6 +312,31 @@ class GenerationQuotaTests(unittest.TestCase):
                 for question in batches[0]
             },
         )
+
+    def test_pending_plan_summary_is_limited_for_readable_progress(self):
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 100},
+        )
+        worker = GenerationWorker(
+            SequenceClient([{"questions": []}]),
+            course_content="content",
+            topics=["cache"],
+            count=12,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        quotas = worker._make_quota_tracker()
+
+        summary = quotas.pending_plan_summary(3)
+
+        self.assertEqual(3, summary.count("cache/multiple_choice/medium"))
 
     def test_worker_emits_partial_result_when_quota_shortfall_has_accepted_questions(self):
         repeated = {

@@ -127,6 +127,13 @@ class GenerationQuotaTracker:
         """Return the next planned slots for the upcoming LLM request."""
         return list(self.remaining_plan_items[: max(0, int(limit))])
 
+    def pending_plan_summary(self, limit: int) -> str:
+        """Return a compact summary of the next plan slots for progress logs."""
+        slots = []
+        for item in self.pending_plan_items(limit):
+            slots.append(f"{item.topic_id}/{item.question_type}/{item.difficulty}")
+        return ", ".join(slots)
+
     def _mark_plan_item_accepted(self, qtype: str, difficulty: str, topic: str) -> None:
         if not self.remaining_plan_items:
             return
@@ -183,11 +190,7 @@ class GenerationWorker(QThread):
             total_rejected = 0
             attempts = 0
             max_attempts = max(3, (self.count // ACCEPT_TARGET_BATCH_SIZE + 1) * 3)
-            quotas = GenerationQuotaTracker(
-                self.generation_config,
-                self.topics,
-                self.count,
-            )
+            quotas = self._make_quota_tracker()
 
             # Cache context once — it doesn't change between batches
             course_context = self._build_course_context()
@@ -197,12 +200,15 @@ class GenerationWorker(QThread):
                 remaining = self.count - len(all_questions)
                 batch_count = self._accept_target_count(remaining)
                 candidate_count = self._candidate_batch_count(batch_count)
+                plan_summary = quotas.pending_plan_summary(candidate_count)
                 self.progress.emit(
                     f"Generating {self.count} questions... "
                     f"(batch {attempts}/{max_attempts}; "
                     f"requesting {candidate_count} candidates; "
                     f"{len(all_questions)}/{self.count} accepted)"
                 )
+                if plan_summary:
+                    self.progress.emit(f"Filling plan slots: {plan_summary}")
 
                 messages = PromptBuilder.build_messages(
                     course_context,
@@ -330,6 +336,13 @@ class GenerationWorker(QThread):
     def cancel(self):
         """Signal the worker to stop."""
         self._cancelled.set()
+
+    def _make_quota_tracker(self) -> GenerationQuotaTracker:
+        return GenerationQuotaTracker(
+            self.generation_config,
+            self.topics,
+            self.count,
+        )
 
     def _candidate_batch_count(self, accept_target: int) -> int:
         """Request extra candidates so strict quota filtering can recover from model drift.
