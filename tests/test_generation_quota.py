@@ -3,6 +3,7 @@ import re
 
 from ai.batch_generator import GenerationWorker, allocate_weighted_counts
 from ai.generation_config import GenerationConfig
+from ai.generation_report import GenerationReport
 from core.app_errors import AppError
 from models.course_project import CourseTopic
 from utils.constants import topic_value
@@ -280,7 +281,7 @@ class GenerationQuotaTests(unittest.TestCase):
         partials = []
         errors = []
         worker.batch_done.connect(batches.append)
-        worker.partial_done.connect(lambda questions, reason: partials.append((questions, reason)))
+        worker.partial_done.connect(lambda questions, report: partials.append((questions, report)))
         worker.error.connect(errors.append)
 
         worker.run()
@@ -288,15 +289,21 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual([], batches)
         self.assertEqual([], errors)
         self.assertEqual(1, len(partials))
-        questions, reason = partials[0]
+        questions, report = partials[0]
         self.assertEqual(2, len(questions))
-        self.assertIsInstance(reason, AppError)
-        self.assertEqual("GEN-QUOTA-001", reason.code)
-        self.assertIn("requested distribution", reason.technical_detail)
-        self.assertIn("true_false", reason.technical_detail)
-        self.assertIn("hard", reason.technical_detail)
-        self.assertIn("process", reason.technical_detail)
-        self.assertIn("放宽", reason.action_zh)
+        self.assertIsInstance(report, GenerationReport)
+        self.assertEqual("partial", report.status)
+        self.assertEqual(4, report.requested_count)
+        self.assertEqual(2, report.accepted_count)
+        self.assertGreaterEqual(report.rejected_count, 1)
+        self.assertEqual(2, report.shortfall)
+        self.assertEqual(2, report.missing_quotas["question_types"]["true_false"])
+        self.assertEqual(2, report.missing_quotas["difficulties"]["hard"])
+        self.assertEqual(2, report.missing_quotas["topics"]["process"])
+        self.assertIsInstance(report.error, AppError)
+        self.assertEqual("GEN-QUOTA-001", report.error.code)
+        self.assertIn("true_false", report.summary_text("en"))
+        self.assertIn("已生成 2/4", report.summary_text("zh"))
 
     def test_worker_progress_reports_total_requested_count_not_batch_size(self):
         config = GenerationConfig(

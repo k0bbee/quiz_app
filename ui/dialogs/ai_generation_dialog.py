@@ -17,6 +17,7 @@ from core.language_manager import LanguageManager
 from ai.llm_client import LLMClient
 from ai.batch_generator import GenerationWorker
 from ai.generation_config import GenerationConfig, QUESTION_TYPE_DEFAULTS, DIFFICULTY_DEFAULTS
+from ai.generation_report import GenerationReport
 from ai.exam_plan import (
     ExamGenerationPlan,
     ExamPlanPatch,
@@ -54,6 +55,7 @@ class AIGenerationDialog(QDialog):
         self._generation_failed = False
         self._generation_cancelled = False
         self._partial_generation_error = None
+        self._partial_generation_report: GenerationReport | None = None
         self.weight_value_labels: dict[QSlider, QLabel] = {}
         self.topic_weight_labels: dict[str, QLabel] = {}
         self.topic_weight_rows: dict[str, QWidget] = {}
@@ -818,6 +820,7 @@ class AIGenerationDialog(QDialog):
         self._generation_failed = False
         self._generation_cancelled = False
         self._partial_generation_error = None
+        self._partial_generation_report = None
         self.generated_questions = []
         self._generation_started_at = time.monotonic()
         self._last_generation_progress = self.lang_manager.get_text(
@@ -903,23 +906,27 @@ class AIGenerationDialog(QDialog):
         if self._generation_cancelled:
             return
         self._partial_generation_error = None
+        self._partial_generation_report = None
         self.generated_questions = questions
 
-    def _on_partial_done(self, questions: list[Question], reason):
+    def _on_partial_done(self, questions: list[Question], report_or_reason):
         if self._generation_cancelled:
             return
         self.generated_questions = questions
-        self._partial_generation_error = coerce_app_error(
-            reason,
-            default_code="GEN-PARTIAL-001",
-            title_zh="生成未完成",
-            title_en="Generation incomplete",
-            action_zh="可先审核并保存已生成题目，稍后再继续补齐。",
-            action_en="Review and save the generated questions now, then continue later.",
-        )
-        self.status_label.setText(
-            self._partial_generation_error.status_text(self.lang_manager.current)
-        )
+        if isinstance(report_or_reason, GenerationReport):
+            self._partial_generation_report = report_or_reason
+            self._partial_generation_error = report_or_reason.error
+        else:
+            self._partial_generation_report = None
+            self._partial_generation_error = coerce_app_error(
+                report_or_reason,
+                default_code="GEN-PARTIAL-001",
+                title_zh="生成未完成",
+                title_en="Generation incomplete",
+                action_zh="可先审核并保存已生成题目，稍后再继续补齐。",
+                action_en="Review and save the generated questions now, then continue later.",
+            )
+        self.status_label.setText(self._partial_status_text(self.lang_manager.current))
 
     def _on_error(self, message):
         if self._generation_cancelled:
@@ -960,14 +967,14 @@ class AIGenerationDialog(QDialog):
             if self.lang_manager.current == "zh":
                 if partial_error:
                     self.status_label.setText(
-                        f"{partial_error.status_text('zh')} 正在打开预览..."
+                        f"{self._partial_status_text('zh')} 正在打开预览..."
                     )
                 else:
                     self.status_label.setText(f"已生成 {len(self.generated_questions)} 道题目。正在打开预览...")
             else:
                 if partial_error:
                     self.status_label.setText(
-                        f"{partial_error.status_text('en')} Opening review..."
+                        f"{self._partial_status_text('en')} Opening review..."
                     )
                 else:
                     self.status_label.setText(f"Generated {len(self.generated_questions)} questions. Opening review...")
@@ -994,6 +1001,15 @@ class AIGenerationDialog(QDialog):
 
         if not self.worker:
             self.status_label.setText(self.lang_manager.get_text("未生成任何题目。", "No questions were generated."))
+
+    def _partial_status_text(self, lang: str) -> str:
+        if self._partial_generation_report is not None:
+            title = "生成未完成" if lang == "zh" else "Generation incomplete"
+            code = self._partial_generation_report.error.code if self._partial_generation_report.error else "GEN-PARTIAL-001"
+            return f"{title}: {self._partial_generation_report.summary_text(lang)} [{code}]"
+        if self._partial_generation_error is not None:
+            return self._partial_generation_error.status_text(lang)
+        return ""
 
     def reject(self):
         """Cancel generation if the dialog is closed while a worker is running."""

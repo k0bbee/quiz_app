@@ -9,6 +9,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from ai.llm_client import LLMClient
 from ai.generation_config import GenerationConfig
+from ai.generation_report import GenerationReport
 from ai.prompt_templates import PromptBuilder
 from core.app_errors import AppError
 from core.course_index import retrieve_course_context, retrieve_course_source_refs
@@ -86,11 +87,7 @@ class GenerationQuotaTracker:
 
     def shortfall_message(self, accepted: int, requested: int) -> str:
         groups = []
-        for label, values in (
-            ("question types", self.remaining_types),
-            ("difficulties", self.remaining_difficulties),
-            ("topics", self.remaining_topics),
-        ):
+        for label, values in self.missing_quotas().items():
             missing = ", ".join(
                 f"{key}: {value}" for key, value in values.items() if value > 0
             )
@@ -115,6 +112,20 @@ class GenerationQuotaTracker:
             action_en="Try again, reduce the requested count, or relax the question type, difficulty, or topic weights.",
             technical_detail=self.shortfall_message(accepted, requested),
         )
+
+    def missing_quotas(self) -> dict[str, dict[str, int]]:
+        """Return positive remaining quota buckets for reports."""
+        return {
+            "question_types": {
+                key: value for key, value in self.remaining_types.items() if value > 0
+            },
+            "difficulties": {
+                key: value for key, value in self.remaining_difficulties.items() if value > 0
+            },
+            "topics": {
+                key: value for key, value in self.remaining_topics.items() if value > 0
+            },
+        }
 
 
 class GenerationWorker(QThread):
@@ -149,6 +160,7 @@ class GenerationWorker(QThread):
             self.progress.emit("Building prompt...")
 
             all_questions = []
+            total_rejected = 0
             attempts = 0
             max_attempts = max(3, (self.count // ACCEPT_TARGET_BATCH_SIZE + 1) * 3)
             quotas = GenerationQuotaTracker(
@@ -258,6 +270,7 @@ class GenerationWorker(QThread):
                         continue
 
                 all_questions.extend(batch_questions)
+                total_rejected += rejected
                 self.progress.emit(
                     f"Accepted {len(batch_questions)} question(s), rejected {rejected}. "
                     f"Total accepted: {len(all_questions)}/{self.count}"
@@ -270,8 +283,18 @@ class GenerationWorker(QThread):
                         return
                     shortfall = quotas.shortfall_error(len(all_questions), self.count)
                     if all_questions:
-                        self.progress.emit(shortfall.status_text("en"))
-                        self.partial_done.emit(all_questions, shortfall)
+                        report = GenerationReport(
+                            requested_count=self.count,
+                            accepted_count=len(all_questions),
+                            rejected_count=total_rejected,
+                            attempts=attempts,
+                            max_attempts=max_attempts,
+                            status="partial",
+                            missing_quotas=quotas.missing_quotas(),
+                            error=shortfall,
+                        )
+                        self.progress.emit(report.summary_text("en"))
+                        self.partial_done.emit(all_questions, report)
                     else:
                         self.error.emit(shortfall)
                     return

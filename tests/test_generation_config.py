@@ -14,6 +14,7 @@ from ai.batch_generator import GenerationWorker
 from ai.generation_config import GenerationConfig
 from ai.exam_plan import ExamGenerationPlan
 from ai.llm_client import LLMClient
+from ai.generation_report import GenerationReport
 from ai.prompt_templates import PromptBuilder
 from core.app_errors import AppError
 from core.question_set_builder import build_ai_question_set
@@ -578,7 +579,7 @@ class GenerationConfigTests(unittest.TestCase):
             correct_answer="A",
             topic="cache",
         )
-        reason = AppError(
+        error = AppError(
             code="GEN-QUOTA-001",
             severity="warning",
             title_zh="生成未完成",
@@ -588,6 +589,16 @@ class GenerationConfigTests(unittest.TestCase):
             action_zh="可先保存已生成题目，或稍后继续补齐。",
             action_en="Save generated questions now, or continue later.",
             technical_detail="Missing: true_false [2]",
+        )
+        report = GenerationReport(
+            requested_count=3,
+            accepted_count=1,
+            rejected_count=4,
+            attempts=3,
+            max_attempts=3,
+            status="partial",
+            missing_quotas={"question_types": {"true_false": 2}},
+            error=error,
         )
         reviewed = {}
 
@@ -611,13 +622,16 @@ class GenerationConfigTests(unittest.TestCase):
 
         with patch("ui.dialogs.ai_generation_dialog.QMessageBox.critical") as critical, \
              patch("ui.dialogs.ai_generation_dialog.QuestionReviewDialog", AcceptingReviewDialog):
-            dialog._on_partial_done([question], reason)
+            dialog._on_partial_done([question], report)
             dialog._on_finished()
 
         self.assertFalse(critical.called)
         self.assertEqual([question], reviewed["questions"])
         self.assertEqual([question], dialog.generated_questions)
         self.assertIn("生成未完成", dialog.status_label.text())
+        self.assertIn("已生成 1/3", dialog.status_label.text())
+        self.assertIn("true_false", dialog.status_label.text())
+        self.assertIn("已拒绝候选 4", dialog.status_label.text())
         self.assertTrue(dialog.result() == QDialog.DialogCode.Accepted)
 
     def test_dialog_can_prefill_from_existing_question_set(self):
