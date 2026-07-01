@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QSplitter, QLineEdit
 )
 import time
+from collections import Counter
 
 from PyQt6.QtCore import Qt, QTimer
 
@@ -23,6 +24,7 @@ from ai.generation_config import (
     planned_generation_counts,
 )
 from ai.generation_report import GenerationReport
+from ai.question_plan import build_question_plan, summarize_plan_items
 from ai.exam_plan import (
     ExamGenerationPlan,
     ExamPlanPatch,
@@ -862,13 +864,19 @@ class AIGenerationDialog(QDialog):
         config = self._build_generation_config()
         count = self.count_spin.value()
         topic_keys = [topic_value(topic) for topic in topics]
+        topic_titles = {
+            topic_value(topic): topic_label(topic, self.lang_manager.current)
+            for topic in topics
+        }
         plan = planned_generation_counts(config, topic_keys, count)
+        plan_items = build_question_plan(config, topic_keys, count, topic_titles)
         if self.lang_manager.current == "zh":
             lines = [f"本次计划生成 {count} 题"]
             sections = (
                 ("主题分布", plan["topics"]),
                 ("题型分布", plan["question_types"]),
                 ("难度分布", plan["difficulties"]),
+                ("能力分布", Counter(item.target_skill for item in plan_items)),
             )
         else:
             lines = [f"Planned total: {count} question(s)"]
@@ -876,6 +884,7 @@ class AIGenerationDialog(QDialog):
                 ("Topic distribution", plan["topics"]),
                 ("Question type distribution", plan["question_types"]),
                 ("Difficulty distribution", plan["difficulties"]),
+                ("Skill distribution", Counter(item.target_skill for item in plan_items)),
             )
         for title, values in sections:
             lines.append("")
@@ -883,7 +892,33 @@ class AIGenerationDialog(QDialog):
             for key, value in values.items():
                 if value > 0:
                     lines.append(f"- {key}: {value}")
+        self._append_plan_item_summary(lines, plan_items)
         self.plan_preview.setPlainText("\n".join(lines))
+
+    def _append_plan_item_summary(self, lines: list[str], plan_items: list) -> None:
+        if self.lang_manager.current == "zh":
+            lines.append("")
+            lines.append("组合计划")
+            for topic_id, groups in summarize_plan_items(plan_items).items():
+                topic_title = next(
+                    (item.topic_title for item in plan_items if item.topic_id == topic_id),
+                    topic_id,
+                )
+                lines.append(topic_title)
+                for (question_type, difficulty, skill), amount in groups.items():
+                    lines.append(f"- {amount} 道 {difficulty} / {question_type} / {skill}")
+            return
+
+        lines.append("")
+        lines.append("Combination plan")
+        for topic_id, groups in summarize_plan_items(plan_items).items():
+            topic_title = next(
+                (item.topic_title for item in plan_items if item.topic_id == topic_id),
+                topic_id,
+            )
+            lines.append(topic_title)
+            for (question_type, difficulty, skill), amount in groups.items():
+                lines.append(f"- {amount} x {difficulty} / {question_type} / {skill}")
 
     def _start_generation(self):
         """Start the background generation process."""

@@ -386,6 +386,10 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("easy: 2", preview)
         self.assertIn("medium: 5", preview)
         self.assertIn("hard: 3", preview)
+        self.assertIn("组合计划", preview)
+        self.assertIn("cache", preview)
+        self.assertIn("multiple_choice", preview)
+        self.assertIn("definition", preview)
 
     def test_generation_plan_preview_updates_when_count_changes(self):
         dialog = AIGenerationDialog(
