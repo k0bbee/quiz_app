@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from math import floor
 
 from config import DEFAULT_DIFFICULTY_WEIGHTS, DEFAULT_QUESTION_TYPE_WEIGHTS
 
@@ -16,6 +17,50 @@ TEMPLATE_GUIDES = {
     "final_exam": "Final exam style: emphasize scenario reasoning, comparisons, calculations, and explanation-heavy questions.",
     "calculation_practice": "Calculation practice style: include concrete numbers, intermediate steps, and enough assumptions for every calculation.",
 }
+
+
+def allocate_weighted_counts(weights: dict[str, int], count: int) -> dict[str, int]:
+    """Convert percentages/relative weights into exact deterministic counts."""
+    keys = list(weights)
+    if count < 0:
+        raise ValueError("count must not be negative")
+    source = {key: max(0, int(weights[key])) for key in keys}
+    total = sum(source.values())
+    if not keys:
+        return {}
+    if total <= 0:
+        return {key: count if index == 0 else 0 for index, key in enumerate(keys)}
+    raw = {key: source[key] * count / total for key in keys}
+    allocated = {key: floor(raw[key]) for key in keys}
+    remainder = count - sum(allocated.values())
+    ranked = sorted(
+        keys,
+        key=lambda key: (-(raw[key] - allocated[key]), keys.index(key)),
+    )
+    for key in ranked[:remainder]:
+        allocated[key] += 1
+    return allocated
+
+
+def planned_generation_counts(
+    config: "GenerationConfig", topics: list[str], count: int
+) -> dict[str, dict[str, int]]:
+    """Return the deterministic marginal plan shown before generation starts."""
+    topic_keys = [str(topic) for topic in topics]
+    return {
+        "topics": allocate_weighted_counts(
+            config.normalized_topic_weights(topic_keys),
+            count,
+        ),
+        "question_types": allocate_weighted_counts(
+            config.normalized_type_weights(),
+            count,
+        ),
+        "difficulties": allocate_weighted_counts(
+            config.normalized_difficulty_weights(),
+            count,
+        ),
+    }
 
 
 @dataclass

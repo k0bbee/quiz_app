@@ -16,7 +16,12 @@ from core.app_errors import coerce_app_error, format_app_error
 from core.language_manager import LanguageManager
 from ai.llm_client import LLMClient
 from ai.batch_generator import GenerationWorker
-from ai.generation_config import GenerationConfig, QUESTION_TYPE_DEFAULTS, DIFFICULTY_DEFAULTS
+from ai.generation_config import (
+    DIFFICULTY_DEFAULTS,
+    QUESTION_TYPE_DEFAULTS,
+    GenerationConfig,
+    planned_generation_counts,
+)
 from ai.generation_report import GenerationReport
 from ai.exam_plan import (
     ExamGenerationPlan,
@@ -296,10 +301,27 @@ class AIGenerationDialog(QDialog):
             self.lang_manager.get_text("更新权重显示", "Update Weight Preview")
         )
         self.refresh_weight_preview_btn.setObjectName("secondaryButton")
-        self.refresh_weight_preview_btn.clicked.connect(self._refresh_weight_labels)
+        self.refresh_weight_preview_btn.clicked.connect(self._refresh_weight_preview_and_plan)
         structure_layout.addRow("", self.refresh_weight_preview_btn)
 
         right_layout.addWidget(self.structure_group)
+
+        self.plan_group = QGroupBox(
+            self.lang_manager.get_text("生成计划预览", "Generation Plan Preview")
+        )
+        plan_layout = QVBoxLayout(self.plan_group)
+        plan_layout.setContentsMargins(10, 10, 10, 10)
+        self.plan_preview = QTextEdit()
+        self.plan_preview.setObjectName("generationPlanPreview")
+        self.plan_preview.setReadOnly(True)
+        self.plan_preview.setMaximumHeight(170)
+        plan_layout.addWidget(self.plan_preview)
+        right_layout.addWidget(self.plan_group)
+
+        self.count_spin.valueChanged.connect(lambda _value: self._update_preview())
+        self.diff_combo.currentIndexChanged.connect(lambda _index: self._update_preview())
+        self.template_combo.currentIndexChanged.connect(lambda _index: self._update_preview())
+
         right_layout.addStretch()
 
         if hasattr(self, "topic_weight_group"):
@@ -444,6 +466,10 @@ class AIGenerationDialog(QDialog):
                 )
             )
 
+    def _refresh_weight_preview_and_plan(self) -> None:
+        self._refresh_weight_labels()
+        self._update_preview()
+
     def _on_language_changed(self, lang):
         """Update all UI strings when language changes."""
         self.setWindowTitle(self.lang_manager.get_text("AI 出题", "AI Question Generation"))
@@ -520,6 +546,9 @@ class AIGenerationDialog(QDialog):
         )
         if hasattr(self, "topic_weight_group"):
             self.topic_weight_group.setTitle(self.lang_manager.get_text("知识点权重", "Topic Weights"))
+        self.plan_group.setTitle(
+            self.lang_manager.get_text("生成计划预览", "Generation Plan Preview")
+        )
         if hasattr(self, "topic_weight_empty_label"):
             self.topic_weight_empty_label.setText(
                 self.lang_manager.get_text(
@@ -755,6 +784,7 @@ class AIGenerationDialog(QDialog):
     def _update_preview(self):
         """Show a brief preview of relevant course content."""
         topics = self._get_selected_topics()
+        self._update_plan_preview(topics)
         if not topics:
             self.prompt_preview.setPlainText(
                 self.lang_manager.get_text(
@@ -787,6 +817,45 @@ class AIGenerationDialog(QDialog):
                 f"Prompt context preview:\n\n{context[:1800]}"
             )
         self.prompt_preview.setPlainText(preview)
+
+    def _update_plan_preview(self, topics: list) -> None:
+        """Show exact marginal quotas before launching generation."""
+        if not hasattr(self, "plan_preview"):
+            return
+        if not topics:
+            self.plan_preview.setPlainText(
+                self.lang_manager.get_text(
+                    "选择主题后显示本次题量、主题、题型和难度分布。",
+                    "Select topics to preview count, topic, type, and difficulty distribution.",
+                )
+            )
+            return
+
+        config = self._build_generation_config()
+        count = self.count_spin.value()
+        topic_keys = [topic_value(topic) for topic in topics]
+        plan = planned_generation_counts(config, topic_keys, count)
+        if self.lang_manager.current == "zh":
+            lines = [f"本次计划生成 {count} 题"]
+            sections = (
+                ("主题分布", plan["topics"]),
+                ("题型分布", plan["question_types"]),
+                ("难度分布", plan["difficulties"]),
+            )
+        else:
+            lines = [f"Planned total: {count} question(s)"]
+            sections = (
+                ("Topic distribution", plan["topics"]),
+                ("Question type distribution", plan["question_types"]),
+                ("Difficulty distribution", plan["difficulties"]),
+            )
+        for title, values in sections:
+            lines.append("")
+            lines.append(title)
+            for key, value in values.items():
+                if value > 0:
+                    lines.append(f"- {key}: {value}")
+        self.plan_preview.setPlainText("\n".join(lines))
 
     def _start_generation(self):
         """Start the background generation process."""

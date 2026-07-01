@@ -3,12 +3,11 @@ from utils.logger import debug, warning, error
 
 import threading
 import re
-from math import floor
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from ai.llm_client import LLMClient
-from ai.generation_config import GenerationConfig
+from ai.generation_config import GenerationConfig, allocate_weighted_counts
 from ai.generation_report import GenerationReport
 from ai.prompt_templates import PromptBuilder
 from core.app_errors import AppError
@@ -21,29 +20,6 @@ ACCEPT_TARGET_BATCH_SIZE = 5
 MAX_CANDIDATE_BATCH_SIZE = 8
 JSON_RECOVERY_BATCH_SIZE = 3
 GENERATION_CONTEXT_MAX_CHARS = 12000
-
-
-def allocate_weighted_counts(weights: dict[str, int], count: int) -> dict[str, int]:
-    """Convert percentages/relative weights into exact deterministic counts."""
-    keys = list(weights)
-    if count < 0:
-        raise ValueError("count must not be negative")
-    source = {key: max(0, int(weights[key])) for key in keys}
-    total = sum(source.values())
-    if not keys:
-        return {}
-    if total <= 0:
-        return {key: count if index == 0 else 0 for index, key in enumerate(keys)}
-    raw = {key: source[key] * count / total for key in keys}
-    allocated = {key: floor(raw[key]) for key in keys}
-    remainder = count - sum(allocated.values())
-    ranked = sorted(
-        keys,
-        key=lambda key: (-(raw[key] - allocated[key]), keys.index(key)),
-    )
-    for key in ranked[:remainder]:
-        allocated[key] += 1
-    return allocated
 
 
 class GenerationQuotaTracker:

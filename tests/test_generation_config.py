@@ -351,6 +351,56 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(config.topic_weights["process"], 20)
         self.assertEqual(config.template, "final_exam")
 
+    def test_dialog_shows_generation_plan_preview_from_current_controls(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache", "process"],
+        )
+        dialog.count_spin.setValue(10)
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+        dialog.topic_list.item(1).setCheckState(Qt.CheckState.Checked)
+        dialog.topic_weight_sliders["cache"].setValue(70)
+        dialog.topic_weight_sliders["process"].setValue(30)
+        dialog.mc_slider.setValue(50)
+        dialog.scenario_slider.setValue(30)
+        dialog.true_false_slider.setValue(20)
+        dialog.fill_blank_slider.setValue(0)
+        dialog.easy_slider.setValue(20)
+        dialog.medium_slider.setValue(50)
+        dialog.hard_slider.setValue(30)
+
+        dialog._refresh_weight_labels()
+        dialog._update_preview()
+
+        preview = dialog.plan_preview.toPlainText()
+        self.assertIn("本次计划生成 10 题", preview)
+        self.assertIn("主题分布", preview)
+        self.assertIn("cache: 7", preview)
+        self.assertIn("process: 3", preview)
+        self.assertIn("题型分布", preview)
+        self.assertIn("multiple_choice: 5", preview)
+        self.assertIn("scenario_choice: 3", preview)
+        self.assertIn("true_false: 2", preview)
+        self.assertIn("难度分布", preview)
+        self.assertIn("easy: 2", preview)
+        self.assertIn("medium: 5", preview)
+        self.assertIn("hard: 3", preview)
+
+    def test_generation_plan_preview_updates_when_count_changes(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+        dialog.count_spin.setValue(6)
+        self.assertIn("本次计划生成 6 题", dialog.plan_preview.toPlainText())
+
+        dialog.count_spin.setValue(12)
+
+        self.assertIn("本次计划生成 12 题", dialog.plan_preview.toPlainText())
+
     def test_dialog_exposes_question_set_title(self):
         dialog = AIGenerationDialog(
             "course content",
