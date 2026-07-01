@@ -210,9 +210,9 @@ class GenerationQuotaTests(unittest.TestCase):
         correct_batch = {
             "questions": [
                 raw_question("multiple_choice", "easy", "cache", 10),
-                raw_question("multiple_choice", "hard", "process", 11),
-                raw_question("true_false", "easy", "process", 12),
-                raw_question("true_false", "hard", "cache", 13),
+                raw_question("true_false", "hard", "process", 11),
+                raw_question("multiple_choice", "easy", "cache", 12),
+                raw_question("true_false", "hard", "process", 13),
             ]
         }
         config = GenerationConfig(
@@ -253,6 +253,56 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual(
             {"cache": 2, "process": 2},
             _counts(str(question.topic) for question in batches[0]),
+        )
+
+    def test_worker_rejects_candidates_that_only_match_marginal_buckets_not_plan_items(self):
+        marginal_only_batch = {
+            "questions": [
+                raw_question("true_false", "easy", "cache", 1),
+                raw_question("multiple_choice", "hard", "process", 2),
+            ]
+        }
+        plan_matched_batch = {
+            "questions": [
+                raw_question("multiple_choice", "easy", "cache", 3),
+                raw_question("true_false", "hard", "process", 4),
+            ]
+        }
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 50,
+                "scenario_choice": 0,
+                "true_false": 50,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 50, "medium": 0, "hard": 50},
+            topic_weights={"cache": 50, "process": 50},
+        )
+        worker = GenerationWorker(
+            SequenceClient([marginal_only_batch, plan_matched_batch]),
+            course_content="content",
+            topics=["cache", "process"],
+            count=2,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        batches = []
+        errors = []
+        worker.batch_done.connect(batches.append)
+        worker.error.connect(errors.append)
+
+        worker.run()
+
+        self.assertEqual([], errors)
+        self.assertEqual(
+            {
+                ("cache", "multiple_choice", "easy"),
+                ("process", "true_false", "hard"),
+            },
+            {
+                (str(question.topic), question.type.value, question.difficulty.value)
+                for question in batches[0]
+            },
         )
 
     def test_worker_emits_partial_result_when_quota_shortfall_has_accepted_questions(self):

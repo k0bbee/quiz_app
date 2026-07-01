@@ -54,7 +54,14 @@ class GenerationQuotaTracker:
             filled.append(f"difficulty {difficulty}")
         if self.remaining_topics.get(topic, 0) <= 0:
             filled.append(f"topic {topic}")
-        return f"quota already filled for {', '.join(filled)}" if filled else ""
+        if filled:
+            return f"quota already filled for {', '.join(filled)}"
+        if self._matching_plan_item_index(qtype, difficulty, topic) is None:
+            return (
+                "no remaining plan slot for "
+                f"topic {topic}, question type {qtype}, difficulty {difficulty}"
+            )
+        return ""
 
     def accept(self, qtype: str, difficulty: str, topic: str):
         self.remaining_types[qtype] -= 1
@@ -123,7 +130,13 @@ class GenerationQuotaTracker:
     def _mark_plan_item_accepted(self, qtype: str, difficulty: str, topic: str) -> None:
         if not self.remaining_plan_items:
             return
-        exact_index = next(
+        exact_index = self._matching_plan_item_index(qtype, difficulty, topic)
+        if exact_index is not None:
+            self.remaining_plan_items.pop(exact_index)
+            return
+
+    def _matching_plan_item_index(self, qtype: str, difficulty: str, topic: str) -> int | None:
+        return next(
             (
                 index
                 for index, item in enumerate(self.remaining_plan_items)
@@ -133,24 +146,6 @@ class GenerationQuotaTracker:
             ),
             None,
         )
-        if exact_index is not None:
-            self.remaining_plan_items.pop(exact_index)
-            return
-
-        ranked = sorted(
-            enumerate(self.remaining_plan_items),
-            key=lambda pair: (
-                -_plan_match_score(pair[1], qtype, difficulty, topic),
-                pair[0],
-            ),
-        )
-        self.remaining_plan_items.pop(ranked[0][0])
-
-
-def _plan_match_score(
-    item: QuestionPlanItem, qtype: str, difficulty: str, topic: str
-) -> int:
-    return int(item.topic_id == topic) + int(item.question_type == qtype) + int(item.difficulty == difficulty)
 
 
 class GenerationWorker(QThread):
