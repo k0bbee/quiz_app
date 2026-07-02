@@ -181,5 +181,14 @@ tesseract --list-langs
 ## 运行测试
 
 ```bash
-python -m pytest tests/ -v
+# 核心/非 Qt 测试：适合 CI 或未安装 PyQt6 的环境
+python -m pytest -m "not qt" -q
+
+# Qt/UI 测试：需要 PyQt6 和可用桌面环境
+python -m pytest -m qt -q
+
+# 完整测试
+python -m pytest tests/ -q
 ```
+
+`tests/conftest.py` 会自动识别导入 `PyQt6` 的测试文件并标记为 `qt`；未安装 PyQt6 时，这些文件会在收集阶段跳过，避免核心测试被桌面依赖阻塞。
