@@ -39,6 +39,36 @@ class SourceRefsFormattingTests(unittest.TestCase):
         self.assertLess(len(text), 190)
         self.assertIn("…", text)
 
+    def test_format_source_refs_includes_readable_confidence_status(self):
+        text = format_source_refs(
+            [
+                {
+                    "chunk_id": "source-0002",
+                    "source_file": "cache.pdf",
+                }
+            ],
+            status="fallback_plan_evidence",
+        )
+
+        self.assertIn("Source Evidence: Plan Fallback", text)
+        self.assertNotIn("fallback_plan_evidence", text)
+
+    def test_format_source_refs_includes_html_confidence_status(self):
+        text = format_source_refs(
+            [
+                {
+                    "chunk_id": "source-0003",
+                    "source_file": "io.pdf",
+                }
+            ],
+            label="来源",
+            html=True,
+            status="valid_model_ref",
+        )
+
+        self.assertIn("<b>来源:</b> Exact", text)
+        self.assertIn("<br>", text)
+
 
 if __name__ == "__main__":
     unittest.main()

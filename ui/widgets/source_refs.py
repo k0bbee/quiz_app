@@ -1,13 +1,20 @@
 """Formatting helpers for displaying course source references in UI."""
 
 
-def format_source_refs(source_refs, label: str = "Source Evidence", html: bool = False) -> str:
+def format_source_refs(
+    source_refs,
+    label: str = "Source Evidence",
+    html: bool = False,
+    status: str | None = None,
+) -> str:
     """Format stored source_refs without exposing raw JSON."""
     lines = _source_ref_lines(source_refs)
-    if not lines:
+    status_label = _source_ref_status_label(status)
+    if not lines and not status_label:
         return ""
     separator = "<br>" if html else "\n"
-    title = f"<b>{label}:</b>" if html else f"{label}:"
+    suffix = f" {status_label}" if status_label else ""
+    title = f"<b>{label}:</b>{suffix}" if html else f"{label}:{suffix}"
     return separator.join([title, *lines])
 
 
@@ -44,3 +51,22 @@ def _compact_excerpt(value, limit: int = 120) -> str:
     if len(text) <= limit:
         return text
     return text[:limit].rstrip() + "…"
+
+
+def _source_ref_status_label(status: str | None) -> str:
+    value = str(status or "").strip().lower()
+    labels = {
+        "valid_model_ref": "Exact",
+        "partial_model_ref": "Partial",
+        "fallback_plan_evidence": "Plan Fallback",
+        "fallback_global_evidence": "Global Fallback",
+        "global_fallback": "Global Fallback",
+        "recovered": "Recovered",
+        "invalid_model_ref": "Invalid",
+        "missing": "Missing",
+    }
+    if value in labels:
+        return labels[value]
+    if not value:
+        return ""
+    return value.replace("_", " ").title()

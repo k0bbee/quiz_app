@@ -533,9 +533,11 @@ class QuestionBankScreen(QWidget):
             self.source_refs_label.clear()
             self.source_refs_label.setVisible(False)
             return
+        metadata = question.metadata or {}
         text = format_source_refs(
-            (question.metadata or {}).get("source_refs", []),
+            metadata.get("source_refs", []),
             label=self.lang_manager.get_text("来源", "Source Evidence"),
+            status=metadata.get("source_ref_status"),
         )
         self.source_refs_label.setText(text)
         self.source_refs_label.setVisible(bool(text))

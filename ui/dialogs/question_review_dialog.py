@@ -200,7 +200,11 @@ class QuestionReviewDialog(QDialog):
             details += f"\nOptions:\n" + "\n".join(q.get_options('en'))
         details += f"\n--- Explanation (ZH) ---\n{q.get_explanation('zh')}"
         details += f"\n--- Explanation (EN) ---\n{q.get_explanation('en')}"
-        source_text = format_source_refs((q.metadata or {}).get("source_refs", []))
+        metadata = q.metadata or {}
+        source_text = format_source_refs(
+            metadata.get("source_refs", []),
+            status=metadata.get("source_ref_status"),
+        )
         if source_text:
             details += f"\n--- Source Evidence ---\n{source_text}"
 
@@ -331,6 +335,6 @@ class QuestionReviewDialog(QDialog):
         return [self.questions[i] for i in sorted(self._accepted)]
 
 
-def _format_source_refs(source_refs) -> str:
+def _format_source_refs(source_refs, status: str | None = None) -> str:
     """Format stored source references for review without exposing raw JSON."""
-    return format_source_refs(source_refs)
+    return format_source_refs(source_refs, status=status)

@@ -109,9 +109,11 @@ class QuestionReviewCard(QFrame):
             "💡 解析: {}",
             "💡 Explanation: {}"
         ).format(self._question.get_explanation(current_lang)))
+        metadata = self._question.metadata or {}
         self.source_label.setText(format_source_refs(
-            (self._question.metadata or {}).get("source_refs", []),
+            metadata.get("source_refs", []),
             label=self.lang_manager.get_text("来源", "Source Evidence"),
+            status=metadata.get("source_ref_status"),
         ))
         self.source_label.setVisible(bool(self.source_label.text()))
 

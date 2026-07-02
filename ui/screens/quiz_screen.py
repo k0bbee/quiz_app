@@ -847,10 +847,12 @@ class QuizScreen(QWidget):
             f"<b>{correct_answer_text}:</b> {correct_answer}<br><br>"
             f"{question.get_explanation(lang)}"
         )
+        metadata = question.metadata or {}
         source_text = format_source_refs(
-            (question.metadata or {}).get("source_refs", []),
+            metadata.get("source_refs", []),
             label=self.lang_manager.get_text("来源", "Source Evidence"),
             html=True,
+            status=metadata.get("source_ref_status"),
         )
         if source_text:
             feedback += f"<br><br>{source_text}"
