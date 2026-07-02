@@ -1130,6 +1130,7 @@ class AIGenerationDialog(QDialog):
             client, self.course_content, topics, count, difficulty,
             course_project=self.course_project,
             generation_config=generation_config,
+            question_plan_items=retry_plan.plan_items if retry_plan is not None else None,
         )
         self.worker.progress.connect(self._on_progress)
         self.worker.question_ready.connect(self._on_question_ready)

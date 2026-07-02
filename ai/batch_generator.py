@@ -8,7 +8,7 @@ from dataclasses import replace
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from ai.llm_client import LLMClient
-from ai.generation_config import GenerationConfig, allocate_weighted_counts
+from ai.generation_config import DIFFICULTY_DEFAULTS, QUESTION_TYPE_DEFAULTS, GenerationConfig, allocate_weighted_counts
 from ai.generation_report import GenerationReport
 from ai.prompt_templates import PromptBuilder
 from ai.question_plan import QuestionPlanItem, build_question_plan
@@ -24,6 +24,20 @@ JSON_RECOVERY_BATCH_SIZE = 3
 GENERATION_CONTEXT_MAX_CHARS = 12000
 
 
+def _count_plan_item_values(values, known_keys=None) -> dict[str, int]:
+    counts: dict[str, int] = {
+        str(key): 0
+        for key in (known_keys or [])
+        if str(key or "").strip()
+    }
+    for value in values:
+        key = str(value or "").strip()
+        if not key:
+            continue
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 class GenerationQuotaTracker:
     """Track exact marginal quotas for accepted generated questions."""
 
@@ -33,26 +47,42 @@ class GenerationQuotaTracker:
         topics: list,
         count: int,
         evidence_refs_by_topic: dict[str, list[dict]] | None = None,
+        question_plan_items: list[QuestionPlanItem] | None = None,
     ):
         self.template = config.template
         self.evidence_refs_by_topic = evidence_refs_by_topic or {}
-        self.remaining_types = allocate_weighted_counts(
-            config.normalized_type_weights(), count
-        )
-        self.remaining_difficulties = allocate_weighted_counts(
-            config.normalized_difficulty_weights(), count
-        )
         topic_keys = [topic_value(topic) for topic in topics]
-        self.remaining_topics = allocate_weighted_counts(
-            config.normalized_topic_weights(topic_keys), count
-        )
-        topic_titles = {topic_value(topic): topic_label(topic) for topic in topics}
-        self.remaining_plan_items = self._bind_plan_evidence(build_question_plan(
-            config,
-            topic_keys,
-            count,
-            topic_titles,
-        ))
+        if question_plan_items is None:
+            self.remaining_types = allocate_weighted_counts(
+                config.normalized_type_weights(), count
+            )
+            self.remaining_difficulties = allocate_weighted_counts(
+                config.normalized_difficulty_weights(), count
+            )
+            self.remaining_topics = allocate_weighted_counts(
+                config.normalized_topic_weights(topic_keys), count
+            )
+            topic_titles = {topic_value(topic): topic_label(topic) for topic in topics}
+            plan_items = build_question_plan(
+                config,
+                topic_keys,
+                count,
+                topic_titles,
+            )
+        else:
+            plan_items = list(question_plan_items)
+            self.remaining_types = _count_plan_item_values(
+                (item.question_type for item in plan_items),
+                list(QUESTION_TYPE_DEFAULTS) + list(config.question_type_weights),
+            )
+            self.remaining_difficulties = _count_plan_item_values(
+                (item.difficulty for item in plan_items),
+                list(DIFFICULTY_DEFAULTS) + list(config.difficulty_weights),
+            )
+            self.remaining_topics = _count_plan_item_values(
+                item.topic_id for item in plan_items
+            )
+        self.remaining_plan_items = self._bind_plan_evidence(plan_items)
 
     def rejection_reason(
         self,
@@ -269,7 +299,8 @@ class GenerationWorker(QThread):
 
     def __init__(self, llm_client: LLMClient, course_content: str,
                  topics: list, count: int, difficulty: str, course_project=None,
-                 generation_config: GenerationConfig | None = None):
+                 generation_config: GenerationConfig | None = None,
+                 question_plan_items: list[QuestionPlanItem] | None = None):
         super().__init__()
         self.client = llm_client
         self.course_content = course_content
@@ -278,6 +309,7 @@ class GenerationWorker(QThread):
         self.difficulty = difficulty
         self.course_project = course_project
         self.generation_config = generation_config or GenerationConfig()
+        self.question_plan_items = list(question_plan_items or [])
         self._cancelled = threading.Event()
         self._cached_context: str | None = None
         self._candidate_batch_limit: int | None = None
@@ -491,6 +523,7 @@ class GenerationWorker(QThread):
             self.topics,
             self.count,
             self._cached_source_refs_by_topic,
+            self.question_plan_items or None,
         )
 
     def _candidate_batch_count(self, accept_target: int) -> int:

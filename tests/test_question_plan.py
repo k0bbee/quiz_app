@@ -121,6 +121,7 @@ class QuestionPlanTests(unittest.TestCase):
 
         self.assertEqual(2, retry.count)
         self.assertEqual(["process", "cache"], retry.topics)
+        self.assertEqual(failed, retry.plan_items)
         self.assertEqual("final_exam", retry.config.template)
         self.assertEqual(
             Counter(item.topic_id for item in failed),

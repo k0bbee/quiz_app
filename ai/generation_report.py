@@ -15,6 +15,7 @@ class GenerationRetryPlan:
 
     count: int
     topics: list[str]
+    plan_items: list[QuestionPlanItem]
     config: GenerationConfig
 
 
@@ -86,6 +87,7 @@ class GenerationReport:
         return GenerationRetryPlan(
             count=len(self.failed_plan_items),
             topics=list(topics),
+            plan_items=list(self.failed_plan_items),
             config=GenerationConfig(
                 question_type_weights=_exclusive_counts(
                     QUESTION_TYPE_DEFAULTS,

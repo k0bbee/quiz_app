@@ -4,6 +4,7 @@ import re
 from ai.batch_generator import GenerationWorker, allocate_weighted_counts
 from ai.generation_config import GenerationConfig
 from ai.generation_report import GenerationReport
+from ai.question_plan import QuestionPlanItem
 from core.app_errors import AppError
 from models.course_project import CourseTopic
 from utils.constants import topic_value
@@ -505,6 +506,60 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertIn("15 questions", generation_messages[0])
         self.assertNotIn("10 questions", generation_messages[0])
         self.assertIn("question 1/15", generation_messages[0].lower())
+
+    def test_worker_retry_uses_failed_plan_items_without_rebuilding_slots(self):
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 0,
+                "scenario_choice": 0,
+                "true_false": 100,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 0, "hard": 100},
+            topic_weights={"process": 100},
+            template="final_exam",
+        )
+        failed_slot = QuestionPlanItem(
+            plan_id="plan-003",
+            topic_id="process",
+            topic_title="Process Scheduling",
+            question_type="true_false",
+            difficulty="hard",
+            target_skill="scenario",
+            evidence_chunk_ids=["source-process-01"],
+        )
+        client = SequenceClient([
+            {
+                "questions": [
+                    {
+                        **raw_question("true_false", "hard", "process", 3),
+                        "plan_id": "plan-003",
+                    }
+                ]
+            }
+        ])
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=["process"],
+            count=1,
+            difficulty="mixed",
+            generation_config=config,
+            question_plan_items=[failed_slot],
+        )
+        batches = []
+        worker.batch_done.connect(batches.append)
+
+        worker.run()
+
+        prompt = client.calls[0][-1]["content"]
+        self.assertIn("plan-003", prompt)
+        self.assertNotIn("- plan-001:", prompt)
+        self.assertIn("- true_false: 100%", prompt)
+        self.assertIn("evidence=source-process-01", prompt)
+        self.assertEqual("plan-003", batches[0][0].metadata["plan_id"])
+        self.assertEqual("scenario", batches[0][0].metadata["target_skill"])
+        self.assertEqual(["source-process-01"], batches[0][0].metadata["plan_evidence_chunk_ids"])
 
     def test_worker_does_not_oversample_very_small_generation_requests(self):
         config = GenerationConfig(
