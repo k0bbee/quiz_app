@@ -120,11 +120,22 @@ class LLMClient:
                     self.last_error = "Anthropic API returned a non-JSON response."
                     debug(self.last_error)
                     return None
-                # Extract from Anthropic response format
-                for block in data.get("content", []):
-                    if block.get("type") == "text":
-                        return block["text"]
-                self.last_error = "Anthropic API response did not contain a text block."
+                extracted = self._extract_anthropic_response_text(data)
+                if extracted:
+                    return extracted
+                content = data.get("content", [])
+                block_types = []
+                if isinstance(content, list):
+                    block_types = [
+                        str(block.get("type", "unknown"))
+                        for block in content
+                        if isinstance(block, dict)
+                    ]
+                suffix = f" Content block types: {', '.join(block_types)}." if block_types else ""
+                self.last_error = (
+                    "Anthropic API response did not contain usable text or JSON content."
+                    f"{suffix}"
+                )
                 return None
             else:
                 self.last_error = f"Anthropic API error {resp.status_code}: {resp.text[:500]}"
@@ -134,6 +145,47 @@ class LLMClient:
             self.last_error = f"Anthropic API request failed: {e}"
             debug(self.last_error)
             return None
+
+    @staticmethod
+    def _extract_anthropic_response_text(data: dict) -> str:
+        """Extract usable text from Anthropic or Anthropic-compatible responses."""
+        content = data.get("content", [])
+        if isinstance(content, str):
+            return content.strip()
+        if not isinstance(content, list):
+            return ""
+
+        text_parts = []
+        structured_parts = []
+        for block in content:
+            if isinstance(block, str):
+                if block.strip():
+                    text_parts.append(block.strip())
+                continue
+            if not isinstance(block, dict):
+                continue
+
+            text = block.get("text")
+            if isinstance(text, str) and text.strip():
+                text_parts.append(text.strip())
+                continue
+
+            for key in ("input", "json", "arguments"):
+                value = block.get(key)
+                if isinstance(value, (dict, list)):
+                    structured_parts.append(
+                        json.dumps(value, ensure_ascii=False, sort_keys=True)
+                    )
+                    break
+                if isinstance(value, str) and value.strip():
+                    structured_parts.append(value.strip())
+                    break
+
+        if text_parts:
+            return "\n".join(text_parts)
+        if structured_parts:
+            return "\n".join(structured_parts)
+        return ""
 
     def _generate_openai_compatible(
         self,

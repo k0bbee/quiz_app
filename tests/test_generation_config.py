@@ -1530,6 +1530,34 @@ class GenerationConfigTests(unittest.TestCase):
         )
         self.assertNotIn("无效", dialog.status_label.text())
 
+    def test_course_profile_warning_detail_is_not_shown_in_generation_dialog_status(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        profile = ExamGenerationPlan(
+            question_count=12,
+            selected_topics=("cache",),
+            topic_weights={"cache": 100},
+        )
+        course = SimpleNamespace(
+            generation_profile=profile.to_dict(),
+            generation_profile_source="local",
+            generation_profile_warning=(
+                "Course profile LLM request failed: "
+                "Anthropic API response did not contain a text block."
+            ),
+        )
+
+        applied = dialog.configure_from_course_profile(course)
+
+        self.assertTrue(applied)
+        status = dialog.status_label.text()
+        self.assertIn("本地回退", status)
+        self.assertNotIn("Course profile LLM request failed", status)
+        self.assertNotIn("Anthropic API response did not contain a text block", status)
+
     def test_question_set_history_overrides_course_profile_on_regeneration(self):
         dialog = AIGenerationDialog(
             "course content",

@@ -741,8 +741,11 @@ class AIGenerationDialog(QDialog):
             f"已应用本课程默认出题配置（{source_text}）。",
             f"Applied this course's quiz defaults ({source_text}).",
         )
-        if warning:
-            message = f"{message} {warning}"
+        if warning and source != "llm":
+            message = self.lang_manager.get_text(
+                "已应用本课程默认出题配置（本地回退）。",
+                "Applied this course's quiz defaults (local fallback).",
+            )
         self.status_label.setObjectName("")
         self.status_label.setText(message)
         self.status_label.style().unpolish(self.status_label)

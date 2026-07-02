@@ -143,6 +143,53 @@ class LLMErrorMessageTests(unittest.TestCase):
         self.assertIn("response_format", post.call_args_list[0].kwargs["json"])
         self.assertNotIn("response_format", post.call_args_list[1].kwargs["json"])
 
+    def test_anthropic_client_accepts_text_payload_without_explicit_text_block_type(self):
+        class FakeResponse:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"content": [{"text": '{"questions": []}'}]}
+
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://api.anthropic.com/v1",
+            model="claude-test",
+        )
+
+        with patch("ai.llm_client.requests.post", return_value=FakeResponse()):
+            result = client.generate([{"role": "user", "content": "Return JSON."}])
+
+        self.assertEqual('{"questions": []}', result)
+        self.assertEqual("", client.last_error)
+
+    def test_anthropic_client_serializes_structured_json_content(self):
+        class FakeResponse:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {
+                    "content": [
+                        {
+                            "type": "input_json",
+                            "input": {"question_count": 10},
+                        }
+                    ]
+                }
+
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://api.anthropic.com/v1",
+            model="claude-test",
+        )
+
+        with patch("ai.llm_client.requests.post", return_value=FakeResponse()):
+            result = client.generate([{"role": "user", "content": "Return JSON."}])
+
+        self.assertEqual('{"question_count": 10}', result)
+        self.assertEqual("", client.last_error)
+
 
 if __name__ == "__main__":
     unittest.main()
