@@ -17,7 +17,9 @@ class OCRRuntimeTests(unittest.TestCase):
             config = configure_pytesseract(fake_pytesseract)
 
         self.assertEqual(r"C:\Program Files\Tesseract-OCR\tesseract.exe", fake_pytesseract.pytesseract.tesseract_cmd)
-        self.assertEqual("--tessdata-dir data\\tessdata", config)
+        self.assertTrue(config.startswith("--tessdata-dir "))
+        tessdata_arg = config.removeprefix("--tessdata-dir ")
+        self.assertEqual(Path("data") / "tessdata", Path(tessdata_arg))
         self.assertNotIn('"', config)
 
 
