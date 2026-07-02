@@ -17,7 +17,7 @@ from core.question_bank_maintenance import (
     delete_unreferenced_ai_questions,
     remove_question_from_sets,
 )
-from models.course_project import CourseProject, CourseTopic
+from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from models.progress import AnswerRecord, ProgressRecord
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
@@ -148,6 +148,74 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertEqual("source-0000", ref["chunk_id"])
             self.assertEqual("old-source-01", ref["resolved_from_chunk_id"])
             self.assertIn("Cache lines and cache mapping", ref["excerpt"])
+
+    def test_question_bank_screen_backfills_source_refs_from_current_course(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            course_manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+            project = CourseProject(
+                course_id="course-ui-backfill",
+                title="Systems",
+                source_folder="",
+                summary_markdown="## Cache\nCache mapping.",
+                summary_path="",
+                topics=[
+                    CourseTopic(
+                        topic_id="cache",
+                        title="Cache",
+                        keywords=["cache"],
+                        source_files=["cache.pdf"],
+                    )
+                ],
+                documents=[
+                    {
+                        "path": "cache.pdf",
+                        "title": "Cache lecture",
+                        "extension": ".pdf",
+                        "pages": ["Cache lines and cache mapping details."],
+                    }
+                ],
+                created_at="2026-07-02T00:00:00+00:00",
+                updated_at="2026-07-02T00:00:00+00:00",
+            )
+            course_manager.save(project)
+            index = course_index.build_source_index(project)
+            question = self._question("q-ui-source", "cache")
+            question.metadata["course_id"] = project.course_id
+            question.metadata["source_refs"] = [
+                {
+                    "chunk_id": "old-source-01",
+                    "source_file": "cache.pdf",
+                    "page_or_slide": 1,
+                    "content_hash": index[0]["content_hash"][:12],
+                }
+            ]
+            question_bank.save(question)
+
+            screen = QuestionBankScreen(question_bank, course_manager=course_manager)
+            screen.set_current_course(project.course_id)
+            screen.question_list.setCurrentRow(0)
+
+            with patch("ui.screens.question_bank_screen.QMessageBox.information") as info:
+                screen.backfill_source_refs_btn.click()
+
+            saved = question_bank.get("q-ui-source")
+            self.assertEqual("source-0000", saved.metadata["source_refs"][0]["chunk_id"])
+            self.assertIn("Cache lines and cache mapping", screen.source_refs_label.text())
+            info.assert_called_once()
+            self.assertIn("1", info.call_args.args[2])
+
+    def test_question_bank_screen_backfill_source_refs_requires_a_course(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            course_manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+            screen = QuestionBankScreen(question_bank, course_manager=course_manager)
+
+            with patch("ui.screens.question_bank_screen.QMessageBox.warning") as warning:
+                screen.backfill_source_refs_btn.click()
+
+            warning.assert_called_once()
+            self.assertIn("课程", warning.call_args.args[2])
 
     def test_question_bank_search_filters_generated_questions_by_course(self):
         with tempfile.TemporaryDirectory() as tmpdir:

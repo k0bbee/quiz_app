@@ -13,7 +13,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from core.language_manager import LanguageManager
-from core.question_bank_maintenance import remove_question_from_sets
+from core.question_bank_maintenance import backfill_source_refs_from_course, remove_question_from_sets
+from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
 from ui.widgets.source_refs import format_source_refs
@@ -26,10 +27,17 @@ class QuestionBankScreen(QWidget):
 
     question_bank_changed = pyqtSignal()
 
-    def __init__(self, question_bank: QuestionBank, set_manager: SetManager | None = None, parent=None):
+    def __init__(
+        self,
+        question_bank: QuestionBank,
+        set_manager: SetManager | None = None,
+        course_manager: CourseProjectManager | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.question_bank = question_bank
         self.set_manager = set_manager
+        self.course_manager = course_manager or CourseProjectManager()
         self.lang_manager = LanguageManager.instance()
         self.page_size = 25
         self.page = 0
@@ -68,6 +76,19 @@ class QuestionBankScreen(QWidget):
             self.difficulty_filter.addItem(difficulty.value, difficulty.value)
         self.difficulty_filter.currentIndexChanged.connect(self._reset_and_refresh)
         filter_row.addWidget(self.difficulty_filter)
+
+        self.backfill_source_refs_btn = QPushButton(
+            self.lang_manager.get_text("补全来源证据", "Backfill Sources")
+        )
+        self.backfill_source_refs_btn.setObjectName("secondaryButton")
+        self.backfill_source_refs_btn.setToolTip(
+            self.lang_manager.get_text(
+                "用当前课程资料补全题目来源片段",
+                "Enrich question source snippets from the current course",
+            )
+        )
+        self.backfill_source_refs_btn.clicked.connect(self._backfill_source_refs)
+        filter_row.addWidget(self.backfill_source_refs_btn)
         layout.addLayout(filter_row)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -160,6 +181,15 @@ class QuestionBankScreen(QWidget):
         self.new_btn.setText(self.lang_manager.get_text("新建", "New"))
         self.save_btn.setText(self.lang_manager.get_text("保存", "Save"))
         self.delete_btn.setText(self.lang_manager.get_text("删除", "Delete"))
+        self.backfill_source_refs_btn.setText(
+            self.lang_manager.get_text("补全来源证据", "Backfill Sources")
+        )
+        self.backfill_source_refs_btn.setToolTip(
+            self.lang_manager.get_text(
+                "用当前课程资料补全题目来源片段",
+                "Enrich question source snippets from the current course",
+            )
+        )
 
     def refresh(self):
         """Reload current page."""
@@ -376,6 +406,39 @@ class QuestionBankScreen(QWidget):
         self.save_btn.setEnabled(True)
         self.question_bank_changed.emit()
         self.refresh()
+
+    def _backfill_source_refs(self):
+        course = self._active_course_project()
+        if course is None:
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text("缺少课程", "No Course"),
+                self.lang_manager.get_text(
+                    "请先选择或导入课程，再补全来源证据。",
+                    "Select or import a course before backfilling source evidence.",
+                ),
+            )
+            return
+        changed = backfill_source_refs_from_course(self.question_bank, course)
+        if changed:
+            self.question_bank_changed.emit()
+            self.refresh()
+        QMessageBox.information(
+            self,
+            self.lang_manager.get_text("来源证据补全", "Source Evidence Backfill"),
+            self.lang_manager.get_text(
+                f"已补全 {changed} 道题目的来源证据。",
+                f"Backfilled source evidence for {changed} questions.",
+            ) if changed else self.lang_manager.get_text(
+                "没有需要补全的来源证据。",
+                "No source evidence needed backfilling.",
+            ),
+        )
+
+    def _active_course_project(self):
+        if self._current_course_id:
+            return self.course_manager.get(self._current_course_id)
+        return self.course_manager.current()
 
     def _selected_question_ids(self) -> list[str]:
         ids: list[str] = []
