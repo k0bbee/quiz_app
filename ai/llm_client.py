@@ -55,9 +55,9 @@ class LLMClient:
         preferred = (self.model or "auto").lower()
         candidates = []
         if preferred in {"auto", "claude"}:
-            candidates.append(("claude", ["claude", "-p", prompt]))
+            candidates.append(("claude", ["claude", "-p"]))
         if preferred in {"auto", "codex"}:
-            candidates.append(("codex", ["codex", "exec", prompt]))
+            candidates.append(("codex", ["codex", "exec", "-"]))
 
         missing = []
         for name, command in candidates:
@@ -69,6 +69,7 @@ class LLMClient:
                     command,
                     check=False,
                     capture_output=True,
+                    input=prompt,
                     text=True,
                     encoding="utf-8",
                     errors="replace",

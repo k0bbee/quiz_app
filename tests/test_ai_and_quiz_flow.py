@@ -75,6 +75,23 @@ class LocalAgentTests(unittest.TestCase):
         self.assertEqual(text, '{"questions":[]}')
         self.assertTrue(run.called)
 
+    def test_local_agent_sends_prompt_via_stdin_not_command_arguments(self):
+        client = LLMClient(api_key="", base_url="local-agent://auto", model="codex")
+        result = types.SimpleNamespace(returncode=0, stdout='{"questions":[]}', stderr="")
+        prompt = "Sensitive course prompt with enough text to exceed safe argv expectations."
+        messages = [{"role": "user", "content": prompt}]
+
+        with patch("ai.llm_client.shutil.which", return_value="codex"), \
+             patch("ai.llm_client.subprocess.run", return_value=result) as run:
+            text = client.generate(messages)
+
+        self.assertEqual(text, '{"questions":[]}')
+        command = run.call_args.args[0]
+        self.assertNotIn(prompt, command)
+        self.assertEqual(prompt, run.call_args.kwargs["input"].split(":\n", 1)[1])
+        self.assertEqual(["codex", "exec"], command[:2])
+        self.assertIn("-", command)
+
 
 class QuizWidgetAndSessionTests(unittest.TestCase):
     def _make_question(self, qid: str, topic: str = "cache") -> Question:
