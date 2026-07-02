@@ -47,7 +47,8 @@ class PromptBuilder:
 ```json
 {
   "questions": [
-    {
+     {
+      "plan_id": "plan-001",
       "type": "multiple_choice",
       "difficulty": "medium",
       "topic": "cache_mapping",
@@ -127,7 +128,9 @@ class PromptBuilder:
 
 14. **Source References**: If the course reference includes Evidence chunks such as "Evidence source-0000", each question SHOULD include a source_refs array using only those provided chunk_id values. Do not invent chunk IDs or source files.
 
-15. **Curriculum Boundary**: Stay inside the provided course excerpts and exam emphasis. Do not import outside textbook facts unless the course materials mention them."""
+15. **Plan Slot Binding**: If question plan slots are provided, each returned question for a listed slot MUST include that exact plan_id value, such as "plan-001". Do not invent plan IDs.
+
+16. **Curriculum Boundary**: Stay inside the provided course excerpts and exam emphasis. Do not import outside textbook facts unless the course materials mention them."""
 
     @staticmethod
     def build_user_prompt(
@@ -219,6 +222,7 @@ Selected-topic boundary:
 - Follow the requested question type distribution as closely as possible; avoid short_answer
 - Follow the requested difficulty distribution as closely as possible
 - If question plan slots are provided, generate questions matching those slots in order as closely as possible
+- Each returned question for a listed slot MUST include that exact plan_id. Example: {{"plan_id": "plan-001", "type": "multiple_choice", "difficulty": "medium", "topic": "cache"}}
 - Ensure natural answer distribution (not all B/C)
 - Make distractors plausible and tricky
 - Include full bilingual explanations
@@ -266,6 +270,7 @@ Selected-topic boundary:
         lines = [
             "Question plan slots:",
             "Generate one question for each slot below when possible. Match topic/type/difficulty/skill exactly.",
+            "Each returned question for a listed slot MUST include that exact plan_id.",
         ]
         for item in question_plan_items:
             lines.append(

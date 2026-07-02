@@ -46,7 +46,22 @@ class GenerationQuotaTracker:
             topic_titles,
         )
 
-    def rejection_reason(self, qtype: str, difficulty: str, topic: str) -> str:
+    def rejection_reason(
+        self,
+        qtype: str,
+        difficulty: str,
+        topic: str,
+        plan_id: str | None = None,
+    ) -> str:
+        if plan_id:
+            plan_item = self._plan_item_by_id(plan_id)
+            if plan_item is None:
+                return f"unknown plan slot {plan_id}"
+            if not self._plan_item_matches(plan_item, qtype, difficulty, topic):
+                return (
+                    f"plan slot {plan_id} mismatch for "
+                    f"topic {topic}, question type {qtype}, difficulty {difficulty}"
+                )
         filled = []
         if self.remaining_types.get(qtype, 0) <= 0:
             filled.append(f"question type {qtype}")
@@ -63,11 +78,17 @@ class GenerationQuotaTracker:
             )
         return ""
 
-    def accept(self, qtype: str, difficulty: str, topic: str):
+    def accept(
+        self,
+        qtype: str,
+        difficulty: str,
+        topic: str,
+        plan_id: str | None = None,
+    ) -> tuple[QuestionPlanItem | None, str]:
         self.remaining_types[qtype] -= 1
         self.remaining_difficulties[difficulty] -= 1
         self.remaining_topics[topic] -= 1
-        self._mark_plan_item_accepted(qtype, difficulty, topic)
+        return self._mark_plan_item_accepted(qtype, difficulty, topic, plan_id)
 
     def remaining_config(self) -> GenerationConfig:
         return GenerationConfig(
@@ -134,13 +155,23 @@ class GenerationQuotaTracker:
             slots.append(f"{item.topic_id}/{item.question_type}/{item.difficulty}")
         return ", ".join(slots)
 
-    def _mark_plan_item_accepted(self, qtype: str, difficulty: str, topic: str) -> None:
+    def _mark_plan_item_accepted(
+        self,
+        qtype: str,
+        difficulty: str,
+        topic: str,
+        plan_id: str | None = None,
+    ) -> tuple[QuestionPlanItem | None, str]:
         if not self.remaining_plan_items:
-            return
+            return None, ""
+        if plan_id:
+            exact_plan_index = self._plan_item_id_index(plan_id)
+            if exact_plan_index is not None:
+                return self.remaining_plan_items.pop(exact_plan_index), "matched_by_plan_id"
         exact_index = self._matching_plan_item_index(qtype, difficulty, topic)
         if exact_index is not None:
-            self.remaining_plan_items.pop(exact_index)
-            return
+            return self.remaining_plan_items.pop(exact_index), "matched_by_shape"
+        return None, ""
 
     def _matching_plan_item_index(self, qtype: str, difficulty: str, topic: str) -> int | None:
         return next(
@@ -152,6 +183,35 @@ class GenerationQuotaTracker:
                 and item.topic_id == topic
             ),
             None,
+        )
+
+    def _plan_item_id_index(self, plan_id: str) -> int | None:
+        return next(
+            (
+                index
+                for index, item in enumerate(self.remaining_plan_items)
+                if item.plan_id == plan_id
+            ),
+            None,
+        )
+
+    def _plan_item_by_id(self, plan_id: str) -> QuestionPlanItem | None:
+        index = self._plan_item_id_index(plan_id)
+        if index is None:
+            return None
+        return self.remaining_plan_items[index]
+
+    @staticmethod
+    def _plan_item_matches(
+        item: QuestionPlanItem,
+        qtype: str,
+        difficulty: str,
+        topic: str,
+    ) -> bool:
+        return (
+            item.question_type == qtype
+            and item.difficulty == difficulty
+            and item.topic_id == topic
         )
 
 
@@ -275,21 +335,31 @@ class GenerationWorker(QThread):
                             q.metadata["source_refs"] = source_refs
                         errors = q.validate()
                         if not errors:
+                            plan_id = _normalize_plan_id(qdata.get("plan_id"))
                             quota_reason = quotas.rejection_reason(
                                 q.type.value,
                                 q.difficulty.value,
                                 topic_value(q.topic),
+                                plan_id,
                             )
                             if quota_reason:
                                 rejected += 1
                                 _record_rejection(rejection_reasons, quota_reason)
                                 debug(f"Skipping generated question: {quota_reason}")
                                 continue
-                            quotas.accept(
+                            plan_item, plan_match_status = quotas.accept(
                                 q.type.value,
                                 q.difficulty.value,
                                 topic_value(q.topic),
+                                plan_id,
                             )
+                            if plan_item is not None:
+                                q.metadata["plan_id"] = plan_item.plan_id
+                                q.metadata["plan_topic_id"] = plan_item.topic_id
+                                q.metadata["plan_topic_title"] = plan_item.topic_title
+                                q.metadata["target_skill"] = plan_item.target_skill
+                            if plan_match_status:
+                                q.metadata["plan_match_status"] = plan_match_status
                             batch_questions.append(q)
                         else:
                             rejected += 1
@@ -612,6 +682,10 @@ def _rejection_reason_key(reason: str) -> str:
     if not normalized:
         return "unknown rejection"
     return normalized
+
+
+def _normalize_plan_id(value) -> str:
+    return str(value or "").strip()
 
 
 def _normalize_matching_option_ids(qdata: dict) -> dict:

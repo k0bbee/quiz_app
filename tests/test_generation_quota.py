@@ -313,6 +313,72 @@ class GenerationQuotaTests(unittest.TestCase):
             },
         )
 
+    def test_worker_records_explicit_plan_id_match_on_generated_question(self):
+        qdata = raw_question("multiple_choice", "medium", "cache", 1)
+        qdata["plan_id"] = "plan-001"
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 100},
+        )
+        worker = GenerationWorker(
+            SequenceClient([{"questions": [qdata]}]),
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        batches = []
+        errors = []
+        worker.batch_done.connect(batches.append)
+        worker.error.connect(errors.append)
+
+        worker.run()
+
+        self.assertEqual([], errors)
+        question = batches[0][0]
+        self.assertEqual("plan-001", question.metadata["plan_id"])
+        self.assertEqual("matched_by_plan_id", question.metadata["plan_match_status"])
+        self.assertEqual("definition", question.metadata["target_skill"])
+
+    def test_worker_records_shape_match_when_model_omits_plan_id(self):
+        qdata = raw_question("multiple_choice", "medium", "cache", 1)
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 100},
+        )
+        worker = GenerationWorker(
+            SequenceClient([{"questions": [qdata]}]),
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        batches = []
+        errors = []
+        worker.batch_done.connect(batches.append)
+        worker.error.connect(errors.append)
+
+        worker.run()
+
+        self.assertEqual([], errors)
+        question = batches[0][0]
+        self.assertEqual("plan-001", question.metadata["plan_id"])
+        self.assertEqual("matched_by_shape", question.metadata["plan_match_status"])
+
     def test_pending_plan_summary_is_limited_for_readable_progress(self):
         config = GenerationConfig(
             question_type_weights={

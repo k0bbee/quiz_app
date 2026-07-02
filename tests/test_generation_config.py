@@ -118,6 +118,8 @@ class GenerationConfigTests(unittest.TestCase):
         )
 
         self.assertIn("Question plan slots", prompt)
+        self.assertIn('"plan_id": "plan-001"', prompt)
+        self.assertIn("Each returned question for a listed slot MUST include that exact plan_id", prompt)
         self.assertIn("plan-001", prompt)
         self.assertIn("topic=cache", prompt)
         self.assertIn("type=multiple_choice", prompt)
