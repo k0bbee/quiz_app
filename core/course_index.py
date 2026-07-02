@@ -79,6 +79,8 @@ class SourceChunk:
             "source_file": self.source_file,
             "page_or_slide": self.page_or_slide,
             "heading": self.heading,
+            "excerpt": _ref_excerpt(self.text),
+            "content_hash": self.content_hash[:12],
         }
 
     @classmethod
@@ -336,6 +338,14 @@ def _source_chunk_block(chunk: SourceChunk, term_set: set[str], budget: int) -> 
     if len(text) <= body_budget:
         return f"{heading}{text}"
     return f"{heading}{_focused_excerpt(text, term_set, body_budget)}"
+
+
+def _ref_excerpt(text: str, limit: int = 320) -> str:
+    """Return a compact source snippet suitable for persisted source_refs."""
+    clean = " ".join(str(text or "").split())
+    if len(clean) <= limit:
+        return clean
+    return clean[:limit].rstrip() + "…"
 
 
 def _project_payload(project: CourseProject) -> str:

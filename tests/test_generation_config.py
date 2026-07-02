@@ -90,6 +90,18 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn('"correct_answer": ["item_1", "item_2"', prompt)
         self.assertIn("stable IDs", prompt)
 
+    def test_prompt_source_refs_schema_mentions_excerpt_and_content_hash(self):
+        prompt = PromptBuilder.build_user_prompt(
+            "## Evidence source-0000 — io.pdf page 1\nDMA transfers directly between device and memory.",
+            ["io"],
+            count=1,
+        )
+
+        self.assertIn('"excerpt":', PromptBuilder.SYSTEM_PROMPT)
+        self.assertIn('"content_hash":', PromptBuilder.SYSTEM_PROMPT)
+        self.assertIn('"excerpt":', prompt)
+        self.assertIn('"content_hash":', prompt)
+
     def test_prompt_marks_selected_topics_as_hard_generation_boundary(self):
         prompt = PromptBuilder.build_user_prompt(
             "## Input Output Improvements\nPolling, interrupts, buffers, and DMA.",
@@ -370,6 +382,8 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual("source-0000", refs[0]["chunk_id"])
         self.assertEqual("io.pdf", refs[0]["source_file"])
         self.assertEqual(1, refs[0]["page_or_slide"])
+        self.assertIn("DMA transfers directly", refs[0]["excerpt"])
+        self.assertRegex(refs[0]["content_hash"], r"^[0-9a-f]{12}$")
         self.assertIn("source-0000", client.prompt)
 
     def test_worker_falls_back_to_plan_slot_source_refs_per_topic(self):
@@ -583,7 +597,10 @@ class GenerationConfigTests(unittest.TestCase):
         worker.run()
 
         question = batches[0][0]
-        self.assertEqual("source-0000", question.metadata["source_refs"][0]["chunk_id"])
+        ref = question.metadata["source_refs"][0]
+        self.assertEqual("source-0000", ref["chunk_id"])
+        self.assertIn("Cache lines and cache mapping", ref["excerpt"])
+        self.assertRegex(ref["content_hash"], r"^[0-9a-f]{12}$")
         self.assertEqual("valid_model_ref", question.metadata["source_ref_status"])
 
     def test_worker_replaces_forged_model_source_ref_with_plan_evidence(self):

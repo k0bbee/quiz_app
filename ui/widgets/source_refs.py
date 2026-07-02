@@ -33,4 +33,14 @@ def _source_ref_lines(source_refs) -> list[str]:
             parts.append(heading)
         if parts:
             lines.append(f"{index}. " + " · ".join(parts))
+            excerpt = _compact_excerpt(ref.get("excerpt", ""))
+            if excerpt:
+                lines.append(f"   Excerpt: {excerpt}")
     return lines
+
+
+def _compact_excerpt(value, limit: int = 120) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"

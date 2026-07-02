@@ -981,5 +981,14 @@ def _sanitize_source_ref(ref) -> dict:
         "source_file": source_file,
         "page_or_slide": page_or_slide,
         "heading": str(ref.get("heading", "") or "").strip(),
+        "excerpt": _compact_source_excerpt(ref.get("excerpt", "")),
+        "content_hash": str(ref.get("content_hash", "") or "").strip(),
     }
     return {key: value for key, value in clean.items() if value not in ("", None)}
+
+
+def _compact_source_excerpt(value, limit: int = 320) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "…"
