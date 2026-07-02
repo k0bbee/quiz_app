@@ -209,6 +209,18 @@ class GenerationConfigTests(unittest.TestCase):
 
         self.assertIs(worker.generation_config, config)
 
+    def test_worker_uses_single_plan_slot_request_for_live_generation(self):
+        worker = GenerationWorker(
+            LLMClient(api_key="", base_url="local-agent://auto", model="codex"),
+            course_content="content",
+            topics=["cache"],
+            count=12,
+            difficulty="mixed",
+        )
+
+        self.assertEqual(1, worker._accept_target_count(12))
+        self.assertEqual(1, worker._candidate_batch_count(1))
+
     def test_worker_records_source_course_metadata_on_generated_questions(self):
         class FakeClient:
             model = "test-model"
@@ -1100,6 +1112,19 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("正在准备课程上下文", log_text)
         self.assertIn("本批接受 2 道，拒绝 1 道", log_text)
         self.assertEqual("generationProgressLog", dialog.generation_log.objectName())
+
+    def test_generation_status_localizes_single_question_request_progress(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+
+        message = dialog._display_progress_message(
+            "Generating question 3/10... (attempt 4/30; requesting 1 candidate)"
+        )
+
+        self.assertIn("正在生成第 3/10 题", message)
 
     def test_worker_rejects_choice_when_stem_leaks_correct_answer_keyword(self):
         worker = GenerationWorker(

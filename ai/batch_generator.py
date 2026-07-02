@@ -18,8 +18,8 @@ from models.question import Question
 from utils.constants import QuestionType, Difficulty, topic_alias_values, topic_label, topic_value
 
 
-ACCEPT_TARGET_BATCH_SIZE = 5
-MAX_CANDIDATE_BATCH_SIZE = 8
+ACCEPT_TARGET_BATCH_SIZE = 1
+MAX_CANDIDATE_BATCH_SIZE = 3
 JSON_RECOVERY_BATCH_SIZE = 3
 GENERATION_CONTEXT_MAX_CHARS = 12000
 
@@ -309,10 +309,10 @@ class GenerationWorker(QThread):
                 candidate_count = self._candidate_batch_count(batch_count)
                 plan_summary = quotas.pending_plan_summary(candidate_count)
                 self.progress.emit(
-                    f"Generating {self.count} questions... "
-                    f"(batch {attempts}/{max_attempts}; "
-                    f"requesting {candidate_count} candidates; "
-                    f"{len(all_questions)}/{self.count} accepted)"
+                    f"Generating question {len(all_questions) + 1}/{self.count}... "
+                    f"(attempt {attempts}/{max_attempts}; "
+                    f"requesting {candidate_count} candidate"
+                    f"{'s' if candidate_count != 1 else ''})"
                 )
                 if plan_summary:
                     self.progress.emit(f"Filling plan slots: {plan_summary}")

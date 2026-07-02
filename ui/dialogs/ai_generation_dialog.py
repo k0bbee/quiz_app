@@ -1278,6 +1278,13 @@ class AIGenerationDialog(QDialog):
                 f"本批接受 {batch_ok} 道，拒绝 {batch_bad} 道。",
                 f"Accepted {batch_ok}, rejected {batch_bad}.",
             )
+        single_question_match = re.search(r"Generating question (\d+)/(\d+)", raw)
+        if single_question_match:
+            current, total = single_question_match.groups()
+            return self.lang_manager.get_text(
+                f"正在生成第 {current}/{total} 题… 当前题通过校验后会立即显示。",
+                f"Generating question {current}/{total}... It will appear after validation.",
+            )
         generating_match = re.search(r"(\d+)/(\d+) accepted", raw)
         if raw.startswith("Generating ") and generating_match:
             done, total = generating_match.groups()
