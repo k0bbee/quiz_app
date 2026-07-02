@@ -1481,6 +1481,55 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(before, dialog.build_exam_plan().to_dict())
         self.assertIn("invented topic", dialog.status_label.text())
 
+    def test_course_profile_legacy_topic_names_are_migrated_before_apply(self):
+        from models.course_project import CourseTopic
+
+        io_topic = CourseTopic(
+            topic_id="input_output_improvements",
+            title="Input Output Improvements",
+            aliases=["input output improvements", "I/O 改进"],
+        )
+        vm_topic = CourseTopic(
+            topic_id="virtual_memory_address_translation_and_page_replacement",
+            title="Virtual Memory Address Translation and Page Replacement",
+        )
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=[io_topic, vm_topic],
+        )
+        course = SimpleNamespace(
+            topics=[io_topic, vm_topic],
+            generation_profile={
+                "selected_topics": [
+                    "input output improvements",
+                    "Virtual Memory Address Translation and Page Replacement",
+                ],
+                "topic_weights": {
+                    "input output improvements": 70,
+                    "Virtual Memory Address Translation and Page Replacement": 30,
+                },
+            },
+        )
+
+        applied = dialog.configure_from_course_profile(course)
+
+        self.assertTrue(applied)
+        plan = dialog.build_exam_plan()
+        self.assertEqual(
+            (
+                "input_output_improvements",
+                "virtual_memory_address_translation_and_page_replacement",
+            ),
+            plan.selected_topics,
+        )
+        self.assertEqual(70, plan.topic_weights["input_output_improvements"])
+        self.assertEqual(
+            30,
+            plan.topic_weights["virtual_memory_address_translation_and_page_replacement"],
+        )
+        self.assertNotIn("无效", dialog.status_label.text())
+
     def test_question_set_history_overrides_course_profile_on_regeneration(self):
         dialog = AIGenerationDialog(
             "course content",

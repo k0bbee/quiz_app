@@ -13,7 +13,7 @@ from collections import Counter
 
 from PyQt6.QtCore import Qt, QTimer
 
-from utils.constants import topic_label, topic_value
+from utils.constants import topic_alias_values, topic_label, topic_value
 from core.app_errors import coerce_app_error, format_app_error
 from core.language_manager import LanguageManager
 from ai.llm_client import LLMClient
@@ -710,7 +710,9 @@ class AIGenerationDialog(QDialog):
         if not profile:
             return False
         try:
-            patch = ExamPlanPatch.from_mapping(profile)
+            patch = ExamPlanPatch.from_mapping(
+                self._migrate_course_profile_topic_keys(profile, course_project)
+            )
             plan = apply_exam_plan_patch(
                 self.build_exam_plan(),
                 patch,
@@ -746,6 +748,58 @@ class AIGenerationDialog(QDialog):
         self.status_label.style().unpolish(self.status_label)
         self.status_label.style().polish(self.status_label)
         return True
+
+    def _migrate_course_profile_topic_keys(self, profile: dict, course_project) -> dict:
+        """Map legacy topic titles/slugs in stored course defaults to stable topic IDs."""
+        if not isinstance(profile, dict):
+            return profile
+        topic_map = self._course_topic_alias_map(course_project)
+        if not topic_map:
+            return dict(profile)
+
+        migrated = dict(profile)
+        selected_topics = migrated.get("selected_topics")
+        selected_lookup: dict[str, str] = {}
+        if isinstance(selected_topics, (list, tuple)):
+            migrated_topics: list[str] = []
+            for raw_topic in selected_topics:
+                key = self._resolve_profile_topic_key(raw_topic, topic_map)
+                migrated_topics.append(key)
+                selected_lookup[str(raw_topic).strip().lower()] = key
+            migrated["selected_topics"] = migrated_topics
+
+        topic_weights = migrated.get("topic_weights")
+        if isinstance(topic_weights, dict):
+            migrated_weights: dict[str, int] = {}
+            for raw_topic, weight in topic_weights.items():
+                raw_key = str(raw_topic).strip().lower()
+                key = selected_lookup.get(raw_key) or self._resolve_profile_topic_key(raw_topic, topic_map)
+                migrated_weights[key] = weight
+            migrated["topic_weights"] = migrated_weights
+        return migrated
+
+    def _course_topic_alias_map(self, course_project) -> dict[str, str]:
+        topics = list(getattr(course_project, "topics", None) or self.available_topics or [])
+        alias_map: dict[str, str] = {}
+        ambiguous: set[str] = set()
+        for topic in topics:
+            stable_id = topic_value(topic)
+            for alias in topic_alias_values(topic) | {topic_label(topic)}:
+                key = str(alias or "").strip().lower()
+                if not key:
+                    continue
+                previous = alias_map.get(key)
+                if previous and previous != stable_id:
+                    ambiguous.add(key)
+                    continue
+                alias_map[key] = stable_id
+        for key in ambiguous:
+            alias_map.pop(key, None)
+        return alias_map
+
+    def _resolve_profile_topic_key(self, raw_topic, topic_map: dict[str, str]) -> str:
+        key = topic_value(raw_topic)
+        return topic_map.get(str(raw_topic).strip().lower()) or topic_map.get(key) or key
 
     def _available_topic_keys(self) -> list[str]:
         return [
