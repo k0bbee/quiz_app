@@ -197,6 +197,43 @@ def retrieve_course_source_refs(
     return [chunk.to_ref() for _, chunk in scored[:limit]]
 
 
+def resolve_course_source_ref(project: CourseProject, source_ref: dict) -> dict:
+    """Resolve a stored source_ref against the current course source index.
+
+    Prefer the current chunk_id when it still exists. If the chunk_id changed
+    after re-import or source-index rebuild, recover by source_file,
+    page_or_slide, and content_hash.
+    """
+    if not isinstance(source_ref, dict):
+        return {}
+    source_chunks = _source_chunks_for_project(project)
+    if not source_chunks:
+        return {}
+
+    chunk_id = str(source_ref.get("chunk_id", "") or "").strip()
+    for chunk in source_chunks:
+        if chunk.chunk_id == chunk_id:
+            return _resolved_ref(chunk, source_ref)
+
+    for chunk in source_chunks:
+        if _source_ref_matches_chunk_identity(source_ref, chunk):
+            return _resolved_ref(chunk, source_ref)
+    return {}
+
+
+def enrich_course_source_refs(project: CourseProject, source_refs) -> list[dict]:
+    """Return source_refs enriched from the current source index when possible."""
+    if not isinstance(source_refs, list):
+        return []
+    enriched: list[dict] = []
+    for ref in source_refs:
+        if not isinstance(ref, dict):
+            continue
+        resolved = resolve_course_source_ref(project, ref)
+        enriched.append(resolved or dict(ref))
+    return enriched
+
+
 @lru_cache(maxsize=128)
 def _retrieve_cached(
     course_id: str,
@@ -490,6 +527,38 @@ def _heading_matches_any_topic(heading: str, topic_keys: set[str]) -> bool:
 
 def _source_chunks_for_project(project: CourseProject) -> list[SourceChunk]:
     return [SourceChunk.from_dict(item) for item in build_source_index(project)]
+
+
+def _resolved_ref(chunk: SourceChunk, original_ref: dict) -> dict:
+    ref = chunk.to_ref()
+    old_chunk_id = str(original_ref.get("chunk_id", "") or "").strip()
+    if old_chunk_id and old_chunk_id != chunk.chunk_id:
+        ref["resolved_from_chunk_id"] = old_chunk_id
+    return ref
+
+
+def _source_ref_matches_chunk_identity(source_ref: dict, chunk: SourceChunk) -> bool:
+    ref_hash = str(source_ref.get("content_hash", "") or "").strip().lower()
+    if not ref_hash or not chunk.content_hash.startswith(ref_hash):
+        return False
+    ref_file = _source_ref_file_name(source_ref)
+    if ref_file and ref_file != chunk.source_file.lower():
+        return False
+    ref_page = source_ref.get("page_or_slide")
+    if ref_page not in ("", None):
+        try:
+            if int(ref_page) != chunk.page_or_slide:
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
+def _source_ref_file_name(source_ref: dict) -> str:
+    source_file = str(source_ref.get("source_file", "") or "").strip().lower()
+    if not source_file:
+        return ""
+    return re.split(r"[\\/]", source_file)[-1]
 
 
 def _score_source_chunks(

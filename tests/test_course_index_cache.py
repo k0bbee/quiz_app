@@ -314,6 +314,65 @@ class CourseIndexCacheTests(unittest.TestCase):
         self.assertEqual(["io_improvements"], index[1]["topic_ids"])
         self.assertIn("DMA", index[1]["text"])
 
+    def test_resolve_course_source_ref_recovers_when_chunk_id_changes(self):
+        project = CourseProject(
+            course_id="course-source-resolve",
+            title="Systems",
+            source_folder="",
+            summary_markdown="## I/O\nDMA transfers reduce CPU involvement.",
+            summary_path="",
+            topics=[
+                CourseTopic(
+                    topic_id="io_improvements",
+                    title="Input Output Improvements",
+                    keywords=["DMA"],
+                    source_files=["io.pdf"],
+                )
+            ],
+            documents=[
+                {
+                    "path": "io.pdf",
+                    "title": "I/O lecture",
+                    "extension": ".pdf",
+                    "pages": ["DMA transfers data directly between device and memory."],
+                }
+            ],
+            created_at="2026-07-02T00:00:00+00:00",
+            updated_at="2026-07-02T00:00:00+00:00",
+        )
+        source_index = course_index.build_source_index(project)
+        stale_ref = {
+            "chunk_id": "source-9999",
+            "source_file": "io.pdf",
+            "page_or_slide": 1,
+            "content_hash": source_index[0]["content_hash"][:12],
+        }
+
+        resolved = course_index.resolve_course_source_ref(project, stale_ref)
+
+        self.assertEqual("source-0000", resolved["chunk_id"])
+        self.assertEqual("source-9999", resolved["resolved_from_chunk_id"])
+        self.assertIn("DMA transfers data directly", resolved["excerpt"])
+        self.assertRegex(resolved["content_hash"], r"^[0-9a-f]{12}$")
+
+    def test_enrich_course_source_refs_preserves_unresolved_refs(self):
+        project = CourseProject(
+            course_id="course-source-unresolved",
+            title="Systems",
+            source_folder="",
+            summary_markdown="## Cache\nCache lines.",
+            summary_path="",
+            topics=[],
+            documents=[],
+            created_at="2026-07-02T00:00:00+00:00",
+            updated_at="2026-07-02T00:00:00+00:00",
+        )
+        refs = [{"chunk_id": "missing", "source_file": "missing.pdf"}]
+
+        enriched = course_index.enrich_course_source_refs(project, refs)
+
+        self.assertEqual(refs, enriched)
+
     def test_retrieval_context_includes_source_chunk_references(self):
         project = CourseProject(
             course_id="course-source-context",

@@ -4,7 +4,28 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from core.course_index import enrich_course_source_refs
 from models.question_set import SetManager
+
+
+def backfill_source_refs_from_course(question_bank, course_project) -> int:
+    """Enrich stored question source_refs from a course project's source index."""
+    course_id = str(getattr(course_project, "course_id", "") or "").strip()
+    changed = 0
+    for question in question_bank.load_all():
+        metadata = dict(question.metadata or {})
+        question_course_id = str(metadata.get("course_id", "") or "").strip()
+        if question_course_id and course_id and question_course_id != course_id:
+            continue
+        source_refs = metadata.get("source_refs", [])
+        enriched = enrich_course_source_refs(course_project, source_refs)
+        if enriched == source_refs:
+            continue
+        metadata["source_refs"] = enriched
+        question.metadata = metadata
+        if question_bank.save(question):
+            changed += 1
+    return changed
 
 
 def remove_question_from_sets(set_manager: SetManager, question_id: str, delete_empty: bool = False) -> int:
