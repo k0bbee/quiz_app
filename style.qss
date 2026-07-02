@@ -284,6 +284,7 @@ QSplitter::handle:hover {
     background-color: #3c3c3c;
 }
 
+QFrame#quizPreviewPane,
 QFrame#quizPracticeCard,
 QFrame#questionCard,
 QFrame#reviewCard,

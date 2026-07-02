@@ -11,6 +11,7 @@ from PyQt6.QtGui import QPalette
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QFormLayout, QGridLayout, QLabel, QListWidget, QPushButton, QSplitter
 
+from core.language_manager import LanguageManager
 from core.progress_tracker import ProgressManager
 from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
@@ -541,30 +542,40 @@ class UiThemeTests(unittest.TestCase):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
 
         card_rule = re.search(
-            r"qframe#quizpracticecard,\s*qframe#questioncard,\s*qframe#reviewcard,\s*qframe#feedbackframe\s*\{(?P<body>[^}]*)\}",
+            r"qframe#quizpreviewpane,\s*qframe#quizpracticecard,\s*qframe#questioncard,\s*qframe#reviewcard,\s*qframe#feedbackframe\s*\{(?P<body>[^}]*)\}",
             qss,
             flags=re.DOTALL,
         )
         self.assertIsNotNone(card_rule)
         self.assertRegex(card_rule.group("body"), r"border-radius:\s*(1[6-9]|[2-9][0-9])px")
         self.assertIn("#4a4a4a", card_rule.group("body"))
+        self.assertIn("qframe#quizpreviewpane", qss)
         self.assertIn("qframe#feedbackframe", qss)
 
-    def test_quiz_screen_centers_question_answer_and_actions_in_single_practice_card(self):
+    def test_quiz_screen_uses_horizontal_practice_workspace_with_review_hidden_by_default(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             quiz = QuizScreen(
                 QuestionBank(str(Path(tmpdir) / "questions")),
                 ProgressManager(str(Path(tmpdir) / "progress")),
             )
 
+        self.assertIsInstance(quiz.practice_splitter, QSplitter)
+        self.assertEqual(Qt.Orientation.Horizontal, quiz.practice_splitter.orientation())
+        self.assertIsInstance(quiz.question_answer_splitter, QSplitter)
+        self.assertEqual(Qt.Orientation.Horizontal, quiz.question_answer_splitter.orientation())
+        self.assertEqual("quizPreviewPane", quiz.preview_pane.objectName())
+        self.assertTrue(quiz.preview_pane.isHidden())
+        self.assertEqual("整卷复查", quiz.review_toggle_btn.text())
         self.assertEqual("quizPracticeCard", quiz.practice_card.objectName())
-        self.assertLessEqual(quiz.practice_card.maximumWidth(), 860)
+        self.assertGreaterEqual(quiz.practice_card.maximumWidth(), 1100)
+        self.assertLessEqual(quiz.preview_pane.maximumWidth(), 360)
         self.assertTrue(quiz.practice_card.isAncestorOf(quiz.question_card))
         self.assertTrue(quiz.practice_card.isAncestorOf(quiz.answer_area))
         self.assertTrue(quiz.practice_card.isAncestorOf(quiz.skip_btn))
         self.assertTrue(quiz.practice_card.isAncestorOf(quiz.submit_btn))
+        self.assertTrue(quiz.practice_card.isAncestorOf(quiz.feedback_frame))
         self.assertEqual(
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
             quiz.practice_scroll.alignment(),
         )
 
@@ -649,6 +660,11 @@ class UiThemeTests(unittest.TestCase):
             progress_manager = ProgressManager(str(root / "progress"))
             question_bank = QuestionBank(str(root / "questions"))
 
+            lang_manager = LanguageManager.instance()
+            previous_lang = lang_manager.current
+            lang_manager.set_language("zh")
+            self.addCleanup(lang_manager.set_language, previous_lang)
+
             topic = TopicSelectionScreen(SetManager(str(root / "sets")), progress_manager)
             results = ResultsScreen()
             progress = ProgressDashboard(progress_manager, question_bank)
@@ -657,6 +673,11 @@ class UiThemeTests(unittest.TestCase):
 
         self.assertEqual("secondaryButton", topic.export_btn.objectName())
         self.assertEqual("secondaryButton", topic.regenerate_btn.objectName())
+        self.assertEqual("导出模拟卷", topic.export_btn.text())
+        self.assertEqual("重新生成题目", topic.regenerate_btn.text())
+        lang_manager.set_language("en")
+        self.assertEqual("Export Mock Exam", topic.export_btn.text())
+        self.assertEqual("Regenerate Questions", topic.regenerate_btn.text())
         self.assertEqual("secondaryButton", topic.rename_btn.objectName())
         self.assertEqual("primaryButton", topic.start_btn.objectName())
         self.assertFalse(hasattr(topic, "back_btn"))

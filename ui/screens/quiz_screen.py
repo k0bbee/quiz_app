@@ -3,7 +3,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QProgressBar, QFrame, QScrollArea, QMessageBox,
-    QListWidget, QListWidgetItem
+    QListWidget, QListWidgetItem, QSplitter
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
@@ -74,6 +74,14 @@ class QuizScreen(QWidget):
 
         info_row.addStretch()
 
+        self.review_toggle_btn = QPushButton(
+            self.lang_manager.get_text("整卷复查", "Review Paper")
+        )
+        self.review_toggle_btn.setObjectName("secondaryButton")
+        self.review_toggle_btn.setMinimumWidth(96)
+        self.review_toggle_btn.clicked.connect(self._toggle_review_panel)
+        info_row.addWidget(self.review_toggle_btn)
+
         self.lang_btn = QPushButton(
             "English" if self.lang_manager.current == "zh" else "中文"
         )
@@ -104,16 +112,30 @@ class QuizScreen(QWidget):
         self.practice_scroll.setWidgetResizable(True)
         self.practice_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.practice_scroll.setAlignment(
-            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
 
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(0, 8, 0, 8)
 
+        self.practice_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.practice_splitter.setObjectName("quizPracticeSplitter")
+        self.practice_splitter.setChildrenCollapsible(False)
+        self.practice_splitter.setHandleWidth(8)
+
+        self.preview_pane = QFrame()
+        self.preview_pane.setObjectName("quizPreviewPane")
+        self.preview_pane.setMinimumWidth(240)
+        self.preview_pane.setMaximumWidth(340)
+        preview_layout = QVBoxLayout(self.preview_pane)
+        preview_layout.setContentsMargins(14, 14, 14, 14)
+        preview_layout.setSpacing(10)
+
         self.practice_card = QFrame()
         self.practice_card.setObjectName("quizPracticeCard")
-        self.practice_card.setMaximumWidth(860)
+        self.practice_card.setMinimumWidth(560)
+        self.practice_card.setMaximumWidth(1180)
         practice_layout = QVBoxLayout(self.practice_card)
         practice_layout.setContentsMargins(16, 16, 16, 16)
         practice_layout.setSpacing(12)
@@ -126,30 +148,79 @@ class QuizScreen(QWidget):
         )
         self.question_preview_label.setObjectName("sectionTitle")
         nav_header.addWidget(self.question_preview_label)
-        nav_header.addStretch()
 
         self.question_filter_combo = WheelSafeComboBox()
         self.question_filter_combo.setObjectName("quizQuestionFilterCombo")
-        self.question_filter_combo.setMinimumWidth(150)
+        self.question_filter_combo.setMinimumWidth(130)
         self.question_filter_combo.currentIndexChanged.connect(self._refresh_question_nav)
         nav_header.addWidget(self.question_filter_combo)
-        practice_layout.addLayout(nav_header)
+        preview_layout.addLayout(nav_header)
 
         self.question_nav_list = QListWidget()
         self.question_nav_list.setObjectName("quizQuestionNavList")
-        self.question_nav_list.setMaximumHeight(112)
         self.question_nav_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.question_nav_list.currentItemChanged.connect(self._on_nav_item_selected)
-        practice_layout.addWidget(self.question_nav_list)
+        preview_layout.addWidget(self.question_nav_list, 1)
 
-        # Question card
+        self.question_answer_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.question_answer_splitter.setObjectName("quizQuestionAnswerSplitter")
+        self.question_answer_splitter.setChildrenCollapsible(False)
+        self.question_answer_splitter.setHandleWidth(8)
+
+        self.question_pane = QWidget()
+        question_layout = QVBoxLayout(self.question_pane)
+        question_layout.setContentsMargins(0, 0, 4, 0)
+        question_layout.setSpacing(10)
+
         self.question_card = QuestionCard()
-        practice_layout.addWidget(self.question_card)
+        question_layout.addWidget(self.question_card)
+        question_layout.addStretch()
 
-        # Answer area
+        self.answer_pane = QWidget()
+        answer_layout = QVBoxLayout(self.answer_pane)
+        answer_layout.setContentsMargins(4, 0, 0, 0)
+        answer_layout.setSpacing(10)
+
         self.answer_area = AnswerArea()
         self.answer_area.answer_submitted.connect(lambda _answer: self._update_submit_enabled())
-        practice_layout.addWidget(self.answer_area)
+        answer_layout.addWidget(self.answer_area)
+        answer_layout.addStretch()
+
+        self.question_answer_splitter.addWidget(self.question_pane)
+        self.question_answer_splitter.addWidget(self.answer_pane)
+        self.question_answer_splitter.setStretchFactor(0, 1)
+        self.question_answer_splitter.setStretchFactor(1, 1)
+        self.question_answer_splitter.setSizes([560, 520])
+        practice_layout.addWidget(self.question_answer_splitter, 1)
+
+        # === Feedback frame (shown after submit, inside the main scroll content) ===
+        self.feedback_frame = QFrame()
+        self.feedback_frame.setObjectName("feedbackFrame")
+        self.feedback_frame.setFrameStyle(QFrame.Shape.StyledPanel | QFrame.Shadow.Raised)
+        fb_layout = QVBoxLayout(self.feedback_frame)
+
+        self.correct_indicator = QLabel()
+        self.correct_indicator.setObjectName("correctIndicator")
+        self.correct_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.correct_indicator.setProperty("answerState", "")
+        fb_layout.addWidget(self.correct_indicator)
+
+        self.explanation_label = QLabel()
+        self.explanation_label.setObjectName("quizExplanationLabel")
+        self.explanation_label.setWordWrap(True)
+        fb_layout.addWidget(self.explanation_label)
+
+        next_btn_layout = QHBoxLayout()
+        next_btn_layout.addStretch()
+        self.next_btn = QPushButton(self.lang_manager.get_text("下一题", "Next"))
+        self.next_btn.setObjectName("primaryButton")
+        self.next_btn.setMinimumHeight(36)
+        self.next_btn.clicked.connect(self._next_question)
+        next_btn_layout.addWidget(self.next_btn)
+        fb_layout.addLayout(next_btn_layout)
+
+        self.feedback_frame.hide()
+        practice_layout.addWidget(self.feedback_frame)
 
         # === Action buttons ===
         action_layout = QHBoxLayout()
@@ -204,41 +275,17 @@ class QuizScreen(QWidget):
         action_layout.addWidget(self.submit_btn)
 
         practice_layout.addLayout(action_layout)
-        scroll_layout.addWidget(self.practice_card, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.practice_splitter.addWidget(self.preview_pane)
+        self.practice_splitter.addWidget(self.practice_card)
+        self.practice_splitter.setStretchFactor(0, 0)
+        self.practice_splitter.setStretchFactor(1, 1)
+        self.practice_splitter.setSizes([280, 860])
+        self.preview_pane.hide()
+        scroll_layout.addWidget(self.practice_splitter)
         scroll_layout.addStretch()
 
         self.practice_scroll.setWidget(scroll_content)
         layout.addWidget(self.practice_scroll, 1)
-
-        # === Feedback frame (shown after submit) ===
-        self.feedback_frame = QFrame()
-        self.feedback_frame.setObjectName("feedbackFrame")
-        self.feedback_frame.setFrameStyle(QFrame.Shape.StyledPanel | QFrame.Shadow.Raised)
-        self.feedback_frame.setMaximumWidth(750)
-        fb_layout = QVBoxLayout(self.feedback_frame)
-
-        self.correct_indicator = QLabel()
-        self.correct_indicator.setObjectName("correctIndicator")
-        self.correct_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.correct_indicator.setProperty("answerState", "")
-        fb_layout.addWidget(self.correct_indicator)
-
-        self.explanation_label = QLabel()
-        self.explanation_label.setObjectName("quizExplanationLabel")
-        self.explanation_label.setWordWrap(True)
-        fb_layout.addWidget(self.explanation_label)
-
-        next_btn_layout = QHBoxLayout()
-        next_btn_layout.addStretch()
-        self.next_btn = QPushButton(self.lang_manager.get_text("下一题", "Next"))
-        self.next_btn.setObjectName("primaryButton")
-        self.next_btn.setMinimumHeight(36)
-        self.next_btn.clicked.connect(self._next_question)
-        next_btn_layout.addWidget(self.next_btn)
-        fb_layout.addLayout(next_btn_layout)
-
-        self.feedback_frame.hide()
-        layout.addWidget(self.feedback_frame)
 
     def _setup_shortcuts(self):
         """Register keyboard shortcuts for fast practice."""
@@ -655,6 +702,19 @@ class QuizScreen(QWidget):
         self.session.set_language(new_lang)
         self.lang_manager.set_language(new_lang)
 
+    def _toggle_review_panel(self):
+        """Show or hide the full-paper review panel on demand."""
+        should_show = self.preview_pane.isHidden()
+        self.preview_pane.setVisible(should_show)
+        self._refresh_review_toggle_text()
+
+    def _refresh_review_toggle_text(self):
+        """Keep the review toggle label aligned with panel state and language."""
+        if getattr(self, "preview_pane", None) is not None and not self.preview_pane.isHidden():
+            self.review_toggle_btn.setText(self.lang_manager.get_text("收起复查", "Hide Review"))
+        else:
+            self.review_toggle_btn.setText(self.lang_manager.get_text("整卷复查", "Review Paper"))
+
     def confirm_exit(self) -> bool:
         """Ask whether the current quiz can be left, saving partial progress if needed."""
         if self.session.state == QuizState.COMPLETED:
@@ -703,6 +763,7 @@ class QuizScreen(QWidget):
     def _on_language_changed(self, lang):
         """Update all UI text when language changes."""
         self.lang_btn.setText("English" if lang == "zh" else "中文")
+        self._refresh_review_toggle_text()
         self._refresh_mark_review_state()
         self._refresh_unsure_state()
         self.skip_btn.setText(self.lang_manager.get_text("跳过", "Skip"))

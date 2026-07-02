@@ -458,18 +458,18 @@ class MainWindow(QMainWindow):
         gm = self.lang_manager.get_text
         question_set = self.set_manager.get(set_id)
         if not question_set:
-            QMessageBox.warning(self, gm("Error", "Error"), gm("Question set not found.", "Question set not found."))
+            QMessageBox.warning(self, gm("错误", "Error"), gm("未找到题目集。", "Question set not found."))
             return
 
         questions = self.question_bank.get_many(question_set.questions)
         if not questions:
-            QMessageBox.warning(self, gm("Error", "Error"), gm("No questions found for this set.", "No questions found for this set."))
+            QMessageBox.warning(self, gm("错误", "Error"), gm("未找到该题目集的题目。", "No questions found for this set."))
             return
 
         default_name = f"{question_set.set_id}_mock_exam.md"
         filepath, _ = QFileDialog.getSaveFileName(
             self,
-            gm("Export Mock Exam", "Export Mock Exam"),
+            gm("导出模拟卷", "Export Mock Exam"),
             default_name,
             "Markdown Files (*.md);;All Files (*)",
         )
@@ -487,13 +487,13 @@ class MainWindow(QMainWindow):
                 include_answers=True,
             )
         except OSError as exc:
-            QMessageBox.critical(self, gm("Export Failed", "Export Failed"), str(exc))
+            QMessageBox.critical(self, gm("导出失败", "Export Failed"), str(exc))
             return
 
         QMessageBox.information(
             self,
-            gm("Export Complete", "Export Complete"),
-            gm(f"Mock exam exported to:\n{written}", f"Mock exam exported to:\n{written}"),
+            gm("导出完成", "Export Complete"),
+            gm(f"模拟卷已导出到:\n{written}", f"Mock exam exported to:\n{written}"),
         )
 
     def _on_export_mock_exams(self, set_ids: list[str]):
@@ -508,7 +508,7 @@ class MainWindow(QMainWindow):
 
         folder = QFileDialog.getExistingDirectory(
             self,
-            gm("Export Mock Exams", "Export Mock Exams"),
+            gm("批量导出模拟卷", "Export Mock Exams"),
         )
         if not folder:
             return
@@ -549,13 +549,13 @@ class MainWindow(QMainWindow):
             extra = "" if len(written) <= 5 else gm(f"\n等 {len(written)} 份文件", f"\nand {len(written)} files total")
             QMessageBox.information(
                 self,
-                gm("Export Complete", "Export Complete"),
+                gm("导出完成", "Export Complete"),
                 gm(f"已导出模拟卷:\n{preview}{extra}", f"Mock exams exported:\n{preview}{extra}"),
             )
         if failures:
             QMessageBox.warning(
                 self,
-                gm("Export Partially Failed", "Export Partially Failed"),
+                gm("部分导出失败", "Export Partially Failed"),
                 "\n".join(failures),
             )
 
