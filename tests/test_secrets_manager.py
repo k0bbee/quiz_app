@@ -9,10 +9,14 @@ from core.secrets_manager import SecretsManager
 
 
 class FakeDPAPIStore:
-    def __init__(self, value="", write_ok=True):
+    def __init__(self, value="", write_ok=True, available=True):
         self.value = value
         self.write_ok = write_ok
+        self.available = available
         self.deleted = 0
+
+    def is_available(self):
+        return self.available
 
     def get_key(self):
         return self.value
@@ -46,7 +50,7 @@ class SecretsManagerTests(unittest.TestCase):
             )
             with patch("core.secrets_manager.SETTINGS_FILE", settings_file), \
                  patch("core.secrets_manager.KEYRING_AVAILABLE", False), \
-                 patch("core.secrets_manager.DPAPI_STORE_AVAILABLE", False):
+                 patch("core.secrets_manager.DPAPI_STORE", FakeDPAPIStore(available=False)):
                 manager = SecretsManager()
 
                 location = manager.set_key("sk-session")
@@ -107,7 +111,7 @@ class SecretsManagerTests(unittest.TestCase):
             Path(settings_file).write_text(json.dumps({"ai_api_key": "legacy"}), encoding="utf-8")
             with patch("core.secrets_manager.SETTINGS_FILE", settings_file), \
                  patch("core.secrets_manager.KEYRING_AVAILABLE", False), \
-                 patch("core.secrets_manager.DPAPI_STORE_AVAILABLE", False):
+                 patch("core.secrets_manager.DPAPI_STORE", FakeDPAPIStore(available=False)):
                 manager = SecretsManager()
 
                 self.assertEqual("legacy", manager.get_key())
@@ -119,7 +123,6 @@ class SecretsManagerTests(unittest.TestCase):
             store = FakeDPAPIStore()
             with patch("core.secrets_manager.SETTINGS_FILE", settings_file), \
                  patch("core.secrets_manager.KEYRING_AVAILABLE", False), \
-                 patch("core.secrets_manager.DPAPI_STORE_AVAILABLE", True), \
                  patch("core.secrets_manager.DPAPI_STORE", store):
                 manager = SecretsManager()
 
@@ -132,6 +135,22 @@ class SecretsManagerTests(unittest.TestCase):
                 self.assertEqual("Windows DPAPI encrypted store", manager.get_storage_location())
                 saved = json.loads(Path(settings_file).read_text(encoding="utf-8"))
                 self.assertNotIn("ai_api_key", saved)
+
+    def test_dpapi_availability_is_read_from_current_store(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_file = str(Path(tmpdir) / "settings.json")
+            store = FakeDPAPIStore()
+            with patch("core.secrets_manager.SETTINGS_FILE", settings_file), \
+                 patch("core.secrets_manager.KEYRING_AVAILABLE", False), \
+                 patch("core.secrets_manager.DPAPI_STORE_AVAILABLE", False), \
+                 patch("core.secrets_manager.DPAPI_STORE", store):
+                manager = SecretsManager()
+
+                location = manager.set_key("sk-dynamic-dpapi")
+                os.environ.pop("QUIZ_APP_API_KEY", None)
+
+                self.assertEqual("Windows DPAPI encrypted store", location)
+                self.assertEqual("sk-dynamic-dpapi", manager.get_key())
 
     def test_plaintext_flag_requires_an_actual_legacy_key(self):
         with tempfile.TemporaryDirectory() as tmpdir:

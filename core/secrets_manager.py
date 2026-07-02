@@ -32,6 +32,10 @@ DPAPI_STORE = WindowsDPAPISecretStore(API_KEY_STORE_FILE)
 DPAPI_STORE_AVAILABLE = DPAPI_STORE.is_available()
 
 
+def _dpapi_store_available() -> bool:
+    return DPAPI_STORE is not None and DPAPI_STORE.is_available()
+
+
 class SecretsManager:
     """Singleton manager for API key storage and retrieval."""
 
@@ -71,7 +75,7 @@ class SecretsManager:
                 pass  # keychain read failed, fall through
 
         # 3. Windows user-bound encrypted fallback
-        if DPAPI_STORE_AVAILABLE:
+        if _dpapi_store_available():
             stored = DPAPI_STORE.get_key()
             if stored:
                 return stored
@@ -111,13 +115,13 @@ class SecretsManager:
 
         stored_in_dpapi = False
         if not key:
-            if DPAPI_STORE_AVAILABLE:
+            if _dpapi_store_available():
                 DPAPI_STORE.delete_key()
         elif stored_in_keychain:
             # Do not leave duplicate encrypted copies after keyring succeeds.
-            if DPAPI_STORE_AVAILABLE:
+            if _dpapi_store_available():
                 DPAPI_STORE.delete_key()
-        elif DPAPI_STORE_AVAILABLE:
+        elif _dpapi_store_available():
             stored_in_dpapi = DPAPI_STORE.set_key(key)
 
         # Always remove legacy plaintext material from settings.json. If the
@@ -139,7 +143,7 @@ class SecretsManager:
         return location
 
     def is_keychain_available(self) -> bool:
-        return KEYRING_AVAILABLE or DPAPI_STORE_AVAILABLE
+        return KEYRING_AVAILABLE or _dpapi_store_available()
 
     def is_plaintext_fallback(self) -> bool:
         """Check if the current key is stored in plaintext settings.json."""
@@ -162,7 +166,7 @@ class SecretsManager:
                     return "system keychain"
             except Exception:
                 pass
-        if DPAPI_STORE_AVAILABLE and DPAPI_STORE.get_key():
+        if _dpapi_store_available() and DPAPI_STORE.get_key():
             return "Windows DPAPI encrypted store"
         settings = read_json(SETTINGS_FILE) or {}
         if settings.get("ai_api_key"):
