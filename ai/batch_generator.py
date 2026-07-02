@@ -3,6 +3,7 @@ from utils.logger import debug, warning, error
 
 import threading
 import re
+from dataclasses import replace
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -26,8 +27,15 @@ GENERATION_CONTEXT_MAX_CHARS = 12000
 class GenerationQuotaTracker:
     """Track exact marginal quotas for accepted generated questions."""
 
-    def __init__(self, config: GenerationConfig, topics: list, count: int):
+    def __init__(
+        self,
+        config: GenerationConfig,
+        topics: list,
+        count: int,
+        evidence_refs_by_topic: dict[str, list[dict]] | None = None,
+    ):
         self.template = config.template
+        self.evidence_refs_by_topic = evidence_refs_by_topic or {}
         self.remaining_types = allocate_weighted_counts(
             config.normalized_type_weights(), count
         )
@@ -39,12 +47,12 @@ class GenerationQuotaTracker:
             config.normalized_topic_weights(topic_keys), count
         )
         topic_titles = {topic_value(topic): topic_label(topic) for topic in topics}
-        self.remaining_plan_items = build_question_plan(
+        self.remaining_plan_items = self._bind_plan_evidence(build_question_plan(
             config,
             topic_keys,
             count,
             topic_titles,
-        )
+        ))
 
     def rejection_reason(
         self,
@@ -155,6 +163,35 @@ class GenerationQuotaTracker:
             slots.append(f"{item.topic_id}/{item.question_type}/{item.difficulty}")
         return ", ".join(slots)
 
+    def evidence_refs_for_item(self, item: QuestionPlanItem | None) -> list[dict]:
+        if item is None:
+            return []
+        refs_by_id = {
+            str(ref.get("chunk_id") or ""): ref
+            for ref in self.evidence_refs_by_topic.get(item.topic_id, [])
+            if isinstance(ref, dict)
+        }
+        return [
+            dict(refs_by_id[chunk_id])
+            for chunk_id in item.evidence_chunk_ids
+            if chunk_id in refs_by_id
+        ]
+
+    def _bind_plan_evidence(self, items: list[QuestionPlanItem]) -> list[QuestionPlanItem]:
+        bound: list[QuestionPlanItem] = []
+        for item in items:
+            refs = self.evidence_refs_by_topic.get(item.topic_id, [])
+            evidence_chunk_ids = [
+                str(ref.get("chunk_id") or "")
+                for ref in refs
+                if isinstance(ref, dict) and str(ref.get("chunk_id") or "").strip()
+            ]
+            if evidence_chunk_ids:
+                bound.append(replace(item, evidence_chunk_ids=evidence_chunk_ids))
+            else:
+                bound.append(item)
+        return bound
+
     def _mark_plan_item_accepted(
         self,
         qtype: str,
@@ -240,6 +277,7 @@ class GenerationWorker(QThread):
         self._candidate_batch_limit: int | None = None
         self._last_json_truncation_detail: str = ""
         self._cached_source_refs: list[dict] = []
+        self._cached_source_refs_by_topic: dict[str, list[dict]] = {}
 
     def run(self):
         """Execute generation in background thread."""
@@ -250,11 +288,10 @@ class GenerationWorker(QThread):
             total_rejected = 0
             rejection_reasons: dict[str, int] = {}
             attempts = 0
-            max_attempts = max(3, (self.count // ACCEPT_TARGET_BATCH_SIZE + 1) * 3)
-            quotas = self._make_quota_tracker()
-
             # Cache context once — it doesn't change between batches
             course_context = self._build_course_context()
+            max_attempts = max(3, (self.count // ACCEPT_TARGET_BATCH_SIZE + 1) * 3)
+            quotas = self._make_quota_tracker()
 
             while len(all_questions) < self.count and not self._cancelled.is_set() and attempts < max_attempts:
                 attempts += 1
@@ -330,9 +367,6 @@ class GenerationWorker(QThread):
                         # Set AI model in metadata
                         q.metadata["ai_model"] = self.client.model
                         q.metadata.update(self._course_metadata())
-                        source_refs = self._question_source_refs(qdata)
-                        if source_refs:
-                            q.metadata["source_refs"] = source_refs
                         errors = q.validate()
                         if not errors:
                             plan_id = _normalize_plan_id(qdata.get("plan_id"))
@@ -358,8 +392,13 @@ class GenerationWorker(QThread):
                                 q.metadata["plan_topic_id"] = plan_item.topic_id
                                 q.metadata["plan_topic_title"] = plan_item.topic_title
                                 q.metadata["target_skill"] = plan_item.target_skill
+                                if plan_item.evidence_chunk_ids:
+                                    q.metadata["plan_evidence_chunk_ids"] = list(plan_item.evidence_chunk_ids)
                             if plan_match_status:
                                 q.metadata["plan_match_status"] = plan_match_status
+                            source_refs = self._question_source_refs(qdata, plan_item, quotas)
+                            if source_refs:
+                                q.metadata["source_refs"] = source_refs
                             batch_questions.append(q)
                         else:
                             rejected += 1
@@ -419,6 +458,7 @@ class GenerationWorker(QThread):
             self.generation_config,
             self.topics,
             self.count,
+            self._cached_source_refs_by_topic,
         )
 
     def _candidate_batch_count(self, accept_target: int) -> int:
@@ -494,18 +534,32 @@ class GenerationWorker(QThread):
     def _build_course_context(self) -> str:
         """Retrieve the best context for currently selected topics."""
         if self.course_project is not None:
+            topic_keys = [topic_value(t) for t in self.topics]
             self._cached_source_refs = retrieve_course_source_refs(
                 self.course_project,
-                [topic_value(t) for t in self.topics],
+                topic_keys,
             )
+            self._cached_source_refs_by_topic = {
+                topic_key: retrieve_course_source_refs(
+                    self.course_project,
+                    [topic_key],
+                )
+                for topic_key in topic_keys
+            }
             return retrieve_course_context(
                 self.course_project,
-                [topic_value(t) for t in self.topics],
+                topic_keys,
                 max_chars=GENERATION_CONTEXT_MAX_CHARS,
             )
+        self._cached_source_refs_by_topic = {}
         return self.course_content
 
-    def _question_source_refs(self, qdata: dict) -> list[dict]:
+    def _question_source_refs(
+        self,
+        qdata: dict,
+        plan_item: QuestionPlanItem | None = None,
+        quotas: GenerationQuotaTracker | None = None,
+    ) -> list[dict]:
         """Return sanitized model source refs, falling back to retrieved evidence."""
         refs = qdata.get("source_refs")
         if isinstance(refs, list):
@@ -513,6 +567,10 @@ class GenerationWorker(QThread):
             sanitized = [ref for ref in sanitized if ref]
             if sanitized:
                 return sanitized
+        if quotas is not None:
+            plan_refs = quotas.evidence_refs_for_item(plan_item)
+            if plan_refs:
+                return plan_refs[:1]
         return [dict(ref) for ref in self._cached_source_refs[:1]]
 
     def _course_metadata(self) -> dict:

@@ -23,7 +23,7 @@ from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from models.course_project import CourseProject, CourseTopic
 from models.question import Question
 from models.question_set import QuestionSet
-from utils.constants import Difficulty, QuestionType
+from utils.constants import Difficulty, QuestionType, topic_value
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -125,6 +125,28 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("type=multiple_choice", prompt)
         self.assertIn("difficulty=medium", prompt)
         self.assertIn("skill=definition", prompt)
+
+    def test_prompt_includes_plan_slot_evidence_chunk_ids_when_bound(self):
+        plan_items = [
+            QuestionPlanItem(
+                plan_id="plan-001",
+                topic_id="cache",
+                topic_title="Cache",
+                question_type="multiple_choice",
+                difficulty="medium",
+                target_skill="definition",
+                evidence_chunk_ids=["source-0000", "source-0003"],
+            )
+        ]
+
+        prompt = PromptBuilder.build_user_prompt(
+            "## Evidence source-0000 — cache.pdf page 1\nCache mapping.",
+            ["cache"],
+            count=1,
+            question_plan_items=plan_items,
+        )
+
+        self.assertIn("evidence=source-0000,source-0003", prompt)
 
     def test_prompt_context_can_use_topic_keywords_to_respect_selected_topic(self):
         content = (
@@ -349,6 +371,130 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual("io.pdf", refs[0]["source_file"])
         self.assertEqual(1, refs[0]["page_or_slide"])
         self.assertIn("source-0000", client.prompt)
+
+    def test_worker_falls_back_to_plan_slot_source_refs_per_topic(self):
+        class FakeClient:
+            model = "test-model"
+            last_error = ""
+
+            def generate_with_json(self, *_args, **_kwargs):
+                return {
+                    "questions": [
+                        {
+                            "type": "multiple_choice",
+                            "difficulty": "medium",
+                            "topic": "cache",
+                            "subtopic": "mapping",
+                            "correct_answer": "A",
+                            "bilingual": {
+                                "zh": {
+                                    "stem": "Cache?",
+                                    "options": ["A. 对", "B. 错", "C. 错", "D. 错"],
+                                    "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
+                                },
+                                "en": {
+                                    "stem": "Cache?",
+                                    "options": ["A. Right", "B. Wrong", "C. Wrong", "D. Wrong"],
+                                    "explanation": "This is a sufficiently detailed English explanation for the answer.",
+                                },
+                            },
+                        },
+                        {
+                            "type": "multiple_choice",
+                            "difficulty": "medium",
+                            "topic": "process",
+                            "subtopic": "scheduling",
+                            "correct_answer": "A",
+                            "bilingual": {
+                                "zh": {
+                                    "stem": "Process?",
+                                    "options": ["A. 对", "B. 错", "C. 错", "D. 错"],
+                                    "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
+                                },
+                                "en": {
+                                    "stem": "Process?",
+                                    "options": ["A. Right", "B. Wrong", "C. Wrong", "D. Wrong"],
+                                    "explanation": "This is a sufficiently detailed English explanation for the answer.",
+                                },
+                            },
+                        },
+                    ]
+                }
+
+        project = CourseProject(
+            course_id="course-evidence",
+            title="Systems",
+            source_folder="",
+            summary_markdown="## Cache\nCache lines.\n\n## Process\nScheduling.",
+            summary_path="",
+            topics=[
+                CourseTopic(
+                    topic_id="cache",
+                    title="Cache",
+                    keywords=["cache"],
+                    source_files=["cache.pdf"],
+                ),
+                CourseTopic(
+                    topic_id="process",
+                    title="Process",
+                    keywords=["process"],
+                    source_files=["process.pdf"],
+                ),
+            ],
+            documents=[
+                {
+                    "path": "cache.pdf",
+                    "title": "Cache lecture",
+                    "extension": ".pdf",
+                    "pages": ["Cache lines and cache mapping."],
+                },
+                {
+                    "path": "process.pdf",
+                    "title": "Process lecture",
+                    "extension": ".pdf",
+                    "pages": ["Process scheduling and ready queues."],
+                },
+            ],
+            created_at="2026-07-02T00:00:00+00:00",
+            updated_at="2026-07-02T00:00:00+00:00",
+        )
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 50, "process": 50},
+        )
+        worker = GenerationWorker(
+            FakeClient(),
+            course_content="content",
+            topics=project.topics,
+            count=2,
+            difficulty="mixed",
+            course_project=project,
+            generation_config=config,
+        )
+        batches = []
+        worker.batch_done.connect(batches.append)
+
+        worker.run()
+
+        refs_by_topic = {
+            topic_value(question.topic): question.metadata["source_refs"][0]
+            for question in batches[0]
+        }
+        self.assertEqual("source-0000", refs_by_topic["cache"]["chunk_id"])
+        self.assertEqual("cache.pdf", refs_by_topic["cache"]["source_file"])
+        self.assertEqual("source-0001", refs_by_topic["process"]["chunk_id"])
+        self.assertEqual("process.pdf", refs_by_topic["process"]["source_file"])
+        for question in batches[0]:
+            self.assertEqual(
+                [question.metadata["source_refs"][0]["chunk_id"]],
+                question.metadata["plan_evidence_chunk_ids"],
+            )
 
     def test_dialog_returns_generation_config_from_controls(self):
         dialog = AIGenerationDialog(

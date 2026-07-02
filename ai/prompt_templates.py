@@ -273,6 +273,9 @@ Selected-topic boundary:
             "Each returned question for a listed slot MUST include that exact plan_id.",
         ]
         for item in question_plan_items:
+            evidence = ""
+            if item.evidence_chunk_ids:
+                evidence = f"; evidence={','.join(item.evidence_chunk_ids)}"
             lines.append(
                 "  - "
                 f"{item.plan_id}: "
@@ -280,5 +283,6 @@ Selected-topic boundary:
                 f"type={item.question_type}; "
                 f"difficulty={item.difficulty}; "
                 f"skill={item.target_skill}"
+                f"{evidence}"
             )
         return "\n".join(lines)
