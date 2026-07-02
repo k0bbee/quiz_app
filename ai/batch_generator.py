@@ -19,7 +19,7 @@ from utils.constants import QuestionType, Difficulty, topic_alias_values, topic_
 
 
 ACCEPT_TARGET_BATCH_SIZE = 1
-MAX_CANDIDATE_BATCH_SIZE = 3
+MAX_CANDIDATE_BATCH_SIZE = 4
 JSON_RECOVERY_BATCH_SIZE = 3
 GENERATION_CONTEXT_MAX_CHARS = 12000
 
@@ -310,7 +310,8 @@ class GenerationWorker(QThread):
                 plan_summary = quotas.pending_plan_summary(candidate_count)
                 self.progress.emit(
                     f"Generating question {len(all_questions) + 1}/{self.count}... "
-                    f"(attempt {attempts}/{max_attempts}; "
+                    f"({self.count} questions total; "
+                    f"attempt {attempts}/{max_attempts}; "
                     f"requesting {candidate_count} candidate"
                     f"{'s' if candidate_count != 1 else ''})"
                 )
@@ -501,7 +502,9 @@ class GenerationWorker(QThread):
         """
         if accept_target <= 0:
             return 0
-        if accept_target <= 3:
+        if accept_target <= 1:
+            count = MAX_CANDIDATE_BATCH_SIZE
+        elif accept_target <= 3:
             count = accept_target
         else:
             count = min(

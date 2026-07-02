@@ -219,7 +219,7 @@ class GenerationConfigTests(unittest.TestCase):
         )
 
         self.assertEqual(1, worker._accept_target_count(12))
-        self.assertEqual(1, worker._candidate_batch_count(1))
+        self.assertEqual(4, worker._candidate_batch_count(1))
 
     def test_worker_records_source_course_metadata_on_generated_questions(self):
         class FakeClient:

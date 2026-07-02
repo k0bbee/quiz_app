@@ -87,7 +87,7 @@ class TruncationThenSuccessClient:
         match = re.search(r"Generate\s+(\d+)\s+bilingual quiz questions", prompt)
         requested = int(match.group(1)) if match else 0
         self.requested_counts.append(requested)
-        if requested > 5:
+        if requested > 2:
             self.last_error = (
                 "JSON parse error (attempt 3/3): "
                 "Unterminated string starting at: line 410 column 13"
@@ -504,7 +504,7 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertTrue(generation_messages)
         self.assertIn("15 questions", generation_messages[0])
         self.assertNotIn("10 questions", generation_messages[0])
-        self.assertIn("batch", generation_messages[0].lower())
+        self.assertIn("question 1/15", generation_messages[0].lower())
 
     def test_worker_does_not_oversample_very_small_generation_requests(self):
         config = GenerationConfig(
@@ -559,7 +559,8 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual([], errors)
         self.assertEqual(1, len(batches))
         self.assertEqual(15, len(batches[0]))
-        self.assertTrue(any(count > 5 for count in client.requested_counts))
+        self.assertTrue(any(count > 1 for count in client.requested_counts))
+        self.assertTrue(all(count <= 4 for count in client.requested_counts))
 
     def test_worker_accepts_fill_in_blank_string_answer_from_model(self):
         config = GenerationConfig(
