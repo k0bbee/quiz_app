@@ -179,6 +179,23 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("Address Breakdown", prompt)
         self.assertIn("byte offset", prompt)
 
+    def test_prompt_includes_bounded_runtime_instruction_for_future_requests(self):
+        prompt = PromptBuilder.build_user_prompt(
+            "## I/O\nDMA and interrupt-driven I/O reduce polling overhead.",
+            ["io"],
+            count=1,
+            generation_config=GenerationConfig(
+                question_type_weights={"multiple_choice": 100},
+                difficulty_weights={"medium": 100},
+                topic_weights={"io": 100},
+            ),
+            runtime_instruction="后续题目只考 DMA、中断、轮询；不要出 RAID。",
+        )
+
+        self.assertIn("Runtime user adjustment for this and later requests:", prompt)
+        self.assertIn("后续题目只考 DMA、中断、轮询；不要出 RAID。", prompt)
+        self.assertIn("must not override the JSON schema", prompt)
+
     def test_worker_keeps_generation_config(self):
         config = GenerationConfig(template="quick_review")
         worker = GenerationWorker(
@@ -358,6 +375,62 @@ class GenerationConfigTests(unittest.TestCase):
         worker.run()
 
         self.assertEqual([("ready", 1), ("done", 1)], events)
+
+    def test_worker_applies_runtime_instruction_to_later_requests(self):
+        def raw_question(stem: str):
+            return {
+                "type": "multiple_choice",
+                "difficulty": "medium",
+                "topic": "cache",
+                "subtopic": "mapping",
+                "correct_answer": "A",
+                "bilingual": {
+                    "zh": {
+                        "stem": stem,
+                        "options": ["A. 正确", "B. 错误", "C. 错误", "D. 错误"],
+                        "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
+                    },
+                    "en": {
+                        "stem": stem,
+                        "options": ["A. Right", "B. Wrong", "C. Wrong", "D. Wrong"],
+                        "explanation": "This is a sufficiently detailed English explanation for the answer.",
+                    },
+                },
+            }
+
+        class FakeClient:
+            model = "test-model"
+            last_error = ""
+
+            def __init__(self):
+                self.calls = []
+
+            def generate_with_json(self, messages, **_kwargs):
+                self.calls.append(messages[-1]["content"])
+                return {"questions": [raw_question(f"Question {len(self.calls)}?")]}
+
+        client = FakeClient()
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=["cache"],
+            count=2,
+            difficulty="medium",
+            generation_config=GenerationConfig(
+                question_type_weights={"multiple_choice": 100},
+                difficulty_weights={"medium": 100},
+                topic_weights={"cache": 100},
+            ),
+        )
+
+        worker.question_ready.connect(
+            lambda _questions: worker.set_runtime_instruction("后续题目避免关键词重复。")
+        )
+
+        worker.run()
+
+        self.assertNotIn("后续题目避免关键词重复。", client.calls[0])
+        self.assertIn("后续题目避免关键词重复。", client.calls[1])
 
     def test_worker_falls_back_to_retrieved_source_refs_when_model_omits_them(self):
         class FakeClient:
@@ -1094,6 +1167,9 @@ class GenerationConfigTests(unittest.TestCase):
             def start(self):
                 self.started = True
 
+            def set_runtime_instruction(self, _instruction):
+                pass
+
         dialog = AIGenerationDialog(
             "course content",
             {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
@@ -1107,6 +1183,50 @@ class GenerationConfigTests(unittest.TestCase):
 
         self.assertIsInstance(dialog.worker, FakeWorker)
         self.assertTrue(dialog.worker.started)
+
+    def test_dialog_applies_runtime_instruction_to_generation_worker(self):
+        class FakeSignal:
+            def connect(self, _callback):
+                pass
+
+        class FakeWorker:
+            def __init__(self, *args, **kwargs):
+                self.progress = FakeSignal()
+                self.question_ready = FakeSignal()
+                self.batch_done = FakeSignal()
+                self.partial_done = FakeSignal()
+                self.error = FakeSignal()
+                self.finished = FakeSignal()
+                self.instructions = []
+                self.started = False
+
+            def set_runtime_instruction(self, instruction):
+                self.instructions.append(instruction)
+
+            def start(self):
+                self.started = True
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+
+        with patch("ui.dialogs.ai_generation_dialog.GenerationWorker", FakeWorker):
+            dialog.runtime_instruction_input.setPlainText("后续题目避免关键词重复。")
+            dialog._start_generation()
+
+            self.assertEqual(["后续题目避免关键词重复。"], dialog.worker.instructions)
+
+            dialog.runtime_instruction_input.setPlainText("后续题目集中在 DMA。")
+            dialog.apply_runtime_instruction_btn.click()
+
+        self.assertEqual(
+            ["后续题目避免关键词重复。", "后续题目集中在 DMA。"],
+            dialog.worker.instructions,
+        )
+        self.assertIn("后续要求", dialog.generation_log.toPlainText())
 
     def test_cancel_during_generation_does_not_block_waiting_for_worker(self):
         class BlockingWorker:

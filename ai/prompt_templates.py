@@ -142,6 +142,7 @@ class PromptBuilder:
         generation_config: GenerationConfig | None = None,
         topic_keywords: dict[str, list[str]] | None = None,
         question_plan_items: list[QuestionPlanItem] | None = None,
+        runtime_instruction: str = "",
         max_context_chars: int = 22000,
     ) -> str:
         """Build the user prompt for question generation.
@@ -179,6 +180,7 @@ class PromptBuilder:
         difficulty_lines = "\n".join(f"  - {key}: {value}%" for key, value in difficulty_weights.items())
         topic_weight_lines = "\n".join(f"  - {key}: {value}%" for key, value in topic_weights.items())
         plan_slot_block = PromptBuilder._question_plan_block(question_plan_items)
+        runtime_instruction_block = PromptBuilder._runtime_instruction_block(runtime_instruction)
 
         prompt = f"""Generate {count} bilingual quiz questions for the following course topics:
 
@@ -200,6 +202,8 @@ Topic coverage weights:
 {topic_weight_lines}
 
 {plan_slot_block}
+
+{runtime_instruction_block}
 
 ## Course Content Reference
 
@@ -249,6 +253,7 @@ Selected-topic boundary:
         generation_config: GenerationConfig | None = None,
         topic_keywords: dict[str, list[str]] | None = None,
         question_plan_items: list[QuestionPlanItem] | None = None,
+        runtime_instruction: str = "",
     ) -> list[dict]:
         """Build the complete messages array for the LLM API call."""
         return [
@@ -261,8 +266,22 @@ Selected-topic boundary:
                 generation_config,
                 topic_keywords=topic_keywords,
                 question_plan_items=question_plan_items,
+                runtime_instruction=runtime_instruction,
             )},
         ]
+
+    @staticmethod
+    def _runtime_instruction_block(runtime_instruction: str) -> str:
+        clean = " ".join(str(runtime_instruction or "").split())
+        if not clean:
+            return ""
+        return (
+            "Runtime user adjustment for this and later requests:\n"
+            f"{clean}\n\n"
+            "This runtime adjustment may refine emphasis, wording, or exclusions, "
+            "but must not override the JSON schema, selected-topic boundary, "
+            "question plan slots, source-reference rules, or safety rules above."
+        )
 
     @staticmethod
     def _question_plan_block(question_plan_items: list[QuestionPlanItem] | None) -> str:

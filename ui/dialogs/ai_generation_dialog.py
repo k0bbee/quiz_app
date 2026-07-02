@@ -326,6 +326,35 @@ class AIGenerationDialog(QDialog):
         plan_layout.addWidget(self.plan_preview)
         right_layout.addWidget(self.plan_group)
 
+        self.runtime_instruction_group = QGroupBox(
+            self.lang_manager.get_text("后续要求", "Runtime Adjustment")
+        )
+        runtime_instruction_layout = QVBoxLayout(self.runtime_instruction_group)
+        runtime_instruction_layout.setContentsMargins(10, 10, 10, 10)
+        runtime_instruction_layout.setSpacing(8)
+        self.runtime_instruction_input = QTextEdit()
+        self.runtime_instruction_input.setObjectName("generationRuntimeInstructionInput")
+        self.runtime_instruction_input.setMaximumHeight(76)
+        self.runtime_instruction_input.setPlaceholderText(
+            self.lang_manager.get_text(
+                "生成中可追加要求；只影响后续请求，例如：后续题目集中在 DMA 和中断，避免 RAID。",
+                "Add instructions during generation; affects later requests only, e.g. focus on DMA and interrupts, avoid RAID.",
+            )
+        )
+        runtime_instruction_layout.addWidget(self.runtime_instruction_input)
+        runtime_instruction_action_row = QHBoxLayout()
+        runtime_instruction_action_row.addStretch()
+        self.apply_runtime_instruction_btn = QPushButton(
+            self.lang_manager.get_text("应用到后续题目", "Apply to Later Questions")
+        )
+        self.apply_runtime_instruction_btn.setObjectName("secondaryButton")
+        self.apply_runtime_instruction_btn.clicked.connect(
+            lambda _checked=False: self._apply_runtime_instruction_to_worker()
+        )
+        runtime_instruction_action_row.addWidget(self.apply_runtime_instruction_btn)
+        runtime_instruction_layout.addLayout(runtime_instruction_action_row)
+        right_layout.addWidget(self.runtime_instruction_group)
+
         self.generation_log_group = QGroupBox(
             self.lang_manager.get_text("生成过程", "Generation Activity")
         )
@@ -600,6 +629,18 @@ class AIGenerationDialog(QDialog):
         )
         self.generation_log_group.setTitle(
             self.lang_manager.get_text("生成过程", "Generation Activity")
+        )
+        self.runtime_instruction_group.setTitle(
+            self.lang_manager.get_text("后续要求", "Runtime Adjustment")
+        )
+        self.runtime_instruction_input.setPlaceholderText(
+            self.lang_manager.get_text(
+                "生成中可追加要求；只影响后续请求，例如：后续题目集中在 DMA 和中断，避免 RAID。",
+                "Add instructions during generation; affects later requests only, e.g. focus on DMA and interrupts, avoid RAID.",
+            )
+        )
+        self.apply_runtime_instruction_btn.setText(
+            self.lang_manager.get_text("应用到后续题目", "Apply to Later Questions")
         )
         self.generation_log.setPlaceholderText(
             self.lang_manager.get_text(
@@ -1096,6 +1137,7 @@ class AIGenerationDialog(QDialog):
         self.worker.partial_done.connect(self._on_partial_done)
         self.worker.error.connect(self._on_error)
         self.worker.finished.connect(self._on_finished)
+        self._apply_runtime_instruction_to_worker(announce=False)
         self.worker.start()
 
     def _start_retry_generation(self):
@@ -1162,6 +1204,39 @@ class AIGenerationDialog(QDialog):
     def question_set_title(self) -> str:
         """Return the optional user-supplied title for the new question set."""
         return self.set_title_input.text().strip()
+
+    def _current_runtime_instruction(self) -> str:
+        return " ".join(self.runtime_instruction_input.toPlainText().split())
+
+    def _apply_runtime_instruction_to_worker(self, announce: bool = True):
+        instruction = self._current_runtime_instruction()
+        if self.worker is not None and hasattr(self.worker, "set_runtime_instruction"):
+            self.worker.set_runtime_instruction(instruction)
+        if not announce:
+            return
+        if instruction:
+            self._append_generation_event(
+                self.lang_manager.get_text(
+                    f"后续要求已更新：{instruction}",
+                    f"Runtime adjustment updated: {instruction}",
+                )
+            )
+            self._last_generation_progress = self.lang_manager.get_text(
+                "后续要求已更新，将从下一次 AI 请求开始生效。",
+                "Runtime adjustment updated; it applies from the next AI request.",
+            )
+        else:
+            self._append_generation_event(
+                self.lang_manager.get_text(
+                    "后续要求已清空。",
+                    "Runtime adjustment cleared.",
+                )
+            )
+            self._last_generation_progress = self.lang_manager.get_text(
+                "后续要求已清空。",
+                "Runtime adjustment cleared.",
+            )
+        self._refresh_generation_status()
 
     def _on_progress(self, message: str):
         if self._generation_cancelled:

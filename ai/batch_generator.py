@@ -285,6 +285,8 @@ class GenerationWorker(QThread):
         self._cached_source_refs: list[dict] = []
         self._cached_source_refs_by_topic: dict[str, list[dict]] = {}
         self._source_ref_registry: dict[str, dict] = {}
+        self._runtime_instruction = ""
+        self._runtime_instruction_lock = threading.Lock()
 
     def run(self):
         """Execute generation in background thread."""
@@ -323,6 +325,7 @@ class GenerationWorker(QThread):
                     quotas.remaining_config(),
                     topic_keywords=self._topic_keywords(),
                     question_plan_items=quotas.pending_plan_items(candidate_count),
+                    runtime_instruction=self.runtime_instruction(),
                 )
 
                 data = self.client.generate_with_json(messages, max_retries=3)
@@ -469,6 +472,17 @@ class GenerationWorker(QThread):
     def cancel(self):
         """Signal the worker to stop."""
         self._cancelled.set()
+
+    def set_runtime_instruction(self, instruction: str) -> None:
+        """Apply a user adjustment to future LLM requests."""
+        clean = " ".join(str(instruction or "").split())
+        with self._runtime_instruction_lock:
+            self._runtime_instruction = clean
+
+    def runtime_instruction(self) -> str:
+        """Return the current user adjustment for prompt construction."""
+        with self._runtime_instruction_lock:
+            return self._runtime_instruction
 
     def _make_quota_tracker(self) -> GenerationQuotaTracker:
         return GenerationQuotaTracker(
