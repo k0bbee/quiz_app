@@ -722,6 +722,30 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertNotIn("source_refs", question.metadata)
         self.assertNotIn("plan_evidence_chunk_ids", question.metadata)
 
+    def test_worker_labels_cached_source_ref_fallback_as_global_when_no_plan_evidence(self):
+        worker = GenerationWorker(
+            llm_client=None,
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="medium",
+        )
+        worker._cached_source_refs = [
+            {
+                "chunk_id": "source-0000",
+                "source_file": "cache.pdf",
+                "page_or_slide": 1,
+                "excerpt": "Cache mapping source.",
+                "content_hash": "abc123def456",
+            }
+        ]
+
+        refs, status, invalid = worker._question_source_refs({}, plan_item=None, quotas=None)
+
+        self.assertEqual("source-0000", refs[0]["chunk_id"])
+        self.assertEqual("fallback_global_evidence", status)
+        self.assertEqual([], invalid)
+
     def test_worker_marks_valid_model_source_ref_from_current_evidence(self):
         class FakeClient:
             model = "test-model"

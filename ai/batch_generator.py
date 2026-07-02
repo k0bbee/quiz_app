@@ -645,23 +645,26 @@ class GenerationWorker(QThread):
                 if valid_refs:
                     status = "valid_model_ref" if not invalid_ref_ids else "partial_model_ref"
                     return valid_refs, status, invalid_ref_ids
-                fallback = self._fallback_source_refs(plan_item, quotas)
+                fallback, _fallback_status = self._fallback_source_refs(plan_item, quotas)
                 return fallback, "invalid_model_ref", invalid_ref_ids
-        fallback = self._fallback_source_refs(plan_item, quotas)
+        fallback, fallback_status = self._fallback_source_refs(plan_item, quotas)
         if fallback:
-            return fallback, "fallback_plan_evidence", []
+            return fallback, fallback_status, []
         return [], "", []
 
     def _fallback_source_refs(
         self,
         plan_item: QuestionPlanItem | None,
         quotas: GenerationQuotaTracker | None,
-    ) -> list[dict]:
+    ) -> tuple[list[dict], str]:
         if quotas is not None:
             plan_refs = quotas.evidence_refs_for_item(plan_item)
             if plan_refs:
-                return plan_refs[:1]
-        return [dict(ref) for ref in self._cached_source_refs[:1]]
+                return plan_refs[:1], "fallback_plan_evidence"
+        refs = [dict(ref) for ref in self._cached_source_refs[:1]]
+        if refs:
+            return refs, "fallback_global_evidence"
+        return [], ""
 
     def _validated_model_source_refs(
         self,
