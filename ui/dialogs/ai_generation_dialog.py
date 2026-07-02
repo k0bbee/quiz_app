@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QSplitter, QLineEdit
 )
 import time
+import re
 from collections import Counter
 
 from PyQt6.QtCore import Qt, QTimer
@@ -37,6 +38,8 @@ from ui.dialogs.question_review_dialog import QuestionReviewDialog
 from ai.course_context import extract_relevant_course_context
 from core.course_index import retrieve_course_context
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox, WheelSafeSlider, WheelSafeSpinBox
+
+PREVIEW_CONTEXT_MAX_CHARS = 6000
 
 
 def _compact_label_text(text: str, limit: int = 34) -> str:
@@ -451,14 +454,13 @@ class AIGenerationDialog(QDialog):
 
     def _refresh_weight_labels(self) -> None:
         """Show raw slider weights and their normalized effective percentages."""
-        groups: list[list[QSlider]] = []
         if hasattr(self, "topic_weight_sliders"):
             selected_topic_keys = set(self._selected_topic_keys())
-            groups.append([
+            self._refresh_weight_label_group([
                 slider
                 for key, slider in self.topic_weight_sliders.items()
                 if key in selected_topic_keys
-            ])
+            ], effective_only=True)
         question_sliders = [
             getattr(self, name, None)
             for name in ("mc_slider", "scenario_slider", "true_false_slider", "fill_blank_slider")
@@ -467,11 +469,8 @@ class AIGenerationDialog(QDialog):
             getattr(self, name, None)
             for name in ("easy_slider", "medium_slider", "hard_slider")
         ]
-        groups.append([slider for slider in question_sliders if slider is not None])
-        groups.append([slider for slider in difficulty_sliders if slider is not None])
-
-        for sliders in groups:
-            self._refresh_weight_label_group(sliders)
+        self._refresh_weight_label_group([slider for slider in question_sliders if slider is not None])
+        self._refresh_weight_label_group([slider for slider in difficulty_sliders if slider is not None])
 
     def _weight_topic_label(self, text: str) -> QLabel:
         label = QLabel(_compact_label_text(text, limit=34))
@@ -482,7 +481,7 @@ class AIGenerationDialog(QDialog):
         label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         return label
 
-    def _refresh_weight_label_group(self, sliders: list[QSlider]) -> None:
+    def _refresh_weight_label_group(self, sliders: list[QSlider], effective_only: bool = False) -> None:
         sliders = [slider for slider in sliders if slider in self.weight_value_labels]
         if not sliders:
             return
@@ -503,7 +502,10 @@ class AIGenerationDialog(QDialog):
         for slider in sliders:
             raw = raw_values[slider]
             effective = normalized[slider]
-            text = f"{effective}%" if raw == effective else f"{raw} ({effective}%)"
+            if effective_only:
+                text = f"{effective}%"
+            else:
+                text = f"{effective}%" if raw == effective else f"{raw} ({effective}%)"
             label = self.weight_value_labels[slider]
             label.setText(text)
             label.setToolTip(
@@ -648,6 +650,7 @@ class AIGenerationDialog(QDialog):
                 label.setVisible(visible)
         if hasattr(self, "topic_weight_empty_label"):
             self.topic_weight_empty_label.setVisible(not selected)
+        self._refresh_weight_labels()
 
     def _get_selected_topics(self) -> list:
         """Get list of selected Topic enums."""
@@ -862,20 +865,25 @@ class AIGenerationDialog(QDialog):
             context = retrieve_course_context(
                 self.course_project,
                 [topic_value(t) for t in topics],
-                max_chars=1800,
+                max_chars=PREVIEW_CONTEXT_MAX_CHARS,
             )
         else:
-            context = extract_relevant_course_context(self.course_content, topics, max_chars=1800)
+            context = extract_relevant_course_context(
+                self.course_content,
+                topics,
+                max_chars=PREVIEW_CONTEXT_MAX_CHARS,
+            )
+        context = context[:PREVIEW_CONTEXT_MAX_CHARS]
 
         if self.lang_manager.current == "zh":
             preview = (
                 f"已选择 {len(topics)} 个主题: {', '.join(topic_names)}\n"
-                f"提示上下文预览:\n\n{context[:1800]}"
+                f"课程上下文预览（最多 {PREVIEW_CONTEXT_MAX_CHARS} 字，实际生成会继续使用检索到的课程证据）:\n\n{context}"
             )
         else:
             preview = (
                 f"Selected {len(topics)} topic(s): {', '.join(topic_names)}\n"
-                f"Prompt context preview:\n\n{context[:1800]}"
+                f"Course context preview (up to {PREVIEW_CONTEXT_MAX_CHARS} chars; generation still uses retrieved course evidence):\n\n{context}"
             )
         self.prompt_preview.setPlainText(preview)
 
@@ -1100,9 +1108,56 @@ class AIGenerationDialog(QDialog):
     def _on_progress(self, message: str):
         if self._generation_cancelled:
             return
-        self._last_generation_progress = message
-        self._append_generation_event(message)
+        display_message = self._display_progress_message(message)
+        self._last_generation_progress = display_message
+        self._append_generation_event(display_message)
         self._refresh_generation_status()
+
+    def _display_progress_message(self, message: str) -> str:
+        raw = " ".join(str(message or "").split())
+        if raw.startswith("Filling plan slots:"):
+            return self.lang_manager.get_text(
+                "正在安排本批计划槽位，优先补齐未完成的题型、难度和主题分布…",
+                "Preparing this batch's plan slots to satisfy type, difficulty, and topic coverage...",
+            )
+        if raw == "Building prompt...":
+            return self.lang_manager.get_text(
+                "正在准备课程上下文与出题提示词…",
+                "Preparing course context and generation prompt...",
+            )
+        accepted_match = re.search(
+            r"Accepted (\d+) question\(s\), rejected (\d+)\. Total accepted: (\d+)/(\d+)",
+            raw,
+        )
+        if accepted_match:
+            batch_ok, batch_bad, total_ok, total = accepted_match.groups()
+            return self.lang_manager.get_text(
+                f"本批接受 {batch_ok} 道，拒绝 {batch_bad} 道；累计 {total_ok}/{total}。",
+                f"Accepted {batch_ok}, rejected {batch_bad}; total accepted {total_ok}/{total}.",
+            )
+        simple_accepted_match = re.search(
+            r"Accepted (\d+) question\(s\), rejected (\d+)\.",
+            raw,
+        )
+        if simple_accepted_match:
+            batch_ok, batch_bad = simple_accepted_match.groups()
+            return self.lang_manager.get_text(
+                f"本批接受 {batch_ok} 道，拒绝 {batch_bad} 道。",
+                f"Accepted {batch_ok}, rejected {batch_bad}.",
+            )
+        generating_match = re.search(r"(\d+)/(\d+) accepted", raw)
+        if raw.startswith("Generating ") and generating_match:
+            done, total = generating_match.groups()
+            return self.lang_manager.get_text(
+                f"正在向 AI 请求下一批候选题… 已接受 {done}/{total}。",
+                f"Requesting the next candidate batch from AI... {done}/{total} accepted.",
+            )
+        if raw.startswith("AI response looked truncated"):
+            return self.lang_manager.get_text(
+                "AI 返回可能被截断，正在自动缩小批次重试…",
+                "AI response may be truncated; retrying with a smaller batch...",
+            )
+        return raw
 
     def _reset_generation_log(self) -> None:
         self._generation_events = []

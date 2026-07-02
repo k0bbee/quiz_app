@@ -158,10 +158,15 @@ class GenerationQuotaTracker:
 
     def pending_plan_summary(self, limit: int) -> str:
         """Return a compact summary of the next plan slots for progress logs."""
-        slots = []
-        for item in self.pending_plan_items(limit):
-            slots.append(f"{item.topic_id}/{item.question_type}/{item.difficulty}")
-        return ", ".join(slots)
+        pending = self.pending_plan_items(limit)
+        if not pending:
+            return ""
+        topic_titles = []
+        for item in pending:
+            title = item.topic_title or item.topic_id
+            if title not in topic_titles:
+                topic_titles.append(title)
+        return f"{len(pending)} planned slot(s) across {', '.join(topic_titles[:3])}"
 
     def evidence_refs_for_item(self, item: QuestionPlanItem | None) -> list[dict]:
         if item is None:
@@ -715,6 +720,8 @@ class GenerationWorker(QThread):
                     options = bilingual.get(lang, {}).get("options", [])
                     if len(options) != 4:
                         return False, f"{lang} choice question must have 4 options"
+                if _choice_stem_leaks_correct_answer_keyword(bilingual, answer):
+                    return False, "answer keyword leaked in choice stem"
         elif question_type == QuestionType.FILL_IN_BLANK:
             answer = qdata.get("correct_answer")
             if not isinstance(answer, list) or not answer:
@@ -961,6 +968,78 @@ def _normalize_answer_token(value, label_to_id: dict[str, str]) -> str:
 
 def _has_option_id(option) -> bool:
     return isinstance(option, dict) and bool(str(option.get("id", "") or "").strip())
+
+
+def _choice_stem_leaks_correct_answer_keyword(bilingual: dict, answer: str) -> bool:
+    answer = str(answer or "").strip().upper()
+    if answer not in {"A", "B", "C", "D"}:
+        return False
+    for lang in ("zh", "en"):
+        content = bilingual.get(lang, {}) or {}
+        options = content.get("options", []) or []
+        option_text = _choice_option_text(options, answer)
+        if not option_text:
+            continue
+        stem_tokens = _answer_leak_tokens(content.get("stem", ""))
+        correct_tokens = _answer_leak_tokens(option_text)
+        wrong_tokens = set()
+        for index, option in enumerate(options):
+            if index == ord(answer) - ord("A"):
+                continue
+            wrong_tokens.update(_answer_leak_tokens(option))
+        leaked = [
+            token
+            for token in correct_tokens
+            if token in stem_tokens and token not in wrong_tokens
+        ]
+        if leaked:
+            return True
+    return False
+
+
+def _choice_option_text(options, answer: str) -> str:
+    if not isinstance(options, list):
+        return ""
+    index = ord(answer) - ord("A")
+    if index < 0 or index >= len(options):
+        return ""
+    return _strip_choice_prefix(_raw_option_label(options[index]))
+
+
+def _strip_choice_prefix(text: str) -> str:
+    return re.sub(r"^\s*[A-Da-d][\.\)、)]\s*", "", str(text or "")).strip()
+
+
+def _answer_leak_tokens(value) -> set[str]:
+    text = str(value or "").lower()
+    tokens: set[str] = set()
+    for token in re.findall(r"[a-z][a-z\-]{2,}", text):
+        normalized = token.strip("-")
+        if normalized not in _ANSWER_LEAK_STOPWORDS:
+            tokens.add(normalized)
+        if "-" in normalized:
+            for part in normalized.split("-"):
+                if len(part) >= 4 and part not in _ANSWER_LEAK_STOPWORDS:
+                    tokens.add(part)
+    for chunk in re.findall(r"[\u4e00-\u9fff]{2,}", text):
+        if chunk not in _ANSWER_LEAK_STOPWORDS:
+            tokens.add(chunk)
+        max_n = min(4, len(chunk))
+        for size in range(2, max_n + 1):
+            for start in range(0, len(chunk) - size + 1):
+                token = chunk[start:start + size]
+                if token not in _ANSWER_LEAK_STOPWORDS:
+                    tokens.add(token)
+    return tokens
+
+
+_ANSWER_LEAK_STOPWORDS = {
+    "the", "and", "for", "with", "method", "which", "what", "when", "where",
+    "device", "memory", "system", "process", "question", "answer", "option",
+    "statement", "correct", "right", "wrong",
+    "cpu", "io", "i/o", "方式", "系统", "设备", "内存", "以下", "哪种", "通知", "完成",
+    "同步", "直接", "存储", "数据", "工作", "正确", "错误", "说法",
+}
 
 
 def _sanitize_source_ref(ref) -> dict:

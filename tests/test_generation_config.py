@@ -890,9 +890,62 @@ class GenerationConfigTests(unittest.TestCase):
 
         dialog.refresh_weight_preview_btn.click()
 
-        self.assertEqual("100 (56%)", dialog.weight_value_labels[dialog.topic_weight_sliders["cache"]].text())
-        self.assertEqual("80 (44%)", dialog.weight_value_labels[dialog.topic_weight_sliders["process"]].text())
+        self.assertEqual("56%", dialog.weight_value_labels[dialog.topic_weight_sliders["cache"]].text())
+        self.assertEqual("44%", dialog.weight_value_labels[dialog.topic_weight_sliders["process"]].text())
         self.assertNotIn("→", dialog.weight_value_labels[dialog.topic_weight_sliders["cache"]].text())
+
+    def test_single_selected_topic_weight_shows_effective_share_not_raw_weight(self):
+        topics = [f"topic_{index}" for index in range(19)] + ["input_output_improvements"]
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=topics,
+        )
+        io_index = topics.index("input_output_improvements")
+
+        dialog.topic_list.item(io_index).setCheckState(Qt.CheckState.Checked)
+
+        label = dialog.weight_value_labels[
+            dialog.topic_weight_sliders["input_output_improvements"]
+        ]
+        self.assertEqual("100%", label.text())
+        self.assertNotEqual("5%", label.text())
+
+    def test_generation_progress_hides_internal_plan_slot_keys(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["input_output_improvements"],
+        )
+
+        dialog._on_progress(
+            "Filling plan slots: input_output_improvements/true_false/easy, "
+            "input_output_improvements/multiple_choice/medium"
+        )
+
+        status = dialog.status_label.text()
+        log_text = dialog.generation_log.toPlainText()
+        self.assertIn("正在安排", status)
+        self.assertNotIn("input_output_improvements/true_false/easy", status)
+        self.assertNotIn("input_output_improvements/true_false/easy", log_text)
+
+    def test_course_preview_keeps_more_context_for_selected_topic(self):
+        long_content = (
+            "## Input Output Improvements\n"
+            + "DMA, interrupts, buffering and I/O controller details. " * 90
+            + "deep sentinel detail about interrupt driven I/O latency."
+        )
+        dialog = AIGenerationDialog(
+            long_content,
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["Input Output Improvements"],
+        )
+
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+
+        preview = dialog.prompt_preview.toPlainText()
+        self.assertGreater(len(preview), 3000)
+        self.assertIn("deep sentinel detail", preview)
 
     def test_generation_status_keeps_latest_progress_and_elapsed_hint(self):
         dialog = AIGenerationDialog(
@@ -921,9 +974,51 @@ class GenerationConfigTests(unittest.TestCase):
         dialog._on_progress("Accepted 2 question(s), rejected 1.")
 
         log_text = dialog.generation_log.toPlainText()
-        self.assertIn("Building prompt...", log_text)
-        self.assertIn("Accepted 2 question(s), rejected 1.", log_text)
+        self.assertIn("正在准备课程上下文", log_text)
+        self.assertIn("本批接受 2 道，拒绝 1 道", log_text)
         self.assertEqual("generationProgressLog", dialog.generation_log.objectName())
+
+    def test_worker_rejects_choice_when_stem_leaks_correct_answer_keyword(self):
+        worker = GenerationWorker(
+            LLMClient(api_key="", base_url="local-agent://auto", model="codex"),
+            course_content="content",
+            topics=["input_output_improvements"],
+            count=1,
+            difficulty="medium",
+        )
+        raw = {
+            "type": "multiple_choice",
+            "difficulty": "medium",
+            "topic": "input_output_improvements",
+            "correct_answer": "C",
+            "bilingual": {
+                "zh": {
+                    "stem": "以下哪种 I/O 方式中，CPU 发送命令后继续执行其他工作，直到设备通过中断(Interrupt)通知完成？",
+                    "options": [
+                        "A. 轮询(Polling)",
+                        "B. 直接存储器访问(DMA)",
+                        "C. 中断驱动(Interrupt-driven) I/O",
+                        "D. 同步(Synchronous) I/O",
+                    ],
+                    "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
+                },
+                "en": {
+                    "stem": "Which I/O method lets the CPU continue until the device signals completion by interrupt?",
+                    "options": [
+                        "A. Polling",
+                        "B. Direct memory access",
+                        "C. Interrupt-driven I/O",
+                        "D. Synchronous I/O",
+                    ],
+                    "explanation": "This is a sufficiently detailed English explanation for why the answer is correct.",
+                },
+            },
+        }
+
+        ok, reason = worker._validate_raw_question(raw)
+
+        self.assertFalse(ok)
+        self.assertIn("answer keyword", reason)
 
     def test_local_agent_generation_start_does_not_read_persisted_api_key(self):
         class ForbiddenSecrets:

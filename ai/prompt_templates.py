@@ -24,6 +24,7 @@ class PromptBuilder:
 3. **NO Topic Labels**: Do NOT include topic/subject labels in the question stem. Write naturally without hinting at the answer. Example:
    - BAD: "【Cache Mapping】In a set-associative cache..."
    - GOOD: "In a 4-way set-associative cache with 256 sets..."
+   Also do NOT repeat the correct option's distinctive keyword in the stem. For example, do not ask "which method waits for an interrupt" when the correct option text is "interrupt-driven I/O".
 
 4. **Distractor Quality**: Wrong options must be PLAUSIBLE — partially correct but wrong on one key condition. Do NOT use obviously absurd options. Good distractors:
    - Confuse neighboring definitions or similar-looking terms.

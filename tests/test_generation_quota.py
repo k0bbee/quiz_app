@@ -300,8 +300,11 @@ class GenerationQuotaTests(unittest.TestCase):
             message for message in progress_messages if "Filling plan slots" in message
         ]
         self.assertTrue(refill_messages)
-        self.assertIn("cache/multiple_choice/easy", refill_messages[-1])
-        self.assertIn("process/true_false/hard", refill_messages[-1])
+        self.assertIn("planned slot", refill_messages[-1])
+        self.assertIn("cache", refill_messages[-1])
+        self.assertIn("process", refill_messages[-1])
+        self.assertNotIn("cache/multiple_choice/easy", refill_messages[-1])
+        self.assertNotIn("process/true_false/hard", refill_messages[-1])
         self.assertEqual(
             {
                 ("cache", "multiple_choice", "easy"),
@@ -402,7 +405,9 @@ class GenerationQuotaTests(unittest.TestCase):
 
         summary = quotas.pending_plan_summary(3)
 
-        self.assertEqual(3, summary.count("cache/multiple_choice/medium"))
+        self.assertIn("3 planned slot", summary)
+        self.assertIn("cache", summary)
+        self.assertNotIn("cache/multiple_choice/medium", summary)
 
     def test_worker_emits_partial_result_when_quota_shortfall_has_accepted_questions(self):
         repeated = {
