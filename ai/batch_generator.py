@@ -261,6 +261,7 @@ class GenerationWorker(QThread):
     """Background worker for generating questions via LLM."""
 
     progress = pyqtSignal(str)  # Status message
+    question_ready = pyqtSignal(list)  # Newly accepted Question objects for live preview
     batch_done = pyqtSignal(list)  # List of Question objects
     partial_done = pyqtSignal(list, object)  # Accepted questions plus shortfall reason
     error = pyqtSignal(object)
@@ -425,6 +426,8 @@ class GenerationWorker(QThread):
                         continue
 
                 all_questions.extend(batch_questions)
+                if batch_questions:
+                    self.question_ready.emit(batch_questions)
                 total_rejected += rejected
                 self.progress.emit(
                     f"Accepted {len(batch_questions)} question(s), rejected {rejected}. "

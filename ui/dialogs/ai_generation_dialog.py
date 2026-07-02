@@ -1091,6 +1091,7 @@ class AIGenerationDialog(QDialog):
             generation_config=generation_config,
         )
         self.worker.progress.connect(self._on_progress)
+        self.worker.question_ready.connect(self._on_question_ready)
         self.worker.batch_done.connect(self._on_batch_done)
         self.worker.partial_done.connect(self._on_partial_done)
         self.worker.error.connect(self._on_error)
@@ -1215,6 +1216,30 @@ class AIGenerationDialog(QDialog):
                 "AI response may be truncated; retrying with a smaller batch...",
             )
         return raw
+
+    def _on_question_ready(self, questions: list[Question]):
+        if self._generation_cancelled or not questions:
+            return
+        existing_ids = {question.question_id for question in self.generated_questions}
+        new_questions = [
+            question
+            for question in questions
+            if question.question_id not in existing_ids
+        ]
+        if not new_questions:
+            return
+        self.generated_questions.extend(new_questions)
+        self._append_generation_event(
+            self.lang_manager.get_text(
+                f"已生成 {len(new_questions)} 道新题，当前累计 {len(self.generated_questions)} 道。",
+                f"{len(new_questions)} new question(s) ready; {len(self.generated_questions)} total.",
+            )
+        )
+        self._last_generation_progress = self.lang_manager.get_text(
+            f"已生成 {len(self.generated_questions)} 道题，正在继续补齐…",
+            f"{len(self.generated_questions)} question(s) ready; continuing...",
+        )
+        self._refresh_generation_status()
 
     def _reset_generation_log(self) -> None:
         self._generation_events = []

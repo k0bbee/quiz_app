@@ -309,6 +309,56 @@ class GenerationConfigTests(unittest.TestCase):
             batches[0][0].metadata["source_refs"],
         )
 
+    def test_worker_emits_accepted_questions_before_final_batch_done(self):
+        class FakeClient:
+            model = "test-model"
+            last_error = ""
+
+            def generate_with_json(self, *_args, **_kwargs):
+                return {
+                    "questions": [
+                        {
+                            "type": "multiple_choice",
+                            "difficulty": "medium",
+                            "topic": "cache",
+                            "subtopic": "mapping",
+                            "correct_answer": "A",
+                            "bilingual": {
+                                "zh": {
+                                    "stem": "哪一个说法正确？",
+                                    "options": ["A. 正确", "B. 错误", "C. 错误", "D. 错误"],
+                                    "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
+                                },
+                                "en": {
+                                    "stem": "Which statement is correct?",
+                                    "options": ["A. Right", "B. Wrong", "C. Wrong", "D. Wrong"],
+                                    "explanation": "This is a sufficiently detailed English explanation for the answer.",
+                                },
+                            },
+                        }
+                    ]
+                }
+
+        worker = GenerationWorker(
+            FakeClient(),
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="medium",
+            generation_config=GenerationConfig(
+                question_type_weights={"multiple_choice": 100},
+                difficulty_weights={"medium": 100},
+                topic_weights={"cache": 100},
+            ),
+        )
+        events = []
+        worker.question_ready.connect(lambda questions: events.append(("ready", len(questions))))
+        worker.batch_done.connect(lambda questions: events.append(("done", len(questions))))
+
+        worker.run()
+
+        self.assertEqual([("ready", 1), ("done", 1)], events)
+
     def test_worker_falls_back_to_retrieved_source_refs_when_model_omits_them(self):
         class FakeClient:
             model = "test-model"
@@ -1032,6 +1082,7 @@ class GenerationConfigTests(unittest.TestCase):
         class FakeWorker:
             def __init__(self, *args, **kwargs):
                 self.progress = FakeSignal()
+                self.question_ready = FakeSignal()
                 self.batch_done = FakeSignal()
                 self.partial_done = FakeSignal()
                 self.error = FakeSignal()
@@ -1241,6 +1292,7 @@ class GenerationConfigTests(unittest.TestCase):
         class FakeWorker:
             def __init__(self, *args, **kwargs):
                 self.progress = FakeSignal()
+                self.question_ready = FakeSignal()
                 self.batch_done = FakeSignal()
                 self.partial_done = FakeSignal()
                 self.error = FakeSignal()
@@ -1328,6 +1380,7 @@ class GenerationConfigTests(unittest.TestCase):
         class FakeWorker:
             def __init__(self, *args, **kwargs):
                 self.progress = FakeSignal()
+                self.question_ready = FakeSignal()
                 self.batch_done = FakeSignal()
                 self.partial_done = FakeSignal()
                 self.error = FakeSignal()
