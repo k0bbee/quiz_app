@@ -278,6 +278,7 @@ class GenerationWorker(QThread):
         self._last_json_truncation_detail: str = ""
         self._cached_source_refs: list[dict] = []
         self._cached_source_refs_by_topic: dict[str, list[dict]] = {}
+        self._source_ref_registry: dict[str, dict] = {}
 
     def run(self):
         """Execute generation in background thread."""
@@ -396,9 +397,17 @@ class GenerationWorker(QThread):
                                     q.metadata["plan_evidence_chunk_ids"] = list(plan_item.evidence_chunk_ids)
                             if plan_match_status:
                                 q.metadata["plan_match_status"] = plan_match_status
-                            source_refs = self._question_source_refs(qdata, plan_item, quotas)
+                            source_refs, source_ref_status, invalid_ref_ids = self._question_source_refs(
+                                qdata,
+                                plan_item,
+                                quotas,
+                            )
                             if source_refs:
                                 q.metadata["source_refs"] = source_refs
+                            if source_ref_status:
+                                q.metadata["source_ref_status"] = source_ref_status
+                            if invalid_ref_ids:
+                                q.metadata["invalid_source_ref_ids"] = invalid_ref_ids
                             batch_questions.append(q)
                         else:
                             rejected += 1
@@ -546,12 +555,17 @@ class GenerationWorker(QThread):
                 )
                 for topic_key in topic_keys
             }
+            self._source_ref_registry = _source_ref_registry(
+                self._cached_source_refs,
+                self._cached_source_refs_by_topic,
+            )
             return retrieve_course_context(
                 self.course_project,
                 topic_keys,
                 max_chars=GENERATION_CONTEXT_MAX_CHARS,
             )
         self._cached_source_refs_by_topic = {}
+        self._source_ref_registry = {}
         return self.course_content
 
     def _question_source_refs(
@@ -559,19 +573,65 @@ class GenerationWorker(QThread):
         qdata: dict,
         plan_item: QuestionPlanItem | None = None,
         quotas: GenerationQuotaTracker | None = None,
-    ) -> list[dict]:
+    ) -> tuple[list[dict], str, list[str]]:
         """Return sanitized model source refs, falling back to retrieved evidence."""
         refs = qdata.get("source_refs")
         if isinstance(refs, list):
             sanitized = [_sanitize_source_ref(ref) for ref in refs]
             sanitized = [ref for ref in sanitized if ref]
             if sanitized:
-                return sanitized
+                valid_refs, invalid_ref_ids = self._validated_model_source_refs(
+                    sanitized,
+                    plan_item,
+                )
+                if valid_refs:
+                    status = "valid_model_ref" if not invalid_ref_ids else "partial_model_ref"
+                    return valid_refs, status, invalid_ref_ids
+                fallback = self._fallback_source_refs(plan_item, quotas)
+                return fallback, "invalid_model_ref", invalid_ref_ids
+        fallback = self._fallback_source_refs(plan_item, quotas)
+        if fallback:
+            return fallback, "fallback_plan_evidence", []
+        return [], "", []
+
+    def _fallback_source_refs(
+        self,
+        plan_item: QuestionPlanItem | None,
+        quotas: GenerationQuotaTracker | None,
+    ) -> list[dict]:
         if quotas is not None:
             plan_refs = quotas.evidence_refs_for_item(plan_item)
             if plan_refs:
                 return plan_refs[:1]
         return [dict(ref) for ref in self._cached_source_refs[:1]]
+
+    def _validated_model_source_refs(
+        self,
+        refs: list[dict],
+        plan_item: QuestionPlanItem | None,
+    ) -> tuple[list[dict], list[str]]:
+        if not self._source_ref_registry:
+            return refs, []
+        valid: list[dict] = []
+        invalid_ids: list[str] = []
+        allowed_chunk_ids = set(plan_item.evidence_chunk_ids if plan_item else [])
+        for ref in refs:
+            chunk_id = str(ref.get("chunk_id") or "").strip()
+            if not chunk_id:
+                invalid_ids.append("")
+                continue
+            registered = self._source_ref_registry.get(chunk_id)
+            if registered is None:
+                invalid_ids.append(chunk_id)
+                continue
+            if allowed_chunk_ids and chunk_id not in allowed_chunk_ids:
+                invalid_ids.append(chunk_id)
+                continue
+            if not _source_ref_matches_registered(ref, registered):
+                invalid_ids.append(chunk_id)
+                continue
+            valid.append(dict(registered))
+        return valid, invalid_ids
 
     def _course_metadata(self) -> dict:
         if self.course_project is None:
@@ -744,6 +804,35 @@ def _rejection_reason_key(reason: str) -> str:
 
 def _normalize_plan_id(value) -> str:
     return str(value or "").strip()
+
+
+def _source_ref_registry(refs: list[dict], refs_by_topic: dict[str, list[dict]]) -> dict[str, dict]:
+    registry: dict[str, dict] = {}
+    for ref in refs:
+        _register_source_ref(registry, ref)
+    for topic_refs in refs_by_topic.values():
+        for ref in topic_refs:
+            _register_source_ref(registry, ref)
+    return registry
+
+
+def _register_source_ref(registry: dict[str, dict], ref) -> None:
+    clean = _sanitize_source_ref(ref)
+    chunk_id = str(clean.get("chunk_id") or "").strip()
+    if chunk_id and chunk_id not in registry:
+        registry[chunk_id] = clean
+
+
+def _source_ref_matches_registered(ref: dict, registered: dict) -> bool:
+    expected_file = str(registered.get("source_file") or "").strip()
+    actual_file = str(ref.get("source_file") or "").strip()
+    if actual_file and expected_file and actual_file != expected_file:
+        return False
+    expected_page = registered.get("page_or_slide")
+    actual_page = ref.get("page_or_slide")
+    if actual_page is not None and expected_page is not None and actual_page != expected_page:
+        return False
+    return True
 
 
 def _normalize_matching_option_ids(qdata: dict) -> dict:

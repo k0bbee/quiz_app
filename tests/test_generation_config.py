@@ -496,6 +496,188 @@ class GenerationConfigTests(unittest.TestCase):
                 question.metadata["plan_evidence_chunk_ids"],
             )
 
+    def test_worker_marks_valid_model_source_ref_from_current_evidence(self):
+        class FakeClient:
+            model = "test-model"
+            last_error = ""
+
+            def generate_with_json(self, *_args, **_kwargs):
+                return {
+                    "questions": [
+                        {
+                            "type": "multiple_choice",
+                            "difficulty": "medium",
+                            "topic": "cache",
+                            "subtopic": "mapping",
+                            "correct_answer": "A",
+                            "source_refs": [
+                                {
+                                    "chunk_id": "source-0000",
+                                    "source_file": "cache.pdf",
+                                    "page_or_slide": 1,
+                                    "heading": "Cache lecture page 1",
+                                }
+                            ],
+                            "bilingual": {
+                                "zh": {
+                                    "stem": "Cache?",
+                                    "options": ["A. 对", "B. 错", "C. 错", "D. 错"],
+                                    "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
+                                },
+                                "en": {
+                                    "stem": "Cache?",
+                                    "options": ["A. Right", "B. Wrong", "C. Wrong", "D. Wrong"],
+                                    "explanation": "This is a sufficiently detailed English explanation for the answer.",
+                                },
+                            },
+                        }
+                    ]
+                }
+
+        project = CourseProject(
+            course_id="course-valid-source",
+            title="Systems",
+            source_folder="",
+            summary_markdown="## Cache\nCache lines.",
+            summary_path="",
+            topics=[
+                CourseTopic(
+                    topic_id="cache",
+                    title="Cache",
+                    keywords=["cache"],
+                    source_files=["cache.pdf"],
+                )
+            ],
+            documents=[
+                {
+                    "path": "cache.pdf",
+                    "title": "Cache lecture",
+                    "extension": ".pdf",
+                    "pages": ["Cache lines and cache mapping."],
+                }
+            ],
+            created_at="2026-07-02T00:00:00+00:00",
+            updated_at="2026-07-02T00:00:00+00:00",
+        )
+        worker = GenerationWorker(
+            FakeClient(),
+            course_content="content",
+            topics=project.topics,
+            count=1,
+            difficulty="medium",
+            course_project=project,
+            generation_config=GenerationConfig(
+                question_type_weights={
+                    "multiple_choice": 100,
+                    "scenario_choice": 0,
+                    "true_false": 0,
+                    "fill_in_blank": 0,
+                },
+                difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+                topic_weights={"cache": 100},
+            ),
+        )
+        batches = []
+        worker.batch_done.connect(batches.append)
+
+        worker.run()
+
+        question = batches[0][0]
+        self.assertEqual("source-0000", question.metadata["source_refs"][0]["chunk_id"])
+        self.assertEqual("valid_model_ref", question.metadata["source_ref_status"])
+
+    def test_worker_replaces_forged_model_source_ref_with_plan_evidence(self):
+        class FakeClient:
+            model = "test-model"
+            last_error = ""
+
+            def generate_with_json(self, *_args, **_kwargs):
+                return {
+                    "questions": [
+                        {
+                            "type": "multiple_choice",
+                            "difficulty": "medium",
+                            "topic": "cache",
+                            "subtopic": "mapping",
+                            "correct_answer": "A",
+                            "source_refs": [
+                                {
+                                    "chunk_id": "source-9999",
+                                    "source_file": "invented.pdf",
+                                    "page_or_slide": 99,
+                                    "heading": "Invented",
+                                }
+                            ],
+                            "bilingual": {
+                                "zh": {
+                                    "stem": "Cache?",
+                                    "options": ["A. 对", "B. 错", "C. 错", "D. 错"],
+                                    "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
+                                },
+                                "en": {
+                                    "stem": "Cache?",
+                                    "options": ["A. Right", "B. Wrong", "C. Wrong", "D. Wrong"],
+                                    "explanation": "This is a sufficiently detailed English explanation for the answer.",
+                                },
+                            },
+                        }
+                    ]
+                }
+
+        project = CourseProject(
+            course_id="course-invalid-source",
+            title="Systems",
+            source_folder="",
+            summary_markdown="## Cache\nCache lines.",
+            summary_path="",
+            topics=[
+                CourseTopic(
+                    topic_id="cache",
+                    title="Cache",
+                    keywords=["cache"],
+                    source_files=["cache.pdf"],
+                )
+            ],
+            documents=[
+                {
+                    "path": "cache.pdf",
+                    "title": "Cache lecture",
+                    "extension": ".pdf",
+                    "pages": ["Cache lines and cache mapping."],
+                }
+            ],
+            created_at="2026-07-02T00:00:00+00:00",
+            updated_at="2026-07-02T00:00:00+00:00",
+        )
+        worker = GenerationWorker(
+            FakeClient(),
+            course_content="content",
+            topics=project.topics,
+            count=1,
+            difficulty="medium",
+            course_project=project,
+            generation_config=GenerationConfig(
+                question_type_weights={
+                    "multiple_choice": 100,
+                    "scenario_choice": 0,
+                    "true_false": 0,
+                    "fill_in_blank": 0,
+                },
+                difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+                topic_weights={"cache": 100},
+            ),
+        )
+        batches = []
+        worker.batch_done.connect(batches.append)
+
+        worker.run()
+
+        question = batches[0][0]
+        self.assertEqual("source-0000", question.metadata["source_refs"][0]["chunk_id"])
+        self.assertEqual("cache.pdf", question.metadata["source_refs"][0]["source_file"])
+        self.assertEqual("invalid_model_ref", question.metadata["source_ref_status"])
+        self.assertEqual(["source-9999"], question.metadata["invalid_source_ref_ids"])
+
     def test_dialog_returns_generation_config_from_controls(self):
         dialog = AIGenerationDialog(
             "course content",
