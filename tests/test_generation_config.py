@@ -1165,6 +1165,22 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertNotIn("input_output_improvements/true_false/easy", status)
         self.assertNotIn("input_output_improvements/true_false/easy", log_text)
 
+    def test_generation_progress_keeps_readable_plan_slot_summary(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+
+        message = dialog._display_progress_message(
+            "Filling plan slots: 3 planned slot(s) across Cache, Process"
+        )
+
+        self.assertIn("3", message)
+        self.assertIn("Cache", message)
+        self.assertIn("Process", message)
+        self.assertNotIn("planned slot", message)
+
     def test_course_preview_keeps_more_context_for_selected_topic(self):
         long_content = (
             "## Input Output Improvements\n"

@@ -1250,6 +1250,17 @@ class AIGenerationDialog(QDialog):
     def _display_progress_message(self, message: str) -> str:
         raw = " ".join(str(message or "").split())
         if raw.startswith("Filling plan slots:"):
+            detail = raw.split(":", 1)[1].strip()
+            safe_match = re.fullmatch(
+                r"(\d+) planned slot\(s\) across ([^/]+)",
+                detail,
+            )
+            if safe_match:
+                count, topics = safe_match.groups()
+                return self.lang_manager.get_text(
+                    f"正在处理本批 {count} 个计划槽位：{topics}。",
+                    f"Processing {count} planned slot(s): {topics}.",
+                )
             return self.lang_manager.get_text(
                 "正在安排本批计划槽位，优先补齐未完成的题型、难度和主题分布…",
                 "Preparing this batch's plan slots to satisfy type, difficulty, and topic coverage...",
