@@ -314,6 +314,37 @@ class CourseIndexCacheTests(unittest.TestCase):
         self.assertEqual(["io_improvements"], index[1]["topic_ids"])
         self.assertIn("DMA", index[1]["text"])
 
+    def test_retrieve_course_source_refs_does_not_return_unrelated_fallback_chunks(self):
+        project = CourseProject(
+            course_id="course-source-unrelated",
+            title="Systems",
+            source_folder="",
+            summary_markdown="## Cache\nCache mapping.",
+            summary_path="",
+            topics=[
+                CourseTopic(
+                    topic_id="cache_mapping",
+                    title="Cache Mapping",
+                    keywords=["cache", "tag"],
+                    source_files=[],
+                )
+            ],
+            documents=[
+                {
+                    "path": "io.pdf",
+                    "title": "I/O lecture",
+                    "extension": ".pdf",
+                    "pages": ["DMA transfers data directly between a device and memory."],
+                }
+            ],
+            created_at="2026-07-03T00:00:00+00:00",
+            updated_at="2026-07-03T00:00:00+00:00",
+        )
+
+        refs = course_index.retrieve_course_source_refs(project, ["cache_mapping"])
+
+        self.assertEqual([], refs)
+
     def test_resolve_course_source_ref_recovers_when_chunk_id_changes(self):
         project = CourseProject(
             course_id="course-source-resolve",

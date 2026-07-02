@@ -645,6 +645,83 @@ class GenerationConfigTests(unittest.TestCase):
                 question.metadata["plan_evidence_chunk_ids"],
             )
 
+    def test_worker_does_not_attach_unrelated_global_source_ref_when_plan_has_no_evidence(self):
+        class FakeClient:
+            model = "test-model"
+            last_error = ""
+
+            def generate_with_json(self, *_args, **_kwargs):
+                return {
+                    "questions": [
+                        {
+                            "type": "multiple_choice",
+                            "difficulty": "medium",
+                            "topic": "cache_mapping",
+                            "subtopic": "tag",
+                            "correct_answer": "A",
+                            "bilingual": {
+                                "zh": {
+                                    "stem": "Cache tag 的作用是什么？",
+                                    "options": ["A. 区分块", "B. 触发 DMA", "C. 管理中断", "D. 控制 RAID"],
+                                    "explanation": "这是一个足够长的中文解释，用来说明 tag 为什么用于区分缓存块。",
+                                },
+                                "en": {
+                                    "stem": "What does a cache tag do?",
+                                    "options": ["A. Identifies blocks", "B. Triggers DMA", "C. Manages interrupts", "D. Controls RAID"],
+                                    "explanation": "This is a sufficiently detailed English explanation for why tags identify cache blocks.",
+                                },
+                            },
+                        }
+                    ]
+                }
+
+        project = CourseProject(
+            course_id="course-unrelated-evidence",
+            title="Systems",
+            source_folder="",
+            summary_markdown="## Cache\nCache tags identify blocks.",
+            summary_path="",
+            topics=[
+                CourseTopic(
+                    topic_id="cache_mapping",
+                    title="Cache Mapping",
+                    keywords=["cache", "tag"],
+                    source_files=[],
+                )
+            ],
+            documents=[
+                {
+                    "path": "io.pdf",
+                    "title": "I/O lecture",
+                    "extension": ".pdf",
+                    "pages": ["DMA transfers data directly between a device and memory."],
+                }
+            ],
+            created_at="2026-07-03T00:00:00+00:00",
+            updated_at="2026-07-03T00:00:00+00:00",
+        )
+        worker = GenerationWorker(
+            FakeClient(),
+            course_content="content",
+            topics=project.topics,
+            count=1,
+            difficulty="mixed",
+            course_project=project,
+            generation_config=GenerationConfig(
+                question_type_weights={"multiple_choice": 100},
+                difficulty_weights={"medium": 100},
+                topic_weights={"cache_mapping": 100},
+            ),
+        )
+        batches = []
+        worker.batch_done.connect(batches.append)
+
+        worker.run()
+
+        question = batches[0][0]
+        self.assertNotIn("source_refs", question.metadata)
+        self.assertNotIn("plan_evidence_chunk_ids", question.metadata)
+
     def test_worker_marks_valid_model_source_ref_from_current_evidence(self):
         class FakeClient:
             model = "test-model"

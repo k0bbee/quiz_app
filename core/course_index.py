@@ -193,7 +193,7 @@ def retrieve_course_source_refs(
         terms.extend(_expanded_terms(topic_keywords.get(topic, [])))
         terms.extend(_expanded_terms(topic_keywords.get(topic.lower(), [])))
     term_set = {term.lower() for term in terms if term}
-    scored = _score_source_chunks(source_chunks, topic_keys, term_set)
+    scored = _score_source_chunks(source_chunks, topic_keys, term_set, allow_fallback=False)
     return [chunk.to_ref() for _, chunk in scored[:limit]]
 
 
@@ -565,6 +565,7 @@ def _score_source_chunks(
     source_chunks: list[SourceChunk],
     selected_topic_keys: set[str],
     term_set: set[str],
+    allow_fallback: bool = True,
 ) -> list[tuple[int, SourceChunk]]:
     scored: list[tuple[int, SourceChunk]] = []
     for chunk in source_chunks:
@@ -581,7 +582,7 @@ def _score_source_chunks(
                 score += min(count, 5)
         if score > 0:
             scored.append((score, chunk))
-    if not scored:
+    if not scored and allow_fallback:
         scored = [(1, chunk) for chunk in source_chunks[:3]]
     return sorted(scored, key=lambda item: item[0], reverse=True)
 
