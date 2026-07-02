@@ -9,7 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QPalette
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QFormLayout, QGridLayout, QLabel, QListWidget, QPushButton, QSplitter
+from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QGridLayout, QLabel, QListWidget, QPushButton, QSplitter
 
 from core.language_manager import LanguageManager
 from core.progress_tracker import ProgressManager
@@ -571,8 +571,9 @@ class UiThemeTests(unittest.TestCase):
         self.assertLessEqual(quiz.preview_pane.maximumWidth(), 360)
         self.assertTrue(quiz.practice_card.isAncestorOf(quiz.question_card))
         self.assertTrue(quiz.practice_card.isAncestorOf(quiz.answer_area))
-        self.assertTrue(quiz.practice_card.isAncestorOf(quiz.skip_btn))
-        self.assertTrue(quiz.practice_card.isAncestorOf(quiz.submit_btn))
+        self.assertTrue(quiz.practice_card.isAncestorOf(quiz.prev_question_btn))
+        self.assertTrue(quiz.practice_card.isAncestorOf(quiz.uncertain_checkbox))
+        self.assertTrue(quiz.practice_card.isAncestorOf(quiz.next_question_btn))
         self.assertTrue(quiz.practice_card.isAncestorOf(quiz.feedback_frame))
         self.assertEqual(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
@@ -636,16 +637,21 @@ class UiThemeTests(unittest.TestCase):
             )
 
         self.assertEqual("secondaryButton", quiz.lang_btn.objectName())
-        self.assertEqual("secondaryButton", quiz.mark_review_btn.objectName())
-        self.assertEqual("secondaryButton", quiz.skip_btn.objectName())
-        self.assertEqual("primaryButton", quiz.submit_btn.objectName())
-        self.assertEqual("primaryButton", quiz.next_btn.objectName())
+        self.assertIsInstance(quiz.uncertain_checkbox, QCheckBox)
+        self.assertEqual("quizUncertainCheck", quiz.uncertain_checkbox.objectName())
+        self.assertEqual("secondaryButton", quiz.prev_question_btn.objectName())
+        self.assertEqual("primaryButton", quiz.next_question_btn.objectName())
         self.assertFalse(hasattr(quiz, "back_btn"))
-        self.assertTrue(quiz.practice_card.isAncestorOf(quiz.mark_review_btn))
-        self.assertNotRegex(quiz.mark_review_btn.text(), r"[^\w\s]")
-        self.assertNotRegex(quiz.skip_btn.text(), r"[^\w\s]")
-        self.assertNotRegex(quiz.submit_btn.text(), r"[^\w\s]")
-        self.assertNotRegex(quiz.next_btn.text(), r"[^\w\s]")
+        self.assertFalse(hasattr(quiz, "skip_btn"))
+        self.assertFalse(hasattr(quiz, "submit_btn"))
+        self.assertFalse(hasattr(quiz, "mark_review_btn"))
+        self.assertFalse(hasattr(quiz, "unsure_btn"))
+        self.assertEqual("不确定", quiz.uncertain_checkbox.text())
+        self.assertEqual("上一题", quiz.prev_question_btn.text())
+        self.assertEqual("下一题", quiz.next_question_btn.text())
+        self.assertNotRegex(quiz.uncertain_checkbox.text(), r"[^\w\s]")
+        self.assertNotRegex(quiz.prev_question_btn.text(), r"[^\w\s]")
+        self.assertNotRegex(quiz.next_question_btn.text(), r"[^\w\s]")
 
     def test_main_flow_pages_use_theme_button_roles(self):
         for path in (

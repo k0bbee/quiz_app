@@ -95,6 +95,8 @@ class AnswerArea(QWidget):
     def set_question_type(self, qtype: QuestionType, options: list = None, preserve_answer: bool = False):
         """Switch to the correct answer input widget for the question type."""
         previous_answer = self.get_answer() if preserve_answer and qtype == self._current_type else None
+        if not preserve_answer:
+            self.clear()
         self._current_type = qtype
 
         if qtype in (QuestionType.MULTIPLE_CHOICE, QuestionType.SCENARIO_CHOICE):

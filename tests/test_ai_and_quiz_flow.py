@@ -1,4 +1,4 @@
-import os
+﻿import os
 import tempfile
 import types
 import unittest
@@ -296,6 +296,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             true_false_index = screen.question_nav_list.item(true_false_row).data(
                 Qt.ItemDataRole.UserRole
             )
+            screen._toggle_review_panel()
             screen.question_nav_list.setCurrentRow(true_false_row)
             self.assertEqual(true_false_index, screen.session.current_index)
             self.assertIn("判断题题干", screen.question_card.stem_label.text())
@@ -418,11 +419,112 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             )
             screen.start_quiz(qset, [question], show_timer=False)
 
-            screen.unsure_btn.click()
+            screen.uncertain_checkbox.click()
             screen.answer_area.choice_widget.buttons[0].setChecked(True)
             screen._submit_answer()
 
             self.assertEqual("unsure", screen.session.answers[0].confidence)
+
+    def test_exam_mode_next_only_switches_and_finish_submits_all_drafts(self):
+        q1 = self._make_question("q1")
+        q2 = self._make_question("q2")
+        qset = QuestionSet.create_new(
+            title={"zh": "模拟", "en": "Exam"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=["q1", "q2"],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [q1, q2], show_timer=False, submission_mode="exam")
+            first_id = screen.session.questions[0].question_id
+            second_id = screen.session.questions[1].question_id
+            screen.answer_area.choice_widget.buttons[0].setChecked(True)
+            screen._update_submit_enabled()
+
+            screen._advance_without_submitting()
+
+            self.assertEqual(1, screen.session.current_index)
+            self.assertEqual(0, screen.session.answered_count)
+            self.assertEqual("完成", screen.next_question_btn.text())
+
+            screen.answer_area.choice_widget.buttons[1].setChecked(True)
+            screen._update_submit_enabled()
+            screen._advance_without_submitting()
+
+            self.assertEqual(QuizState.COMPLETED, screen.session.state)
+            self.assertEqual(2, screen.session.answered_count)
+            answers_by_id = {answer.question_id: answer.user_answer for answer in screen.session.answers}
+            self.assertEqual({first_id: "A", second_id: "B"}, answers_by_id)
+
+    def test_practice_mode_primary_action_submits_current_question_then_advances(self):
+        q1 = self._make_question("q1")
+        q2 = self._make_question("q2")
+        qset = QuestionSet.create_new(
+            title={"zh": "例题", "en": "Practice"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=["q1", "q2"],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [q1, q2], show_timer=False, submission_mode="practice")
+            self.assertEqual("提交本题", screen.next_question_btn.text())
+            self.assertFalse(screen.next_question_btn.isEnabled())
+
+            screen.answer_area.choice_widget.buttons[0].setChecked(True)
+            screen._update_submit_enabled()
+            self.assertTrue(screen.next_question_btn.isEnabled())
+
+            screen.next_question_btn.click()
+
+            self.assertEqual(QuizState.SHOWING_FEEDBACK, screen.session.state)
+            self.assertEqual(1, screen.session.answered_count)
+            self.assertEqual("下一题", screen.next_question_btn.text())
+
+            screen.next_question_btn.click()
+
+            self.assertEqual(1, screen.session.current_index)
+            self.assertEqual(QuizState.IN_PROGRESS, screen.session.state)
+            self.assertEqual("提交本题", screen.next_question_btn.text())
+
+    def test_main_window_quiz_start_uses_selected_submission_mode(self):
+        from ui.main_window import MainWindow
+
+        question = self._make_question("q1")
+        qset = QuestionSet.create_new(
+            title={"zh": "题集", "en": "Set"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=[question.question_id],
+        )
+        started = {}
+        shell = types.SimpleNamespace(
+            lang_manager=LanguageManager.instance(),
+            set_manager=types.SimpleNamespace(get=lambda set_id: qset),
+            question_bank=types.SimpleNamespace(get_many=lambda question_ids: [question]),
+            quiz_screen=types.SimpleNamespace(
+                start_quiz=lambda question_set, questions, **kwargs: started.update(kwargs)
+            ),
+            _active_questions={},
+            _show_timer_setting=lambda: False,
+            _choose_quiz_submission_mode=lambda: "practice",
+            SCREEN_QUIZ="quiz",
+            navigate_to=lambda screen_name: started.update({"screen": screen_name}),
+        )
+
+        MainWindow._on_quiz_start(shell, qset.set_id, [question.question_id])
+
+        self.assertEqual("practice", started["submission_mode"])
+        self.assertEqual("quiz", started["screen"])
 
     def test_quiz_screen_captures_snapshot_with_current_state(self):
         qset = QuestionSet.create_new(
@@ -443,8 +545,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen._jump_to_question(1)
             current_id = screen.session.current_question.question_id
             screen.answer_area.choice_widget.buttons[1].setChecked(True)
-            screen.unsure_btn.click()
-            screen.mark_review_btn.click()
+            screen.uncertain_checkbox.click()
 
             snapshot = screen.capture_snapshot()
 
@@ -503,8 +604,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual("B", screen.answer_area.get_answer())
             self.assertEqual({"q2"}, screen._unsure_question_ids)
             self.assertEqual({"q2"}, screen._marked_question_ids)
-            self.assertEqual("取消不确定", screen.unsure_btn.text())
-            self.assertEqual("取消标记", screen.mark_review_btn.text())
+            self.assertTrue(screen.uncertain_checkbox.isChecked())
 
     def test_quiz_screen_updates_submitted_confidence_when_unsure_toggles(self):
         question = self._make_question("q1")
@@ -524,12 +624,12 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen.answer_area.choice_widget.buttons[0].setChecked(True)
             screen._submit_answer()
 
-            screen.unsure_btn.click()
+            screen.uncertain_checkbox.click()
 
             self.assertEqual({"q1"}, screen._unsure_question_ids)
             self.assertEqual("unsure", screen.session.answers[0].confidence)
 
-            screen.unsure_btn.click()
+            screen.uncertain_checkbox.click()
 
             self.assertEqual(set(), screen._unsure_question_ids)
             self.assertEqual("sure", screen.session.answers[0].confidence)
@@ -590,10 +690,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             )
             screen.quiz_finished.connect(finished.append)
             screen.start_quiz(qset, [question], show_timer=False)
-            screen.mark_review_btn.click()
+            screen.uncertain_checkbox.click()
             screen.answer_area.choice_widget.buttons[0].setChecked(True)
-            screen._submit_answer()
-            screen._next_question()
+            screen._finish_from_drafts()
 
             self.assertEqual([question.question_id], finished[0].marked_review_question_ids)
 
@@ -619,7 +718,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 QuestionBank(str(Path(tmpdir) / "questions")),
                 ProgressManager(str(Path(tmpdir) / "progress")),
             )
-            screen.start_quiz(qset, [question], show_timer=False)
+            screen.start_quiz(qset, [question], show_timer=False, submission_mode="practice")
             screen.answer_area.choice_widget.buttons[1].setChecked(True)
             screen._submit_answer()
 
@@ -968,12 +1067,12 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             screen.answer_area.choice_widget.buttons[1].setChecked(True)
             self.assertEqual("B", screen.answer_area.get_answer())
-            self.assertTrue(screen.submit_btn.isEnabled())
+            self.assertTrue(screen.next_question_btn.isEnabled())
 
             screen._toggle_language()
 
             self.assertEqual("B", screen.answer_area.get_answer())
-            self.assertTrue(screen.submit_btn.isEnabled())
+            self.assertTrue(screen.next_question_btn.isEnabled())
             self.assertEqual("B. Wrong", screen.answer_area.choice_widget.buttons[1].text())
 
     def test_quiz_language_switch_preserves_typed_answer(self):
@@ -1007,12 +1106,12 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             screen.answer_area.fill_widget.input.setText("central processing unit")
             self.assertEqual("central processing unit", screen.answer_area.get_answer())
-            self.assertTrue(screen.submit_btn.isEnabled())
+            self.assertTrue(screen.next_question_btn.isEnabled())
 
             screen._toggle_language()
 
             self.assertEqual("central processing unit", screen.answer_area.get_answer())
-            self.assertTrue(screen.submit_btn.isEnabled())
+            self.assertTrue(screen.next_question_btn.isEnabled())
 
     def test_quiz_screen_marks_current_question_for_review(self):
         first = Question.create_new(
@@ -1051,19 +1150,18 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             marked_question_id = screen.session.current_question.question_id
 
             self.assertEqual(set(), screen._marked_question_ids)
-            self.assertEqual("标记复查", screen.mark_review_btn.text())
+            self.assertFalse(screen.uncertain_checkbox.isChecked())
 
-            screen.mark_review_btn.click()
+            screen.uncertain_checkbox.click()
 
             self.assertEqual({marked_question_id}, screen._marked_question_ids)
-            self.assertEqual("取消标记", screen.mark_review_btn.text())
+            self.assertTrue(screen.uncertain_checkbox.isChecked())
 
             screen.answer_area.choice_widget.buttons[0].setChecked(True)
-            screen._submit_answer()
-            screen._next_question()
+            screen._advance_without_submitting()
 
             self.assertEqual({marked_question_id}, screen._marked_question_ids)
-            self.assertEqual("标记复查", screen.mark_review_btn.text())
+            self.assertFalse(screen.uncertain_checkbox.isChecked())
 
     def test_quiz_session_abandon_returns_abandoned_record(self):
         question = Question.create_new(

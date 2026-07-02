@@ -262,6 +262,61 @@ class QuizSession(QObject):
         self._question_start_time = time.time()
         self.question_changed.emit(self._current_index + 1, len(self._questions))
 
+    def complete_with_drafts(
+        self,
+        draft_answers: dict[str, object],
+        unsure_question_ids: set[str] | list[str] | tuple[str, ...] = (),
+    ) -> Optional[ProgressRecord]:
+        """Finalize by grading saved drafts and treating blank drafts as skipped."""
+        if self._state not in (QuizState.IN_PROGRESS, QuizState.SHOWING_FEEDBACK):
+            return self.get_progress_record() if self._state == QuizState.COMPLETED else None
+
+        unsure_ids = {str(question_id) for question_id in unsure_question_ids}
+        existing_by_id = {answer.question_id: answer for answer in self._answers}
+        completed_answers: list[AnswerRecord] = []
+        attempted_at = datetime.now(timezone.utc).isoformat()
+
+        for index, question in enumerate(self._questions):
+            question_id = question.question_id
+            draft = draft_answers.get(question_id)
+            if _draft_has_answer(draft):
+                is_correct, normalized = Grader.grade(question, draft)
+                completed_answers.append(
+                    AnswerRecord(
+                        question_id=question_id,
+                        index_in_session=index,
+                        user_answer=normalized,
+                        is_correct=is_correct,
+                        confidence="unsure" if question_id in unsure_ids else "sure",
+                        time_spent_seconds=0.0,
+                        attempted_at=attempted_at,
+                    )
+                )
+                continue
+
+            existing = existing_by_id.get(question_id)
+            if existing is not None and not existing.skipped:
+                existing.confidence = "unsure" if question_id in unsure_ids else existing.confidence
+                completed_answers.append(existing)
+                continue
+
+            completed_answers.append(
+                AnswerRecord(
+                    question_id=question_id,
+                    index_in_session=index,
+                    user_answer="",
+                    is_correct=False,
+                    skipped=True,
+                    confidence="unsure" if question_id in unsure_ids else "sure",
+                    time_spent_seconds=0.0,
+                    attempted_at=attempted_at,
+                )
+            )
+
+        self._answers = completed_answers
+        self.finalize()
+        return self.get_progress_record()
+
     def jump_to(self, index: int) -> bool:
         """Jump to a question index without implicitly submitting or finalizing."""
         if not (0 <= index < len(self._questions)):
@@ -371,3 +426,14 @@ class QuizSession(QObject):
             return  # avoid redundant signals
         self._state = new_state
         self.state_changed.emit(new_state.value)
+
+
+def _draft_has_answer(answer: object) -> bool:
+    """Return whether a draft should be graded instead of treated as skipped."""
+    if answer is None:
+        return False
+    if isinstance(answer, str):
+        return bool(answer.strip())
+    if isinstance(answer, (list, tuple, set, dict)):
+        return bool(answer)
+    return True
