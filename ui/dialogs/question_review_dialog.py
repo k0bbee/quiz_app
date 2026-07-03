@@ -3,13 +3,14 @@
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QTextEdit, QSplitter,
-    QMessageBox, QWidget, QFormLayout, QLineEdit
+    QMessageBox, QWidget, QFormLayout, QLineEdit, QComboBox
 )
 from PyQt6.QtCore import Qt
 
 from models.question import Question
 from core.language_manager import LanguageManager
 from ui.widgets.source_refs import format_source_refs
+from utils.constants import Difficulty
 
 
 class QuestionReviewDialog(QDialog):
@@ -130,6 +131,16 @@ class QuestionReviewDialog(QDialog):
         self.en_options_editor.setObjectName("reviewEnOptionsEditor")
         self.en_options_editor.setMaximumHeight(70)
         edit_form.addRow(self.lang_manager.get_text("英文选项", "EN Options"), self.en_options_editor)
+
+        self.topic_editor = QLineEdit()
+        self.topic_editor.setObjectName("reviewTopicEditor")
+        edit_form.addRow(self.lang_manager.get_text("主题", "Topic"), self.topic_editor)
+
+        self.difficulty_editor = QComboBox()
+        self.difficulty_editor.setObjectName("reviewDifficultyEditor")
+        for difficulty in Difficulty:
+            self.difficulty_editor.addItem(difficulty.value, difficulty.value)
+        edit_form.addRow(self.lang_manager.get_text("难度", "Difficulty"), self.difficulty_editor)
 
         self.correct_answer_editor = QLineEdit()
         self.correct_answer_editor.setObjectName("reviewCorrectAnswerEditor")
@@ -392,6 +403,10 @@ class QuestionReviewDialog(QDialog):
         self.en_stem_editor.setPlainText(question.get_stem("en"))
         self.zh_options_editor.setPlainText("\n".join(question.get_options("zh")))
         self.en_options_editor.setPlainText("\n".join(question.get_options("en")))
+        self.topic_editor.setText(question.topic_title())
+        difficulty_index = self.difficulty_editor.findData(question.difficulty.value)
+        if difficulty_index >= 0:
+            self.difficulty_editor.setCurrentIndex(difficulty_index)
         self.correct_answer_editor.setText(str(question.correct_answer))
         self.zh_explanation_editor.setPlainText(question.get_explanation("zh"))
         self.en_explanation_editor.setPlainText(question.get_explanation("en"))
@@ -409,6 +424,14 @@ class QuestionReviewDialog(QDialog):
         question.bilingual["en"]["options"] = self._edited_options(self.en_options_editor)
         question.bilingual["zh"]["explanation"] = self.zh_explanation_editor.toPlainText().strip()
         question.bilingual["en"]["explanation"] = self.en_explanation_editor.toPlainText().strip()
+        topic = self.topic_editor.text().strip()
+        if topic:
+            question.topic = topic
+            if question.metadata.get("topic_title") and question.metadata.get("topic_title") != topic:
+                question.metadata["topic_title"] = topic
+        difficulty = self.difficulty_editor.currentData()
+        if difficulty in {item.value for item in Difficulty}:
+            question.difficulty = Difficulty(difficulty)
         question.correct_answer = self.correct_answer_editor.text().strip()
         self._accepted.add(self._current_index)
         self._update_list_item(self._current_index)

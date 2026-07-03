@@ -206,6 +206,22 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         dialog.question_list.setCurrentRow(1)
         self.assertIn("解析", dialog.detail_editor.toPlainText())
 
+    def test_review_dialog_can_edit_topic_and_difficulty(self):
+        question = make_question(1)
+        dialog = QuestionReviewDialog([question], page_size=10)
+        self.addCleanup(dialog.close)
+
+        dialog.topic_editor.setText("process_scheduling")
+        dialog.difficulty_editor.setCurrentText("hard")
+
+        dialog.apply_edit_btn.click()
+
+        edited = dialog.get_accepted_questions()[0]
+        self.assertEqual("process_scheduling", edited.topic)
+        self.assertEqual(Difficulty.HARD, edited.difficulty)
+        self.assertIn("Topic: process_scheduling", dialog.detail_editor.toPlainText())
+        self.assertIn("Difficulty: hard", dialog.detail_editor.toPlainText())
+
     def _visible_question_indexes(self, dialog: QuestionReviewDialog) -> list[int]:
         return [
             dialog.question_list.item(row).data(Qt.ItemDataRole.UserRole)
