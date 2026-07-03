@@ -649,6 +649,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             current_id = screen.session.current_question.question_id
             screen.answer_area.choice_widget.buttons[1].setChecked(True)
             screen.uncertain_checkbox.click()
+            screen.review_checkbox.click()
 
             snapshot = screen.capture_snapshot()
 
@@ -728,6 +729,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual({"q2"}, screen._unsure_question_ids)
             self.assertEqual({"q2"}, screen._marked_question_ids)
             self.assertTrue(screen.uncertain_checkbox.isChecked())
+            self.assertTrue(screen.review_checkbox.isChecked())
 
     def test_quiz_screen_restores_snapshot_submission_mode(self):
         qset = QuestionSet.create_new(
@@ -778,11 +780,13 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen.uncertain_checkbox.click()
 
             self.assertEqual({"q1"}, screen._unsure_question_ids)
+            self.assertEqual(set(), screen._marked_question_ids)
             self.assertEqual("unsure", screen.session.answers[0].confidence)
 
             screen.uncertain_checkbox.click()
 
             self.assertEqual(set(), screen._unsure_question_ids)
+            self.assertEqual(set(), screen._marked_question_ids)
             self.assertEqual("sure", screen.session.answers[0].confidence)
 
     def test_quiz_screen_confirm_exit_saves_snapshot_without_abandoned_progress(self):
@@ -841,7 +845,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             )
             screen.quiz_finished.connect(finished.append)
             screen.start_quiz(qset, [question], show_timer=False)
-            screen.uncertain_checkbox.click()
+            screen.review_checkbox.click()
             screen.answer_area.choice_widget.buttons[0].setChecked(True)
             screen._finish_from_drafts()
 
@@ -1380,17 +1384,20 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             marked_question_id = screen.session.current_question.question_id
 
             self.assertEqual(set(), screen._marked_question_ids)
+            self.assertFalse(screen.review_checkbox.isChecked())
             self.assertFalse(screen.uncertain_checkbox.isChecked())
 
-            screen.uncertain_checkbox.click()
+            screen.review_checkbox.click()
 
             self.assertEqual({marked_question_id}, screen._marked_question_ids)
-            self.assertTrue(screen.uncertain_checkbox.isChecked())
+            self.assertTrue(screen.review_checkbox.isChecked())
+            self.assertFalse(screen.uncertain_checkbox.isChecked())
 
             screen.answer_area.choice_widget.buttons[0].setChecked(True)
             screen._advance_without_submitting()
 
             self.assertEqual({marked_question_id}, screen._marked_question_ids)
+            self.assertFalse(screen.review_checkbox.isChecked())
             self.assertFalse(screen.uncertain_checkbox.isChecked())
 
     def test_quiz_session_abandon_returns_abandoned_record(self):

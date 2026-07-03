@@ -239,6 +239,12 @@ class QuizScreen(QWidget):
         self.uncertain_checkbox.setEnabled(False)
         action_layout.addWidget(self.uncertain_checkbox, 0, Qt.AlignmentFlag.AlignCenter)
 
+        self.review_checkbox = QCheckBox(self.lang_manager.get_text("复查", "Review"))
+        self.review_checkbox.setObjectName("quizReviewCheck")
+        self.review_checkbox.clicked.connect(self._set_current_review_from_checkbox)
+        self.review_checkbox.setEnabled(False)
+        action_layout.addWidget(self.review_checkbox, 0, Qt.AlignmentFlag.AlignCenter)
+
         action_layout.addStretch(1)
 
         self.next_question_btn = QPushButton(
@@ -314,6 +320,7 @@ class QuizScreen(QWidget):
         self._display_current_question()
         self._refresh_navigation_button_state()
         self._refresh_unsure_state()
+        self._refresh_review_state()
         self._update_timer()
         if show_timer:
             self.session_timer.start()
@@ -403,6 +410,7 @@ class QuizScreen(QWidget):
         self._display_current_question()
         self._refresh_navigation_button_state()
         self._refresh_unsure_state()
+        self._refresh_review_state()
         self._update_timer()
         if show_timer:
             self.session_timer.start()
@@ -434,6 +442,7 @@ class QuizScreen(QWidget):
             self._show_feedback_for_answer(submitted_answer, q)
             self._refresh_navigation_button_state()
             self._refresh_unsure_state()
+            self._refresh_review_state()
             return
 
         draft_answer = self._draft_answers_by_question_id.get(q.question_id)
@@ -445,6 +454,7 @@ class QuizScreen(QWidget):
         self._set_correct_indicator_state("")
         self._refresh_navigation_button_state()
         self._refresh_unsure_state()
+        self._refresh_review_state()
 
         self._refresh_feedback_next_text()
 
@@ -504,12 +514,23 @@ class QuizScreen(QWidget):
         question_id = displayed_id or question.question_id
         if self.uncertain_checkbox.isChecked():
             self._unsure_question_ids.add(question_id)
-            self._marked_question_ids.add(question_id)
             self.session.set_answer_confidence(question_id, "unsure")
         else:
             self._unsure_question_ids.discard(question_id)
-            self._marked_question_ids.discard(question_id)
             self.session.set_answer_confidence(question_id, "sure")
+        self._refresh_question_nav()
+
+    def _set_current_review_from_checkbox(self):
+        """Persist the current question's independent review marker."""
+        question = self.session.current_question
+        displayed_id = self._displayed_question_id
+        if question is None:
+            return
+        question_id = displayed_id or question.question_id
+        if self.review_checkbox.isChecked():
+            self._marked_question_ids.add(question_id)
+        else:
+            self._marked_question_ids.discard(question_id)
         self._refresh_question_nav()
 
     def _primary_quiz_action(self):
@@ -523,8 +544,8 @@ class QuizScreen(QWidget):
         self._advance_without_submitting()
 
     def _refresh_mark_review_state(self):
-        """Legacy no-op: review markers are now represented by the unsure checkbox."""
-        self._refresh_unsure_state()
+        """Legacy compatibility hook for callers that refresh review state."""
+        self._refresh_review_state()
 
     def _refresh_unsure_state(self):
         """Keep the unsure marker aligned with the current question."""
@@ -539,6 +560,20 @@ class QuizScreen(QWidget):
         self.uncertain_checkbox.setChecked(marked)
         self.uncertain_checkbox.setEnabled(True)
         self.uncertain_checkbox.blockSignals(False)
+
+    def _refresh_review_state(self):
+        """Keep the independent review marker aligned with the current question."""
+        question = self.session.current_question
+        if question is None:
+            self.review_checkbox.setEnabled(False)
+            self.review_checkbox.setChecked(False)
+            return
+        marked = question.question_id in self._marked_question_ids
+        self.review_checkbox.blockSignals(True)
+        self.review_checkbox.setText(self.lang_manager.get_text("复查", "Review"))
+        self.review_checkbox.setChecked(marked)
+        self.review_checkbox.setEnabled(True)
+        self.review_checkbox.blockSignals(False)
 
     def _type_label(self, qtype: QuestionType) -> str:
         """Return the current-language label for a question type."""
@@ -805,6 +840,7 @@ class QuizScreen(QWidget):
         self.lang_btn.setText("English" if lang == "zh" else "中文")
         self._refresh_review_toggle_text()
         self._refresh_unsure_state()
+        self._refresh_review_state()
         self.prev_question_btn.setText(self.lang_manager.get_text("上一题", "Previous"))
         self.question_preview_label.setText(self.lang_manager.get_text("整卷预览", "Paper Preview"))
         self._refresh_navigation_button_state()
@@ -903,6 +939,7 @@ class QuizScreen(QWidget):
         self.feedback_frame.show()
         self.answer_area.set_enabled(False)
         self.uncertain_checkbox.setEnabled(True)
+        self.review_checkbox.setEnabled(True)
         self._refresh_navigation_button_state()
 
     def _on_session_completed(self, progress_id: str):

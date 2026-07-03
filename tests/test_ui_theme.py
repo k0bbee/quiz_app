@@ -573,6 +573,7 @@ class UiThemeTests(unittest.TestCase):
         self.assertTrue(quiz.practice_card.isAncestorOf(quiz.answer_area))
         self.assertTrue(quiz.practice_card.isAncestorOf(quiz.prev_question_btn))
         self.assertTrue(quiz.practice_card.isAncestorOf(quiz.uncertain_checkbox))
+        self.assertTrue(quiz.practice_card.isAncestorOf(quiz.review_checkbox))
         self.assertTrue(quiz.practice_card.isAncestorOf(quiz.next_question_btn))
         self.assertTrue(quiz.practice_card.isAncestorOf(quiz.feedback_frame))
         self.assertEqual(
@@ -639,6 +640,8 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual("secondaryButton", quiz.lang_btn.objectName())
         self.assertIsInstance(quiz.uncertain_checkbox, QCheckBox)
         self.assertEqual("quizUncertainCheck", quiz.uncertain_checkbox.objectName())
+        self.assertIsInstance(quiz.review_checkbox, QCheckBox)
+        self.assertEqual("quizReviewCheck", quiz.review_checkbox.objectName())
         self.assertEqual("secondaryButton", quiz.prev_question_btn.objectName())
         self.assertEqual("primaryButton", quiz.next_question_btn.objectName())
         self.assertFalse(hasattr(quiz, "back_btn"))
@@ -647,9 +650,11 @@ class UiThemeTests(unittest.TestCase):
         self.assertFalse(hasattr(quiz, "mark_review_btn"))
         self.assertFalse(hasattr(quiz, "unsure_btn"))
         self.assertEqual("不确定", quiz.uncertain_checkbox.text())
+        self.assertEqual("复查", quiz.review_checkbox.text())
         self.assertEqual("上一题", quiz.prev_question_btn.text())
         self.assertEqual("下一题", quiz.next_question_btn.text())
         self.assertNotRegex(quiz.uncertain_checkbox.text(), r"[^\w\s]")
+        self.assertNotRegex(quiz.review_checkbox.text(), r"[^\w\s]")
         self.assertNotRegex(quiz.prev_question_btn.text(), r"[^\w\s]")
         self.assertNotRegex(quiz.next_question_btn.text(), r"[^\w\s]")
 
