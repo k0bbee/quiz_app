@@ -876,11 +876,8 @@ class QuizScreen(QWidget):
         self.quiz_finished.emit(record)
 
     def _submit_or_next(self):
-        """Enter key behavior: submit during answering, advance during feedback."""
-        if self.session.state == QuizState.IN_PROGRESS:
-            self._advance_without_submitting()
-        elif self.session.state == QuizState.SHOWING_FEEDBACK:
-            self._next_question()
+        """Enter key follows the same mode-aware action as the visible primary button."""
+        self._primary_quiz_action()
 
     def _select_choice(self, index: int):
         """Select a choice option with number keys."""

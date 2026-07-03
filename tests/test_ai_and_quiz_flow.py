@@ -513,6 +513,31 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual(QuizState.IN_PROGRESS, screen.session.state)
             self.assertEqual("提交本题", screen.next_question_btn.text())
 
+    def test_practice_mode_enter_submits_current_question_without_advancing(self):
+        q1 = self._make_question("q1")
+        q2 = self._make_question("q2")
+        qset = QuestionSet.create_new(
+            title={"zh": "例题", "en": "Practice"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=["q1", "q2"],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [q1, q2], show_timer=False, submission_mode="practice")
+            screen.answer_area.choice_widget.buttons[0].setChecked(True)
+
+            screen._submit_or_next()
+
+            self.assertEqual(0, screen.session.current_index)
+            self.assertEqual(QuizState.SHOWING_FEEDBACK, screen.session.state)
+            self.assertEqual(1, screen.session.answered_count)
+            self.assertEqual("下一题", screen.next_question_btn.text())
+
     def test_main_window_quiz_start_uses_selected_submission_mode(self):
         from ui.main_window import MainWindow
 
