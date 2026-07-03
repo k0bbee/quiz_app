@@ -55,7 +55,7 @@ class PromptBuilder:
       "topic": "cache_mapping",
       "subtopic": "set_associative",
       "correct_answer": "C",
-      "source_refs": [{"chunk_id": "source-0000", "source_file": "lecture.pdf", "page_or_slide": 8, "heading": "lecture.pdf page 8", "excerpt": "short source snippet", "content_hash": "abc123def456"}],
+      "source_refs": [{"chunk_id": "source-a1b2c3d4e5", "source_file": "lecture.pdf", "page_or_slide": 8, "heading": "lecture.pdf page 8", "excerpt": "short source snippet", "content_hash": "abc123def456"}],
       "bilingual": {
         "zh": {
           "stem": "问题描述...",
@@ -127,7 +127,7 @@ class PromptBuilder:
 
 13. **Stable IDs for Matching/Ordering**: Matching and ordering questions MUST use stable IDs in options and correct_answer. The same conceptual item must reuse the same ID across zh/en text. Use IDs like left_1/right_1 for matching and item_1/item_2 for ordering. correct_answer must contain IDs, not display text.
 
-14. **Source References**: If the course reference includes Evidence chunks such as "Evidence source-0000", each question SHOULD include a source_refs array using only those provided chunk_id values. Include a short excerpt/content_hash when available, but do not invent chunk IDs or source files.
+14. **Source References**: If the course reference includes Evidence chunks such as "Evidence source-a1b2c3d4e5", each question SHOULD include a source_refs array using only those provided chunk_id values. Include a short excerpt/content_hash when available, but do not invent chunk IDs or source files.
 
 15. **Plan Slot Binding**: If question plan slots are provided, each returned question for a listed slot MUST include that exact plan_id value, such as "plan-001". Do not invent plan IDs.
 
@@ -235,7 +235,7 @@ Selected-topic boundary:
 - For matching and ordering, use stable IDs in options and correct_answer; never put translated display text inside correct_answer
   Example matching option: {{"id": "left_1", "text": "..."}} with "correct_answer": [["left_1", "right_1"]]
   Example ordering answer: "correct_answer": ["item_1", "item_2", "item_3"]
-- If source evidence chunks are shown (for example "Evidence source-0000"), include "source_refs": [{{"chunk_id": "source-0000", "source_file": "...", "page_or_slide": 1, "heading": "...", "excerpt": "...", "content_hash": "..."}}] using only provided chunk IDs
+- If source evidence chunks are shown (for example "Evidence source-a1b2c3d4e5"), include "source_refs": [{{"chunk_id": "source-a1b2c3d4e5", "source_file": "...", "page_or_slide": 1, "heading": "...", "excerpt": "...", "content_hash": "..."}}] using only provided chunk IDs
 - NO topic labels in question stems
 - Output valid JSON matching the schema exactly
 - Ensure all Chinese text uses proper terminology with 中文术语(English Term) format

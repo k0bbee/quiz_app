@@ -145,7 +145,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             saved = question_bank.get("q-source-backfill")
             ref = saved.metadata["source_refs"][0]
             self.assertEqual(1, changed)
-            self.assertEqual("source-0000", ref["chunk_id"])
+            self.assertEqual(index[0]["chunk_id"], ref["chunk_id"])
             self.assertEqual("old-source-01", ref["resolved_from_chunk_id"])
             self.assertIn("Cache lines and cache mapping", ref["excerpt"])
 
@@ -200,7 +200,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 screen.backfill_source_refs_btn.click()
 
             saved = question_bank.get("q-ui-source")
-            self.assertEqual("source-0000", saved.metadata["source_refs"][0]["chunk_id"])
+            self.assertEqual(index[0]["chunk_id"], saved.metadata["source_refs"][0]["chunk_id"])
             self.assertIn("Cache lines and cache mapping", screen.source_refs_label.text())
             info.assert_called_once()
             self.assertIn("1", info.call_args.args[2])

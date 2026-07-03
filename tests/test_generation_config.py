@@ -18,6 +18,7 @@ from ai.llm_client import LLMClient
 from ai.generation_report import GenerationReport
 from ai.prompt_templates import PromptBuilder
 from core.app_errors import AppError
+from core import course_index
 from core.question_set_builder import build_ai_question_set
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from models.course_project import CourseProject, CourseTopic
@@ -514,12 +515,12 @@ class GenerationConfigTests(unittest.TestCase):
         worker.run()
 
         refs = batches[0][0].metadata["source_refs"]
-        self.assertEqual("source-0000", refs[0]["chunk_id"])
+        self.assertRegex(refs[0]["chunk_id"], r"^source-[0-9a-f]{10}$")
         self.assertEqual("io.pdf", refs[0]["source_file"])
         self.assertEqual(1, refs[0]["page_or_slide"])
         self.assertIn("DMA transfers directly", refs[0]["excerpt"])
         self.assertRegex(refs[0]["content_hash"], r"^[0-9a-f]{12}$")
-        self.assertIn("source-0000", client.prompt)
+        self.assertIn(refs[0]["chunk_id"], client.prompt)
 
     def test_worker_falls_back_to_plan_slot_source_refs_per_topic(self):
         class FakeClient:
@@ -635,10 +636,11 @@ class GenerationConfigTests(unittest.TestCase):
             topic_value(question.topic): question.metadata["source_refs"][0]
             for question in batches[0]
         }
-        self.assertEqual("source-0000", refs_by_topic["cache"]["chunk_id"])
+        self.assertRegex(refs_by_topic["cache"]["chunk_id"], r"^source-[0-9a-f]{10}$")
         self.assertEqual("cache.pdf", refs_by_topic["cache"]["source_file"])
-        self.assertEqual("source-0001", refs_by_topic["process"]["chunk_id"])
+        self.assertRegex(refs_by_topic["process"]["chunk_id"], r"^source-[0-9a-f]{10}$")
         self.assertEqual("process.pdf", refs_by_topic["process"]["source_file"])
+        self.assertNotEqual(refs_by_topic["cache"]["chunk_id"], refs_by_topic["process"]["chunk_id"])
         for question in batches[0]:
             self.assertEqual(
                 [question.metadata["source_refs"][0]["chunk_id"]],
@@ -751,6 +753,9 @@ class GenerationConfigTests(unittest.TestCase):
             model = "test-model"
             last_error = ""
 
+            def __init__(self, chunk_id: str):
+                self.chunk_id = chunk_id
+
             def generate_with_json(self, *_args, **_kwargs):
                 return {
                     "questions": [
@@ -762,7 +767,7 @@ class GenerationConfigTests(unittest.TestCase):
                             "correct_answer": "A",
                             "source_refs": [
                                 {
-                                    "chunk_id": "source-0000",
+                                    "chunk_id": self.chunk_id,
                                     "source_file": "cache.pdf",
                                     "page_or_slide": 1,
                                     "heading": "Cache lecture page 1",
@@ -809,8 +814,9 @@ class GenerationConfigTests(unittest.TestCase):
             created_at="2026-07-02T00:00:00+00:00",
             updated_at="2026-07-02T00:00:00+00:00",
         )
+        expected_chunk_id = course_index.build_source_index(project)[0]["chunk_id"]
         worker = GenerationWorker(
-            FakeClient(),
+            FakeClient(expected_chunk_id),
             course_content="content",
             topics=project.topics,
             count=1,
@@ -834,7 +840,7 @@ class GenerationConfigTests(unittest.TestCase):
 
         question = batches[0][0]
         ref = question.metadata["source_refs"][0]
-        self.assertEqual("source-0000", ref["chunk_id"])
+        self.assertEqual(expected_chunk_id, ref["chunk_id"])
         self.assertIn("Cache lines and cache mapping", ref["excerpt"])
         self.assertRegex(ref["content_hash"], r"^[0-9a-f]{12}$")
         self.assertEqual("valid_model_ref", question.metadata["source_ref_status"])
@@ -926,7 +932,7 @@ class GenerationConfigTests(unittest.TestCase):
         worker.run()
 
         question = batches[0][0]
-        self.assertEqual("source-0000", question.metadata["source_refs"][0]["chunk_id"])
+        self.assertRegex(question.metadata["source_refs"][0]["chunk_id"], r"^source-[0-9a-f]{10}$")
         self.assertEqual("cache.pdf", question.metadata["source_refs"][0]["source_file"])
         self.assertEqual("invalid_model_ref", question.metadata["source_ref_status"])
         self.assertEqual(["source-9999"], question.metadata["invalid_source_ref_ids"])

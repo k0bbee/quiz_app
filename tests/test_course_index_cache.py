@@ -306,13 +306,67 @@ class CourseIndexCacheTests(unittest.TestCase):
         index = course_index.build_source_index(project)
 
         self.assertEqual(2, len(index))
-        self.assertEqual("source-0000", index[0]["chunk_id"])
+        self.assertRegex(index[0]["chunk_id"], r"^source-[0-9a-f]{10}$")
         self.assertEqual("io.pdf", index[0]["source_file"])
         self.assertEqual("pdf", index[0]["source_type"])
         self.assertEqual(1, index[0]["page_or_slide"])
         self.assertIn("content_hash", index[0])
         self.assertEqual(["io_improvements"], index[1]["topic_ids"])
         self.assertIn("DMA", index[1]["text"])
+
+    def test_source_chunk_id_is_content_addressed_and_stable_when_document_order_changes(self):
+        base_document = {
+            "path": r"C:\slides\io.pdf",
+            "title": "I/O lecture",
+            "extension": ".pdf",
+            "pages": ["DMA transfers data directly between device and memory."],
+        }
+        topic = CourseTopic(
+            topic_id="io_improvements",
+            title="Input Output Improvements",
+            keywords=["DMA"],
+            source_files=["io.pdf"],
+        )
+        project = CourseProject(
+            course_id="course-source-stable",
+            title="Systems",
+            source_folder="",
+            summary_markdown="## I/O\nDMA transfers reduce CPU involvement.",
+            summary_path="",
+            topics=[topic],
+            documents=[base_document],
+            created_at="2026-07-03T00:00:00+00:00",
+            updated_at="2026-07-03T00:00:00+00:00",
+        )
+        reordered_project = CourseProject(
+            course_id="course-source-stable",
+            title="Systems",
+            source_folder="",
+            summary_markdown="## I/O\nDMA transfers reduce CPU involvement.",
+            summary_path="",
+            topics=[topic],
+            documents=[
+                {
+                    "path": r"C:\slides\cache.pdf",
+                    "title": "Cache lecture",
+                    "extension": ".pdf",
+                    "pages": ["Cache lines use tags to identify blocks."],
+                },
+                base_document,
+            ],
+            created_at="2026-07-03T00:00:00+00:00",
+            updated_at="2026-07-03T00:00:00+00:00",
+        )
+
+        chunk_id = course_index.build_source_index(project)[0]["chunk_id"]
+        reordered_io_chunk = next(
+            chunk
+            for chunk in course_index.build_source_index(reordered_project)
+            if chunk["source_file"] == "io.pdf"
+        )
+
+        self.assertRegex(chunk_id, r"^source-[0-9a-f]{10}$")
+        self.assertEqual(chunk_id, reordered_io_chunk["chunk_id"])
 
     def test_retrieve_course_source_refs_does_not_return_unrelated_fallback_chunks(self):
         project = CourseProject(
@@ -381,7 +435,7 @@ class CourseIndexCacheTests(unittest.TestCase):
 
         resolved = course_index.resolve_course_source_ref(project, stale_ref)
 
-        self.assertEqual("source-0000", resolved["chunk_id"])
+        self.assertEqual(source_index[0]["chunk_id"], resolved["chunk_id"])
         self.assertEqual("source-9999", resolved["resolved_from_chunk_id"])
         self.assertIn("DMA transfers data directly", resolved["excerpt"])
         self.assertRegex(resolved["content_hash"], r"^[0-9a-f]{12}$")
@@ -439,7 +493,7 @@ class CourseIndexCacheTests(unittest.TestCase):
             max_chars=800,
         )
 
-        self.assertIn("source-0000", context)
+        self.assertRegex(context, r"Evidence source-[0-9a-f]{10}")
         self.assertIn("io.pdf", context)
         self.assertIn("page 1", context.lower())
         self.assertIn("DMA transfers", context)

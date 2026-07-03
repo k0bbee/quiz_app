@@ -142,7 +142,8 @@ def build_source_index(project: CourseProject) -> list[dict]:
             text = str(page_text or "").strip()
             if not text:
                 continue
-            chunk_id = f"source-{len(chunks):04d}"
+            content_hash = _content_hash(text)
+            chunk_id = _source_chunk_id(source_file, page_index, content_hash)
             heading = f"{title} {_page_label(source_type, page_index)}"
             chunks.append(SourceChunk(
                 chunk_id=chunk_id,
@@ -154,7 +155,7 @@ def build_source_index(project: CourseProject) -> list[dict]:
                 text=text,
                 terms=extract_terms(f"{heading}\n{text}", limit=24),
                 topic_ids=_source_topic_ids(project, source_file, text),
-                content_hash=_content_hash(text),
+                content_hash=content_hash,
             ))
     return [chunk.to_dict() for chunk in chunks]
 
@@ -632,3 +633,14 @@ def _source_topic_ids(project: CourseProject, source_file: str, text: str) -> li
 def _content_hash(text: str) -> str:
     normalized = _match_key(text)
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _source_chunk_id(source_file: str, page_or_slide: int | None, content_hash: str) -> str:
+    payload = "|".join(
+        [
+            str(source_file or "").strip().lower(),
+            str(page_or_slide or ""),
+            str(content_hash or "").strip().lower(),
+        ]
+    )
+    return f"source-{hashlib.sha1(payload.encode('utf-8')).hexdigest()[:10]}"
