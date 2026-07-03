@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from utils.constants import QuestionType, Difficulty, coerce_topic, topic_label, topic_matches, topic_value
-from utils.json_io import read_json, write_json, sanitize_filename_part
+from utils.json_io import read_json, write_json, sanitize_filename_part, list_json_files
 
 
 @dataclass
@@ -324,6 +324,33 @@ class QuestionBank:
         total = len(matches)
         return matches[offset:offset + limit], total
 
+    def question_ids(self, course_id: str | None = None) -> list[str]:
+        """Return matching question IDs without constructing Question objects."""
+        ids: list[str] = []
+        for filename in list_json_files(self._dir):
+            data = read_json(f"{self._dir}/{filename}")
+            if not isinstance(data, dict):
+                continue
+            if not self._matches_course_data(data, course_id):
+                continue
+            question_id = str(data.get("question_id", "") or "").strip()
+            if question_id:
+                ids.append(question_id)
+        return ids
+
+    def count(self, course_id: str | None = None) -> int:
+        """Return a lightweight count of matching question records."""
+        return len(self.question_ids(course_id=course_id))
+
+    def count_existing(self, question_ids: list[str] | set[str], course_id: str | None = None) -> int:
+        """Count existing question IDs matching the optional course without loading Question objects."""
+        count = 0
+        for question_id in dict.fromkeys(question_ids):
+            data = read_json(f"{self._dir}/{sanitize_filename_part(str(question_id))}.json")
+            if isinstance(data, dict) and self._matches_course_data(data, course_id):
+                count += 1
+        return count
+
     def clear_cache(self):
         """Clear the in-memory cache."""
         self._cache.clear()
@@ -355,4 +382,13 @@ class QuestionBank:
         if not course_filter:
             return True
         source_course_id = (question.metadata or {}).get("course_id", "")
+        return not source_course_id or source_course_id == course_filter
+
+    @staticmethod
+    def _matches_course_data(data: dict, course_id: str | None) -> bool:
+        course_filter = (course_id or "").strip()
+        if not course_filter:
+            return True
+        metadata = data.get("metadata", {}) or {}
+        source_course_id = metadata.get("course_id", "") if isinstance(metadata, dict) else ""
         return not source_course_id or source_course_id == course_filter

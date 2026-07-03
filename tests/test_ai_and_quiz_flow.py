@@ -1494,6 +1494,35 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIn("历史错题 1 题", screen.stats_label.text())
             self.assertIn("题库总量 1 题", screen.stats_label.text())
 
+    def test_home_screen_refresh_uses_lightweight_question_counts(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            progress_manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            course_question = self._make_question("course-a-q")
+            course_question.metadata["course_id"] = "course-a"
+            other_question = self._make_question("course-b-q")
+            other_question.metadata["course_id"] = "course-b"
+            question_bank.save_many([course_question, other_question])
+            record = ProgressRecord.create_new("set-any")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(question_id=course_question.question_id, index_in_session=0, user_answer="B", is_correct=False),
+                AnswerRecord(question_id=other_question.question_id, index_in_session=1, user_answer="B", is_correct=False),
+            ]
+            record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
+            progress_manager.save(record)
+
+            screen = HomeScreen(progress_manager, question_bank)
+            screen.set_current_course("course-a")
+
+            with patch.object(question_bank, "search", side_effect=AssertionError("home refresh should not load full search results")), \
+                 patch.object(question_bank, "get_many", side_effect=AssertionError("home refresh should not load full question objects")):
+                screen.refresh()
+
+            self.assertIn("累计 1 题", screen.stats_label.text())
+            self.assertIn("历史错题 1 题", screen.stats_label.text())
+            self.assertIn("题库总量 1 题", screen.stats_label.text())
+
     def test_home_screen_can_show_and_clear_resume_draft_action(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             screen = HomeScreen(

@@ -159,16 +159,16 @@ class HomeScreen(QWidget):
             self._set_incorrect_empty_state(True)
             return
 
-        visible_questions, total_questions = self.question_bank.search(
-            course_id=self._current_course_id,
-            limit=1_000_000,
+        visible_question_ids = (
+            set(self.question_bank.question_ids(course_id=self._current_course_id))
+            if self._current_course_id else None
         )
-        visible_question_ids = {question.question_id for question in visible_questions}
-        stats = self.progress_manager.get_aggregated_stats(visible_question_ids if self._current_course_id else None)
-        incorrect_count = len(self.question_bank.get_many(
+        total_questions = self.question_bank.count(course_id=self._current_course_id)
+        stats = self.progress_manager.get_aggregated_stats(visible_question_ids)
+        incorrect_count = self.question_bank.count_existing(
             self.progress_manager.get_incorrect_question_ids(),
             course_id=self._current_course_id,
-        ))
+        )
         self.incorrect_btn.setEnabled(True)
         self._set_incorrect_empty_state(incorrect_count <= 0)
 
