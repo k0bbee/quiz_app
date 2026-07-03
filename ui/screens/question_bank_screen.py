@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QTextEdit, QMessageBox, QSplitter,
     QAbstractItemView,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 
 from core.language_manager import LanguageManager
 from core.question_bank_maintenance import backfill_source_refs_from_course, remove_question_from_sets
@@ -46,6 +46,10 @@ class QuestionBankScreen(QWidget):
         self._current_course_id = ""
         self._list_title_limit = 96
         self._refreshing_set_filter = False
+        self.search_debounce_timer = QTimer(self)
+        self.search_debounce_timer.setSingleShot(True)
+        self.search_debounce_timer.setInterval(250)
+        self.search_debounce_timer.timeout.connect(self._reset_and_refresh)
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self.refresh()
@@ -63,7 +67,7 @@ class QuestionBankScreen(QWidget):
         self.search_input.setPlaceholderText(
             self.lang_manager.get_text("搜索题干、解析、主题", "Search stem, explanation, topic")
         )
-        self.search_input.textChanged.connect(self._reset_and_refresh)
+        self.search_input.textChanged.connect(self._schedule_search_refresh)
         filter_row.addWidget(self.search_input, 2)
 
         self.set_filter = WheelSafeComboBox()
@@ -249,6 +253,10 @@ class QuestionBankScreen(QWidget):
     def _reset_and_refresh(self):
         self.page = 0
         self.refresh()
+
+    def _schedule_search_refresh(self):
+        """Debounce free-text search to avoid reloading on every keystroke."""
+        self.search_debounce_timer.start()
 
     def _prev_page(self):
         if self.page > 0:

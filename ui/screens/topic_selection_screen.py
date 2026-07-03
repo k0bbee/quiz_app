@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QComboBox, QLineEdit,
     QMessageBox, QAbstractItemView, QInputDialog
 )
-from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 
 from utils.constants import topic_label, topic_value
 from core.language_manager import LanguageManager
@@ -30,6 +30,10 @@ class TopicSelectionScreen(QWidget):
         self._all_sets = []
         self._current_course_id = ""
         self._updating_topic_filter = False
+        self.search_debounce_timer = QTimer(self)
+        self.search_debounce_timer.setSingleShot(True)
+        self.search_debounce_timer.setInterval(250)
+        self.search_debounce_timer.timeout.connect(self._render_sets)
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -46,7 +50,7 @@ class TopicSelectionScreen(QWidget):
         filter_layout = QHBoxLayout()
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(self.lang_manager.get_text("搜索...", "Search..."))
-        self.search_input.textChanged.connect(self._render_sets)
+        self.search_input.textChanged.connect(self._schedule_search_render)
         filter_layout.addWidget(self.search_input, 2)
 
         self.topic_filter = WheelSafeComboBox()
@@ -284,6 +288,10 @@ class TopicSelectionScreen(QWidget):
         self.regenerate_btn.setEnabled(False)
         self.rename_btn.setEnabled(False)
         self.info_label.clear()
+
+    def _schedule_search_render(self):
+        """Debounce free-text search to avoid rerendering on every keystroke."""
+        self.search_debounce_timer.start()
 
     def _render_sets(self):
         """Render the filtered question-set list."""
