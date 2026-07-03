@@ -20,9 +20,9 @@ class QuestionReviewDialog(QDialog):
         self.questions = list(questions)
         self.page_size = max(1, int(page_size or 50))
         self._current_page = 0
-        self._accepted: set[int] = set(range(len(questions)))  # indices
         self._current_index: int = -1
         self.lang_manager = LanguageManager.instance()
+        self._accepted: set[int] = self._initial_accepted_indexes()
 
         self.setWindowTitle(self.lang_manager.get_text("审查生成的题目", "Review Generated Questions"))
         self.resize(900, 600)
@@ -207,6 +207,9 @@ class QuestionReviewDialog(QDialog):
         )
         if source_text:
             details += f"\n--- Source Evidence ---\n{source_text}"
+        warnings = self._review_warnings(q)
+        if warnings:
+            details += "\n--- Review Warnings ---\n" + "\n".join(warnings)
 
         self.detail_editor.setPlainText(details)
 
@@ -242,8 +245,9 @@ class QuestionReviewDialog(QDialog):
         lang = self.lang_manager.current
         stem = q.get_stem(lang)
         short = stem[:80] + "..." if len(stem) > 80 else stem
+        warning_prefix = "⚠ " if self._review_warnings(q) else ""
         prefix = "✓ " if index in self._accepted else "✗ "
-        item.setText(f"{prefix}Q{index + 1}: {short}")
+        item.setText(f"{warning_prefix}{prefix}Q{index + 1}: {short}")
 
     def _render_current_page(self, preserve_selection: bool = False):
         """Render only the current page to keep large review batches responsive."""
@@ -333,6 +337,34 @@ class QuestionReviewDialog(QDialog):
     def get_accepted_questions(self) -> list[Question]:
         """Return only the accepted questions."""
         return [self.questions[i] for i in sorted(self._accepted)]
+
+    def _initial_accepted_indexes(self) -> set[int]:
+        """Accept only questions that do not need manual confidence review."""
+        return {
+            index
+            for index, question in enumerate(self.questions)
+            if not self._review_warnings(question)
+        }
+
+    def _review_warnings(self, question: Question) -> list[str]:
+        """Return review warnings that should require explicit user acceptance."""
+        metadata = question.metadata or {}
+        warnings: list[str] = []
+        source_status = str(metadata.get("source_ref_status", "") or "").strip().lower()
+        if source_status in {"invalid_model_ref", "missing"}:
+            warnings.append(self.lang_manager.get_text("来源无效或缺失", "Source invalid or missing"))
+        elif source_status in {"fallback_global_evidence", "global_fallback"}:
+            warnings.append(self.lang_manager.get_text("来源来自全局兜底", "Source uses global fallback"))
+
+        plan_status = str(metadata.get("plan_match_status", "") or "").strip().lower()
+        if plan_status == "matched_by_shape":
+            warnings.append(self.lang_manager.get_text("仅按形状匹配生成计划", "Plan matched by shape only"))
+
+        zh_explanation = question.get_explanation("zh").strip()
+        en_explanation = question.get_explanation("en").strip()
+        if not zh_explanation and not en_explanation:
+            warnings.append(self.lang_manager.get_text("缺少解析", "Missing explanation"))
+        return warnings
 
 
 def _format_source_refs(source_refs, status: str | None = None) -> str:

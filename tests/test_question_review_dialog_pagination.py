@@ -122,6 +122,35 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertIn("source-0007", details)
         self.assertIn("Cache Address Breakdown", details)
 
+    def test_review_dialog_requires_manual_acceptance_for_low_confidence_questions(self):
+        good = make_question(1)
+        good.metadata["source_ref_status"] = "valid_model_ref"
+        good.metadata["plan_match_status"] = "matched_by_plan_id"
+        invalid_source = make_question(2)
+        invalid_source.metadata["source_ref_status"] = "invalid_model_ref"
+        shape_match = make_question(3)
+        shape_match.metadata["plan_match_status"] = "matched_by_shape"
+        missing_explanation = make_question(4)
+        missing_explanation.bilingual["zh"]["explanation"] = ""
+        missing_explanation.bilingual["en"]["explanation"] = ""
+
+        dialog = QuestionReviewDialog(
+            [good, invalid_source, shape_match, missing_explanation],
+            page_size=10,
+        )
+        self.addCleanup(dialog.close)
+
+        self.assertEqual({0}, dialog._accepted)
+        self.assertEqual([good.question_id], [question.question_id for question in dialog.get_accepted_questions()])
+        self.assertIn("⚠", dialog.question_list.item(1).text())
+        self.assertIn("⚠", dialog.question_list.item(2).text())
+        self.assertIn("⚠", dialog.question_list.item(3).text())
+
+        dialog.question_list.setCurrentRow(1)
+        details = dialog.detail_editor.toPlainText()
+        self.assertIn("Review Warnings", details)
+        self.assertIn("source", details.lower())
+
     def _visible_question_indexes(self, dialog: QuestionReviewDialog) -> list[int]:
         return [
             dialog.question_list.item(row).data(Qt.ItemDataRole.UserRole)
