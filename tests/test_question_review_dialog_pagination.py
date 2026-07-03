@@ -151,6 +151,33 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertIn("Review Warnings", details)
         self.assertIn("source", details.lower())
 
+    def test_review_dialog_can_edit_current_question_before_accepting(self):
+        question = make_question(1)
+        dialog = QuestionReviewDialog([question], page_size=10)
+        self.addCleanup(dialog.close)
+
+        dialog.zh_stem_editor.setPlainText("修改后的中文题干")
+        dialog.en_stem_editor.setPlainText("Edited English stem")
+        dialog.zh_options_editor.setPlainText("A. 正确项\nB. 干扰项\nC. 新干扰项")
+        dialog.en_options_editor.setPlainText("A. Correct\nB. Distractor\nC. New distractor")
+        dialog.correct_answer_editor.setText("C")
+        dialog.zh_explanation_editor.setPlainText("修改后的中文解析")
+        dialog.en_explanation_editor.setPlainText("Edited English explanation")
+
+        dialog.apply_edit_btn.click()
+
+        accepted = dialog.get_accepted_questions()
+        self.assertEqual(1, len(accepted))
+        edited = accepted[0]
+        self.assertEqual("修改后的中文题干", edited.get_stem("zh"))
+        self.assertEqual("Edited English stem", edited.get_stem("en"))
+        self.assertEqual(["A. 正确项", "B. 干扰项", "C. 新干扰项"], edited.get_options("zh"))
+        self.assertEqual(["A. Correct", "B. Distractor", "C. New distractor"], edited.get_options("en"))
+        self.assertEqual("C", edited.correct_answer)
+        self.assertEqual("修改后的中文解析", edited.get_explanation("zh"))
+        self.assertEqual("Edited English explanation", edited.get_explanation("en"))
+        self.assertIn("修改后的中文题干", dialog.question_list.item(0).text())
+
     def _visible_question_indexes(self, dialog: QuestionReviewDialog) -> list[int]:
         return [
             dialog.question_list.item(row).data(Qt.ItemDataRole.UserRole)

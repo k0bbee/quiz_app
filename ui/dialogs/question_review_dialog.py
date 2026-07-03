@@ -3,7 +3,7 @@
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QTextEdit, QSplitter,
-    QMessageBox, QWidget
+    QMessageBox, QWidget, QFormLayout, QLineEdit
 )
 from PyQt6.QtCore import Qt
 
@@ -106,6 +106,51 @@ class QuestionReviewDialog(QDialog):
         self.detail_editor.setObjectName("dialogDetailEditor")
         right_layout.addWidget(self.detail_editor, 1)
 
+        self.edit_label = QLabel(self.lang_manager.get_text("编辑当前题目:", "Edit Current Question:"))
+        self.edit_label.setObjectName("dialogEditLabel")
+        right_layout.addWidget(self.edit_label)
+
+        edit_form = QFormLayout()
+        self.zh_stem_editor = QTextEdit()
+        self.zh_stem_editor.setObjectName("reviewZhStemEditor")
+        self.zh_stem_editor.setMaximumHeight(52)
+        edit_form.addRow(self.lang_manager.get_text("中文题干", "ZH Stem"), self.zh_stem_editor)
+
+        self.en_stem_editor = QTextEdit()
+        self.en_stem_editor.setObjectName("reviewEnStemEditor")
+        self.en_stem_editor.setMaximumHeight(52)
+        edit_form.addRow(self.lang_manager.get_text("英文题干", "EN Stem"), self.en_stem_editor)
+
+        self.zh_options_editor = QTextEdit()
+        self.zh_options_editor.setObjectName("reviewZhOptionsEditor")
+        self.zh_options_editor.setMaximumHeight(70)
+        edit_form.addRow(self.lang_manager.get_text("中文选项", "ZH Options"), self.zh_options_editor)
+
+        self.en_options_editor = QTextEdit()
+        self.en_options_editor.setObjectName("reviewEnOptionsEditor")
+        self.en_options_editor.setMaximumHeight(70)
+        edit_form.addRow(self.lang_manager.get_text("英文选项", "EN Options"), self.en_options_editor)
+
+        self.correct_answer_editor = QLineEdit()
+        self.correct_answer_editor.setObjectName("reviewCorrectAnswerEditor")
+        edit_form.addRow(self.lang_manager.get_text("正确答案", "Correct Answer"), self.correct_answer_editor)
+
+        self.zh_explanation_editor = QTextEdit()
+        self.zh_explanation_editor.setObjectName("reviewZhExplanationEditor")
+        self.zh_explanation_editor.setMaximumHeight(70)
+        edit_form.addRow(self.lang_manager.get_text("中文解析", "ZH Explanation"), self.zh_explanation_editor)
+
+        self.en_explanation_editor = QTextEdit()
+        self.en_explanation_editor.setObjectName("reviewEnExplanationEditor")
+        self.en_explanation_editor.setMaximumHeight(70)
+        edit_form.addRow(self.lang_manager.get_text("英文解析", "EN Explanation"), self.en_explanation_editor)
+        right_layout.addLayout(edit_form)
+
+        self.apply_edit_btn = QPushButton(self.lang_manager.get_text("应用修改", "Apply Edits"))
+        self.apply_edit_btn.setObjectName("secondaryButton")
+        self.apply_edit_btn.clicked.connect(self._apply_current_edits)
+        right_layout.addWidget(self.apply_edit_btn)
+
         # Accept/reject for current question
         action_layout = QHBoxLayout()
         self.accept_btn = QPushButton(self.lang_manager.get_text("接受", "Accept"))
@@ -159,6 +204,8 @@ class QuestionReviewDialog(QDialog):
         self.preview_label.setText(self.lang_manager.get_text("选择题目以预览", "Select a question to preview"))
         self.accept_btn.setText(self.lang_manager.get_text("接受", "Accept"))
         self.reject_btn.setText(self.lang_manager.get_text("拒绝", "Reject"))
+        self.edit_label.setText(self.lang_manager.get_text("编辑当前题目:", "Edit Current Question:"))
+        self.apply_edit_btn.setText(self.lang_manager.get_text("应用修改", "Apply Edits"))
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
         self.save_btn.setText(self.lang_manager.get_text("保存已接受的题目", "Save Accepted Questions"))
 
@@ -212,6 +259,7 @@ class QuestionReviewDialog(QDialog):
             details += "\n--- Review Warnings ---\n" + "\n".join(warnings)
 
         self.detail_editor.setPlainText(details)
+        self._populate_edit_fields(q)
 
     def _accept_current(self):
         """Accept the currently viewed question."""
@@ -337,6 +385,39 @@ class QuestionReviewDialog(QDialog):
     def get_accepted_questions(self) -> list[Question]:
         """Return only the accepted questions."""
         return [self.questions[i] for i in sorted(self._accepted)]
+
+    def _populate_edit_fields(self, question: Question):
+        """Load the selected question into editable fields."""
+        self.zh_stem_editor.setPlainText(question.get_stem("zh"))
+        self.en_stem_editor.setPlainText(question.get_stem("en"))
+        self.zh_options_editor.setPlainText("\n".join(question.get_options("zh")))
+        self.en_options_editor.setPlainText("\n".join(question.get_options("en")))
+        self.correct_answer_editor.setText(str(question.correct_answer))
+        self.zh_explanation_editor.setPlainText(question.get_explanation("zh"))
+        self.en_explanation_editor.setPlainText(question.get_explanation("en"))
+
+    def _apply_current_edits(self):
+        """Apply editable field values to the current question model."""
+        if self._current_index < 0 or self._current_index >= len(self.questions):
+            return
+        question = self.questions[self._current_index]
+        question.bilingual.setdefault("zh", {})
+        question.bilingual.setdefault("en", {})
+        question.bilingual["zh"]["stem"] = self.zh_stem_editor.toPlainText().strip()
+        question.bilingual["en"]["stem"] = self.en_stem_editor.toPlainText().strip()
+        question.bilingual["zh"]["options"] = self._edited_options(self.zh_options_editor)
+        question.bilingual["en"]["options"] = self._edited_options(self.en_options_editor)
+        question.bilingual["zh"]["explanation"] = self.zh_explanation_editor.toPlainText().strip()
+        question.bilingual["en"]["explanation"] = self.en_explanation_editor.toPlainText().strip()
+        question.correct_answer = self.correct_answer_editor.text().strip()
+        self._accepted.add(self._current_index)
+        self._update_list_item(self._current_index)
+        self._on_selection_changed(self.question_list.currentRow())
+
+    @staticmethod
+    def _edited_options(editor: QTextEdit) -> list[str]:
+        """Return non-empty edited options, one option per line."""
+        return [line.strip() for line in editor.toPlainText().splitlines() if line.strip()]
 
     def _initial_accepted_indexes(self) -> set[int]:
         """Accept only questions that do not need manual confidence review."""
