@@ -897,7 +897,12 @@ class MainWindow(QMainWindow):
             questions = self.question_bank.get_many(question_set.questions)
             if questions:
                 self._active_questions = {q.question_id: q for q in questions}
-                self.quiz_screen.start_quiz(question_set, questions, show_timer=self._show_timer_setting())
+                self.quiz_screen.start_quiz(
+                    question_set,
+                    questions,
+                    show_timer=self._show_timer_setting(),
+                    submission_mode="practice",
+                )
                 self.navigate_to(self.SCREEN_QUIZ)
 
     def _show_timer_setting(self) -> bool:

@@ -1189,6 +1189,50 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual([marked_current.question_id], [q.question_id for q in started["questions"]])
             self.assertIn("复查", started["label"])
 
+    def test_retry_all_starts_entire_set_in_practice_mode(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            set_manager = SetManager(str(Path(tmpdir) / "sets"))
+            q1 = self._make_question("retry-all-1")
+            q2 = self._make_question("retry-all-2")
+            question_bank.save_many([q1, q2])
+            qset = QuestionSet.create_new(
+                title={"zh": "整套", "en": "Full Set"},
+                description={"zh": "", "en": ""},
+                topics=["cache"],
+                question_ids=[q1.question_id, q2.question_id],
+            )
+            set_manager.save(qset)
+            record = ProgressRecord.create_new(qset.set_id)
+            record.status = "completed"
+            record.summary = SessionSummary.compute([], total_questions=2, total_time=20)
+            started = {}
+
+            class FakeQuizScreen:
+                def start_quiz(self, question_set, questions, **kwargs):
+                    started["question_set"] = question_set
+                    started["questions"] = questions
+                    started.update(kwargs)
+
+            shell = types.SimpleNamespace(
+                results_screen=types.SimpleNamespace(current_record=record),
+                set_manager=set_manager,
+                question_bank=question_bank,
+                quiz_screen=FakeQuizScreen(),
+                _active_questions={},
+                SCREEN_QUIZ=2,
+                _show_timer_setting=lambda: False,
+                navigate_to=lambda screen: started.setdefault("screen", screen),
+            )
+
+            MainWindow._on_retry_all(shell)
+
+            self.assertEqual(qset.set_id, started["question_set"].set_id)
+            self.assertEqual([q1.question_id, q2.question_id], [q.question_id for q in started["questions"]])
+            self.assertEqual("practice", started["submission_mode"])
+
     def test_quiz_screen_timer_visibility_follows_setting(self):
         question = Question.create_new(
             qtype=QuestionType.MULTIPLE_CHOICE,
