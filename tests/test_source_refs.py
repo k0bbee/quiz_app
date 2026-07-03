@@ -69,6 +69,26 @@ class SourceRefsFormattingTests(unittest.TestCase):
         self.assertIn("<b>来源:</b> Exact", text)
         self.assertIn("<br>", text)
 
+    def test_format_source_refs_escapes_generated_values_in_html_mode(self):
+        text = format_source_refs(
+            [
+                {
+                    "chunk_id": "source-<7>",
+                    "source_file": "<img src=x onerror=alert(1)>",
+                    "heading": "DMA <b>unsafe</b>",
+                    "excerpt": "<script>alert(1)</script>",
+                }
+            ],
+            label="来源",
+            html=True,
+        )
+
+        self.assertIn("&lt;img", text)
+        self.assertIn("DMA &lt;b&gt;unsafe&lt;/b&gt;", text)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", text)
+        self.assertNotIn("<img", text)
+        self.assertNotIn("<script>", text)
+
 
 if __name__ == "__main__":
     unittest.main()

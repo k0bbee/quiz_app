@@ -1,5 +1,7 @@
 """Quiz screen — question display, answer input, auto-grading, feedback."""
 
+from html import escape as html_escape
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QProgressBar, QFrame, QScrollArea, QMessageBox,
@@ -876,15 +878,16 @@ class QuizScreen(QWidget):
             )
             self._set_correct_indicator_state("incorrect")
 
-        user_answer = self._format_answer(record.user_answer, question)
-        correct_answer = self._format_answer(question.correct_answer, question)
+        user_answer = html_escape(self._format_answer(record.user_answer, question))
+        correct_answer = html_escape(self._format_answer(question.correct_answer, question))
+        explanation = html_escape(question.get_explanation(lang))
 
         your_answer_text = self.lang_manager.get_text("你的答案", "Your answer")
         correct_answer_text = self.lang_manager.get_text("正确答案", "Correct answer")
         feedback = (
             f"<b>{your_answer_text}:</b> {user_answer}<br>"
             f"<b>{correct_answer_text}:</b> {correct_answer}<br><br>"
-            f"{question.get_explanation(lang)}"
+            f"{explanation}"
         )
         metadata = question.metadata or {}
         source_text = format_source_refs(

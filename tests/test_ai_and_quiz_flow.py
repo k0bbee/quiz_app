@@ -879,6 +879,41 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIn("source-0007", feedback)
             self.assertIn("Cache Address Breakdown", feedback)
 
+    def test_quiz_feedback_escapes_generated_html_content(self):
+        question = self._make_question("q-html")
+        question.bilingual["zh"]["options"] = ["A. <b>正确</b>", "B. <img src=x onerror=alert(1)>"]
+        question.bilingual["zh"]["explanation"] = "解释 <script>alert(1)</script>"
+        question.metadata["source_refs"] = [
+            {
+                "chunk_id": "source-<7>",
+                "source_file": "<img src=x onerror=alert(1)>",
+                "heading": "DMA <b>unsafe</b>",
+                "excerpt": "<script>alert(1)</script>",
+            }
+        ]
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["cache"],
+            question_ids=[question.question_id],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [question], show_timer=False, submission_mode="practice")
+            screen.answer_area.choice_widget.buttons[0].setChecked(True)
+            screen._submit_answer()
+
+            feedback = screen.explanation_label.text()
+            self.assertIn("&lt;b&gt;正确&lt;/b&gt;", feedback)
+            self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", feedback)
+            self.assertIn("&lt;img", feedback)
+            self.assertNotIn("<script>", feedback)
+            self.assertNotIn("<img", feedback)
+
     def test_results_screen_shows_correct_but_unsure_count(self):
         record = ProgressRecord.create_new("set-1")
         record.status = "completed"

@@ -1,5 +1,7 @@
 """Formatting helpers for displaying course source references in UI."""
 
+from html import escape as html_escape
+
 
 def format_source_refs(
     source_refs,
@@ -8,17 +10,20 @@ def format_source_refs(
     status: str | None = None,
 ) -> str:
     """Format stored source_refs without exposing raw JSON."""
-    lines = _source_ref_lines(source_refs)
+    lines = _source_ref_lines(source_refs, html=html)
     status_label = _source_ref_status_label(status)
     if not lines and not status_label:
         return ""
     separator = "<br>" if html else "\n"
     suffix = f" {status_label}" if status_label else ""
-    title = f"<b>{label}:</b>{suffix}" if html else f"{label}:{suffix}"
+    if html:
+        title = f"<b>{html_escape(label)}:</b>{html_escape(suffix)}"
+    else:
+        title = f"{label}:{suffix}"
     return separator.join([title, *lines])
 
 
-def _source_ref_lines(source_refs) -> list[str]:
+def _source_ref_lines(source_refs, html: bool = False) -> list[str]:
     if not isinstance(source_refs, list):
         return []
     lines = []
@@ -39,9 +44,13 @@ def _source_ref_lines(source_refs) -> list[str]:
         if heading:
             parts.append(heading)
         if parts:
+            if html:
+                parts = [html_escape(str(part)) for part in parts]
             lines.append(f"{index}. " + " · ".join(parts))
             excerpt = _compact_excerpt(ref.get("excerpt", ""))
             if excerpt:
+                if html:
+                    excerpt = html_escape(excerpt)
                 lines.append(f"   Excerpt: {excerpt}")
     return lines
 
