@@ -376,6 +376,7 @@ class MainWindow(QMainWindow):
                 remaining_count,
                 current_index=snapshot.current_index,
                 total_count=len(questions),
+                mode=snapshot.mode,
             )
             return
         resume = MainWindow._resume_abandoned_draft(self)

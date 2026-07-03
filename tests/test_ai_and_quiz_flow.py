@@ -602,6 +602,26 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual([current_id], snapshot.unsure_question_ids)
             self.assertEqual([current_id], snapshot.marked_review_question_ids)
 
+    def test_quiz_screen_captures_snapshot_with_submission_mode(self):
+        question = self._make_question("q1")
+        qset = QuestionSet.create_new(
+            title={"zh": "模拟", "en": "Exam"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=[question.question_id],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [question], show_timer=False, submission_mode="exam")
+
+            snapshot = screen.capture_snapshot()
+
+            self.assertEqual("exam", snapshot.mode)
+
     def test_quiz_screen_restores_snapshot_state_and_draft_answer(self):
         qset = QuestionSet.create_new(
             title={"zh": "测试题集", "en": "Test Set"},
@@ -647,6 +667,34 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual({"q2"}, screen._unsure_question_ids)
             self.assertEqual({"q2"}, screen._marked_question_ids)
             self.assertTrue(screen.uncertain_checkbox.isChecked())
+
+    def test_quiz_screen_restores_snapshot_submission_mode(self):
+        qset = QuestionSet.create_new(
+            title={"zh": "模拟", "en": "Exam"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=["q1"],
+        )
+        question = self._make_question("q1")
+        snapshot = QuizSessionSnapshot.create_new(
+            set_id=qset.set_id,
+            title="模拟",
+            question_order=["q1"],
+            language="zh",
+            mode="exam",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.submission_mode = "practice"
+
+            screen.restore_snapshot(snapshot, [question], qset, show_timer=False)
+
+            self.assertEqual("exam", screen.submission_mode)
+            self.assertEqual("完成", screen.next_question_btn.text())
 
     def test_quiz_screen_updates_submitted_confidence_when_unsure_toggles(self):
         question = self._make_question("q1")
@@ -1318,6 +1366,14 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             self.assertIn("第 7/20 题", screen.resume_btn.text())
 
+            screen.set_resume_draft("系统结构练习", 13, current_index=6, total_count=20, mode="exam")
+
+            self.assertIn("继续模拟卷草稿", screen.resume_btn.text())
+
+            screen.set_resume_draft("系统结构练习", 13, current_index=6, total_count=20, mode="practice")
+
+            self.assertIn("继续练习草稿", screen.resume_btn.text())
+
             screen.clear_resume_draft()
 
             self.assertTrue(screen.resume_btn.isHidden())
@@ -1980,11 +2036,12 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self_outer = self
 
         class FakeHomeScreen:
-            def set_resume_draft(self, title, remaining_count, current_index=None, total_count=None):
+            def set_resume_draft(self, title, remaining_count, current_index=None, total_count=None, mode=None):
                 shown["title"] = title
                 shown["remaining_count"] = remaining_count
                 shown["current_index"] = current_index
                 shown["total_count"] = total_count
+                shown["mode"] = mode
 
             def clear_resume_draft(self):
                 shown["cleared"] = True
@@ -2004,6 +2061,58 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertEqual(1, shown["remaining_count"])
         self.assertEqual(1, shown["current_index"])
         self.assertEqual(2, shown["total_count"])
+
+    def test_home_resume_draft_passes_snapshot_mode_to_resume_action(self):
+        from ui.main_window import MainWindow
+
+        qset = QuestionSet.create_new(
+            title={"zh": "系统结构练习", "en": "Architecture Practice"},
+            description={"zh": "", "en": ""},
+            topics=["cache"],
+            question_ids=["q1"],
+        )
+        snapshot = QuizSessionSnapshot.create_new(
+            set_id=qset.set_id,
+            title="系统结构练习",
+            question_order=["q1"],
+            language="zh",
+            mode="exam",
+        )
+        shown = {}
+
+        class FakeSnapshotManager:
+            def load_latest(self):
+                return snapshot
+
+        class FakeSetManager:
+            def get(self, set_id):
+                return qset if set_id == qset.set_id else None
+
+        class FakeQuestionBank:
+            def get_many(self, question_ids, course_id=None):
+                return [self_outer._make_question(qid) for qid in question_ids]
+
+        self_outer = self
+
+        class FakeHomeScreen:
+            def set_resume_draft(self, title, remaining_count, current_index=None, total_count=None, mode=None):
+                shown["mode"] = mode
+
+            def clear_resume_draft(self):
+                shown["cleared"] = True
+
+        shell = types.SimpleNamespace(
+            home_screen=FakeHomeScreen(),
+            snapshot_manager=FakeSnapshotManager(),
+            set_manager=FakeSetManager(),
+            question_bank=FakeQuestionBank(),
+            lang_manager=LanguageManager.instance(),
+            _current_course_id=lambda: "",
+        )
+
+        MainWindow._update_home_resume_draft(shell)
+
+        self.assertEqual("exam", shown["mode"])
 
     def test_quiz_finished_deletes_snapshot_for_completed_set(self):
         from ui.main_window import MainWindow

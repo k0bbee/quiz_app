@@ -350,6 +350,7 @@ class QuizScreen(QWidget):
             title=title,
             question_order=question_order,
             language=lang,
+            mode=self.submission_mode,
         )
         snapshot.current_index = self.session.current_index
         snapshot.submitted_answers = self.session.answers
@@ -376,6 +377,7 @@ class QuizScreen(QWidget):
         ]
         self._question_set = question_set
         self._last_user_answer = None
+        self.submission_mode = snapshot.mode if snapshot.mode in ("exam", "practice") else "practice"
         self._marked_question_ids = set(snapshot.marked_review_question_ids)
         self._unsure_question_ids = set(snapshot.unsure_question_ids)
         self._draft_answers_by_question_id = dict(snapshot.draft_answers)
