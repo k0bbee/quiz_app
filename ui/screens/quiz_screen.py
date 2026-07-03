@@ -678,9 +678,46 @@ class QuizScreen(QWidget):
     def _advance_without_submitting(self):
         """Save the draft and move forward; only the final action submits all drafts."""
         if self.session.current_index >= self.session.total_questions - 1:
+            if self.submission_mode == "exam" and not self._confirm_incomplete_exam_submission():
+                return
             self._finish_from_drafts()
             return
         self._next_question_preview()
+
+    def _confirm_incomplete_exam_submission(self) -> bool:
+        """Confirm final exam submission when some questions are still unanswered."""
+        self._save_current_draft_answer(self.session.current_index)
+        unanswered_count = sum(
+            1
+            for question in self.session.questions
+            if not self._draft_has_answer(self._draft_answers_by_question_id.get(question.question_id))
+            and self.session.answer_for_question_id(question.question_id) is None
+        )
+        if unanswered_count <= 0:
+            return True
+
+        reply = QMessageBox.question(
+            self,
+            self.lang_manager.get_text("确认交卷", "Submit Exam?"),
+            self.lang_manager.get_text(
+                f"还有 {unanswered_count} 题未作答。\n\n确定现在交卷吗？未作答题目将按跳过处理。",
+                f"{unanswered_count} questions are still unanswered.\n\nSubmit now? Unanswered questions will be treated as skipped.",
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return reply == QMessageBox.StandardButton.Yes
+
+    @staticmethod
+    def _draft_has_answer(answer: object) -> bool:
+        """Return whether a saved draft should count as answered."""
+        if answer is None:
+            return False
+        if isinstance(answer, str):
+            return bool(answer.strip())
+        if isinstance(answer, (list, tuple, set, dict)):
+            return bool(answer)
+        return True
 
     def _finish_from_drafts(self):
         """Submit all saved drafts at the end of the navigation-first quiz flow."""

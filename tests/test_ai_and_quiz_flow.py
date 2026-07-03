@@ -478,6 +478,67 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             answers_by_id = {answer.question_id: answer.user_answer for answer in screen.session.answers}
             self.assertEqual({first_id: "A", second_id: "B"}, answers_by_id)
 
+    def test_exam_mode_finish_requires_confirmation_when_questions_are_unanswered(self):
+        q1 = self._make_question("q1")
+        q2 = self._make_question("q2")
+        qset = QuestionSet.create_new(
+            title={"zh": "模拟", "en": "Exam"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=["q1", "q2"],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [q1, q2], show_timer=False, submission_mode="exam")
+            screen.answer_area.choice_widget.buttons[0].setChecked(True)
+            screen._advance_without_submitting()
+
+            with patch(
+                "ui.screens.quiz_screen.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.No,
+            ) as question:
+                screen._advance_without_submitting()
+
+            self.assertTrue(question.called)
+            self.assertEqual(1, screen.session.current_index)
+            self.assertEqual(QuizState.IN_PROGRESS, screen.session.state)
+            self.assertEqual(0, screen.session.answered_count)
+
+    def test_exam_mode_finish_submits_after_unanswered_confirmation(self):
+        q1 = self._make_question("q1")
+        q2 = self._make_question("q2")
+        qset = QuestionSet.create_new(
+            title={"zh": "模拟", "en": "Exam"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=["q1", "q2"],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [q1, q2], show_timer=False, submission_mode="exam")
+            screen.answer_area.choice_widget.buttons[0].setChecked(True)
+            screen._advance_without_submitting()
+
+            with patch(
+                "ui.screens.quiz_screen.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ) as question:
+                screen._advance_without_submitting()
+
+            self.assertTrue(question.called)
+            self.assertEqual(QuizState.COMPLETED, screen.session.state)
+            self.assertEqual(2, screen.session.answered_count)
+            self.assertFalse(screen.session.answers[0].skipped)
+            self.assertTrue(screen.session.answers[1].skipped)
+
     def test_practice_mode_primary_action_submits_current_question_then_advances(self):
         q1 = self._make_question("q1")
         q2 = self._make_question("q2")
