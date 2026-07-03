@@ -1376,6 +1376,38 @@ class GenerationConfigTests(unittest.TestCase):
         )
         self.assertIn("后续要求", dialog.generation_log.toPlainText())
 
+    def test_dialog_runtime_instruction_quick_actions_append_and_apply_text(self):
+        class FakeWorker:
+            def __init__(self):
+                self.instructions = []
+
+            def set_runtime_instruction(self, instruction):
+                self.instructions.append(instruction)
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog.worker = FakeWorker()
+        dialog.runtime_instruction_input.setPlainText("后续题目集中在 DMA。")
+
+        buttons = {
+            button.text(): button
+            for button in dialog.runtime_instruction_quick_buttons
+        }
+        self.assertIn("更贴近课件原文", buttons)
+        self.assertIn("减少定义题", buttons)
+        self.assertFalse(any("Focus" in label or "Original" in label for label in buttons))
+
+        buttons["减少定义题"].click()
+
+        instruction = dialog.runtime_instruction_input.toPlainText()
+        self.assertIn("后续题目集中在 DMA。", instruction)
+        self.assertIn("减少定义题", instruction)
+        self.assertEqual([dialog._current_runtime_instruction()], dialog.worker.instructions)
+        self.assertIn("后续要求", dialog.generation_log.toPlainText())
+
     def test_cancel_during_generation_does_not_block_waiting_for_worker(self):
         class BlockingWorker:
             def __init__(self):

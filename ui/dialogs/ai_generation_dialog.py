@@ -342,6 +342,30 @@ class AIGenerationDialog(QDialog):
             )
         )
         runtime_instruction_layout.addWidget(self.runtime_instruction_input)
+        self.runtime_instruction_quick_buttons = []
+        quick_action_rows = QWidget()
+        quick_action_layout = QVBoxLayout(quick_action_rows)
+        quick_action_layout.setContentsMargins(0, 0, 0, 0)
+        quick_action_layout.setSpacing(6)
+        quick_row = None
+        for index, (key, _zh_label, _en_label, _zh_instruction, _en_instruction) in enumerate(
+            self._runtime_instruction_presets()
+        ):
+            if index % 3 == 0:
+                quick_row = QHBoxLayout()
+                quick_row.setSpacing(6)
+                quick_action_layout.addLayout(quick_row)
+            button = QPushButton()
+            button.setObjectName("secondaryButton")
+            button.setMinimumHeight(28)
+            button.clicked.connect(
+                lambda _checked=False, preset_key=key: self._append_runtime_instruction_preset(preset_key)
+            )
+            self.runtime_instruction_quick_buttons.append(button)
+            if quick_row is not None:
+                quick_row.addWidget(button)
+        self._refresh_runtime_instruction_quick_buttons()
+        runtime_instruction_layout.addWidget(quick_action_rows)
         runtime_instruction_action_row = QHBoxLayout()
         runtime_instruction_action_row.addStretch()
         self.apply_runtime_instruction_btn = QPushButton(
@@ -642,6 +666,7 @@ class AIGenerationDialog(QDialog):
         self.apply_runtime_instruction_btn.setText(
             self.lang_manager.get_text("应用到后续题目", "Apply to Later Questions")
         )
+        self._refresh_runtime_instruction_quick_buttons()
         self.generation_log.setPlaceholderText(
             self.lang_manager.get_text(
                 "开始生成后显示批次、接受、拒绝和错误摘要。",
@@ -1208,6 +1233,82 @@ class AIGenerationDialog(QDialog):
 
     def _current_runtime_instruction(self) -> str:
         return " ".join(self.runtime_instruction_input.toPlainText().split())
+
+    def _runtime_instruction_presets(self) -> list[tuple[str, str, str, str, str]]:
+        return [
+            (
+                "source",
+                "更贴近课件原文",
+                "Closer to course material",
+                "更贴近课件原文：后续题目优先依据当前课程材料和来源证据，不引入课件外知识。",
+                "Closer to course material: base later questions on current course materials and source evidence; do not introduce outside facts.",
+            ),
+            (
+                "application",
+                "增加应用题",
+                "More application questions",
+                "增加应用题：后续题目多考场景应用、判断条件和过程推理，减少纯记忆题。",
+                "More application questions: emphasize scenarios, conditions, and process reasoning; reduce pure recall.",
+            ),
+            (
+                "definition",
+                "减少定义题",
+                "Fewer definition questions",
+                "减少定义题：后续题目避免只问术语定义，改为比较、应用或排错。",
+                "Fewer definition questions: avoid asking only term definitions; prefer comparison, application, or troubleshooting.",
+            ),
+            (
+                "harder",
+                "提高难度",
+                "Increase difficulty",
+                "提高难度：后续题目增加干扰项相似度和多步推理，但题干必须给足条件。",
+                "Increase difficulty: use more similar distractors and multi-step reasoning, while keeping all required assumptions in the stem.",
+            ),
+            (
+                "explain",
+                "解释更详细",
+                "More detailed explanations",
+                "解释更详细：后续题目的解析要说明正确原因和每个错误选项错在哪里。",
+                "More detailed explanations: explain why the answer is correct and why each distractor is wrong.",
+            ),
+            (
+                "dedupe",
+                "避免重复已有题",
+                "Avoid repeated questions",
+                "避免重复已有题：后续题目不要重复已经生成过的题干、关键词组合或相同考点角度。",
+                "Avoid repeated questions: do not reuse existing stems, keyword combinations, or the same angle on a concept.",
+            ),
+        ]
+
+    def _refresh_runtime_instruction_quick_buttons(self) -> None:
+        buttons = getattr(self, "runtime_instruction_quick_buttons", [])
+        for button, (_key, zh_label, en_label, zh_instruction, en_instruction) in zip(
+            buttons,
+            self._runtime_instruction_presets(),
+        ):
+            button.setText(self.lang_manager.get_text(zh_label, en_label))
+            button.setToolTip(self.lang_manager.get_text(zh_instruction, en_instruction))
+
+    def _append_runtime_instruction_preset(self, preset_key: str) -> None:
+        preset = next(
+            (
+                item
+                for item in self._runtime_instruction_presets()
+                if item[0] == preset_key
+            ),
+            None,
+        )
+        if preset is None:
+            return
+        _key, _zh_label, _en_label, zh_instruction, en_instruction = preset
+        addition = self.lang_manager.get_text(zh_instruction, en_instruction)
+        current = self.runtime_instruction_input.toPlainText().strip()
+        if current:
+            if addition not in current:
+                self.runtime_instruction_input.setPlainText(f"{current}\n{addition}")
+        else:
+            self.runtime_instruction_input.setPlainText(addition)
+        self._apply_runtime_instruction_to_worker()
 
     def _apply_runtime_instruction_to_worker(self, announce: bool = True):
         instruction = self._current_runtime_instruction()
