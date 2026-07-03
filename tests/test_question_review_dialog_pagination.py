@@ -178,6 +178,34 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertEqual("Edited English explanation", edited.get_explanation("en"))
         self.assertIn("修改后的中文题干", dialog.question_list.item(0).text())
 
+    def test_review_dialog_flags_lightweight_quality_warnings(self):
+        long_correct = make_question(1)
+        long_correct.bilingual["zh"]["options"] = [
+            "A. 这是一个明显比其他干扰项长很多的正确答案，容易暴露答案",
+            "B. 短项",
+            "C. 短项",
+            "D. 短项",
+        ]
+        long_correct.correct_answer = "A"
+        imbalanced_explanation = make_question(2)
+        imbalanced_explanation.bilingual["zh"]["explanation"] = "短"
+        imbalanced_explanation.bilingual["en"]["explanation"] = (
+            "This explanation is intentionally much longer than the Chinese explanation "
+            "so the review dialog can warn about bilingual quality imbalance."
+        )
+
+        dialog = QuestionReviewDialog([long_correct, imbalanced_explanation], page_size=10)
+        self.addCleanup(dialog.close)
+
+        self.assertEqual(set(), dialog._accepted)
+        self.assertIn("⚠", dialog.question_list.item(0).text())
+        self.assertIn("⚠", dialog.question_list.item(1).text())
+
+        dialog.question_list.setCurrentRow(0)
+        self.assertIn("正确选项", dialog.detail_editor.toPlainText())
+        dialog.question_list.setCurrentRow(1)
+        self.assertIn("解析", dialog.detail_editor.toPlainText())
+
     def _visible_question_indexes(self, dialog: QuestionReviewDialog) -> list[int]:
         return [
             dialog.question_list.item(row).data(Qt.ItemDataRole.UserRole)

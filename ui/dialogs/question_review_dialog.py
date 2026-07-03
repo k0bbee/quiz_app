@@ -445,7 +445,38 @@ class QuestionReviewDialog(QDialog):
         en_explanation = question.get_explanation("en").strip()
         if not zh_explanation and not en_explanation:
             warnings.append(self.lang_manager.get_text("缺少解析", "Missing explanation"))
+        elif self._has_imbalanced_explanations(zh_explanation, en_explanation):
+            warnings.append(self.lang_manager.get_text("中英文解析长度差异过大", "Bilingual explanation lengths differ greatly"))
+        if self._has_overlong_correct_option(question):
+            warnings.append(self.lang_manager.get_text("正确选项明显长于干扰项", "Correct option is much longer than distractors"))
         return warnings
+
+    @staticmethod
+    def _has_imbalanced_explanations(zh_explanation: str, en_explanation: str) -> bool:
+        """Return whether bilingual explanations are suspiciously imbalanced."""
+        zh_len = len(zh_explanation.strip())
+        en_len = len(en_explanation.strip())
+        if min(zh_len, en_len) == 0:
+            return False
+        return max(zh_len, en_len) >= max(60, min(zh_len, en_len) * 4)
+
+    @staticmethod
+    def _has_overlong_correct_option(question: Question) -> bool:
+        """Return whether the correct option is much longer than all distractors."""
+        answer = str(question.correct_answer).strip().upper()
+        if len(answer) != 1 or not answer.isalpha():
+            return False
+        index = ord(answer) - ord("A")
+        for lang in ("zh", "en"):
+            options = question.get_options(lang)
+            if not options or index < 0 or index >= len(options):
+                continue
+            lengths = [len(str(option).strip()) for option in options]
+            correct_length = lengths[index]
+            distractor_lengths = [length for idx, length in enumerate(lengths) if idx != index]
+            if distractor_lengths and correct_length >= max(28, max(distractor_lengths) * 2):
+                return True
+        return False
 
 
 def _format_source_refs(source_refs, status: str | None = None) -> str:
