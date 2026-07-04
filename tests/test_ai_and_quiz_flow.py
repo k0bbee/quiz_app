@@ -189,6 +189,24 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertTrue(changed)
         self.assertEqual("unsure", session.answers[0].confidence)
 
+    def test_quiz_session_releases_submit_guard_when_grading_raises(self):
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["cache"],
+            question_ids=[],
+        )
+        q1 = self._make_question("q1")
+        session = QuizSession()
+        session.start_fixed_order(qset, [q1], language="zh")
+
+        with patch("core.quiz_engine.Grader.grade", side_effect=ValueError("bad answer shape")):
+            with self.assertRaises(ValueError):
+                session.submit_answer({"unexpected": object()})
+
+        self.assertFalse(session._in_submit)
+        self.assertEqual(QuizState.IN_PROGRESS, session.state)
+
     def test_quiz_session_can_jump_between_unfinished_questions(self):
         first = Question.create_new(
             qtype=QuestionType.MULTIPLE_CHOICE,

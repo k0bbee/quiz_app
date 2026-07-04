@@ -197,26 +197,28 @@ class QuizSession(QObject):
         # next_question() mid-submit (which would corrupt the index).
         self._in_submit = True
 
-        is_correct, normalized = Grader.grade(question, user_answer)
-        time_spent = time.time() - self._question_start_time
+        try:
+            is_correct, normalized = Grader.grade(question, user_answer)
+            time_spent = time.time() - self._question_start_time
 
-        record = AnswerRecord(
-            question_id=question.question_id,
-            index_in_session=self._current_index,
-            user_answer=normalized,
-            is_correct=is_correct,
-            confidence=confidence if confidence in ("sure", "unsure") else "sure",
-            time_spent_seconds=round(time_spent, 1),
-            attempted_at=datetime.now(timezone.utc).isoformat(),
-        )
-        self._answers.append(record)
+            record = AnswerRecord(
+                question_id=question.question_id,
+                index_in_session=self._current_index,
+                user_answer=normalized,
+                is_correct=is_correct,
+                confidence=confidence if confidence in ("sure", "unsure") else "sure",
+                time_spent_seconds=round(time_spent, 1),
+                attempted_at=datetime.now(timezone.utc).isoformat(),
+            )
+            self._answers.append(record)
 
-        self.question_graded.emit(question.question_id, is_correct)
+            self.question_graded.emit(question.question_id, is_correct)
 
-        # Auto-advance to feedback
-        self._set_state(QuizState.SHOWING_FEEDBACK)
-        self._in_submit = False
-        return is_correct, normalized
+            # Auto-advance to feedback
+            self._set_state(QuizState.SHOWING_FEEDBACK)
+            return is_correct, normalized
+        finally:
+            self._in_submit = False
 
     def next_question(self) -> bool:
         """Advance to the next question. Returns False if quiz is complete."""
