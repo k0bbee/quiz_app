@@ -112,6 +112,24 @@ def test_mastery_state_tracks_streaks_accuracy_and_excludes_never_wrong_question
     assert prioritized == ["cache"]
 
 
+def test_missing_answer_timestamps_are_applied_after_dated_answers():
+    dated_wrong = _record(
+        "dated-wrong",
+        "2026-06-01T00:00:00+00:00",
+        [_answer("cache", False, 0)],
+    )
+    undated_recovery = _record(
+        "undated-recovery",
+        "",
+        [_answer("cache", True, 0)],
+    )
+
+    states = build_question_mastery([undated_recovery, dated_wrong])
+
+    assert states["cache"].recent_correct_streak == 1
+    assert states["cache"].recent_wrong_streak == 0
+
+
 def test_progress_manager_returns_prioritized_review_ids(tmp_path):
     progress_manager = ProgressManager(str(tmp_path / "progress"))
     for record in [

@@ -190,11 +190,11 @@ def _chronological_answers(records: list[ProgressRecord]) -> list[tuple[Progress
 
 def _parse_timestamp(value: str) -> datetime:
     if not value:
-        return datetime.min.replace(tzinfo=timezone.utc)
+        return datetime.max.replace(tzinfo=timezone.utc)
     try:
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
-        return datetime.min.replace(tzinfo=timezone.utc)
+        return datetime.max.replace(tzinfo=timezone.utc)
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed
