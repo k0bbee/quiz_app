@@ -26,6 +26,7 @@ class QuestionReviewDialog(QDialog):
         self._current_index: int = -1
         self.lang_manager = LanguageManager.instance()
         self._accepted: set[int] = self._initial_accepted_indexes()
+        self._loading_edit_fields = False
 
         self.setWindowTitle(self.lang_manager.get_text("审查生成的题目", "Review Generated Questions"))
         self.resize(900, 600)
@@ -202,6 +203,7 @@ class QuestionReviewDialog(QDialog):
 
     def _on_language_changed(self, lang):
         """Update all UI strings when language changes."""
+        self._apply_current_edits(refresh=False)
         self.setWindowTitle(self.lang_manager.get_text("审查生成的题目", "Review Generated Questions"))
         self.header.setText(
             self.lang_manager.get_text(
@@ -234,6 +236,8 @@ class QuestionReviewDialog(QDialog):
         index = int(item.data(Qt.ItemDataRole.UserRole))
         if index < 0 or index >= len(self.questions):
             return
+        if index != self._current_index:
+            self._apply_current_edits(refresh=False)
 
         self._current_index = index
         q = self.questions[index]
@@ -287,9 +291,10 @@ class QuestionReviewDialog(QDialog):
             self._update_list_item(self._current_index)
 
     def _accept_all(self):
-        """Accept all questions."""
+        """Accept all questions that do not require manual quality review."""
         for i in range(len(self.questions)):
-            self._accepted.add(i)
+            if not self._review_warnings(self.questions[i]):
+                self._accepted.add(i)
         self._render_current_page(preserve_selection=True)
 
     def _reject_all(self):
@@ -363,17 +368,20 @@ class QuestionReviewDialog(QDialog):
     def _next_page(self):
         """Move to the next review page."""
         if self._current_page < self._page_count() - 1:
+            self._apply_current_edits(refresh=False)
             self._current_page += 1
             self._render_current_page()
 
     def _previous_page(self):
         """Move to the previous review page."""
         if self._current_page > 0:
+            self._apply_current_edits(refresh=False)
             self._current_page -= 1
             self._render_current_page()
 
     def _on_save(self):
         """Validate and save accepted questions."""
+        self._apply_current_edits(refresh=False)
         accepted_count = len(self._accepted)
         if accepted_count == 0:
             QMessageBox.warning(
@@ -401,6 +409,7 @@ class QuestionReviewDialog(QDialog):
 
     def _populate_edit_fields(self, question: Question):
         """Load the selected question into editable fields."""
+        self._loading_edit_fields = True
         self.zh_stem_editor.setPlainText(question.get_stem("zh"))
         self.en_stem_editor.setPlainText(question.get_stem("en"))
         self.zh_options_editor.setPlainText(self._format_options_for_edit(question.get_options("zh")))
@@ -412,9 +421,12 @@ class QuestionReviewDialog(QDialog):
         self.correct_answer_editor.setText(self._format_answer_for_edit(question.correct_answer))
         self.zh_explanation_editor.setPlainText(question.get_explanation("zh"))
         self.en_explanation_editor.setPlainText(question.get_explanation("en"))
+        self._loading_edit_fields = False
 
-    def _apply_current_edits(self):
+    def _apply_current_edits(self, checked: bool = False, refresh: bool = True):
         """Apply editable field values to the current question model."""
+        if self._loading_edit_fields:
+            return
         if self._current_index < 0 or self._current_index >= len(self.questions):
             return
         question = self.questions[self._current_index]
@@ -448,9 +460,9 @@ class QuestionReviewDialog(QDialog):
             question.correct_answer,
             question.type,
         )
-        self._accepted.add(self._current_index)
         self._update_list_item(self._current_index)
-        self._on_selection_changed(self.question_list.currentRow())
+        if refresh:
+            self._on_selection_changed(self.question_list.currentRow())
 
     @staticmethod
     def _format_options_for_preview(options: object) -> str:

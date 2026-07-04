@@ -151,6 +151,43 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertIn("Review Warnings", details)
         self.assertIn("source", details.lower())
 
+    def test_review_dialog_accept_all_keeps_warning_questions_rejected(self):
+        good = make_question(1)
+        warning = make_question(2)
+        warning.metadata["source_ref_status"] = "invalid_model_ref"
+        dialog = QuestionReviewDialog([good, warning], page_size=10)
+        self.addCleanup(dialog.close)
+
+        dialog.accept_all_btn.click()
+
+        self.assertEqual({0}, dialog._accepted)
+        self.assertEqual([good.question_id], [question.question_id for question in dialog.get_accepted_questions()])
+
+    def test_review_dialog_apply_edits_does_not_accept_warning_question(self):
+        warning = make_question(1)
+        warning.metadata["plan_match_status"] = "matched_by_shape"
+        dialog = QuestionReviewDialog([warning], page_size=10)
+        self.addCleanup(dialog.close)
+
+        self.assertEqual(set(), dialog._accepted)
+        dialog.zh_explanation_editor.setPlainText("补充后的解析仍需用户显式接受。")
+        dialog.apply_edit_btn.click()
+
+        self.assertEqual(set(), dialog._accepted)
+        self.assertEqual("补充后的解析仍需用户显式接受。", warning.get_explanation("zh"))
+
+    def test_review_dialog_preserves_pending_edits_when_switching_selection(self):
+        first = make_question(1)
+        second = make_question(2)
+        dialog = QuestionReviewDialog([first, second], page_size=10)
+        self.addCleanup(dialog.close)
+
+        dialog.zh_stem_editor.setPlainText("切题前未点应用的修改")
+        dialog.question_list.setCurrentRow(1)
+
+        self.assertEqual("切题前未点应用的修改", first.get_stem("zh"))
+        self.assertEqual(1, dialog._current_index)
+
     def test_review_dialog_can_edit_current_question_before_accepting(self):
         question = make_question(1)
         dialog = QuestionReviewDialog([question], page_size=10)
