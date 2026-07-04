@@ -382,7 +382,7 @@ class QuestionBank:
         if not course_filter:
             return True
         source_course_id = (question.metadata or {}).get("course_id", "")
-        return not source_course_id or source_course_id == course_filter
+        return source_course_id == course_filter
 
     @staticmethod
     def _matches_course_data(data: dict, course_id: str | None) -> bool:
@@ -391,4 +391,4 @@ class QuestionBank:
             return True
         metadata = data.get("metadata", {}) or {}
         source_course_id = metadata.get("course_id", "") if isinstance(metadata, dict) else ""
-        return not source_course_id or source_course_id == course_filter
+        return source_course_id == course_filter

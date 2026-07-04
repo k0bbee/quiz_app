@@ -229,8 +229,8 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
             items, total = question_bank.search(course_id="course-a")
 
-            self.assertEqual(2, total)
-            self.assertEqual({"q-course-a", "q-manual"}, {question.question_id for question in items})
+            self.assertEqual(1, total)
+            self.assertEqual({"q-course-a"}, {question.question_id for question in items})
 
     def test_question_bank_get_many_filters_generated_questions_by_course(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -247,7 +247,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 course_id="course-a",
             )
 
-            self.assertEqual({"q-course-a", "q-manual"}, {question.question_id for question in questions})
+            self.assertEqual({"q-course-a"}, {question.question_id for question in questions})
 
     def test_question_bank_screen_filters_generated_questions_by_current_course(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -267,7 +267,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 screen.question_list.item(row).data(Qt.ItemDataRole.UserRole)
                 for row in range(screen.question_list.count())
             }
-            self.assertEqual({"q-course-a", "q-manual"}, visible_ids)
+            self.assertEqual({"q-course-a"}, visible_ids)
 
     def test_question_bank_screen_filters_questions_by_selected_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
