@@ -372,6 +372,24 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         area.matching_widget.combos[1].setCurrentIndex(1)
         self.assertTrue(area.has_answer())
 
+    def test_ordering_widget_tracks_whether_user_reordered_default_order(self):
+        area = AnswerArea()
+        area.set_question_type(
+            QuestionType.ORDERING,
+            [
+                {"id": "item_1", "text": "取指"},
+                {"id": "item_2", "text": "译码"},
+                {"id": "item_3", "text": "执行"},
+            ],
+        )
+
+        self.assertFalse(area.ordering_widget.has_user_reordered())
+
+        area.ordering_widget.list_widget.setCurrentRow(1)
+        area.ordering_widget._move_up()
+
+        self.assertTrue(area.ordering_widget.has_user_reordered())
+
     def test_ordering_question_confirms_when_submitting_default_order(self):
         question = Question.create_new(
             qtype=QuestionType.ORDERING,
@@ -556,6 +574,59 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual(2, screen.session.answered_count)
             self.assertFalse(screen.session.answers[0].skipped)
             self.assertTrue(screen.session.answers[1].skipped)
+
+    def test_exam_mode_untouched_ordering_question_is_skipped_on_finish(self):
+        question = Question.create_new(
+            qtype=QuestionType.ORDERING,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": "按执行顺序排序",
+                    "options": [
+                        {"id": "item_1", "text": "取指"},
+                        {"id": "item_2", "text": "译码"},
+                        {"id": "item_3", "text": "执行"},
+                    ],
+                    "explanation": "解释说明",
+                },
+                "en": {
+                    "stem": "Order the execution stages",
+                    "options": [
+                        {"id": "item_1", "text": "Fetch"},
+                        {"id": "item_2", "text": "Decode"},
+                        {"id": "item_3", "text": "Execute"},
+                    ],
+                    "explanation": "Explanation text",
+                },
+            },
+            correct_answer=["item_1", "item_2", "item_3"],
+            topic="pipeline",
+        )
+        qset = QuestionSet.create_new(
+            title={"zh": "模拟", "en": "Exam"},
+            description={"zh": "", "en": ""},
+            topics=["pipeline"],
+            question_ids=[question.question_id],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [question], show_timer=False, submission_mode="exam")
+
+            with patch(
+                "ui.screens.quiz_screen.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ) as confirm:
+                screen._advance_without_submitting()
+
+            self.assertTrue(confirm.called)
+            self.assertEqual(QuizState.COMPLETED, screen.session.state)
+            self.assertEqual(1, screen.session.answered_count)
+            self.assertTrue(screen.session.answers[0].skipped)
+            self.assertEqual("", screen.session.answers[0].user_answer)
 
     def test_practice_mode_primary_action_submits_current_question_then_advances(self):
         q1 = self._make_question("q1")

@@ -672,11 +672,20 @@ class QuizScreen(QWidget):
         if question_index is None:
             question_index = self.session.current_index
         question_id = ""
+        question = None
         if 0 <= question_index < len(self.session.questions):
-            question_id = self.session.questions[question_index].question_id
+            question = self.session.questions[question_index]
+            question_id = question.question_id
         if not question_id:
             question_id = self._displayed_question_id
         if not question_id:
+            return
+        if (
+            question is not None
+            and question.type == QuestionType.ORDERING
+            and not self.answer_area.ordering_widget.has_user_reordered()
+        ):
+            self._draft_answers_by_question_id.pop(question_id, None)
             return
         if self.answer_area.has_answer():
             self._draft_answers_by_question_id[question_id] = self.answer_area.get_answer()
