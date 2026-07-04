@@ -222,6 +222,72 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertIn("Topic: process_scheduling", dialog.detail_editor.toPlainText())
         self.assertIn("Difficulty: hard", dialog.detail_editor.toPlainText())
 
+    def test_review_dialog_preserves_fill_answer_list_when_editing_explanation(self):
+        topic = CourseTopic(topic_id="cache_mapping", title="Cache Mapping")
+        question = Question.create_new(
+            QuestionType.FILL_IN_BLANK,
+            Difficulty.MEDIUM,
+            {
+                "zh": {"stem": "____ 保存主存块。", "options": [], "explanation": "旧解析"},
+                "en": {"stem": "____ stores memory blocks.", "options": [], "explanation": "Old explanation"},
+            },
+            ["cache line", "block"],
+            topic,
+        )
+
+        dialog = QuestionReviewDialog([question], page_size=10)
+        self.addCleanup(dialog.close)
+
+        self.assertEqual("cache_mapping", dialog.topic_editor.text())
+        dialog.zh_explanation_editor.setPlainText("只修改解析，不应该改变答案结构。")
+        dialog.apply_edit_btn.click()
+
+        edited = dialog.get_accepted_questions()[0]
+        self.assertEqual(["cache line", "block"], edited.correct_answer)
+        self.assertEqual("cache_mapping", edited.topic_id())
+        self.assertEqual("只修改解析，不应该改变答案结构。", edited.get_explanation("zh"))
+
+    def test_review_dialog_preserves_matching_options_and_answer_when_editing_stem(self):
+        question = Question.create_new(
+            QuestionType.MATCHING,
+            Difficulty.MEDIUM,
+            {
+                "zh": {
+                    "stem": "配对 I/O 术语。",
+                    "options": {
+                        "left": [{"id": "left_1", "text": "DMA"}],
+                        "right": [{"id": "right_1", "text": "直接内存访问"}],
+                    },
+                    "explanation": "DMA 与直接内存访问配对。",
+                },
+                "en": {
+                    "stem": "Match I/O terms.",
+                    "options": {
+                        "left": [{"id": "left_1", "text": "DMA"}],
+                        "right": [{"id": "right_1", "text": "Direct memory access"}],
+                    },
+                    "explanation": "DMA matches direct memory access.",
+                },
+            },
+            [["left_1", "right_1"]],
+            "input_output_improvements",
+        )
+
+        dialog = QuestionReviewDialog([question], page_size=10)
+        self.addCleanup(dialog.close)
+
+        dialog.zh_stem_editor.setPlainText("配对 I/O 机制和含义。")
+        dialog.apply_edit_btn.click()
+
+        edited = dialog.get_accepted_questions()[0]
+        self.assertIsInstance(edited.get_options("zh"), dict)
+        self.assertEqual(
+            {"left": [{"id": "left_1", "text": "DMA"}], "right": [{"id": "right_1", "text": "直接内存访问"}]},
+            edited.get_options("zh"),
+        )
+        self.assertEqual([["left_1", "right_1"]], edited.correct_answer)
+        self.assertEqual("配对 I/O 机制和含义。", edited.get_stem("zh"))
+
     def _visible_question_indexes(self, dialog: QuestionReviewDialog) -> list[int]:
         return [
             dialog.question_list.item(row).data(Qt.ItemDataRole.UserRole)

@@ -1,5 +1,7 @@
 """Question review dialog — preview, edit, accept, or reject generated questions."""
 
+import json
+
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QTextEdit, QSplitter,
@@ -10,7 +12,7 @@ from PyQt6.QtCore import Qt
 from models.question import Question
 from core.language_manager import LanguageManager
 from ui.widgets.source_refs import format_source_refs
-from utils.constants import Difficulty
+from utils.constants import Difficulty, QuestionType
 
 
 class QuestionReviewDialog(QDialog):
@@ -252,10 +254,10 @@ class QuestionReviewDialog(QDialog):
         details += f"Correct Answer: {q.correct_answer}\n"
         details += f"\n--- ZH Stem ---\n{q.get_stem('zh')}\n"
         if q.get_options('zh'):
-            details += f"\nOptions:\n" + "\n".join(q.get_options('zh'))
+            details += f"\nOptions:\n" + self._format_options_for_preview(q.get_options('zh'))
         details += f"\n--- EN Stem ---\n{q.get_stem('en')}\n"
         if q.get_options('en'):
-            details += f"\nOptions:\n" + "\n".join(q.get_options('en'))
+            details += f"\nOptions:\n" + self._format_options_for_preview(q.get_options('en'))
         details += f"\n--- Explanation (ZH) ---\n{q.get_explanation('zh')}"
         details += f"\n--- Explanation (EN) ---\n{q.get_explanation('en')}"
         metadata = q.metadata or {}
@@ -401,13 +403,13 @@ class QuestionReviewDialog(QDialog):
         """Load the selected question into editable fields."""
         self.zh_stem_editor.setPlainText(question.get_stem("zh"))
         self.en_stem_editor.setPlainText(question.get_stem("en"))
-        self.zh_options_editor.setPlainText("\n".join(question.get_options("zh")))
-        self.en_options_editor.setPlainText("\n".join(question.get_options("en")))
-        self.topic_editor.setText(question.topic_title())
+        self.zh_options_editor.setPlainText(self._format_options_for_edit(question.get_options("zh")))
+        self.en_options_editor.setPlainText(self._format_options_for_edit(question.get_options("en")))
+        self.topic_editor.setText(question.topic_id())
         difficulty_index = self.difficulty_editor.findData(question.difficulty.value)
         if difficulty_index >= 0:
             self.difficulty_editor.setCurrentIndex(difficulty_index)
-        self.correct_answer_editor.setText(str(question.correct_answer))
+        self.correct_answer_editor.setText(self._format_answer_for_edit(question.correct_answer))
         self.zh_explanation_editor.setPlainText(question.get_explanation("zh"))
         self.en_explanation_editor.setPlainText(question.get_explanation("en"))
 
@@ -418,29 +420,111 @@ class QuestionReviewDialog(QDialog):
         question = self.questions[self._current_index]
         question.bilingual.setdefault("zh", {})
         question.bilingual.setdefault("en", {})
+        original_topic_id = question.topic_id()
         question.bilingual["zh"]["stem"] = self.zh_stem_editor.toPlainText().strip()
         question.bilingual["en"]["stem"] = self.en_stem_editor.toPlainText().strip()
-        question.bilingual["zh"]["options"] = self._edited_options(self.zh_options_editor)
-        question.bilingual["en"]["options"] = self._edited_options(self.en_options_editor)
+        question.bilingual["zh"]["options"] = self._edited_options(
+            self.zh_options_editor,
+            question.get_options("zh"),
+            question.type,
+        )
+        question.bilingual["en"]["options"] = self._edited_options(
+            self.en_options_editor,
+            question.get_options("en"),
+            question.type,
+        )
         question.bilingual["zh"]["explanation"] = self.zh_explanation_editor.toPlainText().strip()
         question.bilingual["en"]["explanation"] = self.en_explanation_editor.toPlainText().strip()
         topic = self.topic_editor.text().strip()
         if topic:
             question.topic = topic
-            if question.metadata.get("topic_title") and question.metadata.get("topic_title") != topic:
-                question.metadata["topic_title"] = topic
+            if topic != original_topic_id:
+                question.metadata.pop("topic_title", None)
         difficulty = self.difficulty_editor.currentData()
         if difficulty in {item.value for item in Difficulty}:
             question.difficulty = Difficulty(difficulty)
-        question.correct_answer = self.correct_answer_editor.text().strip()
+        question.correct_answer = self._edited_answer(
+            self.correct_answer_editor.text(),
+            question.correct_answer,
+            question.type,
+        )
         self._accepted.add(self._current_index)
         self._update_list_item(self._current_index)
         self._on_selection_changed(self.question_list.currentRow())
 
     @staticmethod
-    def _edited_options(editor: QTextEdit) -> list[str]:
-        """Return non-empty edited options, one option per line."""
-        return [line.strip() for line in editor.toPlainText().splitlines() if line.strip()]
+    def _format_options_for_preview(options: object) -> str:
+        """Return readable options text for both flat and structured question types."""
+        if isinstance(options, list) and all(isinstance(option, str) for option in options):
+            return "\n".join(options)
+        return json.dumps(options, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def _format_options_for_edit(options: object) -> str:
+        """Return editable options text without losing structured IDs."""
+        if isinstance(options, list) and all(isinstance(option, str) for option in options):
+            return "\n".join(options)
+        if options in (None, [], {}):
+            return ""
+        return json.dumps(options, ensure_ascii=False, indent=2)
+
+    @staticmethod
+    def _format_answer_for_edit(answer: object) -> str:
+        """Return editable answer text while preserving structured answers."""
+        if isinstance(answer, str):
+            return answer
+        return json.dumps(answer, ensure_ascii=False)
+
+    @staticmethod
+    def _edited_options(editor: QTextEdit, original_options: object, question_type: QuestionType) -> object:
+        """Return edited options, preserving structured option shapes by default."""
+        text = editor.toPlainText().strip()
+        if question_type in {
+            QuestionType.MULTIPLE_CHOICE,
+            QuestionType.SCENARIO_CHOICE,
+            QuestionType.TRUE_FALSE,
+        }:
+            return [line.strip() for line in text.splitlines() if line.strip()]
+        if not text:
+            return [] if isinstance(original_options, list) else {}
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return original_options
+        if question_type == QuestionType.MATCHING and isinstance(parsed, dict):
+            return parsed
+        if question_type == QuestionType.ORDERING and isinstance(parsed, list):
+            return parsed
+        if question_type == QuestionType.FILL_IN_BLANK:
+            return parsed if isinstance(parsed, list) else original_options
+        return parsed
+
+    @staticmethod
+    def _edited_answer(text: str, original_answer: object, question_type: QuestionType) -> object:
+        """Return edited correct answer without coercing structured answers to strings."""
+        clean = text.strip()
+        if question_type in {
+            QuestionType.MULTIPLE_CHOICE,
+            QuestionType.SCENARIO_CHOICE,
+            QuestionType.TRUE_FALSE,
+        }:
+            return clean
+        if not clean:
+            return original_answer
+        try:
+            parsed = json.loads(clean)
+        except json.JSONDecodeError:
+            if question_type == QuestionType.FILL_IN_BLANK:
+                values = [line.strip() for line in clean.splitlines() if line.strip()]
+                return values or original_answer
+            return original_answer
+        if question_type == QuestionType.FILL_IN_BLANK and isinstance(parsed, list):
+            return parsed
+        if question_type == QuestionType.MATCHING and isinstance(parsed, list):
+            return parsed
+        if question_type == QuestionType.ORDERING and isinstance(parsed, list):
+            return parsed
+        return original_answer
 
     def _initial_accepted_indexes(self) -> set[int]:
         """Accept only questions that do not need manual confidence review."""
