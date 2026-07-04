@@ -17,6 +17,7 @@ from models.quiz_snapshot import QuizSessionSnapshot
 from core.quiz_engine import QuizSession
 from core.language_manager import LanguageManager
 from core.progress_tracker import ProgressManager
+from core.answer_display import format_answer_for_display
 from utils.constants import QuestionType, QuizState
 from ui.widgets.question_card import QuestionCard
 from ui.widgets.answer_area import AnswerArea
@@ -999,15 +1000,13 @@ class QuizScreen(QWidget):
 
     def _format_answer(self, answer, question: Question = None) -> str:
         """Convert stored answers to readable text for feedback/review."""
+        if question is not None:
+            return format_answer_for_display(
+                question,
+                answer,
+                self.session.language,
+                empty_text=self.lang_manager.get_text("(空)", "(empty)"),
+            )
         if answer is None or answer == "":
             return self.lang_manager.get_text("(空)", "(empty)")
-        if isinstance(answer, list):
-            return " → ".join(str(x) for x in answer)
-        if question is not None:
-            answer_text = str(answer)
-            options = question.get_options(self.session.language)
-            if len(answer_text) == 1 and answer_text.isalpha() and options:
-                idx = ord(answer_text.upper()) - ord("A")
-                if 0 <= idx < len(options):
-                    return options[idx]
         return str(answer)

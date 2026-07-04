@@ -1007,6 +1007,46 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertNotIn("<script>", feedback)
             self.assertNotIn("<img", feedback)
 
+    def test_quiz_feedback_formats_matching_ids_as_readable_labels(self):
+        question = Question.create_new(
+            qtype=QuestionType.MATCHING,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": {
+                    "stem": "配对 I/O 术语。",
+                    "options": {
+                        "left": [{"id": "left_dma", "text": "DMA"}],
+                        "right": [{"id": "right_direct", "text": "直接内存访问"}],
+                    },
+                    "explanation": "DMA 与直接内存访问配对。",
+                },
+                "en": {
+                    "stem": "Match I/O terms.",
+                    "options": {
+                        "left": [{"id": "left_dma", "text": "DMA"}],
+                        "right": [{"id": "right_direct", "text": "Direct memory access"}],
+                    },
+                    "explanation": "DMA matches direct memory access.",
+                },
+            },
+            correct_answer=[["left_dma", "right_direct"]],
+            topic="io",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.session.set_language("en")
+
+            formatted = screen._format_answer([["left_dma", "right_direct"]], question)
+
+        self.assertIn("DMA", formatted)
+        self.assertIn("Direct memory access", formatted)
+        self.assertNotIn("left_dma", formatted)
+        self.assertNotIn("right_direct", formatted)
+
     def test_results_screen_shows_correct_but_unsure_count(self):
         record = ProgressRecord.create_new("set-1")
         record.status = "completed"

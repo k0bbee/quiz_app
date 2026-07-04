@@ -103,6 +103,70 @@ class MockExamExporterTests(unittest.TestCase):
         self.assertIn("2. False", markdown)
         self.assertIn("RR improves responsiveness", markdown)
 
+    def test_render_markdown_formats_structured_answers_without_internal_ids(self):
+        qset = self._make_question_set()
+        qset.questions = ["q-match", "q-order"]
+        questions = [
+            Question(
+                question_id="q-match",
+                type=QuestionType.MATCHING,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {
+                        "stem": "配对 I/O 术语。",
+                        "options": {
+                            "left": [{"id": "left_dma", "text": "DMA"}],
+                            "right": [{"id": "right_direct", "text": "直接内存访问"}],
+                        },
+                        "explanation": "DMA 与直接内存访问配对。",
+                    },
+                    "en": {
+                        "stem": "Match I/O terms.",
+                        "options": {
+                            "left": [{"id": "left_dma", "text": "DMA"}],
+                            "right": [{"id": "right_direct", "text": "Direct memory access"}],
+                        },
+                        "explanation": "DMA matches direct memory access.",
+                    },
+                },
+                correct_answer=[["left_dma", "right_direct"]],
+                topic="io",
+            ),
+            Question(
+                question_id="q-order",
+                type=QuestionType.ORDERING,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {
+                        "stem": "排序。",
+                        "options": [
+                            {"id": "fetch", "text": "取指"},
+                            {"id": "decode", "text": "译码"},
+                        ],
+                        "explanation": "先取指再译码。",
+                    },
+                    "en": {
+                        "stem": "Order.",
+                        "options": [
+                            {"id": "fetch", "text": "Fetch"},
+                            {"id": "decode", "text": "Decode"},
+                        ],
+                        "explanation": "Fetch before decode.",
+                    },
+                },
+                correct_answer=["fetch", "decode"],
+                topic="pipeline",
+            ),
+        ]
+
+        markdown = render_mock_exam_markdown(qset, questions, lang="en", include_answers=True)
+
+        self.assertIn("DMA → Direct memory access", markdown)
+        self.assertIn("Fetch → Decode", markdown)
+        self.assertNotIn("left_dma", markdown)
+        self.assertNotIn("right_direct", markdown)
+        self.assertNotIn("fetch → decode", markdown)
+
     def test_export_writes_utf8_markdown_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "exam.md"

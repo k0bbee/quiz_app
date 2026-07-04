@@ -7,6 +7,7 @@ from typing import Iterable
 
 from models.question import Question
 from models.question_set import QuestionSet
+from core.answer_display import format_answer_for_display, option_text
 from utils.constants import topic_label, topic_value
 
 
@@ -48,7 +49,7 @@ def render_mock_exam_markdown(
             if qnum is None:
                 continue
             explanation = question.get_explanation(lang) or question.get_explanation("zh")
-            lines.append(f"{qnum}. {question.correct_answer}")
+            lines.append(f"{qnum}. {format_answer_for_display(question, question.correct_answer, lang)}")
             if explanation:
                 lines.append(f"   - 解析: {explanation}")
         lines.append("")
@@ -106,11 +107,11 @@ def _render_question(number: int, question: Question, lang: str) -> list[str]:
         for key, values in options.items():
             lines.append(f"**{key}**")
             for value in values:
-                lines.append(f"- {value}")
+                lines.append(f"- {option_text(value, lang)}")
             lines.append("")
     else:
         for option in options:
-            lines.append(f"- {option}")
+            lines.append(f"- {option_text(option, lang)}")
         if options:
             lines.append("")
     return lines

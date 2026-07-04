@@ -5,6 +5,7 @@ from PyQt6.QtCore import Qt
 
 from models.question import Question
 from core.language_manager import LanguageManager
+from core.answer_display import format_answer_for_display
 from ui.widgets.source_refs import format_source_refs
 
 
@@ -119,15 +120,9 @@ class QuestionReviewCard(QFrame):
 
     def _format_answer(self, question: Question, answer, lang: str) -> str:
         """Render answer letters with their option text when possible."""
-        if answer is None or answer == "":
-            return self.lang_manager.get_text("(空)", "(empty)")
-        if isinstance(answer, list):
-            return " → ".join(str(x) for x in answer)
-
-        answer_text = str(answer)
-        options = question.get_options(lang)
-        if len(answer_text) == 1 and answer_text.isalpha() and options:
-            idx = ord(answer_text.upper()) - ord("A")
-            if 0 <= idx < len(options):
-                return options[idx]
-        return answer_text
+        return format_answer_for_display(
+            question,
+            answer,
+            lang,
+            empty_text=self.lang_manager.get_text("(空)", "(empty)"),
+        )
