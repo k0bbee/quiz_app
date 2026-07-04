@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -733,6 +734,47 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 self.assertFalse(deleted_json.exists())
                 self.assertFalse(deleted_summary.exists())
                 self.assertEqual(kept.course_id, manager.current().course_id)
+
+    def test_project_manager_current_ignores_unsafe_course_pointer(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            current_file = str(root / "current.json")
+            manager = CourseProjectManager(str(root / "projects"))
+            project = CourseProject(
+                course_id="course-safe",
+                title="Safe Course",
+                source_folder=str(root / "source"),
+                summary_markdown="# Safe\n",
+                summary_path="",
+                topics=[],
+                documents=[],
+                created_at="2026-06-23T00:00:00+00:00",
+                updated_at="2026-06-23T00:00:00+00:00",
+            )
+            outside = CourseProject(
+                course_id="outside",
+                title="Outside Course",
+                source_folder=str(root / "outside-source"),
+                summary_markdown="# Outside\n",
+                summary_path=str(root / "outside-summary.md"),
+                topics=[],
+                documents=[],
+                created_at="2026-06-23T00:00:00+00:00",
+                updated_at="2026-06-23T00:00:00+00:00",
+            )
+            (root / "outside.json").write_text(
+                json.dumps(outside.to_dict(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            with patch("models.course_project.CURRENT_COURSE_FILE", current_file):
+                self.assertTrue(manager.save(project, make_current=False))
+                Path(current_file).write_text('{"course_id": "../outside"}', encoding="utf-8")
+
+                current = manager.current()
+
+            self.assertIsNotNone(current)
+            self.assertEqual("course-safe", current.course_id)
 
     def test_course_screen_can_delete_selected_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:

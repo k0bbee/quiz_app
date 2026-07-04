@@ -144,7 +144,11 @@ class CourseProjectManager:
         return ok
 
     def get(self, course_id: str) -> Optional[CourseProject]:
-        data = read_json(os.path.join(self._dir, f"{course_id}.json"))
+        try:
+            safe_id = sanitize_filename_part(course_id)
+        except ValueError:
+            return None
+        data = read_json(os.path.join(self._dir, f"{safe_id}.json"))
         return CourseProject.from_dict(data) if data else None
 
     def load_all(self) -> list[CourseProject]:
