@@ -29,7 +29,7 @@ from config import (
     DEFAULT_DIFFICULTY_WEIGHTS,
     DEFAULT_QUESTION_TYPE_WEIGHTS,
 )
-from utils.json_io import read_json, write_json
+from utils.json_io import read_json, write_json, sanitize_filename_part
 from ai.connection_probe import AIConnectionProbe
 from ai.provider_presets import (
     PROVIDER_PRESETS,
@@ -1215,7 +1215,10 @@ class SettingsScreen(QWidget):
                 count = 0
                 for record in data:
                     if isinstance(record, dict) and "progress_id" in record:
-                        pid = record["progress_id"]
+                        try:
+                            pid = sanitize_filename_part(record["progress_id"])
+                        except ValueError:
+                            continue
                         path = os.path.join(PROGRESS_DIR, f"{pid}.json")
                         if write_json(path, record):
                             count += 1

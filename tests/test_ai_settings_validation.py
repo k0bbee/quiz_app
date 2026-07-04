@@ -1,6 +1,9 @@
+import json
 import os
+import tempfile
 import unittest
 from unittest.mock import patch
+from pathlib import Path
 from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -368,6 +371,27 @@ class AISettingsValidationTests(unittest.TestCase):
         manager.set_key.assert_called_once_with("")
         self.assertFalse(screen.clear_api_key_btn.isEnabled())
         self.assertNotIn("system keychain", screen.api_key_input.placeholderText())
+
+    def test_import_progress_rejects_path_traversal_progress_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            progress_dir = root / "progress"
+            import_file = root / "progress_export.json"
+            import_file.write_text(
+                json.dumps([{"progress_id": "../outside-progress", "answers": []}]),
+                encoding="utf-8",
+            )
+            screen = SettingsScreen()
+
+            with patch("config.PROGRESS_DIR", str(progress_dir)), \
+                 patch("ui.screens.settings_screen.QFileDialog.getOpenFileName", return_value=(str(import_file), "")), \
+                 patch("ui.screens.settings_screen.QMessageBox.information") as info:
+                screen._import_progress()
+
+            self.assertFalse((root / "outside-progress.json").exists())
+            self.assertFalse((progress_dir / ".." / "outside-progress.json").exists())
+            self.assertEqual(0, len(list(progress_dir.glob("*.json"))) if progress_dir.exists() else 0)
+            self.assertIn("0", info.call_args.args[2])
 
     def test_app_data_export_runs_in_background_worker(self):
         screen = SettingsScreen()
