@@ -36,6 +36,14 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class UiThemeTests(unittest.TestCase):
+    def tearDown(self):
+        """Close stray top-level widgets so PyQt does not crash during process teardown."""
+        for widget in QApplication.topLevelWidgets():
+            widget.close()
+            widget.deleteLater()
+        _APP.processEvents()
+        _APP.processEvents()
+
     def test_qss_uses_vscode_dark_tokens_and_top_level_backgrounds(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
 
