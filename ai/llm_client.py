@@ -2,7 +2,6 @@
 from utils.logger import debug, warning, error
 
 import json
-import re
 import shutil
 import subprocess
 import time
@@ -293,11 +292,53 @@ class LLMClient:
                 end = len(text)
             return text[start:end].strip()
 
-        match = re.search(r"\{.*\}", text, re.DOTALL)
-        if match:
-            return match.group(0).strip()
+        balanced = LLMClient._extract_balanced_json_value(text)
+        if balanced:
+            return balanced
         # Last resort: return the whole text; caller handles parse errors
         return text.strip()
+
+    @staticmethod
+    def _extract_balanced_json_value(text: str) -> str:
+        """Return the first balanced JSON object/array, ignoring braces in strings."""
+        pairs = {"{": "}", "[": "]"}
+        closers = set(pairs.values())
+
+        start = -1
+        expected_stack: list[str] = []
+        in_string = False
+        escaped = False
+
+        for idx, char in enumerate(text):
+            if start < 0:
+                if char in pairs:
+                    start = idx
+                    expected_stack.append(pairs[char])
+                continue
+
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+                continue
+
+            if char == '"':
+                in_string = True
+                continue
+            if char in pairs:
+                expected_stack.append(pairs[char])
+                continue
+            if char in closers:
+                if not expected_stack or char != expected_stack[-1]:
+                    return ""
+                expected_stack.pop()
+                if not expected_stack:
+                    return text[start : idx + 1].strip()
+
+        return ""
 
     @staticmethod
     def _messages_to_prompt(messages: list[dict]) -> str:

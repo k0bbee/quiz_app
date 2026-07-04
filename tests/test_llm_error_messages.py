@@ -143,6 +143,22 @@ class LLMErrorMessageTests(unittest.TestCase):
         self.assertIn("response_format", post.call_args_list[0].kwargs["json"])
         self.assertNotIn("response_format", post.call_args_list[1].kwargs["json"])
 
+    def test_json_extraction_ignores_trailing_braced_explanation_after_object(self):
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://api.example.com/v1",
+            model="model",
+        )
+        text = (
+            'Here is the JSON:\n{"questions": [{"stem": "I/O interrupt"}]}\n'
+            'Note: avoid placeholders such as {not json} in the final answer.'
+        )
+
+        with patch.object(client, "generate", return_value=text):
+            result = client.generate_with_json([{"role": "user", "content": "Return JSON."}], max_retries=1)
+
+        self.assertEqual({"questions": [{"stem": "I/O interrupt"}]}, result)
+
     def test_anthropic_client_accepts_text_payload_without_explicit_text_block_type(self):
         class FakeResponse:
             status_code = 200
