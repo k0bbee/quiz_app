@@ -31,6 +31,15 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class GenerationConfigTests(unittest.TestCase):
+    def test_normalized_topic_weights_distribute_rounding_error_evenly(self):
+        topics = [f"topic-{index}" for index in range(6)]
+        config = GenerationConfig(topic_weights={topic: 1 for topic in topics})
+
+        normalized = config.normalized_topic_weights(topics)
+
+        self.assertEqual(100, sum(normalized.values()))
+        self.assertLessEqual(max(normalized.values()) - min(normalized.values()), 1)
+
     def test_prompt_includes_question_type_and_difficulty_distribution(self):
         config = GenerationConfig(
             question_type_weights={

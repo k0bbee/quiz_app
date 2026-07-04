@@ -100,11 +100,15 @@ def _normalize_weights(weights: dict[str, int], defaults: dict[str, int] | None)
     total = sum(source.values())
     if total <= 0:
         return dict(defaults or {})
-    normalized = {key: round(value * 100 / total) for key, value in source.items()}
-    delta = 100 - sum(normalized.values())
-    if normalized:
-        first_key = next(iter(normalized))
-        normalized[first_key] += delta
+    raw = {key: source[key] * 100 / total for key in source}
+    normalized = {key: floor(raw[key]) for key in source}
+    remainder = 100 - sum(normalized.values())
+    ranked = sorted(
+        source,
+        key=lambda key: (-(raw[key] - normalized[key]), list(source).index(key)),
+    )
+    for key in ranked[:remainder]:
+        normalized[key] += 1
     return normalized
 
 
