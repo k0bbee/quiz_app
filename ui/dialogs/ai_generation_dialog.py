@@ -12,6 +12,7 @@ import re
 from collections import Counter
 
 from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QTextCursor
 
 from utils.constants import topic_alias_values, topic_label, topic_value
 from core.app_errors import coerce_app_error, format_app_error
@@ -1449,6 +1450,10 @@ class AIGenerationDialog(QDialog):
         self._generation_events = self._generation_events[-40:]
         if hasattr(self, "generation_log"):
             self.generation_log.setPlainText("\n".join(self._generation_events))
+            self.generation_log.moveCursor(QTextCursor.MoveOperation.End)
+            self.generation_log.ensureCursorVisible()
+            scrollbar = self.generation_log.verticalScrollBar()
+            scrollbar.setValue(scrollbar.maximum())
 
     def _refresh_generation_status(self):
         if self._generation_cancelled:

@@ -1268,6 +1268,31 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("本批接受 2 道，拒绝 1 道", log_text)
         self.assertEqual("generationProgressLog", dialog.generation_log.objectName())
 
+    def test_generation_progress_log_scrolls_to_latest_event(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog.generation_log.setFixedHeight(40)
+        dialog.show()
+        try:
+            _APP.processEvents()
+            for index in range(60):
+                dialog._append_generation_event(f"event {index}")
+            _APP.processEvents()
+            scrollbar = dialog.generation_log.verticalScrollBar()
+            self.assertGreater(scrollbar.maximum(), 0)
+            scrollbar.setValue(0)
+
+            dialog._append_generation_event("latest event")
+            _APP.processEvents()
+
+            self.assertEqual(scrollbar.maximum(), scrollbar.value())
+            self.assertTrue(dialog.generation_log.toPlainText().endswith("latest event"))
+        finally:
+            dialog.close()
+
     def test_generation_status_localizes_single_question_request_progress(self):
         dialog = AIGenerationDialog(
             "course content",
