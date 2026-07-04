@@ -1,6 +1,6 @@
 """Prompt templates for AI question generation."""
 
-from utils.constants import topic_label
+from utils.constants import topic_label, topic_value
 from ai.course_context import extract_relevant_course_context
 from ai.generation_config import GenerationConfig
 from ai.question_plan import QuestionPlanItem
@@ -153,10 +153,12 @@ class PromptBuilder:
         difficulty: Target difficulty (easy/medium/hard/mixed)
         """
         topic_names = []
+        topic_ids = []
         for t in topics:
             zh = topic_label(t, "zh")
             en = topic_label(t, "en")
             topic_names.append(zh if zh == en else f"{zh} ({en})")
+            topic_ids.append(topic_value(t))
 
         topic_list = "\n".join(f"  - {n}" for n in topic_names)
         relevant_content = extract_relevant_course_context(
@@ -175,7 +177,7 @@ class PromptBuilder:
         generation_config = generation_config or GenerationConfig()
         type_weights = generation_config.normalized_type_weights()
         difficulty_weights = generation_config.normalized_difficulty_weights()
-        topic_weights = generation_config.normalized_topic_weights(topic_names)
+        topic_weights = generation_config.normalized_topic_weights(topic_ids)
         type_lines = "\n".join(f"  - {key}: {value}%" for key, value in type_weights.items())
         difficulty_lines = "\n".join(f"  - {key}: {value}%" for key, value in difficulty_weights.items())
         topic_weight_lines = "\n".join(f"  - {key}: {value}%" for key, value in topic_weights.items())

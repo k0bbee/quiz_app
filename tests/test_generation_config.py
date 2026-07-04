@@ -180,6 +180,29 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("Address Breakdown", prompt)
         self.assertIn("byte offset", prompt)
 
+    def test_prompt_topic_weights_use_stable_topic_ids_not_display_titles(self):
+        io_topic = CourseTopic(topic_id="input_output_improvements", title="I/O 改进")
+        cache_topic = CourseTopic(topic_id="cache_mapping", title="Cache 映射")
+        config = GenerationConfig(
+            topic_weights={
+                "input_output_improvements": 80,
+                "cache_mapping": 20,
+            }
+        )
+
+        prompt = PromptBuilder.build_user_prompt(
+            "## I/O 改进\nDMA and interrupts.\n\n## Cache 映射\nTag and set index.",
+            [io_topic, cache_topic],
+            count=10,
+            generation_config=config,
+        )
+
+        self.assertIn("I/O 改进", prompt)
+        self.assertIn("Cache 映射", prompt)
+        self.assertIn("input_output_improvements: 80%", prompt)
+        self.assertIn("cache_mapping: 20%", prompt)
+        self.assertNotIn("I/O 改进: 50%", prompt)
+
     def test_prompt_includes_bounded_runtime_instruction_for_future_requests(self):
         prompt = PromptBuilder.build_user_prompt(
             "## I/O\nDMA and interrupt-driven I/O reduce polling overhead.",
