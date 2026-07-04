@@ -377,6 +377,7 @@ class GenerationWorker(QThread):
                     self.error.emit(detail)
                     return
                 self._last_json_truncation_detail = ""
+                self._candidate_batch_limit = None
 
                 # Parse questions from response
                 raw_questions = data.get("questions", [])

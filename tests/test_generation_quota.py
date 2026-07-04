@@ -103,6 +103,35 @@ class TruncationThenSuccessClient:
         }
 
 
+class OneTruncationThenSuccessClient:
+    model = "test-model"
+
+    def __init__(self):
+        self.last_error = ""
+        self.requested_counts = []
+        self.failed_once = False
+
+    def generate_with_json(self, messages, **kwargs):
+        prompt = messages[-1]["content"]
+        match = re.search(r"Generate\s+(\d+)\s+bilingual quiz questions", prompt)
+        requested = int(match.group(1)) if match else 0
+        self.requested_counts.append(requested)
+        if not self.failed_once:
+            self.failed_once = True
+            self.last_error = (
+                "JSON parse error (attempt 3/3): "
+                "Unterminated string starting at: line 410 column 13"
+            )
+            return None
+        self.last_error = ""
+        return {
+            "questions": [
+                raw_question("multiple_choice", "medium", "cache", len(self.requested_counts) * 100 + index)
+                for index in range(requested)
+            ]
+        }
+
+
 class AlwaysTruncatedClient:
     model = "test-model"
     last_error = (
@@ -781,6 +810,39 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual(8, len(batches[0]))
         self.assertGreater(client.requested_counts[0], client.requested_counts[1])
         self.assertTrue(all(count <= 5 for count in client.requested_counts[1:]))
+
+    def test_worker_restores_candidate_batch_limit_after_successful_truncation_recovery(self):
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 100},
+        )
+        client = OneTruncationThenSuccessClient()
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=["cache"],
+            count=10,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        batches = []
+        errors = []
+        worker.batch_done.connect(batches.append)
+        worker.error.connect(errors.append)
+
+        worker.run()
+
+        self.assertEqual([], errors)
+        self.assertEqual(1, len(batches))
+        self.assertEqual(10, len(batches[0]))
+        self.assertGreater(client.requested_counts[0], client.requested_counts[1])
+        self.assertGreater(client.requested_counts[2], client.requested_counts[1])
 
     def test_worker_reports_json_truncation_when_reduced_batches_still_fail(self):
         config = GenerationConfig(
