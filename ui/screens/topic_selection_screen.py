@@ -174,11 +174,11 @@ class TopicSelectionScreen(QWidget):
 
     def _start_quiz(self):
         """Emit signal to start the quiz with selected set."""
-        current = self.set_list.currentItem()
-        if not current:
+        set_ids = self._selected_set_ids()
+        if len(set_ids) != 1:
             return
 
-        set_id = current.data(Qt.ItemDataRole.UserRole)
+        set_id = set_ids[0]
         qset = self.set_manager.get(set_id)
         if qset:
             self.quiz_start.emit(set_id, qset.questions)
@@ -194,10 +194,10 @@ class TopicSelectionScreen(QWidget):
 
     def _regenerate_selected_set(self):
         """Emit signal to regenerate questions for the selected question set."""
-        current = self.set_list.currentItem()
-        if not current:
+        set_ids = self._selected_set_ids()
+        if len(set_ids) != 1:
             return
-        self.regenerate_questions.emit(current.data(Qt.ItemDataRole.UserRole))
+        self.regenerate_questions.emit(set_ids[0])
 
     def _rename_selected_set(self):
         """Let the user rename the selected question set."""
@@ -423,8 +423,6 @@ class TopicSelectionScreen(QWidget):
     def _selected_set_ids(self) -> list[str]:
         """Return selected question-set ids without duplicates."""
         items = self.set_list.selectedItems() if hasattr(self, "set_list") else []
-        if not items and hasattr(self, "set_list") and self.set_list.currentItem():
-            items = [self.set_list.currentItem()]
         set_ids = []
         seen = set()
         for item in items:

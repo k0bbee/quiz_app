@@ -206,6 +206,41 @@ class MockExamExporterTests(unittest.TestCase):
             self.assertEqual([qset.set_id], emitted_singles)
             self.assertEqual([], emitted_batches)
 
+    def test_topic_selection_screen_ignores_current_item_without_explicit_selection(self):
+        from models.question_set import SetManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SetManager(tmpdir)
+            qset = self._make_question_set()
+            manager.save(qset)
+            screen = TopicSelectionScreen(manager)
+            exported = []
+            regenerated = []
+            started = []
+            screen.export_mock_exam.connect(exported.append)
+            screen.regenerate_questions.connect(regenerated.append)
+            screen.quiz_start.connect(lambda set_id, questions: started.append((set_id, questions)))
+
+            screen.refresh()
+            screen.set_list.setCurrentRow(0)
+            self.assertIsNotNone(screen.set_list.currentItem())
+            screen.set_list.clearSelection()
+            screen._on_set_selection_changed()
+
+            self.assertEqual([], screen._selected_set_ids())
+            self.assertFalse(screen.export_btn.isEnabled())
+            self.assertFalse(screen.start_btn.isEnabled())
+            self.assertFalse(screen.regenerate_btn.isEnabled())
+            self.assertFalse(screen.rename_btn.isEnabled())
+
+            screen._export_selected_set()
+            screen._regenerate_selected_set()
+            screen._start_quiz()
+
+            self.assertEqual([], exported)
+            self.assertEqual([], regenerated)
+            self.assertEqual([], started)
+
     def test_topic_selection_screen_emits_export_requests_for_multiple_selected_sets(self):
         from models.question_set import SetManager
 
