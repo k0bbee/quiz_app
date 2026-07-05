@@ -547,6 +547,32 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertIn("API request failed", message)
             self.assertIn("OCR unavailable", message)
 
+    def test_course_screen_ignores_stale_init_worker_result(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            screen = CourseScreen(manager)
+            project = CourseProject(
+                course_id="course-stale-init",
+                title="Stale Init",
+                source_folder=str(Path(tmpdir) / "source"),
+                summary_markdown="# Stale\n",
+                summary_path="",
+                topics=self._topics(),
+                documents=[],
+                created_at="2026-06-23T00:00:00+00:00",
+                updated_at="2026-06-23T00:00:00+00:00",
+            )
+            stale_worker = CourseScreen._InitWorker("", "", FakeSummaryGenerator())
+            current_worker = CourseScreen._InitWorker("", "", FakeSummaryGenerator())
+            screen._init_worker = current_worker
+            stale_worker.finished.connect(screen._on_init_done)
+
+            with patch("ui.screens.course_screen.QMessageBox.information") as information:
+                stale_worker.finished.emit(project)
+
+            information.assert_not_called()
+            self.assertNotEqual("Stale Init", screen.summary_label.text())
+
     def test_course_screen_reports_llm_fallback_after_regeneration(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
@@ -576,6 +602,32 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertIn("local summary", message.lower())
             self.assertIn("API request failed", message)
             self.assertIn("OCR unavailable", message)
+
+    def test_course_screen_ignores_stale_regen_worker_result(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            screen = CourseScreen(manager)
+            project = CourseProject(
+                course_id="course-stale-regen",
+                title="Stale Regen",
+                source_folder=str(Path(tmpdir) / "source"),
+                summary_markdown="# Stale Regen\n",
+                summary_path="",
+                topics=self._topics(),
+                documents=[],
+                created_at="2026-06-23T00:00:00+00:00",
+                updated_at="2026-06-23T00:00:00+00:00",
+            )
+            stale_worker = CourseScreen._RegenWorker(project, FakeSummaryGenerator())
+            current_worker = CourseScreen._RegenWorker(project, FakeSummaryGenerator())
+            screen._regen_worker = current_worker
+            stale_worker.finished.connect(screen._on_regen_done)
+
+            with patch("ui.screens.course_screen.QMessageBox.information") as information:
+                stale_worker.finished.emit((project, None))
+
+            information.assert_not_called()
+            self.assertNotEqual("Stale Regen", screen.summary_label.text())
 
     def test_course_screen_reports_topic_identity_repair_after_regeneration(self):
         with tempfile.TemporaryDirectory() as tmpdir:

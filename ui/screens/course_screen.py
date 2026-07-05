@@ -39,6 +39,8 @@ class CourseScreen(QWidget):
         self.question_bank = question_bank
         self.initializer = CourseInitializer(manager)
         self.lang_manager = LanguageManager.instance()
+        self._init_worker = None
+        self._regen_worker = None
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self.refresh()
@@ -236,6 +238,9 @@ class CourseScreen(QWidget):
         )
 
     def _on_init_done(self, project):
+        if not self._is_current_worker("_init_worker"):
+            return
+        self._init_worker = None
         self.progress_bar.setVisible(False)
         self.init_btn.setEnabled(True)
         self.init_btn.setText(self.lang_manager.get_text("解析并生成总结", "Parse and generate summary"))
@@ -257,6 +262,9 @@ class CourseScreen(QWidget):
         self.current_course_changed.emit()
 
     def _on_init_error(self, error_msg):
+        if not self._is_current_worker("_init_worker"):
+            return
+        self._init_worker = None
         self.progress_bar.setVisible(False)
         self.init_btn.setEnabled(True)
         self.init_btn.setText(self.lang_manager.get_text("解析并生成总结", "Parse and generate summary"))
@@ -409,6 +417,9 @@ class CourseScreen(QWidget):
         self.refresh()
 
     def _on_regen_done(self, result):
+        if not self._is_current_worker("_regen_worker"):
+            return
+        self._regen_worker = None
         if isinstance(result, tuple):
             project, repair_report = result
         else:
@@ -433,6 +444,12 @@ class CourseScreen(QWidget):
             self.lang_manager.get_text("Summary Updated", "Summary Updated"),
             msg,
         )
+
+    def _is_current_worker(self, attribute: str) -> bool:
+        sender = self.sender()
+        if sender is None:
+            return True
+        return sender is getattr(self, attribute, None)
 
     def _with_topic_repair_report(self, message, report: TopicIdentityRepairReport | None):
         """Append a localized summary of automatic topic-ID repairs."""
@@ -519,6 +536,9 @@ class CourseScreen(QWidget):
         return f"{message}\n\n" + "\n".join(lines)
 
     def _on_regen_error(self, error_msg):
+        if not self._is_current_worker("_regen_worker"):
+            return
+        self._regen_worker = None
         self.progress_bar.setVisible(False)
         self.init_btn.setEnabled(True)
         self.regenerate_btn.setEnabled(self.project_list.currentItem() is not None)
