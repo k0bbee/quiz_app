@@ -84,7 +84,7 @@ class QuestionReviewDialog(QDialog):
 
         # Accept all / reject all buttons
         bulk_layout = QHBoxLayout()
-        self.accept_all_btn = QPushButton(self.lang_manager.get_text("全部接受", "Accept All"))
+        self.accept_all_btn = QPushButton(self.lang_manager.get_text("接受无警告题", "Accept No-Warning"))
         self.accept_all_btn.setObjectName("secondaryButton")
         self.accept_all_btn.clicked.connect(self._accept_all)
         self.reject_all_btn = QPushButton(self.lang_manager.get_text("全部拒绝", "Reject All"))
@@ -214,7 +214,7 @@ class QuestionReviewDialog(QDialog):
         self.questions_label.setText(self.lang_manager.get_text("题目列表:", "Questions:"))
         self.prev_page_btn.setText(self.lang_manager.get_text("上一页", "Previous"))
         self.next_page_btn.setText(self.lang_manager.get_text("下一页", "Next"))
-        self.accept_all_btn.setText(self.lang_manager.get_text("全部接受", "Accept All"))
+        self.accept_all_btn.setText(self.lang_manager.get_text("接受无警告题", "Accept No-Warning"))
         self.reject_all_btn.setText(self.lang_manager.get_text("全部拒绝", "Reject All"))
         self.preview_label.setText(self.lang_manager.get_text("选择题目以预览", "Select a question to preview"))
         self.accept_btn.setText(self.lang_manager.get_text("接受", "Accept"))
@@ -311,7 +311,8 @@ class QuestionReviewDialog(QDialog):
         lang = self.lang_manager.current
         stem = q.get_stem(lang)
         short = stem[:80] + "..." if len(stem) > 80 else stem
-        warning_prefix = "⚠ " if self._review_warnings(q) else ""
+        warning_tags = self._review_warning_tags(q)
+        warning_prefix = f"⚠ {' '.join(warning_tags)} " if warning_tags else ""
         prefix = "✓ " if index in self._accepted else "✗ "
         item.setText(f"{warning_prefix}{prefix}Q{index + 1}: {short}")
 
@@ -414,7 +415,7 @@ class QuestionReviewDialog(QDialog):
         self.en_stem_editor.setPlainText(question.get_stem("en"))
         self.zh_options_editor.setPlainText(self._format_options_for_edit(question.get_options("zh")))
         self.en_options_editor.setPlainText(self._format_options_for_edit(question.get_options("en")))
-        self.topic_editor.setText(question.topic_id())
+        self.topic_editor.setText(question.topic_title())
         difficulty_index = self.difficulty_editor.findData(question.difficulty.value)
         if difficulty_index >= 0:
             self.difficulty_editor.setCurrentIndex(difficulty_index)
@@ -432,7 +433,6 @@ class QuestionReviewDialog(QDialog):
         question = self.questions[self._current_index]
         question.bilingual.setdefault("zh", {})
         question.bilingual.setdefault("en", {})
-        original_topic_id = question.topic_id()
         question.bilingual["zh"]["stem"] = self.zh_stem_editor.toPlainText().strip()
         question.bilingual["en"]["stem"] = self.en_stem_editor.toPlainText().strip()
         question.bilingual["zh"]["options"] = self._edited_options(
@@ -447,11 +447,12 @@ class QuestionReviewDialog(QDialog):
         )
         question.bilingual["zh"]["explanation"] = self.zh_explanation_editor.toPlainText().strip()
         question.bilingual["en"]["explanation"] = self.en_explanation_editor.toPlainText().strip()
-        topic = self.topic_editor.text().strip()
-        if topic:
-            question.topic = topic
-            if topic != original_topic_id:
-                question.metadata.pop("topic_title", None)
+        topic_title = self.topic_editor.text().strip()
+        question.metadata = dict(question.metadata or {})
+        if topic_title:
+            question.metadata["topic_title"] = topic_title
+        else:
+            question.metadata.pop("topic_title", None)
         difficulty = self.difficulty_editor.currentData()
         if difficulty in {item.value for item in Difficulty}:
             question.difficulty = Difficulty(difficulty)
@@ -569,6 +570,30 @@ class QuestionReviewDialog(QDialog):
         if self._has_overlong_correct_option(question):
             warnings.append(self.lang_manager.get_text("正确选项明显长于干扰项", "Correct option is much longer than distractors"))
         return warnings
+
+    def _review_warning_tags(self, question: Question) -> list[str]:
+        """Return compact warning labels for the review list."""
+        metadata = question.metadata or {}
+        tags: list[str] = []
+        source_status = str(metadata.get("source_ref_status", "") or "").strip().lower()
+        if source_status in {"invalid_model_ref", "missing"}:
+            tags.append(self.lang_manager.get_text("[无来源]", "[No Source]"))
+        elif source_status in {"fallback_global_evidence", "global_fallback"}:
+            tags.append(self.lang_manager.get_text("[兜底来源]", "[Fallback]"))
+
+        plan_status = str(metadata.get("plan_match_status", "") or "").strip().lower()
+        if plan_status == "matched_by_shape":
+            tags.append(self.lang_manager.get_text("[计划匹配弱]", "[Weak Plan]"))
+
+        zh_explanation = question.get_explanation("zh").strip()
+        en_explanation = question.get_explanation("en").strip()
+        if not zh_explanation and not en_explanation:
+            tags.append(self.lang_manager.get_text("[缺解析]", "[No Explanation]"))
+        elif self._has_imbalanced_explanations(zh_explanation, en_explanation):
+            tags.append(self.lang_manager.get_text("[解析失衡]", "[Explanation Imbalance]"))
+        if self._has_overlong_correct_option(question):
+            tags.append(self.lang_manager.get_text("[答案过长]", "[Long Answer]"))
+        return tags
 
     @staticmethod
     def _has_imbalanced_explanations(zh_explanation: str, en_explanation: str) -> bool:

@@ -163,6 +163,30 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertEqual({0}, dialog._accepted)
         self.assertEqual([good.question_id], [question.question_id for question in dialog.get_accepted_questions()])
 
+    def test_review_dialog_accept_all_label_describes_safe_bulk_action(self):
+        dialog = QuestionReviewDialog([make_question(1)], page_size=10)
+        self.addCleanup(dialog.close)
+
+        self.assertIn("无警告", dialog.accept_all_btn.text())
+
+    def test_review_dialog_list_shows_short_warning_tags(self):
+        invalid_source = make_question(1)
+        invalid_source.metadata["source_ref_status"] = "invalid_model_ref"
+        shape_match = make_question(2)
+        shape_match.metadata["plan_match_status"] = "matched_by_shape"
+        fallback_source = make_question(3)
+        fallback_source.metadata["source_ref_status"] = "global_fallback"
+
+        dialog = QuestionReviewDialog(
+            [invalid_source, shape_match, fallback_source],
+            page_size=10,
+        )
+        self.addCleanup(dialog.close)
+
+        self.assertIn("[无来源]", dialog.question_list.item(0).text())
+        self.assertIn("[计划匹配弱]", dialog.question_list.item(1).text())
+        self.assertIn("[兜底来源]", dialog.question_list.item(2).text())
+
     def test_review_dialog_apply_edits_does_not_accept_warning_question(self):
         warning = make_question(1)
         warning.metadata["plan_match_status"] = "matched_by_shape"
@@ -243,20 +267,22 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         dialog.question_list.setCurrentRow(1)
         self.assertIn("解析", dialog.detail_editor.toPlainText())
 
-    def test_review_dialog_can_edit_topic_and_difficulty(self):
+    def test_review_dialog_can_edit_topic_title_without_changing_stable_topic_id(self):
         question = make_question(1)
+        original_topic_id = question.topic_id()
         dialog = QuestionReviewDialog([question], page_size=10)
         self.addCleanup(dialog.close)
 
-        dialog.topic_editor.setText("process_scheduling")
+        dialog.topic_editor.setText("进程调度")
         dialog.difficulty_editor.setCurrentText("hard")
 
         dialog.apply_edit_btn.click()
 
         edited = dialog.get_accepted_questions()[0]
-        self.assertEqual("process_scheduling", edited.topic)
+        self.assertEqual(original_topic_id, edited.topic_id())
+        self.assertEqual("进程调度", edited.metadata["topic_title"])
         self.assertEqual(Difficulty.HARD, edited.difficulty)
-        self.assertIn("Topic: process_scheduling", dialog.detail_editor.toPlainText())
+        self.assertIn("Topic: 进程调度", dialog.detail_editor.toPlainText())
         self.assertIn("Difficulty: hard", dialog.detail_editor.toPlainText())
 
     def test_review_dialog_preserves_fill_answer_list_when_editing_explanation(self):
@@ -275,7 +301,7 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         dialog = QuestionReviewDialog([question], page_size=10)
         self.addCleanup(dialog.close)
 
-        self.assertEqual("cache_mapping", dialog.topic_editor.text())
+        self.assertEqual("Cache Mapping", dialog.topic_editor.text())
         dialog.zh_explanation_editor.setPlainText("只修改解析，不应该改变答案结构。")
         dialog.apply_edit_btn.click()
 
