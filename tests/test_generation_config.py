@@ -1799,6 +1799,43 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertFalse(dialog.fill_missing_btn.isHidden())
         self.assertTrue(dialog.fill_missing_btn.isEnabled())
 
+    def test_generation_start_failure_restores_idle_state(self):
+        class FakeSignal:
+            def connect(self, _callback):
+                pass
+
+        class FailingWorker:
+            def __init__(self, *args, **kwargs):
+                self.progress = FakeSignal()
+                self.question_ready = FakeSignal()
+                self.batch_done = FakeSignal()
+                self.partial_done = FakeSignal()
+                self.error = FakeSignal()
+                self.finished = FakeSignal()
+
+            def set_runtime_instruction(self, _instruction):
+                pass
+
+            def start(self):
+                raise RuntimeError("worker start failed")
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+
+        with patch("ui.dialogs.ai_generation_dialog.GenerationWorker", FailingWorker), \
+             patch("ui.dialogs.ai_generation_dialog.QMessageBox.critical") as critical:
+            dialog._start_generation()
+
+        self.assertTrue(critical.called)
+        self.assertFalse(dialog.generation_status_timer.isActive())
+        self.assertIsNone(dialog._generation_started_at)
+        self.assertTrue(dialog.generate_btn.isEnabled())
+        self.assertFalse(dialog.progress_bar.isVisible())
+
     def test_dialog_can_prefill_from_existing_question_set(self):
         dialog = AIGenerationDialog(
             "course content",

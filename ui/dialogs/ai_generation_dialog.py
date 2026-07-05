@@ -1178,22 +1178,31 @@ class AIGenerationDialog(QDialog):
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # Indeterminate
 
-        # Create client and worker
-        client = LLMClient(api_key=api_key, base_url=base_url, model=model)
-        self.worker = GenerationWorker(
-            client, self.course_content, topics, count, difficulty,
-            course_project=self.course_project,
-            generation_config=generation_config,
-            question_plan_items=retry_plan.plan_items if retry_plan is not None else None,
-        )
-        self.worker.progress.connect(self._on_progress)
-        self.worker.question_ready.connect(self._on_question_ready)
-        self.worker.batch_done.connect(self._on_batch_done)
-        self.worker.partial_done.connect(self._on_partial_done)
-        self.worker.error.connect(self._on_error)
-        self.worker.finished.connect(self._on_finished)
-        self._apply_runtime_instruction_to_worker(announce=False)
-        self.worker.start()
+        try:
+            # Create client and worker
+            client = LLMClient(api_key=api_key, base_url=base_url, model=model)
+            self.worker = GenerationWorker(
+                client, self.course_content, topics, count, difficulty,
+                course_project=self.course_project,
+                generation_config=generation_config,
+                question_plan_items=retry_plan.plan_items if retry_plan is not None else None,
+            )
+            self.worker.progress.connect(self._on_progress)
+            self.worker.question_ready.connect(self._on_question_ready)
+            self.worker.batch_done.connect(self._on_batch_done)
+            self.worker.partial_done.connect(self._on_partial_done)
+            self.worker.error.connect(self._on_error)
+            self.worker.finished.connect(self._on_finished)
+            self._apply_runtime_instruction_to_worker(announce=False)
+            self.worker.start()
+        except Exception as exc:
+            self.worker = None
+            self._on_error(
+                self.lang_manager.get_text(
+                    f"生成任务启动失败: {exc}",
+                    f"Generation worker failed to start: {exc}",
+                )
+            )
 
     def _start_retry_generation(self):
         """Generate only the remaining failed plan slots from a partial run."""
