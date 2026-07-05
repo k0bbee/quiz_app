@@ -332,6 +332,30 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
             self.assertFalse((root / "outside-set.json").exists())
 
+    def test_question_bank_save_does_not_cache_question_when_disk_write_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            question = self._question("q-unsaved")
+
+            with patch("models.question.write_json", return_value=False):
+                ok = question_bank.save(question)
+
+            self.assertFalse(ok)
+            self.assertIsNone(question_bank.get("q-unsaved"))
+            self.assertEqual([], question_bank.load_all())
+
+    def test_set_manager_save_does_not_cache_set_when_disk_write_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            set_manager = SetManager(str(Path(tmpdir) / "sets"))
+            qset = self._set("set-unsaved", ["q1"])
+
+            with patch("models.question_set.write_json", return_value=False):
+                ok = set_manager.save(qset)
+
+            self.assertFalse(ok)
+            self.assertIsNone(set_manager.get("set-unsaved"))
+            self.assertEqual([], set_manager.load_all())
+
     def test_progress_save_rejects_path_traversal_id(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

@@ -135,8 +135,10 @@ class SetManager:
     def save(self, question_set: QuestionSet) -> bool:
         safe_id = sanitize_filename_part(question_set.set_id)
         filepath = f"{self._dir}/{safe_id}.json"
-        self._cache[question_set.set_id] = question_set
-        return write_json(filepath, question_set.to_dict())
+        ok = write_json(filepath, question_set.to_dict())
+        if ok:
+            self._cache[question_set.set_id] = question_set
+        return ok
 
     def delete(self, set_id: str) -> bool:
         from utils.json_io import delete_json

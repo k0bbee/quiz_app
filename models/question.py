@@ -244,9 +244,9 @@ class QuestionBank:
         """Save a question to its JSON file."""
         safe_id = sanitize_filename_part(question.question_id)
         filepath = f"{self._dir}/{safe_id}.json"
-        self._cache[question.question_id] = question
         ok = write_json(filepath, question.to_dict())
         if ok:
+            self._cache[question.question_id] = question
             self._invalidate_load_cache()
         return ok
 
