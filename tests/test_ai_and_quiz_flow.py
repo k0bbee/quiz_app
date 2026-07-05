@@ -1701,6 +1701,10 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual(1, stats["total_questions"])
             self.assertEqual(1, stats["total_correct"])
             self.assertEqual(100.0, stats["overall_accuracy"])
+            self.assertEqual(1, stats["partial_sessions"])
+            self.assertEqual(1, stats["recent_sessions"][0]["matched_total"])
+            self.assertEqual(2, stats["recent_sessions"][0]["session_total"])
+            self.assertTrue(stats["recent_sessions"][0]["is_partial"])
 
     def test_progress_dashboard_filters_stats_and_topics_by_current_course(self):
         language_manager = LanguageManager.instance()
@@ -1746,7 +1750,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen.set_current_course("course-a")
             screen.refresh()
 
-            self.assertIn("Questions: 1", screen.overall_label.text())
+            self.assertIn("Matched questions: 1", screen.overall_label.text())
+            self.assertIn("Partial: 1", screen.overall_label.text())
             self.assertIn("Correct: 1 / 1", screen.detail_label.text())
             self.assertEqual(1, screen.topic_table.rowCount())
             self.assertEqual("100%", screen.topic_table.item(0, 2).text())

@@ -86,22 +86,33 @@ class ProgressManager:
         """Compute overall statistics across all sessions."""
         records = self.load_all()
         completed = [r for r in records if r.status == "completed" and r.summary]
+        partial_sessions = 0
         if question_ids is not None:
             filtered = []
             for record in completed:
                 answers = [answer for answer in record.answers if answer.question_id in question_ids]
                 if not answers:
                     continue
-                filtered.append((record, SessionSummary.compute(answers, len(answers), sum(
+                summary = SessionSummary.compute(answers, len(answers), sum(
                     answer.time_spent_seconds for answer in answers
-                ))))
+                ))
+                session_total = record.summary.total_questions if record.summary else len(record.answers)
+                is_partial = summary.total_questions != session_total
+                if is_partial:
+                    partial_sessions += 1
+                filtered.append((record, summary, session_total, is_partial))
         else:
-            filtered = [(record, record.summary) for record in completed if record.summary]
+            filtered = [
+                (record, record.summary, record.summary.total_questions, False)
+                for record in completed
+                if record.summary
+            ]
 
         total_sessions = len(filtered)
         if total_sessions == 0:
             return {
                 "total_sessions": 0,
+                "partial_sessions": 0,
                 "total_questions": 0,
                 "total_correct": 0,
                 "overall_accuracy": 0.0,
@@ -109,8 +120,8 @@ class ProgressManager:
                 "recent_sessions": [],
             }
 
-        total_questions = sum(summary.total_questions for _record, summary in filtered)
-        total_correct = sum(summary.correct for _record, summary in filtered)
+        total_questions = sum(summary.total_questions for _record, summary, _session_total, _is_partial in filtered)
+        total_correct = sum(summary.correct for _record, summary, _session_total, _is_partial in filtered)
         overall_accuracy = (total_correct / total_questions * 100) if total_questions > 0 else 0.0
 
         # Recent sessions (last 20)
@@ -123,12 +134,16 @@ class ProgressManager:
                 "score": summary.score_percentage,
                 "total": summary.total_questions,
                 "correct": summary.correct,
+                "matched_total": summary.total_questions,
+                "session_total": session_total,
+                "is_partial": is_partial,
             }
-            for r, summary in recent
+            for r, summary, session_total, is_partial in recent
         ]
 
         return {
             "total_sessions": total_sessions,
+            "partial_sessions": partial_sessions,
             "total_questions": total_questions,
             "total_correct": total_correct,
             "overall_accuracy": round(overall_accuracy, 1),

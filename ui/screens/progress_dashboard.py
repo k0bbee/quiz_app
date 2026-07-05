@@ -162,9 +162,12 @@ class ProgressDashboard(QWidget):
             self.recommendation_label.clear()
             self._set_source_refs([])
         else:
+            partial_sessions = stats.get("partial_sessions", 0)
+            partial_hint_zh = f" | 部分命中: {partial_sessions} 次" if partial_sessions else ""
+            partial_hint_en = f" | Partial: {partial_sessions}" if partial_sessions else ""
             self.overall_label.setText(self.lang_manager.get_text(
-                f"练习: {stats['total_sessions']} 次 | 题目: {stats['total_questions']} 题 | 正确率: {stats['overall_accuracy']:.1f}%",
-                f"Sessions: {stats['total_sessions']} | Questions: {stats['total_questions']} | Accuracy: {stats['overall_accuracy']:.1f}%"
+                f"练习: {stats['total_sessions']} 次{partial_hint_zh} | 命中题目: {stats['total_questions']} 题 | 正确率: {stats['overall_accuracy']:.1f}%",
+                f"Sessions: {stats['total_sessions']}{partial_hint_en} | Matched questions: {stats['total_questions']} | Accuracy: {stats['overall_accuracy']:.1f}%"
             ))
             self.detail_label.setText(self.lang_manager.get_text(
                 f"正确: {stats['total_correct']} / {stats['total_questions']}",
@@ -185,11 +188,18 @@ class ProgressDashboard(QWidget):
             score = session.get("score", 0)
             icon = "🟢" if score >= 80 else ("🟡" if score >= 60 else "🔴")
             set_name = set_names.get(session.get("set_id", ""), session.get("set_id", "Custom"))
+            scope_hint = ""
+            if session.get("is_partial"):
+                scope_hint = self.lang_manager.get_text(
+                    f" | 命中 {session.get('matched_total', 0)}/{session.get('session_total', 0)}",
+                    f" | in scope {session.get('matched_total', 0)}/{session.get('session_total', 0)}",
+                )
             item = QListWidgetItem(
                 f"{icon} {session.get('started_at', '')[:10]} — "
                 f"{set_name} — "
                 f"Score: {score:.0f}% "
                 f"({session.get('correct', 0)}/{session.get('total', 0)})"
+                f"{scope_hint}"
             )
             self.recent_list.addItem(item)
 
