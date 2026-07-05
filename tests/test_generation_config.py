@@ -1051,6 +1051,36 @@ class GenerationConfigTests(unittest.TestCase):
 
         self.assertIn("本次计划生成 12 题", dialog.plan_preview.toPlainText())
 
+    def test_generation_dialog_footer_summary_guides_empty_topic_state(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache", "process"],
+        )
+
+        summary = dialog.footer_summary_label.text()
+
+        self.assertEqual("generationFooterSummary", dialog.footer_summary_label.objectName())
+        self.assertIn("已选主题：0", summary)
+        self.assertIn("计划生成：15 题", summary)
+        self.assertIn("请选择主题", summary)
+
+    def test_generation_dialog_footer_summary_updates_with_selected_topics_and_count(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache", "process"],
+        )
+
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+        dialog.count_spin.setValue(9)
+
+        summary = dialog.footer_summary_label.text()
+
+        self.assertIn("已选主题：1", summary)
+        self.assertIn("计划生成：9 题", summary)
+        self.assertIn("覆盖：cache", summary)
+
     def test_dialog_exposes_question_set_title(self):
         dialog = AIGenerationDialog(
             "course content",

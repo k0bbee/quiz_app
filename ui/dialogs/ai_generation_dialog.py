@@ -424,6 +424,11 @@ class AIGenerationDialog(QDialog):
         bottom_layout.setContentsMargins(16, 4, 16, 12)
         bottom_layout.setSpacing(8)
 
+        self.footer_summary_label = QLabel()
+        self.footer_summary_label.setObjectName("generationFooterSummary")
+        self.footer_summary_label.setWordWrap(True)
+        bottom_layout.addWidget(self.footer_summary_label)
+
         # Progress
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
@@ -474,6 +479,7 @@ class AIGenerationDialog(QDialog):
 
         bottom_layout.addLayout(self.footer_action_layout)
         outer.addWidget(bottom)
+        self._update_footer_summary(self._get_selected_topics())
 
     def _make_slider(self, value: int) -> QSlider:
         slider = WheelSafeSlider(Qt.Orientation.Horizontal)
@@ -972,6 +978,7 @@ class AIGenerationDialog(QDialog):
     def _update_preview(self):
         """Show a brief preview of relevant course content."""
         topics = self._get_selected_topics()
+        self._update_footer_summary(topics)
         self._update_plan_preview(topics)
         if not topics:
             self.prompt_preview.setPlainText(
@@ -1010,6 +1017,27 @@ class AIGenerationDialog(QDialog):
                 f"Course context preview (up to {PREVIEW_CONTEXT_MAX_CHARS} chars; generation still uses retrieved course evidence):\n\n{context}"
             )
         self.prompt_preview.setPlainText(preview)
+
+    def _update_footer_summary(self, topics: list) -> None:
+        """Keep the fixed footer summary aligned with current generation controls."""
+        if not hasattr(self, "footer_summary_label"):
+            return
+        count = self.count_spin.value() if hasattr(self, "count_spin") else 0
+        topic_names = [topic_label(topic, self.lang_manager.current) for topic in topics]
+        if topic_names:
+            coverage = ", ".join(topic_names[:3])
+            if len(topic_names) > 3:
+                coverage += self.lang_manager.get_text(f" 等 {len(topic_names)} 个", f" and {len(topic_names) - 3} more")
+            text = self.lang_manager.get_text(
+                f"已选主题：{len(topic_names)} 个 | 计划生成：{count} 题 | 覆盖：{coverage}",
+                f"Selected topics: {len(topic_names)} | Planned: {count} question(s) | Coverage: {coverage}",
+            )
+        else:
+            text = self.lang_manager.get_text(
+                f"已选主题：0 个 | 计划生成：{count} 题 | 请选择主题后生成",
+                f"Selected topics: 0 | Planned: {count} question(s) | Select topics before generating",
+            )
+        self.footer_summary_label.setText(text)
 
     def _update_plan_preview(self, topics: list) -> None:
         """Show exact marginal quotas before launching generation."""
