@@ -227,7 +227,10 @@ class QuestionBankScreen(QWidget):
             if q.question_id in selected_ids:
                 item.setSelected(True)
         self.question_list.blockSignals(False)
-        self._on_selection_changed()
+        if not self._selected_question_ids() and self.question_list.count() > 0:
+            self.question_list.setCurrentRow(0)
+        else:
+            self._on_selection_changed()
 
         max_page = max(1, (self.total + self.page_size - 1) // self.page_size)
         page_pattern = self.lang_manager.get_text(
@@ -273,9 +276,7 @@ class QuestionBankScreen(QWidget):
         if not selected_ids:
             self.current_question_id = ""
             self._set_source_refs_summary(None)
-            self.editor.setReadOnly(False)
-            self.editor.clear()
-            self.save_btn.setEnabled(True)
+            self._show_empty_state()
             self.delete_btn.setEnabled(False)
             return
         if len(selected_ids) > 1:
@@ -302,6 +303,17 @@ class QuestionBankScreen(QWidget):
         self.editor.setPlainText(json.dumps(q.to_dict(), ensure_ascii=False, indent=2))
         self.save_btn.setEnabled(True)
         self.delete_btn.setEnabled(True)
+
+    def _show_empty_state(self):
+        """Show an explicit empty detail state instead of a blank editor."""
+        self.editor.setReadOnly(True)
+        self.editor.setPlainText(
+            self.lang_manager.get_text(
+                "没有匹配的题目。\n\n请调整搜索/筛选条件，或点击“新建”创建题目。",
+                "No matching questions.\n\nAdjust search/filter options, or click New to create a question.",
+            )
+        )
+        self.save_btn.setEnabled(False)
 
     def _new_question(self):
         template = {

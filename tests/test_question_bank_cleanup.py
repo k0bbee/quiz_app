@@ -455,6 +455,34 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertIn("Interrupt-driven I/O", item.toolTip())
             self.assertNotIn("interrupt_io", item.text())
 
+    def test_question_bank_screen_selects_first_question_after_refresh(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            question = self._question("q-first", "cache")
+            question_bank.save(question)
+
+            screen = QuestionBankScreen(question_bank)
+
+            self.assertEqual("q-first", screen.current_question_id)
+            self.assertIn('"question_id": "q-first"', screen.editor.toPlainText())
+            self.assertTrue(screen.save_btn.isEnabled())
+            self.assertTrue(screen.delete_btn.isEnabled())
+
+    def test_question_bank_screen_shows_empty_state_when_no_questions_match(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            question_bank.save(self._question("q-first", "cache"))
+            screen = QuestionBankScreen(question_bank)
+
+            screen.search_input.setText("no-matching-question")
+            screen._reset_and_refresh()
+
+            self.assertEqual("", screen.current_question_id)
+            self.assertIn("没有匹配的题目", screen.editor.toPlainText())
+            self.assertTrue(screen.editor.isReadOnly())
+            self.assertFalse(screen.save_btn.isEnabled())
+            self.assertFalse(screen.delete_btn.isEnabled())
+
     def test_question_bank_screen_displays_source_refs_in_detail_panel(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
