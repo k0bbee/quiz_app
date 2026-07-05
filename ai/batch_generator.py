@@ -823,16 +823,22 @@ class GenerationWorker(QThread):
         for topic in self.topics:
             for label in topic_alias_values(topic) | {topic_label(topic)}:
                 label = str(label or "").lower()
-                label_key = _topic_match_key(label)
-                if raw and (raw in label or label in raw):
-                    return topic
-                if raw_key and (raw_key in label_key or label_key in raw_key):
+                if _topic_tokens_cover(raw_key, _topic_match_key(label)):
                     return topic
         return None
 
 
 def _topic_match_key(value: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", str(value or "").lower()))
+
+
+def _topic_tokens_cover(raw_key: str, label_key: str) -> bool:
+    """Return whether raw and label match by meaningful token boundaries."""
+    raw_tokens = {token for token in raw_key.split() if len(token) >= 3}
+    label_tokens = {token for token in label_key.split() if len(token) >= 3}
+    if not raw_tokens or not label_tokens:
+        return False
+    return raw_tokens.issuperset(label_tokens) or label_tokens.issuperset(raw_tokens)
 
 
 def _record_rejection(reasons: dict[str, int], reason: str) -> None:

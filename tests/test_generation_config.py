@@ -242,6 +242,22 @@ class GenerationConfigTests(unittest.TestCase):
 
         self.assertIs(worker.generation_config, config)
 
+    def test_worker_topic_normalization_does_not_use_ambiguous_substrings(self):
+        worker = GenerationWorker(
+            LLMClient(api_key="", base_url="local-agent://auto", model="codex"),
+            course_content="content",
+            topics=["process", "input_output_improvements"],
+            count=3,
+            difficulty="mixed",
+        )
+
+        self.assertIsNone(worker._normalize_topic("processor scheduling"))
+        self.assertIsNone(worker._normalize_topic("i/o"))
+        self.assertEqual(
+            "input_output_improvements",
+            worker._normalize_topic("input output improvements and DMA"),
+        )
+
     def test_worker_uses_single_plan_slot_request_for_live_generation(self):
         worker = GenerationWorker(
             LLMClient(api_key="", base_url="local-agent://auto", model="codex"),
