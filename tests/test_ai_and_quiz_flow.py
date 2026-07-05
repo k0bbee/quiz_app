@@ -372,6 +372,18 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         area.matching_widget.combos[1].setCurrentIndex(1)
         self.assertTrue(area.has_answer())
 
+    def test_matching_widget_clear_preserves_only_label_and_stretch(self):
+        widget = MatchingWidget()
+        widget.set_options({"left": ["CPU", "GPU"], "right": ["Processor", "Graphics"]})
+
+        widget.clear()
+
+        self.assertEqual(2, widget._right_layout.count())
+        self.assertIs(widget._right_label, widget._right_layout.itemAt(0).widget())
+        self.assertIsNotNone(widget._right_layout.itemAt(1).spacerItem())
+        self.assertEqual([], widget.combos)
+        self.assertEqual([], widget.left_item_labels)
+
     def test_multiple_choice_ignores_stale_button_signals_after_options_reset(self):
         widget = MultipleChoiceWidget()
         emitted = []

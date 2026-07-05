@@ -435,19 +435,27 @@ class MatchingWidget(QWidget):
 
     def clear(self):
         self.left_list.clear()
-        for combo in self.combos:
-            combo.deleteLater()
         self.combos.clear()
         self.left_item_labels.clear()
         self.right_items.clear()
-        # Remove all rows from right layout
-        while self._right_layout.count() > 2:  # label + stretch
-            item = self._right_layout.takeAt(2)  # remove after label, before stretch
-            if item.layout():
-                while item.layout().count():
-                    child = item.layout().takeAt(0)
-                    if child.widget():
-                        child.widget().deleteLater()
+        # Remove all dynamic rows and the old stretch, then restore a single stretch.
+        while self._right_layout.count() > 1:  # keep the static label
+            item = self._right_layout.takeAt(1)
+            self._delete_layout_item(item)
+        self._right_layout.addStretch()
+
+    def _delete_layout_item(self, item):
+        """Delete a layout item and any child widgets/layouts it owns."""
+        if item is None:
+            return
+        widget = item.widget()
+        if widget:
+            widget.deleteLater()
+            return
+        layout = item.layout()
+        if layout:
+            while layout.count():
+                self._delete_layout_item(layout.takeAt(0))
 
 
 class OrderingWidget(QWidget):
