@@ -305,13 +305,9 @@ class TopicSelectionScreen(QWidget):
         diff_filter = self.difficulty_filter.currentData() if hasattr(self, "difficulty_filter") else None
 
         visible = [qs for qs in self._all_sets if self._matches_filters(qs, query, topic_filters, diff_filter, lang)]
+        completed_by_set = self._completed_progress_by_set() if self.progress_manager else {}
         for qs in visible:
-            completed = []
-            if self.progress_manager:
-                completed = [
-                    r for r in self.progress_manager.load_for_set(qs.set_id)
-                    if r.status == "completed" and r.summary
-                ]
+            completed = completed_by_set.get(qs.set_id, [])
             score_hint = ""
             if completed:
                 score_hint = (
@@ -338,6 +334,17 @@ class TopicSelectionScreen(QWidget):
             self.export_btn.setEnabled(False)
             self.regenerate_btn.setEnabled(False)
             self.rename_btn.setEnabled(False)
+
+    def _completed_progress_by_set(self) -> dict[str, list]:
+        """Return completed progress records grouped by set id using one bulk load."""
+        grouped: dict[str, list] = {}
+        if not self.progress_manager:
+            return grouped
+        for record in self.progress_manager.load_all():
+            if record.status != "completed" or not record.summary:
+                continue
+            grouped.setdefault(record.set_id, []).append(record)
+        return grouped
 
     def _matches_filters(self, qset, query: str, topic_filters, diff_filter, lang: str) -> bool:
         """Return True if a question set should be shown."""

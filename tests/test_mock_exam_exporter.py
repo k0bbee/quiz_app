@@ -13,6 +13,7 @@ from PyQt6.QtCore import Qt
 from core.mock_exam_exporter import MockExamExporter, render_mock_exam_markdown
 from models.question import Question
 from models.question_set import QuestionSet
+from models.progress import ProgressRecord, SessionSummary
 from utils.constants import Difficulty, QuestionType
 from ui.screens.topic_selection_screen import TopicSelectionScreen
 
@@ -325,6 +326,52 @@ class MockExamExporterTests(unittest.TestCase):
             screen.regenerate_btn.click()
 
             self.assertEqual([qset.set_id], emitted)
+
+    def test_topic_selection_screen_batches_progress_loading_when_rendering_sets(self):
+        from models.question_set import SetManager
+
+        class CountingProgressManager:
+            def __init__(self, records):
+                self.records = list(records)
+                self.load_all_calls = 0
+                self.load_for_set_calls = []
+
+            def load_all(self):
+                self.load_all_calls += 1
+                return list(self.records)
+
+            def load_for_set(self, set_id):
+                self.load_for_set_calls.append(set_id)
+                return [record for record in self.records if record.set_id == set_id]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SetManager(tmpdir)
+            sets = []
+            for index in range(3):
+                qset = self._make_question_set()
+                qset.set_id = f"set-{index}"
+                qset.title = {"zh": f"题集 {index}", "en": f"Set {index}"}
+                manager.save(qset)
+                sets.append(qset)
+
+            progress = ProgressRecord.create_new(sets[1].set_id)
+            progress.status = "completed"
+            progress.summary = SessionSummary(
+                total_questions=2,
+                answered=2,
+                correct=1,
+                incorrect=1,
+                score_percentage=50.0,
+            )
+            progress_manager = CountingProgressManager([progress])
+            screen = TopicSelectionScreen(manager, progress_manager=progress_manager)
+
+            screen.refresh()
+
+            self.assertEqual(1, progress_manager.load_all_calls)
+            self.assertEqual([], progress_manager.load_for_set_calls)
+            rendered = [screen.set_list.item(row).text() for row in range(screen.set_list.count())]
+            self.assertTrue(any("recent 50%" in text or "最近 50%" in text for text in rendered))
 
     def test_topic_selection_screen_can_rename_selected_question_set(self):
         from models.question_set import SetManager
