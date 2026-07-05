@@ -8,7 +8,8 @@ from typing import Optional
 from models.progress import ProgressRecord, SessionSummary, AnswerRecord
 from models.question_set import QuestionSet
 from core.mastery import prioritize_review_question_ids
-from utils.json_io import read_json, write_json, list_json_files, load_all_json, delete_json, sanitize_filename_part
+from utils.json_io import read_json, write_json, list_json_files, delete_json, sanitize_filename_part
+from utils.logger import warning
 
 
 class ProgressManager:
@@ -27,10 +28,17 @@ class ProgressManager:
     def load_all(self) -> list[ProgressRecord]:
         """Load all progress records, sorted by date (newest first)."""
         records = []
-        for data in load_all_json(self._dir):
+        for filename in list_json_files(self._dir):
+            filepath = os.path.join(self._dir, filename)
+            data = read_json(filepath)
+            if data is None:
+                continue
             try:
+                if not isinstance(data, dict):
+                    raise TypeError(f"expected object, got {type(data).__name__}")
                 records.append(ProgressRecord.from_dict(data))
-            except Exception:
+            except Exception as exc:
+                warning(f"Skipped invalid progress record {filename}: {exc}")
                 continue
         records.sort(key=lambda r: r.started_at, reverse=True)
         return records
