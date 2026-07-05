@@ -536,15 +536,7 @@ class GenerationWorker(QThread):
         """
         if accept_target <= 0:
             return 0
-        if accept_target <= 1:
-            count = MAX_CANDIDATE_BATCH_SIZE
-        elif accept_target <= 3:
-            count = accept_target
-        else:
-            count = min(
-                MAX_CANDIDATE_BATCH_SIZE,
-                max(accept_target + 3, accept_target),
-            )
+        count = min(MAX_CANDIDATE_BATCH_SIZE, accept_target + 3)
         if self._candidate_batch_limit is not None:
             count = min(count, self._candidate_batch_limit)
         return count
