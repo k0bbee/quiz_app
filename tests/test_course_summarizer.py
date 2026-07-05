@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication, QMessageBox, QTextBrowser
 
 from ai.course_summarizer import CourseSummaryGenerator
 from ai.exam_plan import ExamGenerationPlan
@@ -872,6 +872,51 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertEqual("计算机系统期末", renamed.title)
             self.assertIn("计算机系统期末", screen.project_list.item(0).text())
             self.assertIn("计算机系统期末", screen.summary_label.text())
+
+    def test_course_screen_renders_summary_markdown_by_default(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+            manager.save(CourseProject(
+                course_id="course-rendered-summary",
+                title="Systems",
+                source_folder="",
+                summary_markdown="# 课程总结\n\n## 核心概念\n\n**DMA** 减少 CPU 搬运。",
+                summary_path="",
+                topics=[],
+                documents=[],
+                created_at="2026-07-05T00:00:00+00:00",
+                updated_at="2026-07-05T00:00:00+00:00",
+            ))
+
+            screen = CourseScreen(manager)
+
+            self.assertIsInstance(screen.summary_preview, QTextBrowser)
+            rendered_text = screen.summary_preview.toPlainText()
+            self.assertIn("课程总结", rendered_text)
+            self.assertIn("核心概念", rendered_text)
+            self.assertNotIn("# 课程总结", rendered_text)
+            self.assertNotIn("**DMA**", rendered_text)
+
+    def test_course_screen_can_toggle_raw_markdown_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+            manager.save(CourseProject(
+                course_id="course-raw-summary",
+                title="Systems",
+                source_folder="",
+                summary_markdown="# 课程总结\n\n**DMA** 减少 CPU 搬运。",
+                summary_path="",
+                topics=[],
+                documents=[],
+                created_at="2026-07-05T00:00:00+00:00",
+                updated_at="2026-07-05T00:00:00+00:00",
+            ))
+
+            screen = CourseScreen(manager)
+            screen.summary_mode_btn.click()
+
+            self.assertIn("# 课程总结", screen.summary_preview.toPlainText())
+            self.assertIn("**DMA**", screen.summary_preview.toPlainText())
 
 
 if __name__ == "__main__":

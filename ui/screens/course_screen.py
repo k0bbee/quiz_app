@@ -7,8 +7,8 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QListWidget, QListWidgetItem, QFileDialog, QMessageBox, QTextEdit,
-    QSplitter, QGroupBox, QProgressBar, QInputDialog
+    QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
+    QSplitter, QGroupBox, QProgressBar, QInputDialog, QTextBrowser
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
@@ -41,6 +41,8 @@ class CourseScreen(QWidget):
         self.lang_manager = LanguageManager.instance()
         self._init_worker = None
         self._regen_worker = None
+        self._summary_markdown = ""
+        self._summary_raw_mode = False
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self.refresh()
@@ -67,6 +69,7 @@ class CourseScreen(QWidget):
         self.delete_btn.setText(self.lang_manager.get_text("删除课程", "Delete Course"))
         self.refresh_btn.setText(self.lang_manager.get_text("刷新", "Refresh"))
         self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
+        self._update_summary_mode_button_text()
         self.refresh()
 
     def _setup_ui(self):
@@ -153,12 +156,20 @@ class CourseScreen(QWidget):
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
+        summary_header = QHBoxLayout()
         self.summary_label = QLabel(self.lang_manager.get_text("摘要预览", "Summary preview"))
         self.summary_label.setObjectName("courseSummaryLabel")
-        right_layout.addWidget(self.summary_label)
-        self.summary_preview = QTextEdit()
+        summary_header.addWidget(self.summary_label, 1)
+        self.summary_mode_btn = QPushButton()
+        self.summary_mode_btn.setObjectName("secondaryButton")
+        self.summary_mode_btn.clicked.connect(self._toggle_summary_mode)
+        self._update_summary_mode_button_text()
+        summary_header.addWidget(self.summary_mode_btn)
+        right_layout.addLayout(summary_header)
+        self.summary_preview = QTextBrowser()
         self.summary_preview.setObjectName("courseSummaryPreview")
         self.summary_preview.setReadOnly(True)
+        self.summary_preview.setOpenExternalLinks(False)
         right_layout.addWidget(self.summary_preview, 1)
         splitter.addWidget(right)
         splitter.setSizes([280, 620])
@@ -183,10 +194,10 @@ class CourseScreen(QWidget):
         if current:
             current_label = self.lang_manager.get_text("当前:", "Current:")
             self.summary_label.setText(f"{current_label} {current.title}")
-            self.summary_preview.setPlainText(current.summary_markdown[:20000])
+            self._show_summary(current.summary_markdown)
         else:
             self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
-            self.summary_preview.clear()
+            self._clear_summary()
 
     def _browse_folder(self):
         folder = QFileDialog.getExistingDirectory(
@@ -331,7 +342,7 @@ class CourseScreen(QWidget):
         self.regenerate_btn.setEnabled(True)
         self.delete_btn.setEnabled(True)
         self.summary_label.setText(project.title)
-        self.summary_preview.setPlainText(project.summary_markdown[:20000])
+        self._show_summary(project.summary_markdown)
 
     def _rename_selected_project(self):
         current = self.project_list.currentItem()
@@ -432,7 +443,7 @@ class CourseScreen(QWidget):
         self.rename_btn.setEnabled(self.project_list.currentItem() is not None)
         self.refresh()
         self.summary_label.setText(project.title)
-        self.summary_preview.setPlainText(project.summary_markdown[:20000])
+        self._show_summary(project.summary_markdown)
         self.current_course_changed.emit()
         msg = self.lang_manager.get_text("课程总结已重新生成。", "Course summary regenerated.")
         msg = self._with_topic_repair_report(msg, repair_report)
@@ -558,3 +569,39 @@ class CourseScreen(QWidget):
         if self.manager.set_current(course_id):
             self.refresh()
             self.current_course_changed.emit()
+
+    def _toggle_summary_mode(self):
+        """Switch between rendered summary and raw Markdown for the current course."""
+        self._summary_raw_mode = not self._summary_raw_mode
+        self._render_summary_preview()
+
+    def _show_summary(self, markdown: str):
+        """Display course summary as rendered Markdown by default."""
+        self._summary_markdown = str(markdown or "")[:20000]
+        self._render_summary_preview()
+
+    def _clear_summary(self):
+        self._summary_markdown = ""
+        self.summary_preview.clear()
+        self.summary_mode_btn.setEnabled(False)
+        self._update_summary_mode_button_text()
+
+    def _render_summary_preview(self):
+        if not self._summary_markdown:
+            self._clear_summary()
+            return
+        self.summary_mode_btn.setEnabled(True)
+        if self._summary_raw_mode:
+            self.summary_preview.setPlainText(self._summary_markdown)
+        else:
+            self.summary_preview.setMarkdown(self._summary_markdown)
+        self._update_summary_mode_button_text()
+
+    def _update_summary_mode_button_text(self):
+        if not hasattr(self, "summary_mode_btn"):
+            return
+        self.summary_mode_btn.setText(
+            self.lang_manager.get_text("渲染预览", "Rendered Preview")
+            if self._summary_raw_mode
+            else self.lang_manager.get_text("原文 Markdown", "Raw Markdown")
+        )
