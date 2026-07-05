@@ -399,6 +399,56 @@ class CourseIndexCacheTests(unittest.TestCase):
 
         self.assertEqual([], refs)
 
+    def test_retrieval_context_does_not_include_unrelated_source_fallback_chunks(self):
+        project = CourseProject(
+            course_id="course-context-unrelated-source",
+            title="Systems",
+            source_folder="",
+            summary_markdown=(
+                "## Cache Mapping\n"
+                "Cache mapping uses tag, set index, and byte offset fields.\n"
+            ),
+            summary_path="",
+            topics=[
+                CourseTopic(
+                    topic_id="cache_mapping",
+                    title="Cache Mapping",
+                    keywords=["cache", "tag", "set index"],
+                    source_files=[],
+                )
+            ],
+            documents=[
+                {
+                    "path": "summary.md",
+                    "title": "summary",
+                    "extension": ".md",
+                    "_course_index": course_index.build_course_index(
+                        "## Cache Mapping\n"
+                        "Cache mapping uses tag, set index, and byte offset fields.\n"
+                    ),
+                },
+                {
+                    "path": "io.pdf",
+                    "title": "I/O lecture",
+                    "extension": ".pdf",
+                    "pages": ["DMA transfers data directly between a device and memory."],
+                },
+            ],
+            created_at="2026-07-05T00:00:00+00:00",
+            updated_at="2026-07-05T00:00:00+00:00",
+        )
+
+        context = course_index.retrieve_course_context(
+            project,
+            ["cache_mapping"],
+            max_chars=900,
+        )
+
+        self.assertIn("Cache Mapping", context)
+        self.assertIn("byte offset", context)
+        self.assertNotIn("Evidence source-", context)
+        self.assertNotIn("DMA transfers", context)
+
     def test_resolve_course_source_ref_recovers_when_chunk_id_changes(self):
         project = CourseProject(
             course_id="course-source-resolve",

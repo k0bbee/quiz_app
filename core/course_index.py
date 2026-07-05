@@ -583,7 +583,7 @@ def _score_source_chunks(
                 score += min(count, 5)
         if score > 0:
             scored.append((score, chunk))
-    if not scored and allow_fallback:
+    if not scored and allow_fallback and not selected_topic_keys:
         scored = [(1, chunk) for chunk in source_chunks[:3]]
     return sorted(scored, key=lambda item: item[0], reverse=True)
 
