@@ -25,7 +25,7 @@ from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
-from ui.widgets.answer_area import AnswerArea, MatchingWidget
+from ui.widgets.answer_area import AnswerArea, MatchingWidget, MultipleChoiceWidget
 from utils.constants import Difficulty, QuestionType, QuizState
 
 
@@ -371,6 +371,22 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
         area.matching_widget.combos[1].setCurrentIndex(1)
         self.assertTrue(area.has_answer())
+
+    def test_multiple_choice_ignores_stale_button_signals_after_options_reset(self):
+        widget = MultipleChoiceWidget()
+        emitted = []
+        widget.answer_ready.connect(emitted.append)
+
+        widget.set_options(["A. old", "B. old"])
+        stale_button = widget.buttons[0]
+
+        widget.set_options(["A. new", "B. new"])
+        widget.buttons[1].setChecked(True)
+        emitted.clear()
+
+        stale_button.setChecked(True)
+
+        self.assertEqual([], emitted)
 
     def test_ordering_widget_tracks_whether_user_reordered_default_order(self):
         area = AnswerArea()

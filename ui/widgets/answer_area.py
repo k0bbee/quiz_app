@@ -202,6 +202,9 @@ class MultipleChoiceWidget(QWidget):
             btn.toggled.connect(self._on_selection)
 
     def _on_selection(self, checked):
+        sender = self.sender()
+        if sender is not None and sender not in self.buttons:
+            return
         if checked:
             for i, btn in enumerate(self.buttons):
                 if btn.isChecked():
@@ -230,6 +233,10 @@ class MultipleChoiceWidget(QWidget):
 
     def clear(self):
         for btn in self.buttons:
+            try:
+                btn.toggled.disconnect(self._on_selection)
+            except TypeError:
+                pass
             self.group.removeButton(btn)
             self.layout().removeWidget(btn)
             btn.deleteLater()
