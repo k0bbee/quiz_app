@@ -1759,6 +1759,56 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual("1/1", screen.topic_table.item(0, 4).text())
             self.assertEqual("", screen.recommendation_label.text())
 
+    def test_progress_dashboard_reuses_course_search_results_for_topic_table(self):
+        class SearchOnlyQuestionBank:
+            def __init__(self, questions):
+                self.questions = list(questions)
+                self.search_calls = 0
+                self.load_all_calls = 0
+
+            def search(self, **kwargs):
+                self.search_calls += 1
+                self.last_search_kwargs = kwargs
+                return list(self.questions), len(self.questions)
+
+            def load_all(self):
+                self.load_all_calls += 1
+                raise AssertionError("course-scoped progress dashboard should not load all questions")
+
+            def get_many(self, question_ids, course_id=None):
+                wanted = set(question_ids)
+                return [question for question in self.questions if question.question_id in wanted]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question = Question.create_new(
+                qtype=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {"stem": "Cache", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                    "en": {"stem": "Cache", "options": ["A. one", "B. two"], "explanation": "A valid explanation text."},
+                },
+                correct_answer="A",
+                topic="cache",
+            )
+            question.metadata["course_id"] = "course-a"
+            progress_manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            record = ProgressRecord.create_new("set-any")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(question_id=question.question_id, index_in_session=0, user_answer="A", is_correct=True),
+            ]
+            record.summary = SessionSummary.compute(record.answers, total_questions=1, total_time=10)
+            progress_manager.save(record)
+            question_bank = SearchOnlyQuestionBank([question])
+
+            screen = ProgressDashboard(progress_manager, question_bank)
+            screen.set_current_course("course-a")
+            screen.refresh()
+
+            self.assertEqual(1, question_bank.search_calls)
+            self.assertEqual(0, question_bank.load_all_calls)
+            self.assertEqual(1, screen.topic_table.rowCount())
+
     def test_progress_dashboard_recommends_low_mastery_topics_for_current_course(self):
         language_manager = LanguageManager.instance()
         previous_language = language_manager.current

@@ -148,7 +148,12 @@ class ProgressDashboard(QWidget):
 
     def refresh(self):
         """Reload and display progress data."""
-        visible_question_ids = self._visible_question_ids()
+        visible_questions = self._visible_questions()
+        visible_question_ids = (
+            None
+            if visible_questions is None
+            else {question.question_id for question in visible_questions}
+        )
         stats = self.progress_manager.get_aggregated_stats(visible_question_ids)
         lang = self.lang_manager.current
 
@@ -176,7 +181,7 @@ class ProgressDashboard(QWidget):
             self._update_recommendations(lang, visible_question_ids)
 
         # Per-topic breakdown
-        self._populate_topic_table(lang, visible_question_ids)
+        self._populate_topic_table(lang, visible_question_ids, visible_questions)
 
         # Recent sessions
         self.recent_list.clear()
@@ -209,15 +214,27 @@ class ProgressDashboard(QWidget):
 
     def _visible_question_ids(self) -> set[str] | None:
         """Return question IDs visible for the current course, or None for global mode."""
+        questions = self._visible_questions()
+        if questions is None:
+            return None
+        return {question.question_id for question in questions}
+
+    def _visible_questions(self) -> list | None:
+        """Return questions visible for the current course, or None for global mode."""
         if not self._current_course_id:
             return None
         questions, _total = self.question_bank.search(
             course_id=self._current_course_id,
             limit=1_000_000,
         )
-        return {question.question_id for question in questions}
+        return questions
 
-    def _populate_topic_table(self, lang: str, visible_question_ids: set[str] | None):
+    def _populate_topic_table(
+        self,
+        lang: str,
+        visible_question_ids: set[str] | None,
+        visible_questions: list | None = None,
+    ):
         """Fill the per-topic breakdown table."""
         # Build per-topic stats from all completed sessions
         all_records = self.progress_manager.load_all()
@@ -225,9 +242,12 @@ class ProgressDashboard(QWidget):
 
         # Map question_id -> topic
         qid_to_topic = {}
-        questions = self.question_bank.load_all()
-        if visible_question_ids is not None:
-            questions = [q for q in questions if q.question_id in visible_question_ids]
+        if visible_questions is None:
+            questions = self.question_bank.load_all()
+            if visible_question_ids is not None:
+                questions = [q for q in questions if q.question_id in visible_question_ids]
+        else:
+            questions = list(visible_questions)
         topic_mastery = build_topic_mastery(completed, questions)
         for q in questions:
             qid_to_topic[q.question_id] = q.topic
