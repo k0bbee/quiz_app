@@ -1689,4 +1689,5 @@ class AIGenerationDialog(QDialog):
             self._generation_cancelled = True
             self.generation_status_timer.stop()
             self.worker.cancel()
+            self.worker.wait(5000)
         super().reject()

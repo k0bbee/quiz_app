@@ -368,4 +368,5 @@ class ExamAssistantDialog(QDialog):
         if self.worker and self.worker.isRunning():
             self._cancelled = True
             self.worker.requestInterruption()
+            self.worker.wait(5000)
         super().reject()
