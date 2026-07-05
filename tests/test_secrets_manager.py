@@ -1,6 +1,7 @@
 import json
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -163,6 +164,54 @@ class SecretsManagerTests(unittest.TestCase):
                 manager = SecretsManager()
 
                 self.assertFalse(manager.is_plaintext_fallback())
+
+    def test_set_key_serializes_multi_step_storage_writes(self):
+        manager = SecretsManager()
+        start_barrier = threading.Barrier(2)
+        first_write_entered = threading.Event()
+        second_write_entered = threading.Event()
+        counter_lock = threading.Lock()
+        active_writes = 0
+        max_active_writes = 0
+        errors = []
+
+        def slow_write_json(_path, _settings):
+            nonlocal active_writes, max_active_writes
+            with counter_lock:
+                active_writes += 1
+                max_active_writes = max(max_active_writes, active_writes)
+                if active_writes == 1:
+                    first_write_entered.set()
+                elif active_writes == 2:
+                    second_write_entered.set()
+            first_write_entered.wait(1)
+            second_write_entered.wait(0.2)
+            with counter_lock:
+                active_writes -= 1
+            return True
+
+        def set_key_thread(key):
+            try:
+                start_barrier.wait(1)
+                manager.set_key(key)
+            except Exception as exc:
+                errors.append(exc)
+
+        with patch("core.secrets_manager.KEYRING_AVAILABLE", False), \
+             patch("core.secrets_manager.DPAPI_STORE", FakeDPAPIStore(available=False)), \
+             patch("core.secrets_manager.read_json", return_value={}), \
+             patch("core.secrets_manager.write_json", side_effect=slow_write_json):
+            threads = [
+                threading.Thread(target=set_key_thread, args=("sk-one",)),
+                threading.Thread(target=set_key_thread, args=("sk-two",)),
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+
+        self.assertEqual([], errors)
+        self.assertEqual(1, max_active_writes)
 
 
 if __name__ == "__main__":

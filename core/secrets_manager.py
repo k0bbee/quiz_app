@@ -47,6 +47,7 @@ class SecretsManager:
             raise RuntimeError("Use SecretsManager.instance() instead of direct construction")
         SecretsManager._instance = self
         self._last_storage_location = ""
+        self._storage_lock = threading.RLock()
 
     @classmethod
     def instance(cls) -> SecretsManager:
@@ -91,7 +92,10 @@ class SecretsManager:
         value explicitly clears every managed storage location.
         """
         key = key.strip()
+        with self._storage_lock:
+            return self._set_key_locked(key)
 
+    def _set_key_locked(self, key: str) -> str:
         # Always set environment variable for current session
         if key:
             os.environ["QUIZ_APP_API_KEY"] = key
@@ -155,20 +159,21 @@ class SecretsManager:
 
     def get_storage_location(self) -> str:
         """Return a human-readable description of where the key is stored."""
-        recent = getattr(self, "_last_storage_location", "")
-        if recent:
-            return recent
-        if os.environ.get("QUIZ_APP_API_KEY"):
-            return "environment variable"
-        if KEYRING_AVAILABLE:
-            try:
-                if keyring.get_password(_SERVICE_NAME, _ACCOUNT_NAME):
-                    return "system keychain"
-            except Exception:
-                pass
-        if _dpapi_store_available() and DPAPI_STORE.get_key():
-            return "Windows DPAPI encrypted store"
-        settings = read_json(SETTINGS_FILE) or {}
-        if settings.get("ai_api_key"):
-            return "settings.json (⚠ plaintext)"
-        return "not set"
+        with self._storage_lock:
+            recent = getattr(self, "_last_storage_location", "")
+            if recent:
+                return recent
+            if os.environ.get("QUIZ_APP_API_KEY"):
+                return "environment variable"
+            if KEYRING_AVAILABLE:
+                try:
+                    if keyring.get_password(_SERVICE_NAME, _ACCOUNT_NAME):
+                        return "system keychain"
+                except Exception:
+                    pass
+            if _dpapi_store_available() and DPAPI_STORE.get_key():
+                return "Windows DPAPI encrypted store"
+            settings = read_json(SETTINGS_FILE) or {}
+            if settings.get("ai_api_key"):
+                return "settings.json (⚠ plaintext)"
+            return "not set"
