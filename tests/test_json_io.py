@@ -43,6 +43,18 @@ class JsonIoTests(unittest.TestCase):
             self.assertEqual(original, read_json(str(path)))
             self.assertEqual(["question.json"], [item.name for item in Path(tmpdir).iterdir()])
 
+    def test_write_json_rejects_non_finite_numbers_and_preserves_existing_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "settings.json"
+            original = {"version": 1}
+            path.write_text(json.dumps(original), encoding="utf-8")
+
+            ok = write_json(str(path), {"bad": float("nan")})
+
+            self.assertFalse(ok)
+            self.assertEqual(original, read_json(str(path)))
+            self.assertEqual(["settings.json"], [item.name for item in Path(tmpdir).iterdir()])
+
 
 if __name__ == "__main__":
     unittest.main()

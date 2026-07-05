@@ -65,13 +65,13 @@ def write_json(filepath: str, data: Any, indent: int = 2) -> bool:
             delete=False,
         ) as f:
             tmp_path = f.name
-            json.dump(data, f, ensure_ascii=False, indent=indent)
+            json.dump(data, f, ensure_ascii=False, indent=indent, allow_nan=False)
             f.flush()
             os.fsync(f.fileno())
         os.replace(tmp_path, target_path)
         _fsync_parent_directory(directory)
         return True
-    except (OSError, TypeError) as e:
+    except (OSError, TypeError, ValueError) as e:
         error(f"Failed to write {filepath}: {e}")
         if tmp_path:
             try:
