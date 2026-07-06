@@ -85,8 +85,9 @@ def load_stylesheet(app: QApplication) -> str:
             stylesheet = f.read()
     except (FileNotFoundError, OSError) as e:
         print(f"Warning: Could not load stylesheet: {e}", file=sys.stderr)
-        return
+        return ""
     app.setStyleSheet(stylesheet)
+    return stylesheet
 
 
 def main():

@@ -241,6 +241,13 @@ class UiThemeTests(unittest.TestCase):
             self.assertEqual(Qt.FocusPolicy.TabFocus, button.focusPolicy())
         self.assertEqual(Qt.FocusPolicy.NoFocus, toolbar.focusPolicy())
 
+    def test_load_stylesheet_returns_applied_qss_text(self):
+        qss = load_stylesheet(_APP)
+
+        self.assertIsInstance(qss, str)
+        self.assertIn("QPushButton", qss)
+        self.assertEqual(qss, _APP.styleSheet())
+
     def test_enabled_buttons_use_hand_cursor_and_disabled_buttons_use_arrow_cursor(self):
         load_stylesheet(_APP)
 
