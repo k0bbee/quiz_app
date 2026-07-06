@@ -123,6 +123,9 @@ class GenerationQuotaTracker:
         topic: str,
         plan_id: str | None = None,
     ) -> tuple[QuestionPlanItem | None, str]:
+        reason = self.rejection_reason(qtype, difficulty, topic)
+        if reason:
+            raise ValueError(reason)
         self.remaining_types[qtype] -= 1
         self.remaining_difficulties[difficulty] -= 1
         self.remaining_topics[topic] -= 1
