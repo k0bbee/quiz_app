@@ -162,13 +162,12 @@ class CourseProjectManager:
     def current(self) -> Optional[CourseProject]:
         data = read_json(CURRENT_COURSE_FILE)
         if not data:
-            projects = self.load_all()
-            return projects[0] if projects else None
+            return None
         project = self.get(data.get("course_id", ""))
         if project:
             return project
-        projects = self.load_all()
-        return projects[0] if projects else None
+        delete_json(CURRENT_COURSE_FILE)
+        return None
 
     def set_current(self, course_id: str) -> bool:
         if not self.get(course_id):
