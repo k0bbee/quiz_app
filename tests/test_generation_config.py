@@ -1394,6 +1394,48 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("answer keyword", reason)
 
+    def test_worker_rejects_choice_when_stem_leaks_core_cs_answer_keyword(self):
+        worker = GenerationWorker(
+            LLMClient(api_key="", base_url="local-agent://auto", model="codex"),
+            course_content="content",
+            topics=["virtual_memory"],
+            count=1,
+            difficulty="medium",
+        )
+        raw = {
+            "type": "multiple_choice",
+            "difficulty": "medium",
+            "topic": "virtual_memory",
+            "correct_answer": "B",
+            "bilingual": {
+                "zh": {
+                    "stem": "下列哪一项内存机制使用页表进行地址映射？",
+                    "options": [
+                        "A. 磁盘调度",
+                        "B. 虚拟内存",
+                        "C. 文件索引",
+                        "D. 网络路由",
+                    ],
+                    "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
+                },
+                "en": {
+                    "stem": "Which memory mechanism uses page tables to translate addresses?",
+                    "options": [
+                        "A. Disk scheduling",
+                        "B. Virtual memory",
+                        "C. File indexing",
+                        "D. Network routing",
+                    ],
+                    "explanation": "This is a sufficiently detailed English explanation for why the answer is correct.",
+                },
+            },
+        }
+
+        ok, reason = worker._validate_raw_question(raw)
+
+        self.assertFalse(ok)
+        self.assertIn("answer keyword", reason)
+
     def test_local_agent_generation_start_does_not_read_persisted_api_key(self):
         class ForbiddenSecrets:
             def get_key(self):

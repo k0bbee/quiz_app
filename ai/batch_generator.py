@@ -1089,10 +1089,10 @@ def _answer_leak_tokens(value) -> set[str]:
 
 
 _ANSWER_LEAK_STOPWORDS = {
-    "the", "and", "for", "with", "method", "which", "what", "when", "where",
-    "device", "memory", "system", "process", "question", "answer", "option",
+    "the", "and", "for", "with", "which", "what", "when", "where",
+    "question", "answer", "option",
     "statement", "correct", "right", "wrong",
-    "cpu", "io", "i/o", "方式", "系统", "设备", "内存", "以下", "哪种", "通知", "完成",
+    "cpu", "io", "i/o", "方式", "以下", "哪种", "通知", "完成",
     "同步", "直接", "存储", "数据", "工作", "正确", "错误", "说法",
 }
 
