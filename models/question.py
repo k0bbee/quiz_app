@@ -268,18 +268,23 @@ class QuestionBank:
             self._invalidate_load_cache()
         return ok
 
-    def filter_by_topic(self, topic: object) -> list[Question]:
-        """Get all questions for a specific topic."""
-        all_qs = self.load_all()
-        return [q for q in all_qs if topic_matches(q.topic, topic)]
-
-    def filter_by_topics(self, topics: list) -> list[Question]:
-        """Get all questions matching any of the given topics."""
+    def filter_by_topic(self, topic: object, course_id: str | None = None) -> list[Question]:
+        """Get all questions for a specific topic, optionally scoped to a course."""
         all_qs = self.load_all()
         return [
             q
             for q in all_qs
-            if any(topic_matches(q.topic, selected_topic) for selected_topic in topics)
+            if topic_matches(q.topic, topic) and self._matches_course(q, course_id)
+        ]
+
+    def filter_by_topics(self, topics: list, course_id: str | None = None) -> list[Question]:
+        """Get all questions matching any topic, optionally scoped to a course."""
+        all_qs = self.load_all()
+        return [
+            q
+            for q in all_qs
+            if self._matches_course(q, course_id)
+            and any(topic_matches(q.topic, selected_topic) for selected_topic in topics)
         ]
 
     def search(

@@ -92,6 +92,38 @@ class TopicIdentityTests(unittest.TestCase):
 
             self.assertEqual(["q-legacy"], [question.question_id for question in questions])
 
+    def test_question_bank_filters_topic_with_course_scope(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            first = Question(
+                question_id="q-course-a",
+                type=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual=_bilingual("Course A cache question"),
+                correct_answer="A",
+                topic="cache_mapping",
+            )
+            first.metadata["course_id"] = "course-a"
+            second = Question(
+                question_id="q-course-b",
+                type=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual=_bilingual("Course B cache question"),
+                correct_answer="A",
+                topic="cache_mapping",
+            )
+            second.metadata["course_id"] = "course-b"
+            bank.save_many([first, second])
+
+            self.assertEqual(
+                ["q-course-a"],
+                [question.question_id for question in bank.filter_by_topic("cache_mapping", course_id="course-a")],
+            )
+            self.assertEqual(
+                ["q-course-a"],
+                [question.question_id for question in bank.filter_by_topics(["cache_mapping"], course_id="course-a")],
+            )
+
     def test_question_set_serializes_topic_ids_without_losing_titles(self):
         topic = CourseTopic(topic_id="interrupt_io", title="Interrupt-driven I/O")
         qset = QuestionSet(
