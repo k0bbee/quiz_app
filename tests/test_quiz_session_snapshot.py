@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from pathlib import Path
 
 from core.quiz_snapshot_manager import QuizSnapshotManager
 from models.progress import AnswerRecord
@@ -84,6 +85,15 @@ class QuizSessionSnapshotTests(unittest.TestCase):
             self.assertEqual(1, deleted)
             self.assertIsNone(manager.get("snapshot-a"))
             self.assertIsNotNone(manager.get("snapshot-b"))
+
+    def test_snapshot_manager_creates_directory_on_init(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            snapshots_dir = Path(tmpdir) / "missing" / "snapshots"
+
+            manager = QuizSnapshotManager(str(snapshots_dir))
+
+            self.assertEqual(str(snapshots_dir), manager.directory)
+            self.assertTrue(snapshots_dir.is_dir())
 
 
 if __name__ == "__main__":

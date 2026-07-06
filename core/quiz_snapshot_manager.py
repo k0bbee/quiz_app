@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Optional
 
 from config import QUIZ_SNAPSHOTS_DIR
@@ -20,6 +21,7 @@ class QuizSnapshotManager:
 
     def __init__(self, snapshots_dir: str = QUIZ_SNAPSHOTS_DIR):
         self._dir = snapshots_dir
+        os.makedirs(self._dir, exist_ok=True)
 
     @property
     def directory(self) -> str:
