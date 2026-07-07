@@ -523,6 +523,44 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertIn("true_false", report.summary_text("en"))
         self.assertIn("已生成 2/4", report.summary_text("zh"))
 
+    def test_worker_emits_partial_result_when_cancelled_after_accepting_questions(self):
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 100},
+        )
+        worker = GenerationWorker(
+            SequenceClient([
+                {"questions": [raw_question("multiple_choice", "medium", "cache", 1)]},
+                {"questions": [raw_question("multiple_choice", "medium", "cache", 2)]},
+            ]),
+            course_content="content",
+            topics=["cache"],
+            count=2,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        batches = []
+        partials = []
+        worker.batch_done.connect(batches.append)
+        worker.partial_done.connect(lambda questions, report: partials.append((questions, report)))
+        worker.question_ready.connect(lambda _questions: worker.cancel())
+
+        worker.run()
+
+        self.assertEqual([], batches)
+        self.assertEqual(1, len(partials))
+        questions, report = partials[0]
+        self.assertEqual(["subtopic-1"], [question.subtopic for question in questions])
+        self.assertIsInstance(report, GenerationReport)
+        self.assertEqual("cancelled", report.status)
+        self.assertEqual("GEN-CANCEL-001", report.error.code)
+
     def test_worker_skips_malformed_candidate_without_aborting_batch(self):
         malformed = raw_question("multiple_choice", "medium", "cache", 1)
         malformed["bilingual"] = "not an object"

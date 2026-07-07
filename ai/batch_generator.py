@@ -477,32 +477,59 @@ class GenerationWorker(QThread):
                     f"Total accepted: {len(all_questions)}/{self.count}"
                 )
 
-            if not self._cancelled.is_set():
-                if len(all_questions) != self.count:
-                    if self._last_json_truncation_detail:
-                        self.error.emit(self._json_truncation_error(self._last_json_truncation_detail))
-                        return
-                    shortfall = quotas.shortfall_error(len(all_questions), self.count)
-                    if all_questions:
-                        report = GenerationReport(
-                            requested_count=self.count,
-                            accepted_count=len(all_questions),
-                            rejected_count=total_rejected,
-                            attempts=attempts,
-                            max_attempts=max_attempts,
-                            status="partial",
-                            missing_quotas=quotas.missing_quotas(),
-                            failed_plan_items=quotas.missing_plan_items(),
-                            rejection_reasons=dict(rejection_reasons),
-                            template=self.generation_config.template,
-                            error=shortfall,
-                        )
-                        self.progress.emit(report.summary_text("en"))
-                        self.partial_done.emit(all_questions, report)
-                    else:
-                        self.error.emit(shortfall)
+            if self._cancelled.is_set():
+                if all_questions:
+                    report = GenerationReport(
+                        requested_count=self.count,
+                        accepted_count=len(all_questions),
+                        rejected_count=total_rejected,
+                        attempts=attempts,
+                        max_attempts=max_attempts,
+                        status="cancelled",
+                        missing_quotas=quotas.missing_quotas(),
+                        failed_plan_items=quotas.missing_plan_items(),
+                        rejection_reasons=dict(rejection_reasons),
+                        template=self.generation_config.template,
+                        error=AppError(
+                            code="GEN-CANCEL-001",
+                            severity="info",
+                            title_zh="生成已取消",
+                            title_en="Generation cancelled",
+                            message_zh="已保留取消前生成的题目。",
+                            message_en="Questions generated before cancellation were preserved.",
+                            action_zh="可先审核并保存已生成题目，之后再继续补齐。",
+                            action_en="Review and save the generated questions now, then continue later.",
+                        ),
+                    )
+                    self.progress.emit(report.summary_text("en"))
+                    self.partial_done.emit(all_questions, report)
+                return
+
+            if len(all_questions) != self.count:
+                if self._last_json_truncation_detail:
+                    self.error.emit(self._json_truncation_error(self._last_json_truncation_detail))
                     return
-                self.batch_done.emit(all_questions)
+                shortfall = quotas.shortfall_error(len(all_questions), self.count)
+                if all_questions:
+                    report = GenerationReport(
+                        requested_count=self.count,
+                        accepted_count=len(all_questions),
+                        rejected_count=total_rejected,
+                        attempts=attempts,
+                        max_attempts=max_attempts,
+                        status="partial",
+                        missing_quotas=quotas.missing_quotas(),
+                        failed_plan_items=quotas.missing_plan_items(),
+                        rejection_reasons=dict(rejection_reasons),
+                        template=self.generation_config.template,
+                        error=shortfall,
+                    )
+                    self.progress.emit(report.summary_text("en"))
+                    self.partial_done.emit(all_questions, report)
+                else:
+                    self.error.emit(shortfall)
+                return
+            self.batch_done.emit(all_questions)
 
         except Exception as e:
             self.error.emit(f"Unexpected error: {str(e)}")
