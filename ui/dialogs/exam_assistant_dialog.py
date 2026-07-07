@@ -80,6 +80,7 @@ class ExamAssistantDialog(QDialog):
         self._pending_request = ""
         self._last_changes: tuple[PlanChange, ...] = ()
         self._cancelled = False
+        self._close_when_worker_stops = False
 
         self.setWindowTitle(self.lang_manager.get_text("试卷助手", "Exam Assistant"))
         self.resize(980, 680)
@@ -262,6 +263,9 @@ class ExamAssistantDialog(QDialog):
 
     def _on_worker_finished(self):
         if self._cancelled:
+            if self._close_when_worker_stops:
+                self._close_when_worker_stops = False
+                super().reject()
             return
         self._set_busy(False)
 
@@ -368,5 +372,13 @@ class ExamAssistantDialog(QDialog):
         if self.worker and self.worker.isRunning():
             self._cancelled = True
             self.worker.requestInterruption()
-            self.worker.wait(5000)
+            if not self.worker.wait(5000):
+                self._close_when_worker_stops = True
+                self._set_status(
+                    self.lang_manager.get_text(
+                        "正在取消理解任务…请等待当前请求结束。",
+                        "Cancelling interpretation... waiting for the current request to finish.",
+                    )
+                )
+                return
         super().reject()

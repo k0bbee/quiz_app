@@ -1585,6 +1585,38 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertTrue(worker.cancelled)
         self.assertEqual(5000, worker.wait_timeout)
 
+    def test_cancel_during_generation_keeps_dialog_open_when_worker_is_still_running(self):
+        class SlowWorker:
+            def __init__(self):
+                self.cancelled = False
+                self.wait_timeout = None
+
+            def isRunning(self):
+                return True
+
+            def cancel(self):
+                self.cancelled = True
+
+            def wait(self, timeout):
+                self.wait_timeout = timeout
+                return False
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        worker = SlowWorker()
+        dialog.worker = worker
+        rejected = []
+        dialog.rejected.connect(lambda: rejected.append(True))
+
+        dialog.reject()
+
+        self.assertTrue(worker.cancelled)
+        self.assertEqual(5000, worker.wait_timeout)
+        self.assertEqual([], rejected)
+
     def test_generation_finished_handler_does_not_wait_on_worker(self):
         class FinishedWorker:
             def wait(self, *_args):

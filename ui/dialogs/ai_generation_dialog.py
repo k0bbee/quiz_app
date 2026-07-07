@@ -65,6 +65,7 @@ class AIGenerationDialog(QDialog):
         self.worker: GenerationWorker = None
         self._generation_failed = False
         self._generation_cancelled = False
+        self._close_when_worker_stops = False
         self._partial_generation_error = None
         self._partial_generation_report: GenerationReport | None = None
         self._retry_carryover_questions: list[Question] = []
@@ -1608,6 +1609,11 @@ class AIGenerationDialog(QDialog):
 
     def _on_finished(self):
         if self._generation_cancelled:
+            self.generation_status_timer.stop()
+            self._generation_started_at = None
+            if self._close_when_worker_stops:
+                self._close_when_worker_stops = False
+                super().reject()
             return
         self.generation_status_timer.stop()
         self._generation_started_at = None
@@ -1726,5 +1732,13 @@ class AIGenerationDialog(QDialog):
             self._generation_cancelled = True
             self.generation_status_timer.stop()
             self.worker.cancel()
-            self.worker.wait(5000)
+            if not self.worker.wait(5000):
+                self._close_when_worker_stops = True
+                self.status_label.setText(
+                    self.lang_manager.get_text(
+                        "正在取消生成任务…请等待当前 AI 请求结束。",
+                        "Cancelling generation... waiting for the current AI request to finish.",
+                    )
+                )
+                return
         super().reject()

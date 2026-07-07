@@ -164,6 +164,34 @@ class ExamAssistantDialogTests(unittest.TestCase):
         self.assertTrue(worker.interrupted)
         self.assertEqual(5000, worker.wait_timeout)
 
+    def test_busy_assistant_cancel_keeps_dialog_open_when_worker_is_still_running(self):
+        class SlowWorker:
+            def __init__(self):
+                self.interrupted = False
+                self.wait_timeout = None
+
+            def isRunning(self):
+                return True
+
+            def requestInterruption(self):
+                self.interrupted = True
+
+            def wait(self, timeout):
+                self.wait_timeout = timeout
+                return False
+
+        worker = SlowWorker()
+        self.dialog.worker = worker
+        self.dialog._set_busy(True)
+        rejected = []
+        self.dialog.rejected.connect(lambda: rejected.append(True))
+
+        self.dialog.reject()
+
+        self.assertTrue(worker.interrupted)
+        self.assertEqual(5000, worker.wait_timeout)
+        self.assertEqual([], rejected)
+
 
 if __name__ == "__main__":
     unittest.main()
