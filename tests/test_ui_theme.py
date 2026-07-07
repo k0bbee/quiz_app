@@ -7,7 +7,7 @@ from unittest.mock import Mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtGui import QPalette
+from PyQt6.QtGui import QCloseEvent, QPalette
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QGridLayout, QLabel, QListWidget, QPushButton, QSplitter
 
@@ -222,6 +222,30 @@ class UiThemeTests(unittest.TestCase):
 
         main_window.quiz_screen.confirm_exit.assert_called_once()
         self.assertEqual(main_window.SCREEN_SETTINGS, main_window.stack.currentIndex())
+
+    def test_close_event_confirms_before_closing_active_quiz(self):
+        main_window = MainWindow()
+        self.addCleanup(main_window.deleteLater)
+        main_window.stack.setCurrentIndex(main_window.SCREEN_QUIZ)
+        main_window.quiz_screen.confirm_exit = Mock(return_value=False)
+        main_window.settings_screen.save_settings = Mock()
+
+        blocked_event = QCloseEvent()
+        main_window.closeEvent(blocked_event)
+
+        main_window.quiz_screen.confirm_exit.assert_called_once()
+        self.assertFalse(blocked_event.isAccepted())
+        main_window.settings_screen.save_settings.assert_not_called()
+
+        main_window.quiz_screen.confirm_exit.reset_mock()
+        main_window.quiz_screen.confirm_exit.return_value = True
+        accepted_event = QCloseEvent()
+
+        main_window.closeEvent(accepted_event)
+
+        main_window.quiz_screen.confirm_exit.assert_called_once()
+        self.assertTrue(accepted_event.isAccepted())
+        main_window.settings_screen.save_settings.assert_called_once_with(silent=True)
 
     def test_semantic_action_buttons_keep_tab_focus_without_mouse_focus(self):
         load_stylesheet(_APP)

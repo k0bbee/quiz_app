@@ -970,6 +970,9 @@ class MainWindow(QMainWindow):
         )
 
     def closeEvent(self, event):
-        """Save settings before closing."""
+        """Confirm active quiz exit before closing, then save settings."""
+        if self.stack.currentIndex() == self.SCREEN_QUIZ and not self.quiz_screen.confirm_exit():
+            event.ignore()
+            return
         self.settings_screen.save_settings(silent=True)
         super().closeEvent(event)
