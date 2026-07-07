@@ -559,6 +559,21 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual("subtopic-2", batches[0][0].subtopic)
         self.assertTrue(any("rejected 1" in message for message in progress_messages))
 
+    def test_worker_rejects_top_level_non_object_json_response(self):
+        worker = GenerationWorker(
+            SequenceClient([["not", "an", "object"]]),
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="mixed",
+        )
+        errors = []
+        worker.error.connect(errors.append)
+
+        worker.run()
+
+        self.assertEqual(["AI response JSON must be an object with a questions list."], errors)
+
     def test_worker_progress_reports_total_requested_count_not_batch_size(self):
         config = GenerationConfig(
             question_type_weights={

@@ -159,6 +159,19 @@ class LLMErrorMessageTests(unittest.TestCase):
 
         self.assertEqual({"questions": [{"stem": "I/O interrupt"}]}, result)
 
+    def test_generate_with_json_rejects_top_level_non_object(self):
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://api.example.com/v1",
+            model="model",
+        )
+
+        with patch.object(client, "generate", return_value='["not", "an", "object"]'):
+            result = client.generate_with_json([{"role": "user", "content": "Return JSON."}], max_retries=1)
+
+        self.assertIsNone(result)
+        self.assertIn("JSON object", client.last_error)
+
     def test_anthropic_client_accepts_text_payload_without_explicit_text_block_type(self):
         class FakeResponse:
             status_code = 200

@@ -265,7 +265,12 @@ class LLMClient:
             try:
                 json_text = self._extract_json_text(text)
 
-                return json.loads(json_text)
+                data = json.loads(json_text)
+                if not isinstance(data, dict):
+                    raise ValueError(
+                        f"expected JSON object, got {type(data).__name__}"
+                    )
+                return data
             except (json.JSONDecodeError, ValueError) as e:
                 self.last_error = f"JSON parse error (attempt {attempt + 1}/{max_retries}): {e}"
                 debug(self.last_error)

@@ -381,6 +381,9 @@ class GenerationWorker(QThread):
                     return
                 self._last_json_truncation_detail = ""
                 self._candidate_batch_limit = None
+                if not isinstance(data, dict):
+                    self.error.emit("AI response JSON must be an object with a questions list.")
+                    return
 
                 # Parse questions from response
                 raw_questions = data.get("questions", [])
