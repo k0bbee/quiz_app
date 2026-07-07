@@ -155,10 +155,12 @@ class ProgressManager:
         """Get all question IDs that were answered incorrectly across all sessions."""
         incorrect = set()
         for record in self.load_all():
+            if record.status != "completed":
+                continue
             for answer in record.answers:
                 if not answer.is_correct:
                     incorrect.add(answer.question_id)
-        return list(incorrect)
+        return sorted(incorrect)
 
     def get_prioritized_review_question_ids(
         self,
