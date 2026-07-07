@@ -71,6 +71,22 @@ class QuizSessionSnapshotTests(unittest.TestCase):
             self.assertIsNone(manager.get("snapshot-latest"))
             self.assertEqual("snapshot-old", manager.load_latest().snapshot_id)
 
+    def test_snapshot_manager_skips_malformed_snapshot_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = QuizSnapshotManager(tmpdir)
+            valid = self._snapshot("snapshot-valid")
+            valid.updated_at = "2026-06-29T00:10:00+00:00"
+            self.assertTrue(manager.save(valid))
+            (Path(tmpdir) / "snapshot-broken.json").write_text(
+                '{"snapshot_id": "snapshot-broken", "question_order": 42}',
+                encoding="utf-8",
+            )
+
+            snapshots = manager.load_all()
+
+            self.assertEqual(["snapshot-valid"], [item.snapshot_id for item in snapshots])
+            self.assertEqual("snapshot-valid", manager.load_latest().snapshot_id)
+
     def test_snapshot_manager_deletes_snapshots_for_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = QuizSnapshotManager(tmpdir)

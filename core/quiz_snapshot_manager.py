@@ -14,6 +14,7 @@ from utils.json_io import (
     sanitize_filename_part,
     write_json,
 )
+from utils.logger import warning
 
 
 class QuizSnapshotManager:
@@ -31,9 +32,17 @@ class QuizSnapshotManager:
         """Load all snapshots sorted by most recent update first."""
         snapshots: list[QuizSessionSnapshot] = []
         for filename in list_json_files(self._dir):
-            data = read_json(f"{self._dir}/{filename}")
-            if data:
+            filepath = os.path.join(self._dir, filename)
+            data = read_json(filepath)
+            if data is None:
+                continue
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError(f"expected object, got {type(data).__name__}")
                 snapshots.append(QuizSessionSnapshot.from_dict(data))
+            except Exception as exc:
+                warning(f"Skipped invalid quiz snapshot {filename}: {exc}")
+                continue
         return sorted(snapshots, key=lambda item: item.updated_at, reverse=True)
 
     def load_latest(self) -> Optional[QuizSessionSnapshot]:
