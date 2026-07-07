@@ -351,7 +351,11 @@ class QuestionBank:
         """Count existing question IDs matching the optional course without loading Question objects."""
         count = 0
         for question_id in dict.fromkeys(question_ids):
-            data = read_json(f"{self._dir}/{sanitize_filename_part(str(question_id))}.json")
+            try:
+                safe_id = sanitize_filename_part(str(question_id))
+            except ValueError:
+                continue
+            data = read_json(f"{self._dir}/{safe_id}.json")
             if isinstance(data, dict) and self._matches_course_data(data, course_id):
                 count += 1
         return count

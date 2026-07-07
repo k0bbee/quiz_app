@@ -99,6 +99,15 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 self.assertEqual(3, updated_total)
                 self.assertGreater(read.call_count, reads_after_first_search)
 
+    def test_question_bank_count_existing_skips_unsafe_question_ids(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            question_bank.save(self._question("q-safe"))
+
+            count = question_bank.count_existing(["q-safe", "../escape", "???", "q-safe"])
+
+            self.assertEqual(1, count)
+
     def test_backfill_source_refs_from_course_updates_stale_question_refs(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
