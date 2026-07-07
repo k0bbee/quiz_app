@@ -13,6 +13,20 @@ from utils.constants import QuestionType, Difficulty, coerce_topic, topic_label,
 from utils.json_io import read_json, write_json, sanitize_filename_part, list_json_files
 
 
+def _coerce_question_type(value) -> QuestionType:
+    try:
+        return QuestionType(value or QuestionType.MULTIPLE_CHOICE.value)
+    except ValueError:
+        return QuestionType.MULTIPLE_CHOICE
+
+
+def _coerce_difficulty(value) -> Difficulty:
+    try:
+        return Difficulty(value or Difficulty.MEDIUM.value)
+    except ValueError:
+        return Difficulty.MEDIUM
+
+
 @dataclass
 class Question:
     """A single quiz question with bilingual support."""
@@ -91,8 +105,8 @@ class Question:
             metadata.setdefault("legacy_topic", legacy_topic)
         return cls(
             question_id=data.get("question_id", ""),
-            type=QuestionType(data.get("type", "multiple_choice")),
-            difficulty=Difficulty(data.get("difficulty", "medium")),
+            type=_coerce_question_type(data.get("type", "multiple_choice")),
+            difficulty=_coerce_difficulty(data.get("difficulty", "medium")),
             bilingual=data.get("bilingual", {}),
             correct_answer=data.get("correct_answer"),
             topic=coerce_topic(topic_source),

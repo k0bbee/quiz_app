@@ -12,6 +12,22 @@ from utils.constants import Difficulty, coerce_topic, topic_label, topic_value
 from utils.json_io import read_json, write_json, sanitize_filename_part
 
 
+def _coerce_bilingual_text(value) -> dict:
+    if isinstance(value, dict):
+        zh = str(value.get("zh", "") or "")
+        en = str(value.get("en", "") or zh)
+        return {"zh": zh, "en": en}
+    text = str(value or "")
+    return {"zh": text, "en": text}
+
+
+def _coerce_difficulty(value) -> Difficulty:
+    try:
+        return Difficulty(value or Difficulty.MEDIUM.value)
+    except ValueError:
+        return Difficulty.MEDIUM
+
+
 @dataclass
 class QuestionSet:
     """A named collection of questions organized by topic/difficulty."""
@@ -58,10 +74,10 @@ class QuestionSet:
         return cls(
             set_id=data.get("set_id", ""),
             version=data.get("version", 1),
-            title=data.get("title", {"zh": "", "en": ""}),
-            description=data.get("description", {"zh": "", "en": ""}),
+            title=_coerce_bilingual_text(data.get("title", {"zh": "", "en": ""})),
+            description=_coerce_bilingual_text(data.get("description", {"zh": "", "en": ""})),
             topics=[coerce_topic(t) for t in data.get("topic_ids") or data.get("topics", [])],
-            difficulty=Difficulty(data.get("difficulty", "medium")),
+            difficulty=_coerce_difficulty(data.get("difficulty", "medium")),
             estimated_minutes=data.get("estimated_minutes", 15),
             questions=data.get("questions", []),
             metadata=data.get("metadata", {}),
