@@ -523,6 +523,42 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertIn("true_false", report.summary_text("en"))
         self.assertIn("已生成 2/4", report.summary_text("zh"))
 
+    def test_worker_skips_malformed_candidate_without_aborting_batch(self):
+        malformed = raw_question("multiple_choice", "medium", "cache", 1)
+        malformed["bilingual"] = "not an object"
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 100,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"cache": 100},
+        )
+        worker = GenerationWorker(
+            SequenceClient([{"questions": [malformed, raw_question("multiple_choice", "medium", "cache", 2)]}]),
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        batches = []
+        errors = []
+        progress_messages = []
+        worker.batch_done.connect(batches.append)
+        worker.error.connect(errors.append)
+        worker.progress.connect(progress_messages.append)
+
+        worker.run()
+
+        self.assertEqual([], errors)
+        self.assertEqual(1, len(batches))
+        self.assertEqual(1, len(batches[0]))
+        self.assertEqual("subtopic-2", batches[0][0].subtopic)
+        self.assertTrue(any("rejected 1" in message for message in progress_messages))
+
     def test_worker_progress_reports_total_requested_count_not_batch_size(self):
         config = GenerationConfig(
             question_type_weights={

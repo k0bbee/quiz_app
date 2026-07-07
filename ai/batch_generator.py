@@ -749,8 +749,12 @@ class GenerationWorker(QThread):
             return False, f"topic {qdata.get('topic')} was not selected"
 
         bilingual = qdata.get("bilingual", {})
+        if not isinstance(bilingual, dict):
+            return False, "bilingual content must be an object"
         for lang in ("zh", "en"):
             content = bilingual.get(lang, {})
+            if not isinstance(content, dict):
+                return False, f"{lang} content must be an object"
             if not content.get("stem"):
                 return False, f"missing {lang} stem"
             if not content.get("explanation") or len(content.get("explanation", "")) < 20:
