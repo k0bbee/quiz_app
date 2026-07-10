@@ -622,19 +622,23 @@ class AIGenerationDialog(QDialog):
 
         # Rebuild difficulty combo items preserving the selected value
         current_diff = self.diff_combo.currentData()
-        self.diff_combo.clear()
-        difficulties = [
-            (self.lang_manager.get_text("简单", "easy"), "easy"),
-            (self.lang_manager.get_text("中等", "medium"), "medium"),
-            (self.lang_manager.get_text("困难", "hard"), "hard"),
-            (self.lang_manager.get_text("混合", "mixed"), "mixed"),
-        ]
-        for display, value in difficulties:
-            self.diff_combo.addItem(display, value)
-        for i in range(self.diff_combo.count()):
-            if self.diff_combo.itemData(i) == current_diff:
-                self.diff_combo.setCurrentIndex(i)
-                break
+        was_blocked = self.diff_combo.blockSignals(True)
+        try:
+            self.diff_combo.clear()
+            difficulties = [
+                (self.lang_manager.get_text("简单", "easy"), "easy"),
+                (self.lang_manager.get_text("中等", "medium"), "medium"),
+                (self.lang_manager.get_text("困难", "hard"), "hard"),
+                (self.lang_manager.get_text("混合", "mixed"), "mixed"),
+            ]
+            for display, value in difficulties:
+                self.diff_combo.addItem(display, value)
+            for i in range(self.diff_combo.count()):
+                if self.diff_combo.itemData(i) == current_diff:
+                    self.diff_combo.setCurrentIndex(i)
+                    break
+        finally:
+            self.diff_combo.blockSignals(was_blocked)
 
         self.prompt_group.setTitle(self.lang_manager.get_text("课程内容预览", "Course Content Preview"))
         self.structure_group.setTitle(self.lang_manager.get_text("题目结构", "Question Structure"))

@@ -1169,6 +1169,25 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(70, dialog.medium_slider.value())
         self.assertEqual(20, dialog.hard_slider.value())
 
+    def test_dialog_language_change_refreshes_preview_after_difficulty_combo_rebuild(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+                "default_difficulty": "hard",
+            },
+            available_topics=["cache"],
+        )
+        self.addCleanup(dialog.close)
+        observed_difficulties = []
+        dialog._update_preview = lambda: observed_difficulties.append(dialog.diff_combo.currentData())
+
+        dialog._on_language_changed("en")
+
+        self.assertEqual(["hard"], observed_difficulties)
+
     def test_dialog_topic_weight_rows_follow_selected_topics(self):
         dialog = AIGenerationDialog(
             "course content",
