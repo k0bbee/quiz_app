@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
@@ -118,6 +119,7 @@ class SetManager:
     def __init__(self, sets_dir: str):
         self._dir = sets_dir
         self._cache: dict[str, QuestionSet] = {}
+        self._cache_signatures: dict[str, tuple[int, int]] = {}
 
     @property
     def directory(self) -> str:
@@ -128,36 +130,79 @@ class SetManager:
         from utils.json_io import list_json_files
 
         sets = []
+        seen_ids = set()
         for filename in list_json_files(self._dir):
-            filepath = f"{self._dir}/{filename}"
+            filepath = os.path.join(self._dir, filename)
+            signature = self._file_signature(filepath)
             data = read_json(filepath)
             if data:
                 qs = QuestionSet.from_dict(data)
                 self._cache[qs.set_id] = qs
+                if signature is not None:
+                    self._cache_signatures[qs.set_id] = signature
+                seen_ids.add(qs.set_id)
                 sets.append(qs)
+        for stale_id in list(self._cache):
+            if stale_id not in seen_ids:
+                self._cache.pop(stale_id, None)
+                self._cache_signatures.pop(stale_id, None)
         return sorted(sets, key=lambda s: s.set_id, reverse=True)
 
     def get(self, set_id: str) -> Optional[QuestionSet]:
-        if set_id in self._cache:
+        filepath = self._path_for_id(set_id)
+        signature = self._file_signature(filepath)
+        if signature is None:
+            self._cache.pop(set_id, None)
+            self._cache_signatures.pop(set_id, None)
+            return None
+        if (
+            set_id in self._cache
+            and self._cache_signatures.get(set_id) == signature
+        ):
             return self._cache[set_id]
-        filepath = f"{self._dir}/{sanitize_filename_part(set_id)}.json"
         data = read_json(filepath)
         if data:
             qs = QuestionSet.from_dict(data)
+            if qs.set_id != set_id:
+                self._cache.pop(set_id, None)
+                self._cache_signatures.pop(set_id, None)
             self._cache[qs.set_id] = qs
+            self._cache_signatures[qs.set_id] = signature
             return qs
+        self._cache.pop(set_id, None)
+        self._cache_signatures.pop(set_id, None)
         return None
 
     def save(self, question_set: QuestionSet) -> bool:
         safe_id = sanitize_filename_part(question_set.set_id)
-        filepath = f"{self._dir}/{safe_id}.json"
+        filepath = os.path.join(self._dir, f"{safe_id}.json")
         ok = write_json(filepath, question_set.to_dict())
         if ok:
             self._cache[question_set.set_id] = question_set
+            signature = self._file_signature(filepath)
+            if signature is not None:
+                self._cache_signatures[question_set.set_id] = signature
         return ok
 
     def delete(self, set_id: str) -> bool:
         from utils.json_io import delete_json
 
         self._cache.pop(set_id, None)
-        return delete_json(f"{self._dir}/{sanitize_filename_part(set_id)}.json")
+        self._cache_signatures.pop(set_id, None)
+        return delete_json(self._path_for_id(set_id))
+
+    def clear_cache(self):
+        """Clear cached question sets so future reads hit disk."""
+        self._cache.clear()
+        self._cache_signatures.clear()
+
+    def _path_for_id(self, set_id: str) -> str:
+        return os.path.join(self._dir, f"{sanitize_filename_part(set_id)}.json")
+
+    @staticmethod
+    def _file_signature(filepath: str) -> Optional[tuple[int, int]]:
+        try:
+            stat = os.stat(filepath)
+        except FileNotFoundError:
+            return None
+        return (stat.st_mtime_ns, stat.st_size)

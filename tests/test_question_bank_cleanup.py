@@ -22,7 +22,7 @@ from models.progress import AnswerRecord, ProgressRecord
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
 from ui.screens.question_bank_screen import QuestionBankScreen
-from utils.json_io import read_json
+from utils.json_io import read_json, write_json
 from utils.constants import Difficulty, QuestionType
 
 
@@ -364,6 +364,24 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertFalse(ok)
             self.assertIsNone(set_manager.get("set-unsaved"))
             self.assertEqual([], set_manager.load_all())
+
+    def test_set_manager_get_refreshes_when_cached_file_changes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            set_manager = SetManager(str(Path(tmpdir) / "sets"))
+            qset = self._set("set-stale", ["q1"])
+            set_manager.save(qset)
+
+            cached = set_manager.get("set-stale")
+            self.assertEqual(["q1"], cached.questions)
+
+            changed = self._set("set-stale", ["q2"])
+            changed.title = {"zh": "更新后", "en": "Updated"}
+            write_json(str(Path(tmpdir) / "sets" / "set-stale.json"), changed.to_dict())
+
+            refreshed = set_manager.get("set-stale")
+
+            self.assertEqual(["q2"], refreshed.questions)
+            self.assertEqual("更新后", refreshed.get_title("zh"))
 
     def test_progress_save_rejects_path_traversal_id(self):
         with tempfile.TemporaryDirectory() as tmpdir:
