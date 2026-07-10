@@ -1362,21 +1362,34 @@ class AIGenerationDialog(QDialog):
 
     def _apply_runtime_instruction_to_worker(self, announce: bool = True):
         instruction = self._current_runtime_instruction()
-        if self.worker is not None and hasattr(self.worker, "set_runtime_instruction"):
+        applied_to_worker = self.worker is not None and hasattr(self.worker, "set_runtime_instruction")
+        if applied_to_worker:
             self.worker.set_runtime_instruction(instruction)
         if not announce:
             return
         if instruction:
-            self._append_generation_event(
-                self.lang_manager.get_text(
+            if applied_to_worker:
+                event_text = self.lang_manager.get_text(
                     f"后续要求已更新：{instruction}",
                     f"Runtime adjustment updated: {instruction}",
                 )
+                status_text = self.lang_manager.get_text(
+                    "后续要求已更新，将从下一次 AI 请求开始生效。",
+                    "Runtime adjustment updated; it applies from the next AI request.",
+                )
+            else:
+                event_text = self.lang_manager.get_text(
+                    f"后续要求已排队：{instruction}",
+                    f"Runtime adjustment queued: {instruction}",
+                )
+                status_text = self.lang_manager.get_text(
+                    "后续要求已排队，开始生成后会自动应用。",
+                    "Runtime adjustment queued; it will apply when generation starts.",
+                )
+            self._append_generation_event(
+                event_text
             )
-            self._last_generation_progress = self.lang_manager.get_text(
-                "后续要求已更新，将从下一次 AI 请求开始生效。",
-                "Runtime adjustment updated; it applies from the next AI request.",
-            )
+            self._last_generation_progress = status_text
         else:
             self._append_generation_event(
                 self.lang_manager.get_text(

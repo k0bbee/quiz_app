@@ -1613,6 +1613,24 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual([dialog._current_runtime_instruction()], dialog.worker.instructions)
         self.assertIn("后续要求", dialog.generation_log.toPlainText())
 
+    def test_dialog_runtime_instruction_quick_actions_show_queued_before_worker_starts(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog.worker = None
+
+        buttons = {
+            button.text(): button
+            for button in dialog.runtime_instruction_quick_buttons
+        }
+        buttons["减少定义题"].click()
+
+        log = dialog.generation_log.toPlainText()
+        self.assertIn("后续要求已排队", log)
+        self.assertNotIn("后续要求已更新", log)
+
     def test_cancel_during_generation_waits_for_worker_shutdown(self):
         class RunningWorker:
             def __init__(self):
