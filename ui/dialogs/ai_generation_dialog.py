@@ -707,9 +707,15 @@ class AIGenerationDialog(QDialog):
 
     def _toggle_all(self, selected: bool):
         """Select/deselect all topics."""
-        for i in range(self.topic_list.count()):
-            item = self.topic_list.item(i)
-            item.setCheckState(Qt.CheckState.Checked if selected else Qt.CheckState.Unchecked)
+        target_state = Qt.CheckState.Checked if selected else Qt.CheckState.Unchecked
+        was_blocked = self.topic_list.blockSignals(True)
+        try:
+            for i in range(self.topic_list.count()):
+                item = self.topic_list.item(i)
+                item.setCheckState(target_state)
+        finally:
+            self.topic_list.blockSignals(was_blocked)
+        self._on_topics_changed()
 
     def _selected_topic_keys(self) -> list[str]:
         return [topic_value(topic) for topic in self._get_selected_topics()]

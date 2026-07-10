@@ -1209,6 +1209,36 @@ class GenerationConfigTests(unittest.TestCase):
 
         self.assertTrue(dialog.topic_weight_rows["cache"].isHidden())
 
+    def test_dialog_toggle_all_topics_refreshes_preview_once(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache", "process", "memory", "io", "network"],
+        )
+        self.addCleanup(dialog.close)
+        calls = {"sync": 0, "preview": 0}
+        original_sync = dialog._sync_topic_weight_rows
+        original_preview = dialog._update_preview
+
+        def counted_sync():
+            calls["sync"] += 1
+            original_sync()
+
+        def counted_preview():
+            calls["preview"] += 1
+            original_preview()
+
+        dialog._sync_topic_weight_rows = counted_sync
+        dialog._update_preview = counted_preview
+
+        dialog._toggle_all(True)
+
+        self.assertEqual(
+            [Qt.CheckState.Checked] * 5,
+            [dialog.topic_list.item(index).checkState() for index in range(dialog.topic_list.count())],
+        )
+        self.assertEqual({"sync": 1, "preview": 1}, calls)
+
     def test_dialog_weight_labels_update_normalized_effective_percentages_after_confirmation(self):
         dialog = AIGenerationDialog(
             "course content",
