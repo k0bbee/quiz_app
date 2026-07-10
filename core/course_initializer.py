@@ -605,7 +605,9 @@ def _clean_title(title: str) -> str:
         flags=re.I,
     )
     title = re.sub(r"[_-]+", " ", title)
-    title = re.sub(r"\s*\(\d+\)$", "", title)  # PowerPoint suffix like "Title (1)"
+    # Strip copy/export suffixes like "Title (1)" without eating real years
+    # or version labels such as "Operating Systems (2024)".
+    title = re.sub(r"\s*\([1-9]\d{0,2}\)$", "", title)
     title = re.sub(r"\bL\d+\b|\bLecture\s*\d+\b|\bWeek\s*\d+\b|\bDI\d+\b|\bCS\d+\b", "", title, flags=re.I)
     title = re.sub(r"\s+", " ", title).strip(" -.")
     # Truncate at the first run of non-ASCII, non-CJK characters (garbled suffix)

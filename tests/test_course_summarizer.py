@@ -290,6 +290,38 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
         )
         self.assertFalse(topics[0].title.startswith("2 "))
 
+    def test_inferred_topic_title_preserves_year_suffix_but_removes_copy_index(self):
+        year_text = (
+            "Operating systems coordinate processes, scheduling, memory protection, "
+            "system calls, filesystems, interrupts, and device management. "
+        ) * 12
+        copy_text = (
+            "Cache mapping splits byte addresses into tag, set index, byte offset, "
+            "cache lines, hits, misses, and replacement policy. "
+        ) * 12
+
+        year_topics = infer_topics([
+            ExtractedDocument(
+                path="Operating Systems (2024).pdf",
+                title="Operating Systems (2024)",
+                extension=".pdf",
+                text=year_text,
+                pages=[year_text],
+            )
+        ])
+        copy_topics = infer_topics([
+            ExtractedDocument(
+                path="Cache Mapping (1).pptx",
+                title="Cache Mapping (1)",
+                extension=".pptx",
+                text=copy_text,
+                pages=[copy_text],
+            )
+        ])
+
+        self.assertEqual("Operating Systems (2024)", year_topics[0].title)
+        self.assertEqual("Cache Mapping", copy_topics[0].title)
+
     def test_course_screen_local_agent_initializer_does_not_read_persisted_api_key(self):
         class ForbiddenSecrets:
             def get_key(self):
