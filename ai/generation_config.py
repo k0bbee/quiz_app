@@ -29,7 +29,8 @@ def allocate_weighted_counts(weights: dict[str, int], count: int) -> dict[str, i
     if not keys:
         return {}
     if total <= 0:
-        return {key: count if index == 0 else 0 for index, key in enumerate(keys)}
+        source = {key: 1 for key in keys}
+        total = len(keys)
     raw = {key: source[key] * count / total for key in keys}
     allocated = {key: floor(raw[key]) for key in keys}
     remainder = count - sum(allocated.values())

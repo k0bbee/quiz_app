@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import QApplication, QDialog
 from PyQt6.QtCore import Qt
 
 from ai.batch_generator import GenerationWorker
-from ai.generation_config import GenerationConfig
+from ai.generation_config import GenerationConfig, allocate_weighted_counts
 from ai.question_plan import QuestionPlanItem, build_question_plan
 from ai.exam_plan import ExamGenerationPlan
 from ai.llm_client import LLMClient
@@ -31,6 +31,17 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class GenerationConfigTests(unittest.TestCase):
+    def test_allocate_zero_weight_counts_evenly_instead_of_first_key(self):
+        allocated = allocate_weighted_counts(
+            {"multiple_choice": 0, "true_false": 0, "fill_in_blank": 0},
+            5,
+        )
+
+        self.assertEqual(
+            {"multiple_choice": 2, "true_false": 2, "fill_in_blank": 1},
+            allocated,
+        )
+
     def test_normalized_topic_weights_distribute_rounding_error_evenly(self):
         topics = [f"topic-{index}" for index in range(6)]
         config = GenerationConfig(topic_weights={topic: 1 for topic in topics})
