@@ -24,6 +24,7 @@ except ImportError:
 
 from config import API_KEY_STORE_FILE, SETTINGS_FILE
 from core.windows_dpapi_store import WindowsDPAPISecretStore
+from utils.logger import warning as log_warning
 from utils.json_io import read_json, write_json
 
 _SERVICE_NAME = "course_quiz_studio"
@@ -47,6 +48,7 @@ class SecretsManager:
             raise RuntimeError("Use SecretsManager.instance() instead of direct construction")
         SecretsManager._instance = self
         self._last_storage_location = ""
+        self._storage_warning = ""
         self._storage_lock = threading.RLock()
 
     @classmethod
@@ -72,8 +74,8 @@ class SecretsManager:
                 stored = keyring.get_password(_SERVICE_NAME, _ACCOUNT_NAME)
                 if stored:
                     return stored
-            except Exception:
-                pass  # keychain read failed, fall through
+            except Exception as exc:
+                self._record_keychain_warning("read", exc)
 
         # 3. Windows user-bound encrypted fallback
         if _dpapi_store_available():
@@ -96,6 +98,7 @@ class SecretsManager:
             return self._set_key_locked(key)
 
     def _set_key_locked(self, key: str) -> str:
+        self._storage_warning = ""
         # Always set environment variable for current session
         if key:
             os.environ["QUIZ_APP_API_KEY"] = key
@@ -104,18 +107,21 @@ class SecretsManager:
 
         # Try keychain first, then Windows DPAPI encrypted persistence.
         stored_in_keychain = False
+        keychain_clear_failed = False
         if KEYRING_AVAILABLE:
             try:
                 if key:
                     keyring.set_password(_SERVICE_NAME, _ACCOUNT_NAME, key)
+                    stored_in_keychain = True
                 else:
-                    try:
-                        keyring.delete_password(_SERVICE_NAME, _ACCOUNT_NAME)
-                    except Exception:
-                        pass
-                stored_in_keychain = True
-            except Exception:
-                pass  # keychain write failed, fall through
+                    keyring.delete_password(_SERVICE_NAME, _ACCOUNT_NAME)
+                    stored_in_keychain = True
+            except Exception as exc:
+                if key:
+                    self._record_keychain_warning("write", exc)
+                else:
+                    keychain_clear_failed = True
+                    self._record_keychain_warning("clear", exc)
 
         stored_in_dpapi = False
         if not key:
@@ -136,7 +142,7 @@ class SecretsManager:
         write_json(SETTINGS_FILE, settings)
 
         if not key:
-            location = "not set"
+            location = "not set (system keychain clear failed)" if keychain_clear_failed else "not set"
         elif stored_in_keychain:
             location = "system keychain"
         elif stored_in_dpapi:
@@ -145,6 +151,18 @@ class SecretsManager:
             location = "environment variable (current session only)"
         self._last_storage_location = location
         return location
+
+    def get_storage_warning(self) -> str:
+        """Return non-secret diagnostic text for the last persistence fallback."""
+        with self._storage_lock:
+            return self._storage_warning
+
+    def _record_keychain_warning(self, action: str, exc: Exception) -> None:
+        detail = f"{type(exc).__name__}: {exc}"
+        message = f"system keychain {action} failed: {detail}"
+        with self._storage_lock:
+            self._storage_warning = message
+        log_warning(f"API key persistence warning: {message}")
 
     def is_keychain_available(self) -> bool:
         return KEYRING_AVAILABLE or _dpapi_store_available()
@@ -169,8 +187,8 @@ class SecretsManager:
                 try:
                     if keyring.get_password(_SERVICE_NAME, _ACCOUNT_NAME):
                         return "system keychain"
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self._record_keychain_warning("read", exc)
             if _dpapi_store_available() and DPAPI_STORE.get_key():
                 return "Windows DPAPI encrypted store"
             settings = read_json(SETTINGS_FILE) or {}

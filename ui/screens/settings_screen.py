@@ -63,6 +63,13 @@ def _normalize_weight_shares(weights: dict[str, int]) -> dict[str, int]:
     return normalized
 
 
+def _secret_storage_warning(secrets) -> str:
+    getter = getattr(secrets, "get_storage_warning", None)
+    if not callable(getter):
+        return ""
+    return str(getter() or "")
+
+
 class AIConnectionTestWorker(QThread):
     """Run the provider connection probe away from the UI thread."""
 
@@ -777,15 +784,23 @@ class SettingsScreen(QWidget):
             self._set_settings_dirty(False, saved=True)
 
             if not silent:
-                storage = SecretsManager.instance().get_storage_location()
+                storage = secrets.get_storage_location()
+                storage_warning = _secret_storage_warning(secrets)
+                zh_message = (
+                    f"设置已保存。\n提供商: {self._settings['ai_provider']}\n"
+                    f"模型: {self._settings['ai_model']}\n密钥存储: {storage}"
+                )
+                en_message = (
+                    f"Settings saved.\nProvider: {self._settings['ai_provider']}\n"
+                    f"Model: {self._settings['ai_model']}\nKey storage: {storage}"
+                )
+                if storage_warning:
+                    zh_message += f"\n存储提示: {storage_warning}"
+                    en_message += f"\nStorage note: {storage_warning}"
                 QMessageBox.information(
                     self,
                     self.lang_manager.get_text("已保存", "Saved"),
-                    self.lang_manager.get_text(
-                        f"设置已保存。\n提供商: {self._settings['ai_provider']}\n"
-                        f"模型: {self._settings['ai_model']}\n密钥存储: {storage}",
-                        f"Settings saved.\nProvider: {self._settings['ai_provider']}\n"
-                        f"Model: {self._settings['ai_model']}\nKey storage: {storage}"),
+                    self.lang_manager.get_text(zh_message, en_message),
                 )
         except Exception as e:
             if not silent:
@@ -940,14 +955,21 @@ class SettingsScreen(QWidget):
             return
         from core.secrets_manager import SecretsManager
 
-        self._key_storage_location = SecretsManager.instance().set_key("")
+        secrets = SecretsManager.instance()
+        self._key_storage_location = secrets.set_key("")
+        storage_warning = _secret_storage_warning(secrets)
         self._has_existing_api_key = False
         self.api_key_input.clear()
         self._update_api_key_placeholder()
+        zh_message = "API 密钥已清除。"
+        en_message = "The API key was cleared."
+        if storage_warning:
+            zh_message += f"\n存储提示: {storage_warning}"
+            en_message += f"\nStorage note: {storage_warning}"
         QMessageBox.information(
             self,
             self.lang_manager.get_text("已清除", "Cleared"),
-            self.lang_manager.get_text("API 密钥已清除。", "The API key was cleared."),
+            self.lang_manager.get_text(zh_message, en_message),
         )
 
     # ── Provider change ──────────────────────────────────────

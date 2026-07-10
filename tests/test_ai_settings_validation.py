@@ -356,6 +356,25 @@ class AISettingsValidationTests(unittest.TestCase):
         manager.set_key.assert_called_once_with("sk-new")
         self.assertEqual("", screen.api_key_input.text())
 
+    def test_save_settings_displays_secret_storage_warning_without_key_value(self):
+        manager = SimpleNamespace(
+            get_key=lambda: "",
+            get_storage_location=lambda: "Windows DPAPI encrypted store",
+            get_storage_warning=lambda: "system keychain write failed: RuntimeError: locked",
+            set_key=unittest.mock.Mock(return_value="Windows DPAPI encrypted store"),
+        )
+        with patch("core.secrets_manager.SecretsManager.instance", return_value=manager), \
+             patch("ui.screens.settings_screen.write_json", return_value=True), \
+             patch("ui.screens.settings_screen.QMessageBox.information") as info:
+            screen = SettingsScreen()
+            screen.api_key_input.setText("sk-new-secret")
+
+            screen.save_settings()
+
+        message = info.call_args.args[2]
+        self.assertIn("system keychain write failed", message)
+        self.assertNotIn("sk-new-secret", message)
+
     def test_clear_key_requires_confirmation_and_clears_secret(self):
         manager = SimpleNamespace(
             get_key=lambda: "sk-existing",
@@ -371,6 +390,23 @@ class AISettingsValidationTests(unittest.TestCase):
         manager.set_key.assert_called_once_with("")
         self.assertFalse(screen.clear_api_key_btn.isEnabled())
         self.assertNotIn("system keychain", screen.api_key_input.placeholderText())
+
+    def test_clear_key_displays_storage_warning_without_key_value(self):
+        manager = SimpleNamespace(
+            get_key=lambda: "sk-existing",
+            get_storage_location=lambda: "system keychain",
+            get_storage_warning=lambda: "system keychain clear failed: RuntimeError: denied",
+            set_key=unittest.mock.Mock(return_value="not set (system keychain clear failed)"),
+        )
+        with patch("core.secrets_manager.SecretsManager.instance", return_value=manager), \
+             patch("ui.screens.settings_screen.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes), \
+             patch("ui.screens.settings_screen.QMessageBox.information") as info:
+            screen = SettingsScreen()
+            screen.clear_api_key_btn.click()
+
+        message = info.call_args.args[2]
+        self.assertIn("system keychain clear failed", message)
+        self.assertNotIn("sk-existing", message)
 
     def test_import_progress_rejects_path_traversal_progress_id(self):
         with tempfile.TemporaryDirectory() as tmpdir:

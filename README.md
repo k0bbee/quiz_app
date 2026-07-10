@@ -107,6 +107,8 @@ API Key 读取优先级：环境变量 `QUIZ_APP_API_KEY` → 系统密钥环 �
 
 可通过 `python scripts/check_environment.py` 查看当前 keyring backend。Windows 正常安装 `keyring` 后通常会显示 `keyring.backends.Windows.WinVaultKeyring`；如果该后端不可用，程序会自动使用 DPAPI，不需要重新输入密钥。
 
+如果 `keyring` 包存在但系统密钥环读写或清除失败，设置页会在保存/清除结果中显示“存储提示”，并在 `data/app.log` 写入不含密钥值的诊断；程序仍会优先降级到 DPAPI 或当前会话存储，避免把密钥写回明文 `settings.json`。
+
 远程 LLM 端点必须使用 `https://`。只有 `localhost`、`127.0.0.1` 或 `::1` 上的本机兼容服务可以使用 `http://`；包含用户名/密码、缺少主机或使用其他协议的 URL 会在设置测试和实际请求前被拒绝。
 
 点击设置页的“测试 AI 设置”会先做本地配置校验，再在后台向当前提供商发送一个最小 JSON 连接探测请求。探测请求不包含课程内容、题库、学习记录或 API Key 文本，只要求模型返回 `{"ok": true}`，用于确认端点、模型和密钥是否真实可用。远程提供商可能仍会把这次探测计入一次很小的请求/Token 消耗；测试过程中设置按钮会暂时禁用，完成后会在页面上显示成功或失败原因。
