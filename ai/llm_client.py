@@ -124,18 +124,9 @@ class LLMClient:
                 extracted = self._extract_anthropic_response_text(data)
                 if extracted:
                     return extracted
-                content = data.get("content", [])
-                block_types = []
-                if isinstance(content, list):
-                    block_types = [
-                        str(block.get("type", "unknown"))
-                        for block in content
-                        if isinstance(block, dict)
-                    ]
-                suffix = f" Content block types: {', '.join(block_types)}." if block_types else ""
                 self.last_error = (
                     "Anthropic API response did not contain usable text or JSON content."
-                    f"{suffix}"
+                    f" {self._anthropic_empty_response_detail(data)}"
                 )
                 return None
             else:
@@ -146,6 +137,38 @@ class LLMClient:
             self.last_error = f"Anthropic API request failed: {e}"
             debug(self.last_error)
             return None
+
+    @staticmethod
+    def _anthropic_empty_response_detail(data: dict) -> str:
+        """Build an actionable diagnostic when Anthropic returns no usable text."""
+        details = []
+        stop_reason = data.get("stop_reason")
+        if isinstance(stop_reason, str) and stop_reason:
+            details.append(f"stop_reason={stop_reason}.")
+            if stop_reason == "max_tokens":
+                details.append(
+                    "The response was likely truncated before final JSON text was emitted; "
+                    "increase max_tokens or generate fewer questions per batch."
+                )
+
+        content = data.get("content", [])
+        block_types = []
+        if isinstance(content, list):
+            block_types = [
+                str(block.get("type", "unknown"))
+                for block in content
+                if isinstance(block, dict)
+            ]
+        if block_types:
+            details.append(f"Content block types: {', '.join(block_types)}.")
+            non_text_types = {block_type.lower() for block_type in block_types}
+            if non_text_types and not (non_text_types & {"text", "json", "input_json"}):
+                details.append(
+                    "Only non-text blocks were returned; ask the model/provider to emit "
+                    "a final text JSON response."
+                )
+
+        return " ".join(details).strip()
 
     @staticmethod
     def _extract_anthropic_response_text(data: dict) -> str:

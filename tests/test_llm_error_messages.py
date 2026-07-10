@@ -285,6 +285,36 @@ class LLMErrorMessageTests(unittest.TestCase):
         self.assertEqual('{"question_count": 10}', result)
         self.assertEqual("", client.last_error)
 
+    def test_anthropic_client_reports_max_tokens_stop_reason_without_text(self):
+        class FakeResponse:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {
+                    "stop_reason": "max_tokens",
+                    "content": [
+                        {
+                            "type": "thinking",
+                            "thinking": "Drafting a JSON response...",
+                        }
+                    ],
+                }
+
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://api.anthropic.com/v1",
+            model="claude-test",
+        )
+
+        with patch("ai.llm_client.requests.post", return_value=FakeResponse()):
+            result = client.generate([{"role": "user", "content": "Return JSON."}])
+
+        self.assertIsNone(result)
+        self.assertIn("stop_reason=max_tokens", client.last_error)
+        self.assertIn("truncated", client.last_error)
+        self.assertIn("thinking", client.last_error)
+
 
 if __name__ == "__main__":
     unittest.main()
