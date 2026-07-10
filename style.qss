@@ -828,6 +828,12 @@ QLabel#correctIndicator[answerState="incorrect"] {
     color: #f38ba8;
 }
 
+QLabel#quizShortcutHint {
+    color: #9d9d9d;
+    font-size: 12px;
+    padding: 2px 0 0 0;
+}
+
 QLabel#resultsScoreLabel {
     color: #f0f0f0;
     font-size: 36px;

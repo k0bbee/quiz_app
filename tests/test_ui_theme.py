@@ -677,6 +677,7 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("qprogressbar::chunk", qss)
         self.assertIn('qlabel#correctindicator[answerstate="correct"]', qss)
         self.assertIn('qlabel#correctindicator[answerstate="incorrect"]', qss)
+        self.assertIn("qlabel#quizshortcuthint", qss)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             quiz = QuizScreen(
@@ -700,6 +701,11 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual("复查", quiz.review_checkbox.text())
         self.assertEqual("上一题", quiz.prev_question_btn.text())
         self.assertEqual("下一题", quiz.next_question_btn.text())
+        self.assertEqual("quizShortcutHint", quiz.shortcut_hint_label.objectName())
+        self.assertIn("1-9", quiz.shortcut_hint_label.text())
+        self.assertIn("Enter", quiz.shortcut_hint_label.text())
+        self.assertIn("结果页", quiz.uncertain_checkbox.toolTip())
+        self.assertIn("交卷后", quiz.review_checkbox.toolTip())
         self.assertNotRegex(quiz.uncertain_checkbox.text(), r"[^\w\s]")
         self.assertNotRegex(quiz.review_checkbox.text(), r"[^\w\s]")
         self.assertNotRegex(quiz.prev_question_btn.text(), r"[^\w\s]")

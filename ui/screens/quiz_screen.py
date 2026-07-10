@@ -258,6 +258,14 @@ class QuizScreen(QWidget):
         action_layout.addWidget(self.next_question_btn)
 
         practice_layout.addLayout(action_layout)
+
+        self.shortcut_hint_label = QLabel()
+        self.shortcut_hint_label.setObjectName("quizShortcutHint")
+        self.shortcut_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.shortcut_hint_label.setWordWrap(False)
+        practice_layout.addWidget(self.shortcut_hint_label)
+        self._refresh_quiz_hints()
+
         self.practice_splitter.addWidget(self.preview_pane)
         self.practice_splitter.addWidget(self.practice_card)
         self.practice_splitter.setStretchFactor(0, 0)
@@ -800,6 +808,27 @@ class QuizScreen(QWidget):
         else:
             self.review_toggle_btn.setText(self.lang_manager.get_text("整卷复查", "Review Paper"))
 
+    def _refresh_quiz_hints(self):
+        """Keep keyboard and marker help text aligned with current language."""
+        self.shortcut_hint_label.setText(
+            self.lang_manager.get_text(
+                "快捷键：1-9 选项 | Enter 主操作 | Esc 退出",
+                "Shortcuts: 1-9 options | Enter primary action | Esc exit",
+            )
+        )
+        self.uncertain_checkbox.setToolTip(
+            self.lang_manager.get_text(
+                "标记为不确定；结果页会单独统计，可用于重做不确定题。",
+                "Mark as unsure; results track it separately for retrying unsure questions.",
+            )
+        )
+        self.review_checkbox.setToolTip(
+            self.lang_manager.get_text(
+                "标记为复查；交卷后可集中回顾这些题。",
+                "Mark for review; revisit these questions after submission.",
+            )
+        )
+
     def confirm_exit(self) -> bool:
         """Ask whether the current quiz can be left, saving partial progress if needed."""
         if self.session.state == QuizState.COMPLETED:
@@ -850,6 +879,7 @@ class QuizScreen(QWidget):
         """Update all UI text when language changes."""
         self.lang_btn.setText("English" if lang == "zh" else "中文")
         self._refresh_review_toggle_text()
+        self._refresh_quiz_hints()
         self._refresh_unsure_state()
         self._refresh_review_state()
         self.prev_question_btn.setText(self.lang_manager.get_text("上一题", "Previous"))
