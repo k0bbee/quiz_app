@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from ai.generation_config import GenerationConfig
 from models.question import Question
 from models.question_set import QuestionSet
@@ -25,13 +27,14 @@ def build_ai_question_set(
     topic_names = ", ".join(topic_labels_by_id.get(topic, topic) for topic in topics)
     display_difficulty = _display_difficulty(selected_difficulty)
     title = str(custom_title or "").strip()
+    default_title_payload = {
+        "zh": f"AI生成练习：{topic_names or '综合'}",
+        "en": f"AI Practice: {topic_names or 'Mixed'}",
+    }
     title_payload = (
-        {"zh": title, "en": title}
+        _custom_title_payload(title, default_title_payload)
         if title
-        else {
-            "zh": f"AI生成练习：{topic_names or '综合'}",
-            "en": f"AI Practice: {topic_names or 'Mixed'}",
-        }
+        else default_title_payload
     )
     qset = QuestionSet.create_new(
         title=title_payload,
@@ -61,6 +64,17 @@ def _display_difficulty(selected_difficulty: str) -> Difficulty:
     if selected_difficulty in {difficulty.value for difficulty in Difficulty}:
         return Difficulty(selected_difficulty)
     return Difficulty.MEDIUM
+
+
+def _custom_title_payload(title: str, default_title_payload: dict[str, str]) -> dict[str, str]:
+    """Return a bilingual-safe title payload for a user-entered set name."""
+    if _contains_cjk(title):
+        return {"zh": title, "en": default_title_payload["en"]}
+    return {"zh": title, "en": title}
+
+
+def _contains_cjk(text: str) -> bool:
+    return bool(re.search(r"[\u3400-\u9fff]", text or ""))
 
 
 def _generation_metadata(selected_difficulty: str, generation_config: GenerationConfig) -> dict:

@@ -97,6 +97,33 @@ class QuestionSetBuilderTests(unittest.TestCase):
         self.assertEqual(["interrupt_io"], qset.topics)
         self.assertIn("Interrupt-driven I/O", qset.get_title("en"))
 
+    def test_build_ai_question_set_does_not_reuse_chinese_custom_title_as_english_title(self):
+        topic = CourseTopic(topic_id="interrupt_io", title="Interrupt-driven I/O")
+
+        qset = build_ai_question_set(
+            [self._question("q1", topic)],
+            selected_difficulty="medium",
+            generation_config=GenerationConfig(template="quick_review"),
+            lang="zh",
+            custom_title="I/O 中断专项",
+        )
+
+        self.assertEqual("I/O 中断专项", qset.get_title("zh"))
+        self.assertIn("AI Practice", qset.get_title("en"))
+        self.assertNotIn("中断", qset.get_title("en"))
+
+    def test_build_ai_question_set_reuses_english_custom_title_for_both_languages(self):
+        qset = build_ai_question_set(
+            [self._question("q1", "cache")],
+            selected_difficulty="medium",
+            generation_config=GenerationConfig(template="quick_review"),
+            lang="en",
+            custom_title="DMA Practice",
+        )
+
+        self.assertEqual("DMA Practice", qset.get_title("zh"))
+        self.assertEqual("DMA Practice", qset.get_title("en"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1119,7 +1119,7 @@ class GenerationConfigTests(unittest.TestCase):
 
         self.assertEqual("I/O 中断专项", dialog.question_set_title())
 
-    def test_ai_question_set_uses_user_supplied_title(self):
+    def test_ai_question_set_uses_user_supplied_title_without_reusing_chinese_as_english(self):
         question = Question.create_new(
             QuestionType.MULTIPLE_CHOICE,
             Difficulty.MEDIUM,
@@ -1141,7 +1141,8 @@ class GenerationConfigTests(unittest.TestCase):
         )
 
         self.assertEqual("I/O 中断专项", qset.get_title("zh"))
-        self.assertEqual("I/O 中断专项", qset.get_title("en"))
+        self.assertIn("AI Practice", qset.get_title("en"))
+        self.assertNotIn("中断", qset.get_title("en"))
         self.assertTrue(qset.metadata["renamed_by_user"])
 
     def test_dialog_uses_saved_practice_defaults_as_initial_generation_settings(self):
