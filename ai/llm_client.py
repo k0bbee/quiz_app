@@ -2,6 +2,7 @@
 from utils.logger import debug, warning, error
 
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -229,7 +230,14 @@ class LLMClient:
                 if not choices:
                     self.last_error = "OpenAI-compatible API response did not include choices."
                     return None
-                return choices[0].get("message", {}).get("content")
+                content = choices[0].get("message", {}).get("content")
+                extracted = self._extract_openai_response_text(content)
+                if extracted is not None:
+                    return extracted
+                self.last_error = (
+                    "OpenAI-compatible API response did not contain usable text content."
+                )
+                return None
             self.last_error = f"OpenAI-compatible API error {resp.status_code}: {resp.text[:500]}"
             debug(self.last_error)
             return None
@@ -237,6 +245,34 @@ class LLMClient:
             self.last_error = f"OpenAI-compatible API request failed: {e}"
             debug(self.last_error)
             return None
+
+    @staticmethod
+    def _extract_openai_response_text(content) -> Optional[str]:
+        """Normalize OpenAI-compatible message content to plain text."""
+        if isinstance(content, str):
+            return content
+        if not isinstance(content, list):
+            return None
+
+        text_parts = []
+        for part in content:
+            if isinstance(part, str):
+                if part.strip():
+                    text_parts.append(part.strip())
+                continue
+            if not isinstance(part, dict):
+                continue
+            text = part.get("text")
+            if isinstance(text, str) and text.strip():
+                text_parts.append(text.strip())
+                continue
+            nested_text = part.get("content")
+            if isinstance(nested_text, str) and nested_text.strip():
+                text_parts.append(nested_text.strip())
+
+        if text_parts:
+            return "\n".join(text_parts)
+        return None
 
     @staticmethod
     def _response_format_rejected(text: str) -> bool:
@@ -260,17 +296,31 @@ class LLMClient:
             text = self.generate(messages, temperature, max_tokens)
             if text is None:
                 continue
+            if not isinstance(text, str):
+                self.last_error = (
+                    "LLM response text must be a string, "
+                    f"got {type(text).__name__}."
+                )
+                debug(self.last_error)
+                continue
 
             # Try to extract JSON from the response
+            parse_errors = []
             try:
-                json_text = self._extract_json_text(text)
-
-                data = json.loads(json_text)
-                if not isinstance(data, dict):
-                    raise ValueError(
-                        f"expected JSON object, got {type(data).__name__}"
-                    )
-                return data
+                for json_text in self._extract_json_candidates(text):
+                    try:
+                        data = json.loads(json_text)
+                        if not isinstance(data, dict):
+                            raise ValueError(
+                                f"expected JSON object, got {type(data).__name__}"
+                            )
+                        self.last_error = ""
+                        return data
+                    except (json.JSONDecodeError, ValueError) as candidate_error:
+                        parse_errors.append(str(candidate_error))
+                if parse_errors:
+                    raise ValueError(parse_errors[-1])
+                raise ValueError("no JSON object or array found in response")
             except (json.JSONDecodeError, ValueError) as e:
                 self.last_error = f"JSON parse error (attempt {attempt + 1}/{max_retries}): {e}"
                 debug(self.last_error)
@@ -282,32 +332,55 @@ class LLMClient:
     @staticmethod
     def _extract_json_text(text: str) -> str:
         """Extract the first JSON object from a model response."""
-        if "```json" in text:
-            start = text.index("```json") + 7
-            try:
-                end = text.index("```", start)
-            except ValueError:
-                end = len(text)
-            return text[start:end].strip()
-        if "```" in text:
-            start = text.index("```") + 3
-            try:
-                end = text.index("```", start)
-            except ValueError:
-                end = len(text)
-            return text[start:end].strip()
-
-        balanced = LLMClient._extract_balanced_json_value(text)
-        if balanced:
-            return balanced
+        for candidate in LLMClient._extract_json_candidates(text):
+            return candidate
         # Last resort: return the whole text; caller handles parse errors
         return text.strip()
 
     @staticmethod
     def _extract_balanced_json_value(text: str) -> str:
         """Return the first balanced JSON object/array, ignoring braces in strings."""
+        for candidate in LLMClient._extract_balanced_json_values(text):
+            return candidate
+        return ""
+
+    @staticmethod
+    def _extract_json_candidates(text: str) -> list[str]:
+        """Return JSON-looking candidates in model-response priority order."""
+        candidates = []
+        seen = set()
+        for candidate in (
+            *LLMClient._extract_fenced_json_blocks(text),
+            *LLMClient._extract_balanced_json_values(text),
+            text.strip(),
+        ):
+            normalized = candidate.strip()
+            if normalized and normalized not in seen:
+                candidates.append(normalized)
+                seen.add(normalized)
+        return candidates
+
+    @staticmethod
+    def _extract_fenced_json_blocks(text: str) -> list[str]:
+        """Extract Markdown fenced blocks without treating inline backticks as fence ends."""
+        blocks = []
+        opening_pattern = re.compile(r"^[ \t]*```[^\r\n]*\r?\n", re.MULTILINE)
+        closing_pattern = re.compile(r"^[ \t]*```[ \t]*$", re.MULTILINE)
+        for opening in opening_pattern.finditer(text):
+            start = opening.end()
+            closing = closing_pattern.search(text, start)
+            end = closing.start() if closing else len(text)
+            block = text[start:end].strip()
+            if block:
+                blocks.append(block)
+        return blocks
+
+    @staticmethod
+    def _extract_balanced_json_values(text: str) -> list[str]:
+        """Return balanced top-level JSON candidates, ignoring braces in strings."""
         pairs = {"{": "}", "[": "]"}
         closers = set(pairs.values())
+        values = []
 
         start = -1
         expected_stack: list[str] = []
@@ -318,7 +391,9 @@ class LLMClient:
             if start < 0:
                 if char in pairs:
                     start = idx
-                    expected_stack.append(pairs[char])
+                    expected_stack = [pairs[char]]
+                    in_string = False
+                    escaped = False
                 continue
 
             if in_string:
@@ -338,12 +413,17 @@ class LLMClient:
                 continue
             if char in closers:
                 if not expected_stack or char != expected_stack[-1]:
-                    return ""
+                    start = -1
+                    expected_stack = []
+                    in_string = False
+                    escaped = False
+                    continue
                 expected_stack.pop()
                 if not expected_stack:
-                    return text[start : idx + 1].strip()
+                    values.append(text[start : idx + 1].strip())
+                    start = -1
 
-        return ""
+        return values
 
     @staticmethod
     def _messages_to_prompt(messages: list[dict]) -> str:

@@ -159,6 +159,42 @@ class LLMErrorMessageTests(unittest.TestCase):
 
         self.assertEqual({"questions": [{"stem": "I/O interrupt"}]}, result)
 
+    def test_json_extraction_skips_invalid_leading_brace_placeholder(self):
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://api.example.com/v1",
+            model="model",
+        )
+        text = (
+            "I will structure the answer as {summary} first.\n"
+            'Actual JSON:\n{"questions": [{"stem": "I/O interrupt"}]}'
+        )
+
+        with patch.object(client, "generate", return_value=text):
+            result = client.generate_with_json([{"role": "user", "content": "Return JSON."}], max_retries=1)
+
+        self.assertEqual({"questions": [{"stem": "I/O interrupt"}]}, result)
+
+    def test_json_extraction_handles_inline_backticks_inside_json_fence(self):
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://api.example.com/v1",
+            model="model",
+        )
+        text = (
+            "```json\n"
+            '{"questions": [{"stem": "What does ``` mean in Markdown?"}]}\n'
+            "```"
+        )
+
+        with patch.object(client, "generate", return_value=text):
+            result = client.generate_with_json([{"role": "user", "content": "Return JSON."}], max_retries=1)
+
+        self.assertEqual(
+            {"questions": [{"stem": "What does ``` mean in Markdown?"}]},
+            result,
+        )
+
     def test_generate_with_json_rejects_top_level_non_object(self):
         client = LLMClient(
             api_key="sk-test",
@@ -171,6 +207,36 @@ class LLMErrorMessageTests(unittest.TestCase):
 
         self.assertIsNone(result)
         self.assertIn("JSON object", client.last_error)
+
+    def test_openai_compatible_client_extracts_text_from_content_parts(self):
+        class FakeResponse:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {
+                    "choices": [
+                        {
+                            "message": {
+                                "content": [
+                                    {"type": "text", "text": '{"questions":[]}'},
+                                ]
+                            }
+                        }
+                    ]
+                }
+
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://api.example.com/v1",
+            model="model",
+        )
+
+        with patch("ai.llm_client.requests.post", return_value=FakeResponse()):
+            result = client.generate([{"role": "user", "content": "Return JSON."}])
+
+        self.assertEqual('{"questions":[]}', result)
+        self.assertEqual("", client.last_error)
 
     def test_anthropic_client_accepts_text_payload_without_explicit_text_block_type(self):
         class FakeResponse:
