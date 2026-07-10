@@ -837,6 +837,7 @@ class QuizScreen(QWidget):
                 record = self.session.abandon()
                 if record:
                     self.progress_manager.save(record)
+            self.session_timer.stop()
             return True
         return False
 

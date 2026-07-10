@@ -945,6 +945,32 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual("B", snapshot.draft_answers[current_id])
             self.assertIsNone(progress_manager.get_latest_abandoned_record())
 
+    def test_quiz_screen_confirm_exit_stops_timer_after_abandon(self):
+        qset = QuestionSet.create_new(
+            title={"zh": "测试题集", "en": "Test Set"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=["q1"],
+        )
+        question = self._make_question("q1")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            self.addCleanup(screen.session_timer.stop)
+            screen.start_quiz(qset, [question], show_timer=True)
+
+            with patch(
+                "ui.screens.quiz_screen.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ):
+                confirmed = screen.confirm_exit()
+
+            self.assertTrue(confirmed)
+            self.assertFalse(screen.session_timer.isActive())
+
     def test_quiz_screen_completed_record_includes_marked_review_questions(self):
         question = self._make_question("q1")
         qset = QuestionSet.create_new(
