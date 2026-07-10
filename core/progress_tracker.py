@@ -57,8 +57,24 @@ class ProgressManager:
 
     def get_latest_abandoned_record(self) -> Optional[ProgressRecord]:
         """Return the newest abandoned quiz draft, if any."""
-        abandoned = [record for record in self.load_all() if record.status == "abandoned"]
-        return abandoned[0] if abandoned else None
+        latest: Optional[ProgressRecord] = None
+        for filename in list_json_files(self._dir):
+            filepath = os.path.join(self._dir, filename)
+            data = read_json(filepath)
+            if data is None:
+                continue
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError(f"expected object, got {type(data).__name__}")
+                record = ProgressRecord.from_dict(data)
+            except Exception as exc:
+                warning(f"Skipped invalid progress record {filename}: {exc}")
+                continue
+            if record.status != "abandoned":
+                continue
+            if latest is None or record.started_at > latest.started_at:
+                latest = record
+        return latest
 
     def save(self, record: ProgressRecord) -> bool:
         """Save a progress record to JSON."""

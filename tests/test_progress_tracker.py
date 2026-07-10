@@ -72,6 +72,35 @@ class ProgressTrackerTests(unittest.TestCase):
 
             self.assertEqual({"q-completed-wrong"}, set(incorrect))
 
+    def test_get_latest_abandoned_record_scans_files_without_loading_all_records(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            progress_dir = Path(tmpdir) / "progress"
+            manager = ProgressManager(str(progress_dir))
+
+            older_abandoned = ProgressRecord.create_new("set-draft-old")
+            older_abandoned.progress_id = "progress-old-abandoned"
+            older_abandoned.started_at = "2026-01-01T00:00:00+00:00"
+            older_abandoned.status = "abandoned"
+            manager.save(older_abandoned)
+
+            completed = ProgressRecord.create_new("set-completed")
+            completed.progress_id = "progress-new-completed"
+            completed.started_at = "2026-01-03T00:00:00+00:00"
+            completed.status = "completed"
+            manager.save(completed)
+
+            newer_abandoned = ProgressRecord.create_new("set-draft-new")
+            newer_abandoned.progress_id = "progress-new-abandoned"
+            newer_abandoned.started_at = "2026-01-02T00:00:00+00:00"
+            newer_abandoned.status = "abandoned"
+            manager.save(newer_abandoned)
+
+            with patch.object(manager, "load_all", side_effect=AssertionError("should not load all progress records")):
+                latest = manager.get_latest_abandoned_record()
+
+            self.assertIsNotNone(latest)
+            self.assertEqual("progress-new-abandoned", latest.progress_id)
+
 
 if __name__ == "__main__":
     unittest.main()
