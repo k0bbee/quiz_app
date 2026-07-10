@@ -5,6 +5,20 @@ from PyQt6.QtCore import Qt, QRectF
 from PyQt6.QtGui import QPainter, QColor, QFont, QPen
 
 
+def _draw_clipped_label(
+    painter: QPainter,
+    rect: QRectF,
+    text: str,
+    minimum_width: float = 30,
+) -> None:
+    if rect.width() <= minimum_width:
+        return
+    painter.save()
+    painter.setClipRect(rect)
+    painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, text)
+    painter.restore()
+
+
 class ProgressSummaryBar(QWidget):
     """Horizontal bar showing correct/incorrect/unanswered proportions."""
 
@@ -43,6 +57,7 @@ class ProgressSummaryBar(QWidget):
         green = QColor("#4CAF50")
         red = QColor("#F44336")
         grey = QColor("#BDBDBD")
+        label_font = QFont("Arial", 10, QFont.Weight.Bold)
 
         x = 0.0
 
@@ -50,17 +65,16 @@ class ProgressSummaryBar(QWidget):
         if correct_w > 0:
             painter.fillRect(QRectF(x, 0, correct_w, h), green)
             painter.setPen(Qt.GlobalColor.white)
-            painter.setFont(QFont("Arial", 10, QFont.Weight.Bold))
-            if correct_w > 30:
-                painter.drawText(QRectF(x, 0, correct_w, h), Qt.AlignmentFlag.AlignCenter, str(self._correct))
+            painter.setFont(label_font)
+            _draw_clipped_label(painter, QRectF(x, 0, correct_w, h), str(self._correct))
             x += correct_w
 
         # Incorrect segment
         if incorrect_w > 0:
             painter.fillRect(QRectF(x, 0, incorrect_w, h), red)
             painter.setPen(Qt.GlobalColor.white)
-            if incorrect_w > 30:
-                painter.drawText(QRectF(x, 0, incorrect_w, h), Qt.AlignmentFlag.AlignCenter, str(self._incorrect))
+            painter.setFont(label_font)
+            _draw_clipped_label(painter, QRectF(x, 0, incorrect_w, h), str(self._incorrect))
             x += incorrect_w
 
         # Unanswered segment
