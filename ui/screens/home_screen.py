@@ -123,6 +123,12 @@ class HomeScreen(QWidget):
         self.settings_btn.clicked.connect(self.open_settings.emit)
         self.action_layout.addWidget(self.settings_btn, 3, 1)
 
+        self.first_use_label = QLabel()
+        self.first_use_label.setObjectName("homeFirstUseGuide")
+        self.first_use_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.first_use_label.setWordWrap(True)
+        self.first_use_label.hide()
+
         # Center the button frame horizontally
         btn_row = QHBoxLayout()
         btn_row.addStretch()
@@ -131,6 +137,7 @@ class HomeScreen(QWidget):
         main_layout.addLayout(btn_row)
 
         main_layout.addSpacing(20)
+        main_layout.addWidget(self.first_use_label)
 
         # Stats summary (hidden until refresh() populates it)
         self.stats_label = QLabel()
@@ -157,6 +164,7 @@ class HomeScreen(QWidget):
         self.ai_btn.setText(self.lang_manager.get_text("AI 生成题目", "Generate Questions"))
         self.progress_btn.setText(self.lang_manager.get_text("查看进度", "View Progress"))
         self.settings_btn.setText(self.lang_manager.get_text("设置", "Settings"))
+        self._update_first_use_text()
         # Refresh stats text in the new language
         self.refresh()
 
@@ -182,9 +190,12 @@ class HomeScreen(QWidget):
         self._set_incorrect_empty_state(incorrect_count <= 0)
 
         if stats["total_sessions"] == 0:
+            self._update_first_use_text()
+            self.first_use_label.show()
             self.stats_label.hide()
             return
 
+        self.first_use_label.hide()
         self.stats_label.show()
         self.stats_label.setText(
             self.lang_manager.get_text(
@@ -198,6 +209,15 @@ class HomeScreen(QWidget):
                 f"{stats['overall_accuracy']:.1f}% accuracy | "
                 f"{incorrect_count} incorrect to retry | "
                 f"{total_questions} total questions"
+            )
+        )
+
+    def _update_first_use_text(self):
+        """Show a compact onboarding path when no practice data exists yet."""
+        self.first_use_label.setText(
+            self.lang_manager.get_text(
+                "欢迎！建议流程：先导入课程资料 → AI 生成题目 → 开始练习。",
+                "Welcome! Suggested flow: import course materials → generate questions with AI → start practice.",
             )
         )
 

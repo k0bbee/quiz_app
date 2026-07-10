@@ -336,6 +336,22 @@ class UiThemeTests(unittest.TestCase):
             self.assertTrue(home.incorrect_btn.isEnabled())
             self.assertEqual("true", home.incorrect_btn.property("emptyState"))
 
+    def test_home_screen_shows_first_use_guidance_when_no_progress_exists(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = HomeScreen(
+                ProgressManager(str(Path(tmpdir) / "progress")),
+                QuestionBank(str(Path(tmpdir) / "questions")),
+            )
+
+            home.refresh()
+
+            self.assertFalse(home.first_use_label.isHidden())
+            guide = home.first_use_label.text()
+            self.assertIn("导入课程", guide)
+            self.assertIn("AI 生成题目", guide)
+            self.assertIn("开始练习", guide)
+            self.assertTrue(home.stats_label.isHidden())
+
     def test_home_actions_have_dedicated_hover_pressed_and_focus_feedback(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
 
