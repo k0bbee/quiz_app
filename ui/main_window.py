@@ -25,7 +25,7 @@ from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.settings_screen import SettingsScreen
-from utils.constants import Difficulty
+from utils.constants import Difficulty, topic_label, topic_value
 from ai.course_summary_factory import provider_requires_api_key
 from ai.provider_presets import detect_local_agents
 from ai.settings_validation import validate_ai_settings
@@ -234,6 +234,8 @@ class MainWindow(QMainWindow):
         self.results_screen.retry_unsure.connect(self._on_retry_unsure)
         self.results_screen.retry_review.connect(self._on_retry_review)
         self.results_screen.retry_all.connect(self._on_retry_all)
+        self.progress_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
+        self.progress_screen.review_topic_requested.connect(self._on_review_progress_topic)
         # Language manager
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -728,6 +730,80 @@ class MainWindow(QMainWindow):
         self._active_questions = {q.question_id: q for q in questions}
         label = gm("历史错题复习", "Incorrect Review")
         self.quiz_screen.start_quiz_custom(questions, label, show_timer=self._show_timer_setting())
+        self.navigate_to(self.SCREEN_QUIZ)
+
+    def _on_practice_progress_topic(self, topic_key: str):
+        """Start a short practice session for the selected progress topic."""
+        gm = self.lang_manager.get_text
+        topic_key = topic_value(topic_key)
+        questions = MainWindow._progress_topic_questions(self, topic_key)
+        if not questions:
+            QMessageBox.information(
+                self,
+                gm("没有题目", "No Questions"),
+                gm("该主题下没有可练习的题目。", "No questions are available for this topic."),
+            )
+            return
+        selected = questions[:10]
+        topic_name = MainWindow._progress_topic_label(self, topic_key, selected)
+        MainWindow._start_progress_topic_quiz(
+            self,
+            selected,
+            gm(f"{topic_name}：主题练习", f"{topic_name}: Topic Practice"),
+        )
+
+    def _on_review_progress_topic(self, topic_key: str):
+        """Start a practice session from incorrect questions in the selected topic."""
+        gm = self.lang_manager.get_text
+        topic_key = topic_value(topic_key)
+        topic_questions = MainWindow._progress_topic_questions(self, topic_key)
+        candidate_ids = {question.question_id for question in topic_questions}
+        prioritized_ids = self.progress_manager.get_prioritized_review_question_ids(candidate_ids)
+        questions = [
+            question
+            for question in self.question_bank.get_many(
+                prioritized_ids,
+                course_id=self._current_course_id(),
+            )
+            if topic_value(question.topic) == topic_key
+        ]
+        if not questions:
+            QMessageBox.information(
+                self,
+                gm("没有该主题错题", "No Incorrect Questions"),
+                gm("该主题下暂无需要复习的错题。", "This topic has no incorrect questions to review."),
+            )
+            return
+        topic_name = MainWindow._progress_topic_label(self, topic_key, questions)
+        MainWindow._start_progress_topic_quiz(
+            self,
+            questions,
+            gm(f"{topic_name}：错题复习", f"{topic_name}: Incorrect Review"),
+        )
+
+    def _progress_topic_questions(self, topic_key: str):
+        """Return current-course questions matching a progress topic key."""
+        return self.question_bank.filter_by_topic(
+            topic_key,
+            course_id=self._current_course_id(),
+        )
+
+    def _progress_topic_label(self, topic_key: str, questions: list) -> str:
+        """Return a readable topic label for progress-triggered sessions."""
+        lang = self.lang_manager.current
+        if questions:
+            return topic_label(questions[0].topic, lang)
+        return topic_label(topic_key, lang)
+
+    def _start_progress_topic_quiz(self, questions: list, label: str):
+        """Open QuizScreen for a progress-topic action."""
+        self._active_questions = {question.question_id: question for question in questions}
+        self.quiz_screen.start_quiz_custom(
+            questions,
+            label,
+            show_timer=self._show_timer_setting(),
+            submission_mode="practice",
+        )
         self.navigate_to(self.SCREEN_QUIZ)
 
     def _on_ai_generate(self):

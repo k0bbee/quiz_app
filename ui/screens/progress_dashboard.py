@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QListWidget, QListWidgetItem,
     QGroupBox, QHeaderView, QMessageBox, QAbstractItemView
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 
 from core.progress_tracker import ProgressManager
 from core.mastery import build_topic_mastery
@@ -20,6 +20,9 @@ from config import QUESTION_SETS_DIR
 
 class ProgressDashboard(QWidget):
     """Aggregated progress statistics and session history."""
+
+    practice_topic_requested = pyqtSignal(str)
+    review_topic_requested = pyqtSignal(str)
 
     def __init__(
         self,
@@ -89,6 +92,28 @@ class ProgressDashboard(QWidget):
         self.topic_table.itemSelectionChanged.connect(self._update_mastery_action_state)
         topic_layout.addWidget(self.topic_table)
 
+        topic_actions = QHBoxLayout()
+        self.topic_action_hint = QLabel()
+        self.topic_action_hint.setObjectName("dashboardTopicActionHint")
+        topic_actions.addWidget(self.topic_action_hint)
+        topic_actions.addStretch()
+
+        self.practice_topic_btn = QPushButton()
+        self.practice_topic_btn.setObjectName("secondaryButton")
+        self.practice_topic_btn.clicked.connect(self._request_selected_topic_practice)
+        topic_actions.addWidget(self.practice_topic_btn)
+
+        self.review_topic_btn = QPushButton()
+        self.review_topic_btn.setObjectName("secondaryButton")
+        self.review_topic_btn.clicked.connect(self._request_selected_topic_review)
+        topic_actions.addWidget(self.review_topic_btn)
+
+        self.mark_mastered_btn = QPushButton()
+        self.mark_mastered_btn.setObjectName("secondaryButton")
+        self.mark_mastered_btn.clicked.connect(self._toggle_selected_topic_mastery)
+        topic_actions.addWidget(self.mark_mastered_btn)
+        topic_layout.addLayout(topic_actions)
+
         layout.addWidget(self.topic_group, 1)
 
         # Recent sessions
@@ -110,11 +135,6 @@ class ProgressDashboard(QWidget):
         self.refresh_btn.clicked.connect(self.refresh)
         btn_layout.addWidget(self.refresh_btn)
 
-        self.mark_mastered_btn = QPushButton()
-        self.mark_mastered_btn.setObjectName("secondaryButton")
-        self.mark_mastered_btn.clicked.connect(self._toggle_selected_topic_mastery)
-        btn_layout.addWidget(self.mark_mastered_btn)
-
         self.reset_btn = QPushButton()
         self.reset_btn.setObjectName("dangerButton")
         self.reset_btn.clicked.connect(self._reset_progress)
@@ -131,6 +151,9 @@ class ProgressDashboard(QWidget):
         self.topic_group.setTitle(self.lang_manager.get_text("按主题", "By Topic"))
         self.recent_group.setTitle(self.lang_manager.get_text("最近记录", "Recent Sessions"))
         self.refresh_btn.setText(self.lang_manager.get_text("刷新", "Refresh"))
+        self.topic_action_hint.setText(self.lang_manager.get_text("选中主题后可继续练习：", "Select a topic to continue:"))
+        self.practice_topic_btn.setText(self.lang_manager.get_text("练 10 题", "Practice 10"))
+        self.review_topic_btn.setText(self.lang_manager.get_text("复习错题", "Review Incorrect"))
         self._update_mastery_action_state()
         self.reset_btn.setText(self.lang_manager.get_text("重置全部进度", "Reset All Progress"))
         self.topic_table.setHorizontalHeaderLabels([
@@ -366,11 +389,26 @@ class ProgressDashboard(QWidget):
         if not hasattr(self, "mark_mastered_btn"):
             return
         topic_key = self._selected_topic_key()
+        has_topic = bool(topic_key)
+        if hasattr(self, "practice_topic_btn"):
+            self.practice_topic_btn.setEnabled(has_topic)
+        if hasattr(self, "review_topic_btn"):
+            self.review_topic_btn.setEnabled(has_topic)
         self.mark_mastered_btn.setEnabled(bool(topic_key))
         if topic_key and self.mastery_overrides.is_topic_mastered(self._current_course_id, topic_key):
             self.mark_mastered_btn.setText(self.lang_manager.get_text("取消已掌握", "Unmark Mastered"))
         else:
             self.mark_mastered_btn.setText(self.lang_manager.get_text("标记已掌握", "Mark Mastered"))
+
+    def _request_selected_topic_practice(self):
+        topic_key = self._selected_topic_key()
+        if topic_key:
+            self.practice_topic_requested.emit(topic_key)
+
+    def _request_selected_topic_review(self):
+        topic_key = self._selected_topic_key()
+        if topic_key:
+            self.review_topic_requested.emit(topic_key)
 
     def _toggle_selected_topic_mastery(self):
         """Toggle the selected topic's user-managed mastered state."""
