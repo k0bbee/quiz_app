@@ -473,14 +473,20 @@ class MainWindow(QMainWindow):
         box.setWindowTitle(gm("选择练习模式", "Choose Practice Mode"))
         box.setText(
             gm(
-                "请选择本次练习的提交方式。",
-                "Choose how this session should be submitted.",
+                "请选择本次练习的反馈方式。逐题练习会即时反馈；模拟考试会在最后统一交卷。",
+                "Choose the feedback mode. Practice gives immediate feedback; mock exam submits at the end.",
             )
         )
-        exam_btn = box.addButton(gm("模拟模式", "Mock Exam"), QMessageBox.ButtonRole.AcceptRole)
-        practice_btn = box.addButton(gm("例题模式", "Example Practice"), QMessageBox.ButtonRole.ActionRole)
+        practice_btn = box.addButton(
+            gm("逐题练习（即时反馈）", "Practice with Feedback"),
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        exam_btn = box.addButton(
+            gm("模拟考试（统一交卷）", "Mock Exam: Submit at End"),
+            QMessageBox.ButtonRole.ActionRole,
+        )
         box.addButton(QMessageBox.StandardButton.Cancel)
-        box.setDefaultButton(exam_btn)
+        box.setDefaultButton(practice_btn)
         box.exec()
         clicked = box.clickedButton()
         if clicked == exam_btn:
