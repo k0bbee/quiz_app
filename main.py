@@ -32,10 +32,7 @@ class _ButtonFocusPolicyFilter(QObject):
 
 def _apply_button_interaction_policy(button: QPushButton) -> None:
     """Use consistent focus and cursor affordances for push buttons."""
-    if button.objectName() == "toolbarButton":
-        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-    else:
-        button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+    button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
     cursor = (
         Qt.CursorShape.PointingHandCursor
         if button.isEnabled()

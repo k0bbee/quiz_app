@@ -126,7 +126,7 @@ class UiThemeTests(unittest.TestCase):
         ):
             self.assertIn(selector, qss)
 
-    def test_menus_and_toolbar_avoid_sticky_focus_chrome(self):
+    def test_menus_avoid_sticky_focus_chrome_and_toolbar_has_keyboard_focus_ring(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
 
         menu_active_rule = re.search(
@@ -143,13 +143,21 @@ class UiThemeTests(unittest.TestCase):
         self.assertIsNotNone(menu_selected_rule)
         self.assertNotIn("#094771", menu_active_rule.group("body"))
         self.assertNotIn("#007fd4", menu_selected_rule.group("body"))
+        toolbar_focus_rule = re.search(
+            r"qtoolbar qpushbutton:focus\s*\{(?P<body>[^}]*)\}",
+            qss,
+            flags=re.DOTALL,
+        )
+        self.assertIsNotNone(toolbar_focus_rule)
+        self.assertIn("#007fd4", toolbar_focus_rule.group("body"))
+        self.assertNotIn("border-color: transparent", toolbar_focus_rule.group("body"))
 
         main_window = MainWindow()
         self.addCleanup(main_window.close)
 
         self.assertEqual(Qt.FocusPolicy.NoFocus, main_window.menuBar().focusPolicy())
         for button in main_window.navigation_buttons():
-            self.assertEqual(Qt.FocusPolicy.NoFocus, button.focusPolicy())
+            self.assertEqual(Qt.FocusPolicy.TabFocus, button.focusPolicy())
 
     def test_main_navigation_uses_top_text_toolbar_with_semantic_groups_and_no_exit_entry(self):
         main_window = MainWindow()
@@ -263,7 +271,7 @@ class UiThemeTests(unittest.TestCase):
 
         for button in (primary, secondary, danger):
             self.assertEqual(Qt.FocusPolicy.TabFocus, button.focusPolicy())
-        self.assertEqual(Qt.FocusPolicy.NoFocus, toolbar.focusPolicy())
+        self.assertEqual(Qt.FocusPolicy.TabFocus, toolbar.focusPolicy())
 
     def test_load_stylesheet_returns_applied_qss_text(self):
         qss = load_stylesheet(_APP)

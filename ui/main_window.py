@@ -191,7 +191,7 @@ class MainWindow(QMainWindow):
         button = QPushButton("")
         button.setObjectName("toolbarButton")
         button.setProperty("navGroup", group)
-        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         return button
 
     def navigation_buttons(self) -> tuple[QPushButton, ...]:

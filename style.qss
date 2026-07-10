@@ -545,8 +545,8 @@ QToolBar QPushButton:pressed {
 }
 
 QToolBar QPushButton:focus {
-    background-color: transparent;
-    border-color: transparent;
+    background-color: #252526;
+    border-color: #007fd4;
 }
 
 QMenu {
