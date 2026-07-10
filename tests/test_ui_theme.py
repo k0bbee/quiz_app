@@ -450,6 +450,22 @@ class UiThemeTests(unittest.TestCase):
             self.assertEqual((3, 0, 1, 1), position(home.progress_btn))
             self.assertEqual((3, 1, 1, 1), position(home.settings_btn))
 
+    def test_home_screen_shows_current_course_context(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = HomeScreen(
+                ProgressManager(str(Path(tmpdir) / "progress")),
+                QuestionBank(str(Path(tmpdir) / "questions")),
+            )
+
+            home.set_current_course("course-a", "Computer Architecture")
+
+            self.assertIn("当前课程", home.course_context_label.text())
+            self.assertIn("Computer Architecture", home.course_context_label.text())
+
+            home.set_current_course("", "")
+
+            self.assertIn("全部课程", home.course_context_label.text())
+
     def test_settings_content_and_actions_follow_desktop_form_layout(self):
         settings = SettingsScreen()
 

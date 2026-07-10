@@ -1016,7 +1016,11 @@ class MainWindow(QMainWindow):
         return "", [], None
 
     def _sync_topic_screen_course(self):
-        self.topic_screen.set_current_course(self._current_course_id())
+        course = self.course_manager.current()
+        self.topic_screen.set_current_course(
+            course.course_id if course else "",
+            course.title if course else "",
+        )
 
     def _sync_question_bank_screen_course(self):
         if self._question_bank_screen is None:
@@ -1024,7 +1028,11 @@ class MainWindow(QMainWindow):
         self._question_bank_screen.set_current_course(self._current_course_id())
 
     def _sync_home_screen_course(self):
-        self.home_screen.set_current_course(self._current_course_id())
+        course = self.course_manager.current()
+        self.home_screen.set_current_course(
+            course.course_id if course else "",
+            course.title if course else "",
+        )
         self._update_home_resume_draft()
 
     def _sync_progress_screen_course(self):

@@ -444,6 +444,26 @@ class MockExamExporterTests(unittest.TestCase):
             }
             self.assertEqual({"set-course-a", "set-manual"}, visible_ids)
 
+    def test_topic_selection_screen_shows_current_course_context(self):
+        from models.question_set import SetManager
+        from core.language_manager import LanguageManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            language_manager = LanguageManager.instance()
+            previous_language = language_manager.current
+            self.addCleanup(language_manager.set_language, previous_language)
+            language_manager.set_language("en")
+            screen = TopicSelectionScreen(SetManager(tmpdir))
+
+            screen.set_current_course("course-a", "Computer Architecture")
+
+            self.assertIn("Showing sets for", screen.course_context_label.text())
+            self.assertIn("Computer Architecture", screen.course_context_label.text())
+
+            screen.set_current_course("", "")
+
+            self.assertIn("All courses", screen.course_context_label.text())
+
 
 if __name__ == "__main__":
     unittest.main()

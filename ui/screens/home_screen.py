@@ -25,6 +25,7 @@ class HomeScreen(QWidget):
         self.question_bank = question_bank
         self.lang_manager = LanguageManager.instance()
         self._current_course_id = ""
+        self._current_course_title = ""
         self._resume_title = ""
         self._resume_remaining_count = 0
         self._resume_current_index: int | None = None
@@ -59,6 +60,13 @@ class HomeScreen(QWidget):
         self.subtitle.setObjectName("homeSubtitle")
         self.subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         main_layout.addWidget(self.subtitle)
+
+        self.course_context_label = QLabel()
+        self.course_context_label.setObjectName("homeCourseContextLabel")
+        self.course_context_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.course_context_label.setWordWrap(True)
+        main_layout.addWidget(self.course_context_label)
+        self._update_course_context_label()
 
         main_layout.addSpacing(20)
 
@@ -142,6 +150,7 @@ class HomeScreen(QWidget):
             "从课件生成总结、题库和自测练习",
             "Generate summaries, question banks and self-tests from courseware"
         ))
+        self._update_course_context_label()
         self.start_btn.setText(self.lang_manager.get_text("开始练习", "Start Practice"))
         self._update_resume_text()
         self.incorrect_btn.setText(self.lang_manager.get_text("练习历史错题", "Practice Incorrect"))
@@ -218,13 +227,31 @@ class HomeScreen(QWidget):
         self._resume_mode = None
         self.resume_btn.hide()
 
-    def set_current_course(self, course_id: str | None):
+    def set_current_course(self, course_id: str | None, course_title: str | None = None):
         """Restrict home quick stats to the active course."""
         course_id = course_id or ""
-        if course_id == self._current_course_id:
+        course_title = (course_title or "").strip()
+        if course_id == self._current_course_id and course_title == self._current_course_title:
             return
         self._current_course_id = course_id
+        self._current_course_title = course_title
+        self._update_course_context_label()
         self.refresh()
+
+    def _update_course_context_label(self):
+        """Show which course scope the home actions and stats currently use."""
+        title = self._current_course_title or self._current_course_id
+        if title:
+            self.course_context_label.setText(
+                self.lang_manager.get_text(
+                    f"当前课程：{title}",
+                    f"Current course: {title}",
+                )
+            )
+        else:
+            self.course_context_label.setText(
+                self.lang_manager.get_text("当前课程：全部课程", "Current course: All courses")
+            )
 
     def _set_incorrect_empty_state(self, empty: bool):
         self.incorrect_btn.setProperty("emptyState", "true" if empty else "false")

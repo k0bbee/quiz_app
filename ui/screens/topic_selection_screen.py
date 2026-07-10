@@ -29,6 +29,7 @@ class TopicSelectionScreen(QWidget):
         self.lang_manager = LanguageManager.instance()
         self._all_sets = []
         self._current_course_id = ""
+        self._current_course_title = ""
         self._updating_topic_filter = False
         self.search_debounce_timer = QTimer(self)
         self.search_debounce_timer.setSingleShot(True)
@@ -45,6 +46,12 @@ class TopicSelectionScreen(QWidget):
         self.title_label = QLabel(self.lang_manager.get_text("选择题目集", "Select Question Set"))
         self.title_label.setObjectName("screenTitle")
         layout.addWidget(self.title_label)
+
+        self.course_context_label = QLabel()
+        self.course_context_label.setObjectName("topicCourseContextLabel")
+        self.course_context_label.setWordWrap(True)
+        layout.addWidget(self.course_context_label)
+        self._update_course_context_label()
 
         # Filters
         filter_layout = QHBoxLayout()
@@ -122,6 +129,7 @@ class TopicSelectionScreen(QWidget):
     def _on_language_changed(self, lang):
         """Update all UI text when language changes."""
         self.title_label.setText(self.lang_manager.get_text("选择题目集", "Select Question Set"))
+        self._update_course_context_label()
         self.search_input.setPlaceholderText(self.lang_manager.get_text("搜索...", "Search..."))
         self.list_label.setText(self.lang_manager.get_text("可用的题目集:", "Available question sets:"))
         self.export_btn.setText(self.lang_manager.get_text("导出模拟卷", "Export Mock Exam"))
@@ -237,14 +245,32 @@ class TopicSelectionScreen(QWidget):
                 self.set_list.setCurrentRow(row)
                 break
 
-    def set_current_course(self, course_id: str | None):
+    def set_current_course(self, course_id: str | None, course_title: str | None = None):
         """Restrict generated question sets to the active course."""
         course_id = course_id or ""
-        if course_id == self._current_course_id:
+        course_title = (course_title or "").strip()
+        if course_id == self._current_course_id and course_title == self._current_course_title:
             return
         self._current_course_id = course_id
+        self._current_course_title = course_title
+        self._update_course_context_label()
         if hasattr(self, "set_list"):
             self.refresh()
+
+    def _update_course_context_label(self):
+        """Show which course scope the question set list currently uses."""
+        title = self._current_course_title or self._current_course_id
+        if title:
+            self.course_context_label.setText(
+                self.lang_manager.get_text(
+                    f"当前课程：{title}",
+                    f"Showing sets for: {title}",
+                )
+            )
+        else:
+            self.course_context_label.setText(
+                self.lang_manager.get_text("当前课程：全部课程", "Showing sets for: All courses")
+            )
 
     def refresh(self):
         """Reload the question set list."""
