@@ -307,12 +307,13 @@ class MockExamExporterTests(unittest.TestCase):
             }
             self.assertEqual({"set-cache", "set-scheduling"}, visible_ids)
 
-    def test_topic_selection_screen_emits_regenerate_request_for_selected_set(self):
+    def test_topic_selection_screen_emits_regenerate_request_for_ai_generated_set(self):
         from models.question_set import SetManager
 
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = SetManager(tmpdir)
             qset = self._make_question_set()
+            qset.metadata["source"] = "ai_generated"
             manager.save(qset)
             screen = TopicSelectionScreen(manager)
             emitted = []
@@ -322,10 +323,31 @@ class MockExamExporterTests(unittest.TestCase):
             self.assertFalse(screen.regenerate_btn.isEnabled())
 
             screen.set_list.setCurrentRow(0)
+            self.assertFalse(screen.regenerate_btn.isHidden())
             self.assertTrue(screen.regenerate_btn.isEnabled())
             screen.regenerate_btn.click()
 
             self.assertEqual([qset.set_id], emitted)
+
+    def test_topic_selection_screen_hides_regenerate_for_manual_set(self):
+        from models.question_set import SetManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SetManager(tmpdir)
+            qset = self._make_question_set()
+            qset.metadata["source"] = "manual"
+            manager.save(qset)
+            screen = TopicSelectionScreen(manager)
+            emitted = []
+            screen.regenerate_questions.connect(emitted.append)
+
+            screen.refresh()
+            screen.set_list.setCurrentRow(0)
+
+            self.assertTrue(screen.regenerate_btn.isHidden())
+            self.assertFalse(screen.regenerate_btn.isEnabled())
+            screen._regenerate_selected_set()
+            self.assertEqual([], emitted)
 
     def test_topic_selection_screen_batches_progress_loading_when_rendering_sets(self):
         from models.question_set import SetManager

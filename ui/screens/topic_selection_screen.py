@@ -99,6 +99,7 @@ class TopicSelectionScreen(QWidget):
         self.regenerate_btn.setMinimumHeight(40)
         self.regenerate_btn.clicked.connect(self._regenerate_selected_set)
         self.regenerate_btn.setEnabled(False)
+        self.regenerate_btn.setHidden(True)
         btn_layout.addWidget(self.regenerate_btn)
 
         self.rename_btn = QPushButton(self.lang_manager.get_text("重命名", "Rename"))
@@ -136,6 +137,7 @@ class TopicSelectionScreen(QWidget):
             self.start_btn.setEnabled(False)
             self.export_btn.setEnabled(False)
             self.regenerate_btn.setEnabled(False)
+            self.regenerate_btn.setHidden(True)
             self.rename_btn.setEnabled(False)
             return
 
@@ -167,9 +169,12 @@ class TopicSelectionScreen(QWidget):
         selected_ids = self._selected_set_ids()
         has_selection = bool(selected_ids)
         single_selection = len(selected_ids) == 1
+        selected_set = self.set_manager.get(selected_ids[0]) if single_selection else None
+        can_regenerate = single_selection and self._is_regeneratable_set(selected_set)
         self.export_btn.setEnabled(has_selection)
         self.start_btn.setEnabled(single_selection)
-        self.regenerate_btn.setEnabled(single_selection)
+        self.regenerate_btn.setHidden(not can_regenerate)
+        self.regenerate_btn.setEnabled(can_regenerate)
         self.rename_btn.setEnabled(single_selection)
 
     def _start_quiz(self):
@@ -196,6 +201,9 @@ class TopicSelectionScreen(QWidget):
         """Emit signal to regenerate questions for the selected question set."""
         set_ids = self._selected_set_ids()
         if len(set_ids) != 1:
+            return
+        qset = self.set_manager.get(set_ids[0])
+        if not self._is_regeneratable_set(qset):
             return
         self.regenerate_questions.emit(set_ids[0])
 
@@ -286,6 +294,7 @@ class TopicSelectionScreen(QWidget):
         self.start_btn.setEnabled(False)
         self.export_btn.setEnabled(False)
         self.regenerate_btn.setEnabled(False)
+        self.regenerate_btn.setHidden(True)
         self.rename_btn.setEnabled(False)
         self.info_label.clear()
 
@@ -333,6 +342,7 @@ class TopicSelectionScreen(QWidget):
             self.start_btn.setEnabled(False)
             self.export_btn.setEnabled(False)
             self.regenerate_btn.setEnabled(False)
+            self.regenerate_btn.setHidden(True)
             self.rename_btn.setEnabled(False)
 
     def _completed_progress_by_set(self) -> dict[str, list]:
@@ -446,3 +456,10 @@ class TopicSelectionScreen(QWidget):
         if not self._current_course_id:
             return True
         return source_course_id == self._current_course_id
+
+    @staticmethod
+    def _is_regeneratable_set(qset) -> bool:
+        if not qset:
+            return False
+        source = str((qset.metadata or {}).get("source", "") or "").strip().lower()
+        return source in {"ai_generated", "ai_regenerated"}
