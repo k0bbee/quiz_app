@@ -7,7 +7,7 @@ from pathlib import Path
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from utils.constants import QuestionType, Difficulty, coerce_topic, topic_label, topic_matches, topic_value
 from utils.json_io import read_json, write_json, sanitize_filename_part, list_json_files
@@ -309,6 +309,7 @@ class QuestionBank:
         course_id: str | None = None,
         offset: int = 0,
         limit: int = 50,
+        metadata_filter: Callable[[Question], bool] | None = None,
     ) -> tuple[list[Question], int]:
         """Search questions with pagination. Returns (page_items, total_matches)."""
         query = query.strip().lower()
@@ -325,6 +326,8 @@ class QuestionBank:
             if course_filter:
                 if not self._matches_course(q, course_filter):
                     continue
+            if metadata_filter is not None and not metadata_filter(q):
+                continue
             if query:
                 haystack = " ".join([
                     q.get_stem("zh"),

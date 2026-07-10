@@ -81,6 +81,11 @@ class QuestionBankScreen(QWidget):
         self.difficulty_filter.currentIndexChanged.connect(self._reset_and_refresh)
         filter_row.addWidget(self.difficulty_filter)
 
+        self.quality_filter = WheelSafeComboBox()
+        self._populate_quality_filter()
+        self.quality_filter.currentIndexChanged.connect(self._reset_and_refresh)
+        filter_row.addWidget(self.quality_filter)
+
         self.backfill_source_refs_btn = QPushButton(
             self.lang_manager.get_text("补全来源证据", "Backfill Sources")
         )
@@ -179,6 +184,7 @@ class QuestionBankScreen(QWidget):
             self.difficulty_filter.setCurrentIndex(idx)
         self.difficulty_filter.blockSignals(False)
 
+        self._populate_quality_filter()
         self.prev_btn.setText(self.lang_manager.get_text("上一页", "Prev"))
         self.next_btn.setText(self.lang_manager.get_text("下一页", "Next"))
         self.json_label.setText(self.lang_manager.get_text("题目 JSON:", "Question JSON:"))
@@ -199,10 +205,17 @@ class QuestionBankScreen(QWidget):
         """Reload current page."""
         query = self.search_input.text()
         difficulty = self.difficulty_filter.currentData()
+        quality_filter = self.quality_filter.currentData()
+        metadata_filter = self._quality_filter_predicate(quality_filter)
         self._refresh_set_filter()
         selected_set_id = self._selected_set_id()
         if selected_set_id:
-            all_items = self._questions_for_set(selected_set_id, query=query, difficulty=difficulty)
+            all_items = self._questions_for_set(
+                selected_set_id,
+                query=query,
+                difficulty=difficulty,
+                quality_filter=quality_filter,
+            )
             self.total = len(all_items)
             start = self.page * self.page_size
             items = all_items[start:start + self.page_size]
@@ -211,6 +224,7 @@ class QuestionBankScreen(QWidget):
                 query=query,
                 difficulty=difficulty,
                 course_id=self._current_course_id,
+                metadata_filter=metadata_filter,
                 offset=self.page * self.page_size,
                 limit=self.page_size,
             )
@@ -499,7 +513,13 @@ class QuestionBankScreen(QWidget):
             return ""
         return self.set_filter.currentData() or ""
 
-    def _questions_for_set(self, set_id: str, query: str = "", difficulty: str | None = None) -> list[Question]:
+    def _questions_for_set(
+        self,
+        set_id: str,
+        query: str = "",
+        difficulty: str | None = None,
+        quality_filter: str | None = None,
+    ) -> list[Question]:
         if self.set_manager is None:
             return []
         qset = self.set_manager.get(set_id)
@@ -508,7 +528,12 @@ class QuestionBankScreen(QWidget):
         return [
             question
             for question in self.question_bank.get_many(qset.questions, course_id=self._current_course_id)
-            if self._matches_question_filters(question, query=query, difficulty=difficulty)
+            if self._matches_question_filters(
+                question,
+                query=query,
+                difficulty=difficulty,
+                quality_filter=quality_filter,
+            )
         ]
 
     def _matches_current_course(self, qset) -> bool:
@@ -519,9 +544,17 @@ class QuestionBankScreen(QWidget):
             return True
         return source_course_id == self._current_course_id
 
-    def _matches_question_filters(self, question: Question, query: str = "", difficulty: str | None = None) -> bool:
+    def _matches_question_filters(
+        self,
+        question: Question,
+        query: str = "",
+        difficulty: str | None = None,
+        quality_filter: str | None = None,
+    ) -> bool:
         difficulty_filter = difficulty.value if isinstance(difficulty, Difficulty) else difficulty
         if difficulty_filter and question.difficulty.value != difficulty_filter:
+            return False
+        if not self._matches_quality_filter(question, quality_filter):
             return False
         query = (query or "").strip().lower()
         if not query:
@@ -536,6 +569,127 @@ class QuestionBankScreen(QWidget):
             question.topic_title(),
         ]).lower()
         return query in haystack
+
+    def _populate_quality_filter(self) -> None:
+        if not hasattr(self, "quality_filter"):
+            return
+        current_data = self.quality_filter.currentData()
+        self.quality_filter.blockSignals(True)
+        self.quality_filter.clear()
+        self.quality_filter.addItem(
+            self.lang_manager.get_text("全部来源/质量", "All source/quality"),
+            None,
+        )
+        self.quality_filter.addItem(
+            self.lang_manager.get_text("有质量警告", "Has quality warnings"),
+            "quality_warnings",
+        )
+        self.quality_filter.addItem(
+            self.lang_manager.get_text("无来源证据", "No source evidence"),
+            "missing_source",
+        )
+        self.quality_filter.addItem(
+            self.lang_manager.get_text("来源为兜底", "Fallback source"),
+            "fallback_source",
+        )
+        self.quality_filter.addItem(
+            self.lang_manager.get_text("仅形状匹配计划", "Weak plan match"),
+            "weak_plan",
+        )
+        idx = self.quality_filter.findData(current_data)
+        self.quality_filter.setCurrentIndex(idx if idx >= 0 else 0)
+        self.quality_filter.blockSignals(False)
+
+    def _quality_filter_predicate(self, filter_key: str | None):
+        if not filter_key:
+            return None
+        return lambda question: self._matches_quality_filter(question, filter_key)
+
+    @classmethod
+    def _matches_quality_filter(cls, question: Question, filter_key: str | None) -> bool:
+        if not filter_key:
+            return True
+        if filter_key == "quality_warnings":
+            return cls._has_quality_warning(question)
+        if filter_key == "missing_source":
+            return cls._has_missing_source(question)
+        if filter_key == "fallback_source":
+            return cls._source_ref_status(question) in {
+                "fallback_plan_evidence",
+                "fallback_global_evidence",
+                "global_fallback",
+            }
+        if filter_key == "weak_plan":
+            return cls._plan_match_status(question) == "matched_by_shape"
+        return True
+
+    @classmethod
+    def _has_quality_warning(cls, question: Question) -> bool:
+        metadata = question.metadata or {}
+        for key in ("quality_warnings", "quality_issues", "validation_issues", "warnings"):
+            value = metadata.get(key)
+            if isinstance(value, list) and value:
+                return True
+            if isinstance(value, str) and value.strip():
+                return True
+        if metadata.get("invalid_source_ref_ids"):
+            return True
+        if cls._source_ref_status(question) in {"invalid_model_ref", "missing", "fallback_global_evidence", "global_fallback"}:
+            return True
+        if cls._plan_match_status(question) == "matched_by_shape":
+            return True
+        zh_explanation = question.get_explanation("zh").strip()
+        en_explanation = question.get_explanation("en").strip()
+        if not zh_explanation and not en_explanation:
+            return True
+        if cls._has_imbalanced_explanations(zh_explanation, en_explanation):
+            return True
+        return cls._has_overlong_correct_option(question)
+
+    @classmethod
+    def _has_missing_source(cls, question: Question) -> bool:
+        metadata = question.metadata or {}
+        status = cls._source_ref_status(question)
+        source_refs = metadata.get("source_refs")
+        if status in {"missing", "invalid_model_ref"}:
+            return True
+        if isinstance(source_refs, list):
+            return not any(isinstance(ref, dict) and ref for ref in source_refs)
+        return True
+
+    @staticmethod
+    def _source_ref_status(question: Question) -> str:
+        return str((question.metadata or {}).get("source_ref_status", "") or "").strip().lower()
+
+    @staticmethod
+    def _plan_match_status(question: Question) -> str:
+        return str((question.metadata or {}).get("plan_match_status", "") or "").strip().lower()
+
+    @staticmethod
+    def _has_imbalanced_explanations(zh_explanation: str, en_explanation: str) -> bool:
+        zh_len = len(zh_explanation.strip())
+        en_len = len(en_explanation.strip())
+        if min(zh_len, en_len) == 0:
+            return False
+        return max(zh_len, en_len) >= max(60, min(zh_len, en_len) * 4)
+
+    @staticmethod
+    def _has_overlong_correct_option(question: Question) -> bool:
+        answer = str(question.correct_answer).strip().upper()
+        if len(answer) != 1:
+            return False
+        options = question.get_options("zh") or question.get_options("en")
+        option_lengths: dict[str, int] = {}
+        for option in options:
+            text = str(option or "").strip()
+            match = re.match(r"^([A-Ha-h])[\.\)、)]\s*(.*)$", text)
+            if match:
+                option_lengths[match.group(1).upper()] = len(match.group(2).strip())
+        correct_len = option_lengths.get(answer)
+        distractor_lengths = [length for key, length in option_lengths.items() if key != answer]
+        if correct_len is None or len(distractor_lengths) < 2:
+            return False
+        return correct_len >= max(40, max(distractor_lengths) * 2)
 
     def _question_list_title(self, question: Question) -> str:
         difficulty = self._compact_text(question.difficulty.value, 12)

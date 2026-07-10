@@ -536,6 +536,51 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertIn("Cache Address Breakdown", source_text)
             self.assertFalse(screen.source_refs_label.isHidden())
 
+    def test_question_bank_screen_filters_source_and_quality_metadata(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            exact = self._question("q-exact", "cache")
+            exact.metadata["source_ref_status"] = "valid_model_ref"
+            exact.metadata["source_refs"] = [{"chunk_id": "source-0001"}]
+
+            missing = self._question("q-missing-source", "cache")
+            missing.metadata["source_ref_status"] = "missing"
+
+            fallback = self._question("q-fallback-source", "cache")
+            fallback.metadata["source_ref_status"] = "fallback_global_evidence"
+            fallback.metadata["source_refs"] = [{"chunk_id": "source-0002"}]
+
+            weak_plan = self._question("q-weak-plan", "cache")
+            weak_plan.metadata["plan_match_status"] = "matched_by_shape"
+            weak_plan.metadata["source_ref_status"] = "valid_model_ref"
+            weak_plan.metadata["source_refs"] = [{"chunk_id": "source-0003"}]
+
+            question_bank.save_many([exact, missing, fallback, weak_plan])
+            screen = QuestionBankScreen(question_bank)
+
+            def visible_ids() -> set[str]:
+                return {
+                    screen.question_list.item(row).data(Qt.ItemDataRole.UserRole)
+                    for row in range(screen.question_list.count())
+                }
+
+            quality_idx = screen.quality_filter.findData("quality_warnings")
+            self.assertGreaterEqual(quality_idx, 0)
+            screen.quality_filter.setCurrentIndex(quality_idx)
+            self.assertEqual({"q-missing-source", "q-fallback-source", "q-weak-plan"}, visible_ids())
+
+            missing_idx = screen.quality_filter.findData("missing_source")
+            screen.quality_filter.setCurrentIndex(missing_idx)
+            self.assertEqual({"q-missing-source"}, visible_ids())
+
+            fallback_idx = screen.quality_filter.findData("fallback_source")
+            screen.quality_filter.setCurrentIndex(fallback_idx)
+            self.assertEqual({"q-fallback-source"}, visible_ids())
+
+            weak_plan_idx = screen.quality_filter.findData("weak_plan")
+            screen.quality_filter.setCurrentIndex(weak_plan_idx)
+            self.assertEqual({"q-weak-plan"}, visible_ids())
+
     def test_question_bank_screen_multi_selection_disables_ambiguous_editing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
