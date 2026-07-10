@@ -23,17 +23,17 @@ class AIConnectionProbe:
         self.clock = clock or time.monotonic
 
     @staticmethod
-    def _default_client_factory(api_key: str, base_url: str, model: str):
+    def _default_client_factory(api_key: str, base_url: str, model: str, provider: str):
         from ai.llm_client import LLMClient
 
-        return LLMClient(api_key=api_key, base_url=base_url, model=model)
+        return LLMClient(api_key=api_key, base_url=base_url, model=model, provider=provider)
 
     def run(self, settings: dict, api_key: str) -> ConnectionProbeResult:
         provider = str(settings.get("ai_provider", "") or "custom")
         base_url = str(settings.get("ai_base_url", ""))
         model = str(settings.get("ai_model", ""))
         started = self.clock()
-        client = self.client_factory(api_key, base_url, model)
+        client = self.client_factory(api_key, base_url, model, provider)
         try:
             data = client.generate_with_json(
                 [

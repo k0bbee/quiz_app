@@ -1140,6 +1140,7 @@ class AIGenerationDialog(QDialog):
             )
             return
 
+        provider = self.settings.get("ai_provider", "")
         base_url = self.settings.get("ai_base_url", "https://api.anthropic.com/v1")
         model = self.settings.get("ai_model", "claude-sonnet-4-6")
         if retry_plan is not None:
@@ -1181,7 +1182,7 @@ class AIGenerationDialog(QDialog):
 
         try:
             # Create client and worker
-            client = LLMClient(api_key=api_key, base_url=base_url, model=model)
+            client = LLMClient(api_key=api_key, base_url=base_url, model=model, provider=provider)
             self.worker = GenerationWorker(
                 client, self.course_content, topics, count, difficulty,
                 course_project=self.course_project,

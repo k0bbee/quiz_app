@@ -14,14 +14,27 @@ import requests
 class LLMClient:
     """OpenAI-compatible API client for question generation."""
 
-    def __init__(self, api_key: str, base_url: str = None, model: str = "claude-sonnet-4-6"):
+    def __init__(
+        self,
+        api_key: str,
+        base_url: str = None,
+        model: str = "claude-sonnet-4-6",
+        provider: str = "",
+    ):
         self._api_key = api_key
+        normalized_provider = str(provider or "").strip().lower()
+        if normalized_provider == "local_agent" and not base_url:
+            base_url = "local-agent://auto"
         self.base_url = (base_url or "https://api.anthropic.com/v1").rstrip("/")
         self.model = model
+        self.provider = normalized_provider or self._infer_provider_from_base_url(self.base_url)
         self.last_error = ""
 
     def __repr__(self) -> str:
-        return f"LLMClient(model={self.model!r}, base_url={self.base_url!r})"
+        return (
+            f"LLMClient(model={self.model!r}, base_url={self.base_url!r}, "
+            f"provider={self.provider!r})"
+        )
 
     def generate(
         self,
@@ -40,9 +53,21 @@ class LLMClient:
             self.last_error = endpoint_result.message
             warning(self.last_error)
             return None
-        if "anthropic" in self.base_url:
+        if self.provider == "anthropic":
             return self._generate_anthropic(messages, temperature, max_tokens)
         return self._generate_openai_compatible(messages, temperature, max_tokens)
+
+    @staticmethod
+    def _infer_provider_from_base_url(base_url: str) -> str:
+        """Infer provider for legacy settings that predate explicit provider storage."""
+        normalized = (base_url or "").lower()
+        if normalized.startswith("local-agent://"):
+            return "local_agent"
+        if "anthropic" in normalized:
+            return "anthropic"
+        if "openai" in normalized:
+            return "openai"
+        return "custom"
 
     def _generate_local_agent(self, messages: list[dict], max_tokens: int) -> Optional[str]:
         """Use a known local CLI agent without requiring an API key.

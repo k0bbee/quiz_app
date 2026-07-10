@@ -32,7 +32,7 @@ def create_course_summary_generator(settings: dict, api_key: str = "") -> Course
     if provider_requires_api_key(merged) and not api_key.strip():
         return None
 
-    client = LLMClient(api_key=api_key, base_url=base_url, model=model)
+    client = LLMClient(api_key=api_key, base_url=base_url, model=model, provider=provider)
     return CourseSummaryGenerator(client)
 
 
@@ -50,5 +50,5 @@ def create_course_generation_profile_generator(
 
     if provider_requires_api_key(merged) and not api_key.strip():
         return CourseGenerationProfileGenerator()
-    client = LLMClient(api_key=api_key, base_url=base_url, model=model)
+    client = LLMClient(api_key=api_key, base_url=base_url, model=model, provider=provider)
     return CourseGenerationProfileGenerator(client)

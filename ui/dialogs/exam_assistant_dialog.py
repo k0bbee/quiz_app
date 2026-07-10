@@ -99,6 +99,7 @@ class ExamAssistantDialog(QDialog):
             api_key=api_key,
             base_url=self.settings.get("ai_base_url", "local-agent://auto"),
             model=self.settings.get("ai_model", "auto"),
+            provider=self.settings.get("ai_provider", ""),
         )
         return ExamRequestInterpreter(self.available_topics, client)
 

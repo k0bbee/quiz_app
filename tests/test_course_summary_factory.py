@@ -48,6 +48,20 @@ class CourseSummaryFactoryTests(unittest.TestCase):
 
         self.assertIsInstance(generator, CourseSummaryGenerator)
         self.assertEqual("https://api.openai.com/v1", generator.llm_client.base_url)
+        self.assertEqual("openai", generator.llm_client.provider)
+
+    def test_custom_summary_provider_preserves_explicit_protocol_choice(self):
+        generator = create_course_summary_generator(
+            {
+                "ai_provider": "custom",
+                "ai_base_url": "https://anthropic-proxy.company.com/v1",
+                "ai_model": "proxy-model",
+            },
+            api_key="sk-test",
+        )
+
+        self.assertIsInstance(generator, CourseSummaryGenerator)
+        self.assertEqual("custom", generator.llm_client.provider)
 
     def test_provider_requires_api_key_rule(self):
         self.assertFalse(provider_requires_api_key({"ai_provider": "local_agent"}))
@@ -65,6 +79,7 @@ class CourseSummaryFactoryTests(unittest.TestCase):
 
         self.assertIsInstance(generator, CourseGenerationProfileGenerator)
         self.assertEqual("https://api.openai.com/v1", generator.llm_client.base_url)
+        self.assertEqual("openai", generator.llm_client.provider)
 
     def test_profile_factory_without_remote_key_still_returns_local_generator(self):
         generator = create_course_generation_profile_generator(

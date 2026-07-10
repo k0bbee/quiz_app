@@ -37,8 +37,8 @@ class AIConnectionProbeTests(unittest.TestCase):
         client = FakeClient({"ok": True})
         captured = {}
 
-        def factory(api_key, base_url, model):
-            captured.update(api_key=api_key, base_url=base_url, model=model)
+        def factory(api_key, base_url, model, provider):
+            captured.update(api_key=api_key, base_url=base_url, model=model, provider=provider)
             return client
 
         probe = AIConnectionProbe(client_factory=factory, clock=Clock(10.0, 10.125))
@@ -50,6 +50,7 @@ class AIConnectionProbeTests(unittest.TestCase):
         self.assertEqual("openai", result.provider)
         self.assertEqual("test-model", result.model)
         self.assertEqual("sk-secret", captured["api_key"])
+        self.assertEqual("openai", captured["provider"])
         messages, kwargs = client.calls[0]
         prompt = "\n".join(message["content"] for message in messages)
         self.assertIn('{"ok": true}', prompt)

@@ -238,6 +238,57 @@ class LLMErrorMessageTests(unittest.TestCase):
         self.assertEqual('{"questions":[]}', result)
         self.assertEqual("", client.last_error)
 
+    def test_custom_provider_with_anthropic_named_url_uses_openai_compatible_protocol(self):
+        class FakeResponse:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"choices": [{"message": {"content": '{"questions":[]}'}}]}
+
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://anthropic-proxy.company.com/v1",
+            model="model",
+            provider="custom",
+        )
+
+        with patch("ai.llm_client.requests.post", return_value=FakeResponse()) as post:
+            result = client.generate([{"role": "user", "content": "Return JSON."}])
+
+        self.assertEqual('{"questions":[]}', result)
+        self.assertEqual(
+            "https://anthropic-proxy.company.com/v1/chat/completions",
+            post.call_args.args[0],
+        )
+        self.assertIn("authorization", post.call_args.kwargs["headers"])
+        self.assertNotIn("x-api-key", post.call_args.kwargs["headers"])
+
+    def test_explicit_anthropic_provider_uses_messages_protocol_for_custom_url(self):
+        class FakeResponse:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"content": [{"text": '{"questions": []}'}]}
+
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://proxy.example.com/anthropic/v1",
+            model="claude-test",
+            provider="anthropic",
+        )
+
+        with patch("ai.llm_client.requests.post", return_value=FakeResponse()) as post:
+            result = client.generate([{"role": "user", "content": "Return JSON."}])
+
+        self.assertEqual('{"questions": []}', result)
+        self.assertEqual(
+            "https://proxy.example.com/anthropic/v1/messages",
+            post.call_args.args[0],
+        )
+        self.assertIn("x-api-key", post.call_args.kwargs["headers"])
+
     def test_anthropic_client_accepts_text_payload_without_explicit_text_block_type(self):
         class FakeResponse:
             status_code = 200
