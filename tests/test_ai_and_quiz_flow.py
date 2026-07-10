@@ -1202,6 +1202,22 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertIn("下一步建议", screen.next_action_label.text())
         self.assertIn("先重做错题", screen.next_action_label.text())
 
+    def test_results_screen_low_score_uses_review_oriented_badge(self):
+        record = ProgressRecord.create_new("set-1")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord(question_id="q1", index_in_session=0, user_answer="B", is_correct=False),
+            AnswerRecord(question_id="q2", index_in_session=1, user_answer="B", is_correct=False),
+        ]
+        record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
+
+        screen = ResultsScreen()
+        screen.set_results(record, {}, "zh")
+
+        self.assertTrue(screen.score_label.text().startswith("🔎 "))
+        self.assertNotIn("💪", screen.score_label.text())
+        self.assertIn("先重做错题", screen.next_action_label.text())
+
     def test_results_screen_review_card_shows_source_refs(self):
         question = self._make_question("q-source")
         question.metadata["source_refs"] = [

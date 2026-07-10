@@ -175,7 +175,7 @@ class ResultsScreen(QWidget):
         elif score >= 50:
             emoji = "📚"
         else:
-            emoji = "💪"
+            emoji = "🔎"
 
         self.score_label.setText(f"{emoji} {score:.0f}%")
 
