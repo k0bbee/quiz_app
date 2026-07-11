@@ -906,6 +906,23 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 self.assertEqual(0, screen.project_list.count())
                 self.assertNotIn("Systems", screen.summary_label.text())
 
+    def test_course_screen_guides_user_when_course_library_is_empty(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            language_manager = LanguageManager.instance()
+            previous_language = language_manager.current
+            self.addCleanup(language_manager.set_language, previous_language)
+            language_manager.set_language("zh")
+
+            screen = CourseScreen(manager)
+
+            self.assertEqual(0, screen.project_list.count())
+            self.assertFalse(screen.empty_state_label.isHidden())
+            self.assertIn("还没有课程", screen.empty_state_label.text())
+            self.assertIn("导入", screen.empty_state_label.text())
+            self.assertFalse(screen.set_current_btn.isEnabled())
+            self.assertFalse(screen.delete_btn.isEnabled())
+
     def test_course_screen_can_rename_selected_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source"

@@ -125,6 +125,12 @@ class CourseScreen(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
         self.list_label = QLabel(self.lang_manager.get_text("已导入的课程:", "Imported courses:"))
         left_layout.addWidget(self.list_label)
+        self.empty_state_label = QLabel()
+        self.empty_state_label.setObjectName("courseEmptyStateLabel")
+        self.empty_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_state_label.setWordWrap(True)
+        self.empty_state_label.setVisible(False)
+        left_layout.addWidget(self.empty_state_label, 1)
         self.project_list = QListWidget()
         self.project_list.currentItemChanged.connect(self._on_project_selected)
         left_layout.addWidget(self.project_list, 1)
@@ -182,11 +188,19 @@ class CourseScreen(QWidget):
         current = self.manager.current()
         current_id = current.course_id if current else ""
         topics_label = self.lang_manager.get_text("个主题", "topics")
-        for project in self.manager.load_all():
+        projects = self.manager.load_all()
+        for project in projects:
             prefix = "★ " if project.course_id == current_id else ""
             item = QListWidgetItem(f"{prefix}{project.title}  [{len(project.topics)} {topics_label}]")
             item.setData(Qt.ItemDataRole.UserRole, project.course_id)
             self.project_list.addItem(item)
+        is_empty = not projects
+        self.empty_state_label.setText(self.lang_manager.get_text(
+            "还没有课程。请在上方选择课程资料文件夹并导入第一个课程。",
+            "No courses yet. Choose a course-material folder above and import your first course.",
+        ))
+        self.empty_state_label.setVisible(is_empty)
+        self.project_list.setVisible(not is_empty)
         self.set_current_btn.setEnabled(False)
         self.rename_btn.setEnabled(False)
         self.regenerate_btn.setEnabled(False)
