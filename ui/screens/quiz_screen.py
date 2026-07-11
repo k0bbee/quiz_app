@@ -81,6 +81,11 @@ class QuizScreen(QWidget):
 
         info_row.addStretch()
 
+        self.mode_switch_btn = QPushButton()
+        self.mode_switch_btn.setObjectName("secondaryButton")
+        self.mode_switch_btn.clicked.connect(self._toggle_submission_mode)
+        info_row.addWidget(self.mode_switch_btn)
+
         self.review_toggle_btn = QPushButton(
             self.lang_manager.get_text("整卷复查", "Review Paper")
         )
@@ -552,6 +557,35 @@ class QuizScreen(QWidget):
             return
         self._advance_without_submitting()
 
+    def _toggle_submission_mode(self) -> None:
+        """Switch feedback timing only while the quiz is still untouched."""
+        if not self._can_switch_submission_mode():
+            return
+        self.submission_mode = "exam" if self.submission_mode == "practice" else "practice"
+        self._refresh_navigation_button_state()
+
+    def _can_switch_submission_mode(self) -> bool:
+        """Prevent switching after answers or feedback could leak exam content."""
+        return (
+            self.session.state == QuizState.IN_PROGRESS
+            and self.session.current_index == 0
+            and self.session.answered_count == 0
+            and not self._draft_answers_by_question_id
+        )
+
+    def _refresh_mode_switch_state(self) -> None:
+        """Keep the mode action clear, localized, and safe for the current state."""
+        switch_to_exam = self.submission_mode == "practice"
+        self.mode_switch_btn.setText(self.lang_manager.get_text(
+            "切换为模拟考试" if switch_to_exam else "切换为逐题练习",
+            "Switch to Mock Exam" if switch_to_exam else "Switch to Practice",
+        ))
+        self.mode_switch_btn.setToolTip(self.lang_manager.get_text(
+            "逐题练习会即时反馈；模拟考试会在最后统一交卷。提交或离开首题后不可切换。",
+            "Practice gives immediate feedback; mock exam submits at the end. The mode locks after submitting or leaving the first question.",
+        ))
+        self.mode_switch_btn.setEnabled(self._can_switch_submission_mode())
+
     def _refresh_mark_review_state(self):
         """Legacy compatibility hook for callers that refresh review state."""
         self._refresh_review_state()
@@ -653,6 +687,7 @@ class QuizScreen(QWidget):
 
     def _refresh_navigation_button_state(self):
         """Enable free-navigation buttons only when the target question exists."""
+        self._refresh_mode_switch_state()
         has_questions = self.session.total_questions > 0
         self.prev_question_btn.setEnabled(has_questions and self.session.current_index > 0)
         is_last = has_questions and self.session.current_index >= self.session.total_questions - 1

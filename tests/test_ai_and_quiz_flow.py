@@ -762,6 +762,53 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertEqual("practice", started["submission_mode"])
         self.assertEqual("quiz", started["screen"])
 
+    def test_quiz_mode_can_switch_before_answering_without_a_start_dialog(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            question = self._make_question("q-mode-switch")
+            qset = QuestionSet.create_new(
+                title={"zh": "题集", "en": "Set"},
+                description={"zh": "", "en": ""},
+                topics=["test"],
+                question_ids=[question.question_id],
+            )
+
+            screen.start_quiz(qset, [question], show_timer=False, submission_mode="practice")
+            screen.answer_area.set_answer(question.correct_answer)
+
+            self.assertTrue(screen.mode_switch_btn.isEnabled())
+            self.assertIn("模拟考试", screen.mode_switch_btn.text())
+
+            screen.mode_switch_btn.click()
+
+            self.assertEqual("exam", screen.submission_mode)
+            self.assertIn("逐题练习", screen.mode_switch_btn.text())
+            self.assertEqual("完成", screen.next_question_btn.text())
+
+    def test_quiz_mode_switch_locks_after_practice_feedback_is_shown(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            question = self._make_question("q-mode-lock")
+            qset = QuestionSet.create_new(
+                title={"zh": "题集", "en": "Set"},
+                description={"zh": "", "en": ""},
+                topics=["test"],
+                question_ids=[question.question_id],
+            )
+            screen.start_quiz(qset, [question], show_timer=False, submission_mode="practice")
+            screen.answer_area.set_answer(question.correct_answer)
+
+            screen._submit_answer()
+
+            self.assertEqual(1, screen.session.answered_count)
+            self.assertFalse(screen.mode_switch_btn.isEnabled())
+
     def test_quiz_screen_captures_snapshot_with_current_state(self):
         qset = QuestionSet.create_new(
             title={"zh": "测试题集", "en": "Test Set"},
