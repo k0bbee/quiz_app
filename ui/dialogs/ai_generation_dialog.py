@@ -230,6 +230,20 @@ class AIGenerationDialog(QDialog):
         config_layout.addRow("", self.assistant_action_layout)
         right_layout.addWidget(self.config_group)
 
+        self.advanced_toggle_btn = QPushButton()
+        self.advanced_toggle_btn.setObjectName("secondaryButton")
+        self.advanced_toggle_btn.clicked.connect(self._toggle_advanced_settings)
+        right_layout.addWidget(self.advanced_toggle_btn)
+
+        self.advanced_content = QWidget()
+        self.advanced_content.setObjectName("generationAdvancedContent")
+        advanced_layout = QVBoxLayout(self.advanced_content)
+        advanced_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_layout.setSpacing(12)
+        self.advanced_content.hide()
+        right_layout.addWidget(self.advanced_content)
+        self._refresh_advanced_toggle_text()
+
         self.topic_weight_sliders: dict[str, QSlider] = {}
         if self.available_topics:
             self.topic_weight_group = QGroupBox(
@@ -259,7 +273,7 @@ class AIGenerationDialog(QDialog):
             )
             self.topic_weight_empty_label.setObjectName("mutedLabel")
             topic_weight_layout.addRow("", self.topic_weight_empty_label)
-            right_layout.addWidget(self.topic_weight_group)
+            advanced_layout.addWidget(self.topic_weight_group)
 
         # Structure controls
         self.structure_group = QGroupBox(self.lang_manager.get_text("题目结构", "Question Structure"))
@@ -320,7 +334,7 @@ class AIGenerationDialog(QDialog):
         self.refresh_weight_preview_btn.clicked.connect(self._refresh_weight_preview_and_plan)
         structure_layout.addRow("", self.refresh_weight_preview_btn)
 
-        right_layout.addWidget(self.structure_group)
+        advanced_layout.addWidget(self.structure_group)
 
         self.plan_group = QGroupBox(
             self.lang_manager.get_text("生成计划预览", "Generation Plan Preview")
@@ -332,7 +346,7 @@ class AIGenerationDialog(QDialog):
         self.plan_preview.setReadOnly(True)
         self.plan_preview.setMaximumHeight(170)
         plan_layout.addWidget(self.plan_preview)
-        right_layout.addWidget(self.plan_group)
+        advanced_layout.addWidget(self.plan_group)
 
         self.runtime_instruction_group = QGroupBox(
             self.lang_manager.get_text("后续要求", "Runtime Adjustment")
@@ -385,7 +399,7 @@ class AIGenerationDialog(QDialog):
         )
         runtime_instruction_action_row.addWidget(self.apply_runtime_instruction_btn)
         runtime_instruction_layout.addLayout(runtime_instruction_action_row)
-        right_layout.addWidget(self.runtime_instruction_group)
+        advanced_layout.addWidget(self.runtime_instruction_group)
 
         self.generation_log_group = QGroupBox(
             self.lang_manager.get_text("生成过程", "Generation Activity")
@@ -404,6 +418,7 @@ class AIGenerationDialog(QDialog):
         )
         generation_log_layout.addWidget(self.generation_log)
         right_layout.addWidget(self.generation_log_group)
+        self.generation_log_group.hide()
 
         self.count_spin.valueChanged.connect(lambda _value: self._update_preview())
         self.diff_combo.currentIndexChanged.connect(lambda _index: self._update_preview())
@@ -587,6 +602,18 @@ class AIGenerationDialog(QDialog):
         self._refresh_weight_labels()
         self._update_preview()
 
+    def _toggle_advanced_settings(self) -> None:
+        """Reveal expert generation controls without crowding the default flow."""
+        self.advanced_content.setVisible(self.advanced_content.isHidden())
+        self._refresh_advanced_toggle_text()
+
+    def _refresh_advanced_toggle_text(self) -> None:
+        expanded = not self.advanced_content.isHidden()
+        self.advanced_toggle_btn.setText(self.lang_manager.get_text(
+            "收起高级设置" if expanded else "展开高级设置",
+            "Collapse Advanced Settings" if expanded else "Show Advanced Settings",
+        ))
+
     def _on_language_changed(self, lang):
         """Update all UI strings when language changes."""
         self.setWindowTitle(self.lang_manager.get_text("AI 出题", "AI Question Generation"))
@@ -613,6 +640,7 @@ class AIGenerationDialog(QDialog):
         )
         self.diff_label.setText(self.lang_manager.get_text("整体难度:", "Overall difficulty:"))
         self.config_group.setTitle(self.lang_manager.get_text("生成参数", "Generation Settings"))
+        self._refresh_advanced_toggle_text()
         self.template_label.setText(self.lang_manager.get_text("模板:", "Template:"))
 
         current_template = self.template_combo.currentData()
@@ -1517,6 +1545,8 @@ class AIGenerationDialog(QDialog):
         self._generation_events = []
         if hasattr(self, "generation_log"):
             self.generation_log.clear()
+        if hasattr(self, "generation_log_group"):
+            self.generation_log_group.hide()
 
     def _append_generation_event(self, message: str) -> None:
         clean = " ".join(str(message or "").split())
@@ -1525,6 +1555,7 @@ class AIGenerationDialog(QDialog):
         self._generation_events.append(clean)
         self._generation_events = self._generation_events[-40:]
         if hasattr(self, "generation_log"):
+            self.generation_log_group.show()
             self.generation_log.setPlainText("\n".join(self._generation_events))
             self.generation_log.moveCursor(QTextCursor.MoveOperation.End)
             self.generation_log.ensureCursorVisible()

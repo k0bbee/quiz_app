@@ -622,6 +622,34 @@ class UiThemeTests(unittest.TestCase):
             dialog.footer_action_layout.indexOf(dialog.generate_btn),
         )
 
+    def test_generation_dialog_hides_advanced_controls_until_requested(self):
+        dialog = AIGenerationDialog(
+            "# Course\nCache content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=["cache", "process"],
+        )
+
+        self.assertTrue(dialog.advanced_content.isHidden())
+        self.assertIn("展开高级设置", dialog.advanced_toggle_btn.text())
+        self.assertTrue(dialog.generation_log_group.isHidden())
+        self.assertTrue(dialog.advanced_content.isAncestorOf(dialog.topic_weight_group))
+        self.assertTrue(dialog.advanced_content.isAncestorOf(dialog.structure_group))
+        self.assertTrue(dialog.advanced_content.isAncestorOf(dialog.plan_group))
+        self.assertTrue(dialog.advanced_content.isAncestorOf(dialog.runtime_instruction_group))
+
+        dialog.advanced_toggle_btn.click()
+
+        self.assertFalse(dialog.advanced_content.isHidden())
+        self.assertIn("收起高级设置", dialog.advanced_toggle_btn.text())
+
+        dialog._append_generation_event("Generating question 1/5")
+
+        self.assertFalse(dialog.generation_log_group.isHidden())
+
     def test_generation_dialog_weight_panel_uses_compact_topic_labels(self):
         long_topic = (
             "非常非常非常长的课程主题名称包含根据课件整理概念关键条件中间状态输出结果 "
