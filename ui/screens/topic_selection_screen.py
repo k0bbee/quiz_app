@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QAbstractItemView, QInputDialog
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
+from PyQt6.QtGui import QColor
 
 from utils.constants import topic_label, topic_value
 from core.language_manager import LanguageManager
@@ -158,6 +159,12 @@ class TopicSelectionScreen(QWidget):
             completed = [r for r in attempts if r.status == "completed" and r.summary]
             recent_score = f"{completed[0].summary.score_percentage:.0f}%" if completed else "N/A"
             best_score = f"{max(r.summary.score_percentage for r in completed):.0f}%" if completed else "N/A"
+            empty_notice = ""
+            if qset.question_count == 0:
+                empty_notice = self.lang_manager.get_text(
+                    "<br><b>空题集无法开始或导出，请重新生成题目。</b>",
+                    "<br><b>This empty set cannot be started or exported. Regenerate its questions.</b>",
+                )
             self.info_label.setText(
                 f"<b>{qset.get_title(lang)}</b><br>"
                 f"{qset.get_description(lang)}<br><br>"
@@ -169,6 +176,7 @@ class TopicSelectionScreen(QWidget):
                 f"{self.lang_manager.get_text('练习次数:', 'Attempts:')} {len(completed)} | "
                 f"{self.lang_manager.get_text('最近:', 'Recent:')} {recent_score} | "
                 f"{self.lang_manager.get_text('最佳:', 'Best:')} {best_score}"
+                f"{empty_notice}"
             )
             self._on_set_selection_changed()
 
@@ -178,9 +186,13 @@ class TopicSelectionScreen(QWidget):
         has_selection = bool(selected_ids)
         single_selection = len(selected_ids) == 1
         selected_set = self.set_manager.get(selected_ids[0]) if single_selection else None
+        selected_sets = [self.set_manager.get(set_id) for set_id in selected_ids]
+        all_have_questions = has_selection and all(
+            qset is not None and qset.question_count > 0 for qset in selected_sets
+        )
         can_regenerate = single_selection and self._is_regeneratable_set(selected_set)
-        self.export_btn.setEnabled(has_selection)
-        self.start_btn.setEnabled(single_selection)
+        self.export_btn.setEnabled(all_have_questions)
+        self.start_btn.setEnabled(single_selection and all_have_questions)
         self.regenerate_btn.setHidden(not can_regenerate)
         self.regenerate_btn.setEnabled(can_regenerate)
         self.rename_btn.setEnabled(single_selection)
@@ -193,13 +205,18 @@ class TopicSelectionScreen(QWidget):
 
         set_id = set_ids[0]
         qset = self.set_manager.get(set_id)
-        if qset:
+        if qset and qset.question_count > 0:
             self.quiz_start.emit(set_id, qset.questions)
 
 
     def _export_selected_set(self):
         """Emit signal to export selected question sets as mock exams."""
         set_ids = self._selected_set_ids()
+        selected_sets = [self.set_manager.get(set_id) for set_id in set_ids]
+        if not selected_sets or any(
+            qset is None or qset.question_count == 0 for qset in selected_sets
+        ):
+            return
         if len(set_ids) == 1:
             self.export_mock_exam.emit(set_ids[0])
         elif len(set_ids) > 1:
@@ -349,13 +366,18 @@ class TopicSelectionScreen(QWidget):
                     f" | {self.lang_manager.get_text('最近', 'recent')} "
                     f"{completed[0].summary.score_percentage:.0f}%"
                 )
+            empty_marker = ""
+            if qs.question_count == 0:
+                empty_marker = self.lang_manager.get_text("空题集 | ", "Empty set | ")
             item = QListWidgetItem(
-                f"{qs.get_title(lang)}  [{qs.question_count} "
+                f"{qs.get_title(lang)}  [{empty_marker}{qs.question_count} "
                 f"{self.lang_manager.get_text('题', 'questions')}, "
                 f"{qs.estimated_minutes} {self.lang_manager.get_text('分钟', 'min')}"
                 f"{score_hint}]"
             )
             item.setData(Qt.ItemDataRole.UserRole, qs.set_id)
+            if qs.question_count == 0:
+                item.setForeground(QColor("#787878"))
             self.set_list.addItem(item)
 
         if not visible:

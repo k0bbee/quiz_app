@@ -207,6 +207,56 @@ class MockExamExporterTests(unittest.TestCase):
             self.assertEqual([qset.set_id], emitted_singles)
             self.assertEqual([], emitted_batches)
 
+    def test_topic_selection_screen_marks_empty_set_and_blocks_start_and_export(self):
+        from models.question_set import SetManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SetManager(tmpdir)
+            empty = self._make_question_set()
+            empty.questions = []
+            manager.save(empty)
+            screen = TopicSelectionScreen(manager)
+            started = []
+            exported = []
+            screen.quiz_start.connect(lambda *args: started.append(args))
+            screen.export_mock_exam.connect(exported.append)
+
+            screen.refresh()
+            screen.set_list.setCurrentRow(0)
+
+            self.assertIn("空题集", screen.set_list.item(0).text())
+            self.assertIn("无法开始", screen.info_label.text())
+            self.assertFalse(screen.start_btn.isEnabled())
+            self.assertFalse(screen.export_btn.isEnabled())
+            screen._start_quiz()
+            screen._export_selected_set()
+            self.assertEqual([], started)
+            self.assertEqual([], exported)
+
+    def test_topic_selection_screen_blocks_batch_export_when_any_set_is_empty(self):
+        from models.question_set import SetManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = SetManager(tmpdir)
+            populated = self._make_question_set()
+            populated.set_id = "set-full"
+            empty = self._make_question_set()
+            empty.set_id = "set-empty"
+            empty.questions = []
+            manager.save(populated)
+            manager.save(empty)
+            screen = TopicSelectionScreen(manager)
+            exported = []
+            screen.export_mock_exams.connect(exported.append)
+
+            screen.refresh()
+            screen.set_list.setCurrentRow(0)
+            screen.set_list.item(1).setSelected(True)
+
+            self.assertFalse(screen.export_btn.isEnabled())
+            screen._export_selected_set()
+            self.assertEqual([], exported)
+
     def test_topic_selection_screen_ignores_current_item_without_explicit_selection(self):
         from models.question_set import SetManager
 
