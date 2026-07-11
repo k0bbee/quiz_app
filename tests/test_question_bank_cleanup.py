@@ -309,11 +309,13 @@ class QuestionBankCleanupTests(unittest.TestCase):
             screen.set_current_course("course-a")
             screen._new_question()
 
-            payload = json.loads(screen.editor.toPlainText())
-            for language in ("zh", "en"):
-                payload["bilingual"][language]["stem"] = "Which answer is correct?"
-                payload["bilingual"][language]["explanation"] = "A is the correct answer."
-            screen.editor.setPlainText(json.dumps(payload, ensure_ascii=False))
+            screen.form_editor.zh_stem_editor.setPlainText("哪个答案正确？")
+            screen.form_editor.zh_explanation_editor.setPlainText("A 是正确答案。")
+            screen.form_editor.en_stem_editor.setPlainText("Which answer is correct?")
+            screen.form_editor.en_explanation_editor.setPlainText("A is the correct answer.")
+            for row in range(4):
+                screen.form_editor.choice_table.item(row, 1).setText(f"中文选项 {row + 1}")
+                screen.form_editor.choice_table.item(row, 2).setText(f"Option {row + 1}")
 
             with patch("ui.screens.question_bank_screen.QMessageBox.information"):
                 screen._save_question()
@@ -494,6 +496,90 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertIn('"question_id": "q-first"', screen.editor.toPlainText())
             self.assertTrue(screen.save_btn.isEnabled())
             self.assertTrue(screen.delete_btn.isEnabled())
+
+    def test_question_bank_screen_uses_structured_editor_for_selected_question(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            question = self._question("q-form", "interrupt_io")
+            question.bilingual["zh"]["stem"] = "中断驱动 I/O 如何减少忙等？"
+            question_bank.save(question)
+
+            screen = QuestionBankScreen(question_bank)
+
+            self.assertIs(screen.detail_stack.currentWidget(), screen.form_editor)
+            self.assertEqual("q-form", screen.current_question_id)
+            self.assertEqual(
+                "中断驱动 I/O 如何减少忙等？",
+                screen.form_editor.zh_stem_editor.toPlainText(),
+            )
+            self.assertEqual("interrupt_io", screen.form_editor.topic_combo.currentData())
+            self.assertTrue(screen.editor_mode_btn.isEnabled())
+
+    def test_question_bank_screen_round_trips_advanced_json_back_to_form(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            question_bank.save(self._question("q-advanced", "cache"))
+            screen = QuestionBankScreen(question_bank)
+
+            screen.editor_mode_btn.click()
+            self.assertIs(screen.detail_stack.currentWidget(), screen.editor)
+            payload = json.loads(screen.editor.toPlainText())
+            payload["bilingual"]["zh"]["stem"] = "由高级 JSON 修改的题干"
+            screen.editor.setPlainText(json.dumps(payload, ensure_ascii=False))
+
+            screen.editor_mode_btn.click()
+
+            self.assertIs(screen.detail_stack.currentWidget(), screen.form_editor)
+            self.assertEqual(
+                "由高级 JSON 修改的题干",
+                screen.form_editor.zh_stem_editor.toPlainText(),
+            )
+
+    def test_question_bank_screen_saves_structured_matching_edits(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            question_bank.save(Question(
+                question_id="q-match-form",
+                type=QuestionType.MATCHING,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {
+                        "stem": "配对",
+                        "options": {
+                            "left": [{"id": "left_dma", "text": "DMA"}],
+                            "right": [{"id": "right_direct", "text": "直接内存访问"}],
+                        },
+                        "explanation": "正确配对。",
+                    },
+                    "en": {
+                        "stem": "Match",
+                        "options": {
+                            "left": [{"id": "left_dma", "text": "DMA"}],
+                            "right": [{"id": "right_direct", "text": "Direct memory access"}],
+                        },
+                        "explanation": "Correct pair.",
+                    },
+                },
+                correct_answer=[["left_dma", "right_direct"]],
+                topic="io",
+            ))
+            screen = QuestionBankScreen(question_bank)
+            screen.form_editor.matching_table.item(0, 4).setText("Direct memory transfer")
+
+            with (
+                patch("ui.screens.question_bank_screen.QMessageBox.information"),
+                patch("ui.screens.question_bank_screen.QMessageBox.warning") as warning,
+            ):
+                screen._save_question()
+
+            warning.assert_not_called()
+            saved = question_bank.get("q-match-form")
+            self.assertEqual(QuestionType.MATCHING, saved.type)
+            self.assertEqual([["left_dma", "right_direct"]], saved.correct_answer)
+            self.assertEqual(
+                "Direct memory transfer",
+                saved.bilingual["en"]["options"]["right"][0]["text"],
+            )
 
     def test_question_bank_screen_shows_empty_state_when_no_questions_match(self):
         with tempfile.TemporaryDirectory() as tmpdir:

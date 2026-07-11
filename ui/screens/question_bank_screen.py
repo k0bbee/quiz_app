@@ -8,7 +8,7 @@ import re
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QListWidget, QListWidgetItem, QTextEdit, QMessageBox, QSplitter,
-    QAbstractItemView,
+    QAbstractItemView, QStackedWidget,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 
@@ -18,6 +18,7 @@ from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
 from ui.widgets.source_refs import format_source_refs
+from ui.widgets.question_form_editor import QuestionFormEditor
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 from utils.constants import Difficulty, QuestionType, topic_value
 
@@ -134,11 +135,22 @@ class QuestionBankScreen(QWidget):
         self.source_refs_label.setVisible(False)
         right_layout.addWidget(self.source_refs_label)
 
-        self.json_label = QLabel(self.lang_manager.get_text("题目 JSON:", "Question JSON:"))
-        right_layout.addWidget(self.json_label)
+        editor_header = QHBoxLayout()
+        self.json_label = QLabel(self.lang_manager.get_text("题目编辑", "Question Editor"))
+        editor_header.addWidget(self.json_label, 1)
+        self.editor_mode_btn = QPushButton()
+        self.editor_mode_btn.setObjectName("secondaryButton")
+        self.editor_mode_btn.clicked.connect(self._toggle_editor_mode)
+        editor_header.addWidget(self.editor_mode_btn)
+        right_layout.addLayout(editor_header)
+        self.detail_stack = QStackedWidget()
+        self.form_editor = QuestionFormEditor()
+        self.detail_stack.addWidget(self.form_editor)
         self.editor = QTextEdit()
         self.editor.setObjectName("questionBankEditor")
-        right_layout.addWidget(self.editor, 1)
+        self.detail_stack.addWidget(self.editor)
+        right_layout.addWidget(self.detail_stack, 1)
+        self._update_editor_mode_button()
 
         action_row = QHBoxLayout()
         self.new_btn = QPushButton(self.lang_manager.get_text("新建", "New"))
@@ -187,7 +199,7 @@ class QuestionBankScreen(QWidget):
         self._populate_quality_filter()
         self.prev_btn.setText(self.lang_manager.get_text("上一页", "Prev"))
         self.next_btn.setText(self.lang_manager.get_text("下一页", "Next"))
-        self.json_label.setText(self.lang_manager.get_text("题目 JSON:", "Question JSON:"))
+        self.json_label.setText(self.lang_manager.get_text("题目编辑", "Question Editor"))
         self.new_btn.setText(self.lang_manager.get_text("新建", "New"))
         self.save_btn.setText(self.lang_manager.get_text("保存", "Save"))
         self.delete_btn.setText(self.lang_manager.get_text("删除", "Delete"))
@@ -200,6 +212,7 @@ class QuestionBankScreen(QWidget):
                 "Enrich question source snippets from the current course",
             )
         )
+        self._update_editor_mode_button()
 
     def refresh(self):
         """Reload current page."""
@@ -262,6 +275,7 @@ class QuestionBankScreen(QWidget):
         if course_id == self._current_course_id:
             return
         self._current_course_id = course_id
+        self.form_editor.set_topics(self._current_course_topics())
         self.page = 0
         self.current_question_id = ""
         if hasattr(self, "question_list"):
@@ -303,6 +317,9 @@ class QuestionBankScreen(QWidget):
                     f"{len(selected_ids)} questions selected. Batch delete is available; select one question to edit.",
                 )
             )
+            self.detail_stack.setCurrentWidget(self.editor)
+            self.editor_mode_btn.setEnabled(False)
+            self._update_editor_mode_button()
             self.save_btn.setEnabled(False)
             self.delete_btn.setEnabled(True)
             return
@@ -314,7 +331,13 @@ class QuestionBankScreen(QWidget):
         self.current_question_id = q.question_id
         self.editor.setReadOnly(False)
         self._set_source_refs_summary(q)
-        self.editor.setPlainText(json.dumps(q.to_dict(), ensure_ascii=False, indent=2))
+        payload = q.to_dict()
+        self.form_editor.set_topics(self._current_course_topics())
+        self.form_editor.load_payload(payload)
+        self.editor.setPlainText(json.dumps(payload, ensure_ascii=False, indent=2))
+        self.detail_stack.setCurrentWidget(self.form_editor)
+        self.editor_mode_btn.setEnabled(True)
+        self._update_editor_mode_button()
         self.save_btn.setEnabled(True)
         self.delete_btn.setEnabled(True)
 
@@ -327,6 +350,9 @@ class QuestionBankScreen(QWidget):
                 "No matching questions.\n\nAdjust search/filter options, or click New to create a question.",
             )
         )
+        self.detail_stack.setCurrentWidget(self.editor)
+        self.editor_mode_btn.setEnabled(False)
+        self._update_editor_mode_button()
         self.save_btn.setEnabled(False)
 
     def _new_question(self):
@@ -357,14 +383,22 @@ class QuestionBankScreen(QWidget):
         self.question_list.blockSignals(False)
         self.current_question_id = ""
         self._set_source_refs_summary(None)
+        self.form_editor.set_topics(self._current_course_topics())
+        self.form_editor.load_payload(template)
         self.editor.setReadOnly(False)
         self.editor.setPlainText(json.dumps(template, ensure_ascii=False, indent=2))
+        self.detail_stack.setCurrentWidget(self.form_editor)
+        self.editor_mode_btn.setEnabled(True)
+        self._update_editor_mode_button()
         self.save_btn.setEnabled(True)
         self.delete_btn.setEnabled(False)
 
     def _save_question(self):
         try:
-            data = json.loads(self.editor.toPlainText())
+            if self.detail_stack.currentWidget() is self.form_editor:
+                data = self.form_editor.to_payload()
+            else:
+                data = json.loads(self.editor.toPlainText())
             if not data.get("question_id"):
                 q = Question.create_new(
                     qtype=QuestionType(data.get("type", "multiple_choice")),
@@ -405,6 +439,42 @@ class QuestionBankScreen(QWidget):
             self.lang_manager.get_text("保存成功", "Saved"),
             self.lang_manager.get_text("题目已保存。", "Question saved.")
         )
+
+    def _toggle_editor_mode(self):
+        if self.detail_stack.currentWidget() is self.form_editor:
+            payload = self.form_editor.to_payload()
+            self.editor.setReadOnly(False)
+            self.editor.setPlainText(json.dumps(payload, ensure_ascii=False, indent=2))
+            self.detail_stack.setCurrentWidget(self.editor)
+        else:
+            try:
+                payload = json.loads(self.editor.toPlainText())
+            except Exception as exc:
+                QMessageBox.warning(
+                    self,
+                    self.lang_manager.get_text("无效 JSON", "Invalid JSON"),
+                    str(exc),
+                )
+                return
+            self.form_editor.set_topics(self._current_course_topics())
+            self.form_editor.load_payload(payload)
+            self.detail_stack.setCurrentWidget(self.form_editor)
+        self._update_editor_mode_button()
+
+    def _update_editor_mode_button(self):
+        if not hasattr(self, "editor_mode_btn"):
+            return
+        form_active = self.detail_stack.currentWidget() is self.form_editor
+        self.editor_mode_btn.setText(self.lang_manager.get_text(
+            "高级 JSON" if form_active else "返回表单",
+            "Advanced JSON" if form_active else "Back to Form",
+        ))
+
+    def _current_course_topics(self):
+        if not self._current_course_id:
+            return []
+        project = self.course_manager.get(self._current_course_id)
+        return project.topics if project else []
 
     def _delete_question(self):
         selected_ids = self._selected_question_ids()
