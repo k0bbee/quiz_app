@@ -2201,10 +2201,29 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen = ProgressDashboard(progress_manager, question_bank, mastery_overrides=mastery_overrides)
             screen.set_current_course("course-a")
 
-            with patch("ui.screens.progress_dashboard.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
-                screen._reset_progress()
+            # Two-step: first click arms, second click executes
+            screen._reset_progress()
+            screen._reset_progress()
 
             self.assertFalse(mastery_overrides.is_topic_mastered("course-a", "cache"))
+
+    def test_progress_reset_button_requires_two_clicks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            progress_manager = ProgressManager(str(root / "progress"))
+            question_bank = QuestionBank(str(root / "questions"))
+
+            screen = ProgressDashboard(progress_manager, question_bank)
+            original_text = screen.reset_btn.text()
+
+            # First click — arms the button, does NOT reset
+            screen._reset_progress()
+            armed_text = screen.reset_btn.text()
+            self.assertNotEqual(original_text, armed_text)
+
+            # Second click — executes reset and restores original text
+            screen._reset_progress()
+            self.assertEqual(original_text, screen.reset_btn.text())
 
     def test_incorrect_review_uses_current_course_filter(self):
         from ui.main_window import MainWindow

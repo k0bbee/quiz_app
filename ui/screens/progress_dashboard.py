@@ -3,7 +3,7 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QListWidget, QListWidgetItem,
-    QGroupBox, QHeaderView, QMessageBox, QAbstractItemView
+    QGroupBox, QHeaderView, QAbstractItemView
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -135,10 +135,14 @@ class ProgressDashboard(QWidget):
         self.refresh_btn.clicked.connect(self.refresh)
         btn_layout.addWidget(self.refresh_btn)
 
+        btn_layout.addSpacing(24)
+
         self.reset_btn = QPushButton()
         self.reset_btn.setObjectName("dangerButton")
         self.reset_btn.clicked.connect(self._reset_progress)
         btn_layout.addWidget(self.reset_btn)
+
+        self._reset_pending = False
 
         layout.addLayout(btn_layout)
 
@@ -155,6 +159,7 @@ class ProgressDashboard(QWidget):
         self.practice_topic_btn.setText(self.lang_manager.get_text("练 10 题", "Practice 10"))
         self.review_topic_btn.setText(self.lang_manager.get_text("复习错题", "Review Incorrect"))
         self._update_mastery_action_state()
+        self._reset_pending = False
         self.reset_btn.setText(self.lang_manager.get_text("重置全部进度", "Reset All Progress"))
         self.topic_table.setHorizontalHeaderLabels([
             self.lang_manager.get_text("主题", "Topic"),
@@ -422,18 +427,18 @@ class ProgressDashboard(QWidget):
         self.refresh()
 
     def _reset_progress(self):
-        """Confirm and reset all progress."""
-        reply = QMessageBox.question(
-            self,
-            self.lang_manager.get_text("重置进度?", "Reset Progress?"),
-            self.lang_manager.get_text(
-                "确定要删除所有进度记录吗?",
-                "Are you sure you want to delete ALL progress records?"
-            ),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+        """Two-step confirmation reset: first click arms, second click executes."""
+        if not self._reset_pending:
+            self._reset_pending = True
+            self.reset_btn.setText(
+                self.lang_manager.get_text("确认重置？", "Confirm Reset?")
+            )
+            return
+
+        self._reset_pending = False
+        self.progress_manager.reset_all()
+        self.mastery_overrides.clear()
+        self.refresh()
+        self.reset_btn.setText(
+            self.lang_manager.get_text("重置全部进度", "Reset All Progress")
         )
-        if reply == QMessageBox.StandardButton.Yes:
-            self.progress_manager.reset_all()
-            self.mastery_overrides.clear()
-            self.refresh()
