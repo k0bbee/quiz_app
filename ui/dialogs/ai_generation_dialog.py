@@ -481,6 +481,7 @@ class AIGenerationDialog(QDialog):
         self.generate_btn = QPushButton(self.lang_manager.get_text("生成题目", "Generate Questions"))
         self.generate_btn.setObjectName("primaryButton")
         self.generate_btn.setMinimumHeight(34)
+        self.generate_btn.setEnabled(False)
         self.generate_btn.clicked.connect(lambda: self._start_generation())
         self.footer_action_layout.addWidget(self.generate_btn)
 
@@ -735,6 +736,7 @@ class AIGenerationDialog(QDialog):
     def _on_topics_changed(self) -> None:
         self._sync_topic_weight_rows()
         self._update_preview()
+        self.generate_btn.setEnabled(len(self._get_selected_topics()) > 0)
 
     def _sync_topic_weight_rows(self) -> None:
         selected = set(self._selected_topic_keys())

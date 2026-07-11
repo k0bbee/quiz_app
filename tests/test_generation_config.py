@@ -1108,6 +1108,20 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("计划生成：9 题", summary)
         self.assertIn("覆盖：cache", summary)
 
+    def test_generation_dialog_disables_generate_button_when_no_topics_selected(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache", "process"],
+        )
+        self.assertFalse(dialog.generate_btn.isEnabled())
+
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+        self.assertTrue(dialog.generate_btn.isEnabled())
+
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Unchecked)
+        self.assertFalse(dialog.generate_btn.isEnabled())
+
     def test_dialog_exposes_question_set_title(self):
         dialog = AIGenerationDialog(
             "course content",
