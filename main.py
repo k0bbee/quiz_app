@@ -10,8 +10,10 @@ from PyQt6.QtCore import QEvent, QObject, Qt
 from PyQt6.QtWidgets import QApplication, QPushButton
 from PyQt6.QtGui import QPalette, QColor
 
-from config import APP_NAME
+from config import APP_NAME, DEFAULT_SETTINGS, SETTINGS_FILE
 from ui.main_window import MainWindow
+from ui.font_scale import apply_font_scale, normalize_font_scale
+from utils.json_io import read_json
 
 
 class _ButtonFocusPolicyFilter(QObject):
@@ -71,7 +73,7 @@ def _apply_dark_palette(app: QApplication):
     app.setPalette(p)
 
 
-def load_stylesheet(app: QApplication) -> str:
+def load_stylesheet(app: QApplication, font_scale: str = "medium") -> str:
     """Load and apply the QSS stylesheet from file."""
     qss_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.qss")
     app.setStyle("Fusion")
@@ -83,7 +85,7 @@ def load_stylesheet(app: QApplication) -> str:
     except (FileNotFoundError, OSError) as e:
         print(f"Warning: Could not load stylesheet: {e}", file=sys.stderr)
         return ""
-    app.setStyleSheet(stylesheet)
+    apply_font_scale(app, font_scale, base_stylesheet=stylesheet)
     return stylesheet
 
 
@@ -92,7 +94,11 @@ def main():
     app.setOrganizationName("Course Quiz Studio")
     app.setApplicationName(APP_NAME)
 
-    load_stylesheet(app)
+    settings = read_json(SETTINGS_FILE, default={}) or {}
+    font_scale = normalize_font_scale(
+        settings.get("font_scale", DEFAULT_SETTINGS["font_scale"])
+    )
+    load_stylesheet(app, font_scale=font_scale)
 
     window = MainWindow()
     window.show()

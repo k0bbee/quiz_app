@@ -3,7 +3,7 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -42,6 +42,45 @@ class UiThemeTests(unittest.TestCase):
             widget.close()
             widget.deleteLater()
         _APP.processEvents()
+
+    def test_stylesheet_font_scaling_is_based_on_original_sizes(self):
+        from ui.font_scale import scale_stylesheet_font_sizes
+
+        source = "QLabel { font-size: 10px; } QPushButton { font-size: 15px; }"
+
+        self.assertEqual(
+            "QLabel { font-size: 12px; } QPushButton { font-size: 18px; }",
+            scale_stylesheet_font_sizes(source, "large"),
+        )
+        self.assertEqual(source, scale_stylesheet_font_sizes(source, "medium"))
+
+    def test_settings_exposes_and_persists_global_font_scale(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_file = Path(tmpdir) / "settings.json"
+            with patch("ui.screens.settings_screen.SETTINGS_FILE", str(settings_file)):
+                screen = SettingsScreen()
+                screen.font_scale_combo.setCurrentIndex(
+                    screen.font_scale_combo.findData("large")
+                )
+                with patch("ui.screens.settings_screen.apply_font_scale") as apply_scale:
+                    screen.save_settings(silent=True)
+
+            saved = __import__("json").loads(settings_file.read_text(encoding="utf-8"))
+            self.assertEqual("large", saved["font_scale"])
+            apply_scale.assert_called_once_with(QApplication.instance(), "large")
+
+    def test_font_scale_control_follows_display_language(self):
+        screen = SettingsScreen()
+        previous_language = screen.lang_manager.current
+        self.addCleanup(screen.lang_manager.set_language, previous_language)
+
+        screen.lang_manager.set_language("en")
+
+        self.assertEqual("Font size:", screen.font_scale_label.text())
+        self.assertEqual(["Small", "Medium", "Large"], [
+            screen.font_scale_combo.itemText(index)
+            for index in range(screen.font_scale_combo.count())
+        ])
         _APP.processEvents()
 
     def test_qss_uses_vscode_dark_tokens_and_top_level_backgrounds(self):

@@ -4,7 +4,6 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton
 )
 from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QFont
 
 from core.language_manager import LanguageManager
 
@@ -45,10 +44,6 @@ class HomeScreen(QWidget):
         # Title
         self.title = QLabel(self.lang_manager.get_text("课程刷题工具", "Course Quiz Studio"))
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_font = QFont()
-        title_font.setPointSize(24)
-        title_font.setBold(True)
-        self.title.setFont(title_font)
         self.title.setObjectName("screenTitle")
         main_layout.addWidget(self.title)
 

@@ -38,6 +38,7 @@ from ai.provider_presets import (
     detect_local_agents,
 )
 from ai.course_summary_factory import provider_requires_api_key
+from ui.font_scale import apply_font_scale
 from ai.settings_validation import validate_ai_settings
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox, WheelSafeSpinBox
 
@@ -186,6 +187,12 @@ class SettingsScreen(QWidget):
         self.lang_combo.currentIndexChanged.connect(self._on_language_combo_changed)
         self.lang_label = QLabel(self.lang_manager.get_text("显示语言:", "Display language:"))
         lang_layout.addRow(self.lang_label, self.lang_combo)
+        self.font_scale_combo = WheelSafeComboBox()
+        self.font_scale_combo.addItem(self.lang_manager.get_text("小", "Small"), "small")
+        self.font_scale_combo.addItem(self.lang_manager.get_text("中", "Medium"), "medium")
+        self.font_scale_combo.addItem(self.lang_manager.get_text("大", "Large"), "large")
+        self.font_scale_label = QLabel(self.lang_manager.get_text("字体大小:", "Font size:"))
+        lang_layout.addRow(self.font_scale_label, self.font_scale_combo)
         layout.addWidget(self.lang_group)
 
         # ── AI Generation ──
@@ -542,6 +549,14 @@ class SettingsScreen(QWidget):
         self.title.setText(self.lang_manager.get_text("设置", "Settings"))
         self.lang_group.setTitle(self.lang_manager.get_text("显示语言", "Language"))
         self.lang_label.setText(self.lang_manager.get_text("显示语言:", "Display language:"))
+        self.font_scale_label.setText(self.lang_manager.get_text("字体大小:", "Font size:"))
+        font_scale_labels = (
+            self.lang_manager.get_text("小", "Small"),
+            self.lang_manager.get_text("中", "Medium"),
+            self.lang_manager.get_text("大", "Large"),
+        )
+        for index, label in enumerate(font_scale_labels):
+            self.font_scale_combo.setItemText(index, label)
         self.ai_group.setTitle(self.lang_manager.get_text("AI 出题", "AI Question Generation"))
         self.provider_label.setText(self.lang_manager.get_text("提供商:", "Provider:"))
         self.api_key_label.setText(self.lang_manager.get_text("API 密钥:", "API Key:"))
@@ -680,6 +695,11 @@ class SettingsScreen(QWidget):
         idx = self.lang_combo.findData(self._settings.get("language", "zh"))
         if idx >= 0:
             self.lang_combo.setCurrentIndex(idx)
+        font_scale_index = self.font_scale_combo.findData(
+            self._settings.get("font_scale", DEFAULT_SETTINGS["font_scale"])
+        )
+        if font_scale_index >= 0:
+            self.font_scale_combo.setCurrentIndex(font_scale_index)
 
         # Prefer URL-based detection over stored label, so edited URLs
         # don't show a mismatched provider (e.g. "anthropic" with siliconflow URL).
@@ -777,6 +797,7 @@ class SettingsScreen(QWidget):
                 "hard": self.default_hard_weight_input.value(),
             }
             self._settings["show_timer"] = self.show_timer_checkbox.isChecked()
+            self._settings["font_scale"] = self.font_scale_combo.currentData() or "medium"
 
             # A blank field means "keep the existing key". Only explicit new
             # input changes secret storage; the actual key is never re-rendered.
@@ -793,6 +814,7 @@ class SettingsScreen(QWidget):
             self._settings.pop("ai_api_key", None)
 
             write_json(SETTINGS_FILE, self._settings)
+            apply_font_scale(QApplication.instance(), self._settings["font_scale"])
             self._set_settings_dirty(False, saved=True)
 
             if not silent:
@@ -825,6 +847,7 @@ class SettingsScreen(QWidget):
             self.model_combo,
             self.default_difficulty_combo,
             self.default_template_combo,
+            self.font_scale_combo,
         )
         for combo in controls:
             combo.currentIndexChanged.connect(self._mark_settings_dirty)

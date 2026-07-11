@@ -73,6 +73,7 @@ DEFAULT_DIFFICULTY_WEIGHTS = {
 # ── Default settings ──────────────────────────────────────────
 DEFAULT_SETTINGS = {
     "language": "zh",
+    "font_scale": "medium",
     "ai_api_key": "",
     "ai_provider": "anthropic",
     "ai_base_url": "https://api.anthropic.com/v1",
