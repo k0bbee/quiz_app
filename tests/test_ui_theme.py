@@ -544,6 +544,10 @@ class UiThemeTests(unittest.TestCase):
             settings.data_action_layout.indexOf(settings.export_app_data_btn),
             settings.data_action_layout.indexOf(settings.import_app_data_btn),
         )
+        self.assertLess(
+            settings.data_action_layout.indexOf(settings.import_app_data_btn),
+            settings.data_action_layout.indexOf(settings.reset_progress_btn),
+        )
 
     def test_settings_explains_relative_weights_and_confirms_effective_share(self):
         lang_manager = LanguageManager.instance()
@@ -581,10 +585,6 @@ class UiThemeTests(unittest.TestCase):
         lang_manager.set_language("en")
         self.assertIn("relative weights", settings.weight_help_label.text().lower())
         self.assertEqual("Confirm Effective Shares", settings.refresh_default_weight_preview_btn.text())
-        self.assertLess(
-            settings.data_action_layout.indexOf(settings.import_app_data_btn),
-            settings.data_action_layout.indexOf(settings.reset_progress_btn),
-        )
 
     def test_settings_nav_selects_matching_section(self):
         settings = SettingsScreen()
