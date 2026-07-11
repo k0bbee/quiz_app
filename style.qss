@@ -488,6 +488,30 @@ QCheckBox#answerOption:focus {
     border-color: #8cc8ff;
 }
 
+/* Quiz action checkboxes — toggle-button appearance */
+QCheckBox#quizUncertainCheck,
+QCheckBox#quizReviewCheck {
+    color: #9d9d9d;
+    background-color: transparent;
+    border: 1px solid #3c3c3c;
+    border-radius: 12px;
+    padding: 4px 12px;
+}
+
+QCheckBox#quizUncertainCheck:hover,
+QCheckBox#quizReviewCheck:hover {
+    color: #cccccc;
+    background-color: #2a2d2e;
+    border-color: #5a5a5a;
+}
+
+QCheckBox#quizUncertainCheck:checked,
+QCheckBox#quizReviewCheck:checked {
+    color: #ffffff;
+    background-color: #0e3f63;
+    border-color: #007fd4;
+}
+
 /* Sliders */
 QSlider::groove:horizontal {
     height: 3px;

@@ -743,6 +743,25 @@ class UiThemeTests(unittest.TestCase):
         self.assertNotRegex(quiz.prev_question_btn.text(), r"[^\w\s]")
         self.assertNotRegex(quiz.next_question_btn.text(), r"[^\w\s]")
 
+    def test_quiz_action_checkboxes_styled_as_toggle_buttons(self):
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+
+        toggle_rule = re.search(
+            r"qcheckbox#quizuncertaincheck,\s*qcheckbox#quizreviewcheck\s*\{(?P<body>[^}]*)\}",
+            qss,
+            flags=re.DOTALL,
+        )
+        self.assertIsNotNone(toggle_rule)
+        self.assertRegex(toggle_rule.group("body"), r"border-radius:\s*([6-9]|[1-9][0-9])px")
+        self.assertIn("background-color:", toggle_rule.group("body"))
+        self.assertIn("border:", toggle_rule.group("body"))
+        self.assertIn("padding:", toggle_rule.group("body"))
+
+        self.assertIn("qcheckbox#quizuncertaincheck:hover", qss)
+        self.assertIn("qcheckbox#quizreviewcheck:hover", qss)
+        self.assertIn("qcheckbox#quizuncertaincheck:checked", qss)
+        self.assertIn("qcheckbox#quizreviewcheck:checked", qss)
+
     def test_main_flow_pages_use_theme_button_roles(self):
         for path in (
             Path("ui/screens/topic_selection_screen.py"),
