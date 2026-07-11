@@ -5,7 +5,8 @@ import json
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QTextEdit, QSplitter,
-    QMessageBox, QWidget, QFormLayout, QLineEdit, QComboBox
+    QMessageBox, QWidget, QFormLayout, QLineEdit, QComboBox,
+    QTabWidget, QScrollArea, QFrame,
 )
 from PyQt6.QtCore import Qt
 
@@ -13,6 +14,23 @@ from models.question import Question
 from core.language_manager import LanguageManager
 from ui.widgets.source_refs import format_source_refs
 from utils.constants import Difficulty, QuestionType
+
+
+_TYPE_LABELS = {
+    QuestionType.MULTIPLE_CHOICE: ("单选题", "Single Choice"),
+    QuestionType.TRUE_FALSE: ("判断题", "True / False"),
+    QuestionType.MATCHING: ("配对题", "Matching"),
+    QuestionType.ORDERING: ("排序题", "Ordering"),
+    QuestionType.SCENARIO_CHOICE: ("情景选择题", "Scenario Choice"),
+    QuestionType.FILL_IN_BLANK: ("填空题", "Fill in the Blank"),
+    QuestionType.SHORT_ANSWER: ("简答题", "Short Answer"),
+}
+
+_DIFFICULTY_LABELS = {
+    Difficulty.EASY: ("简单", "Easy"),
+    Difficulty.MEDIUM: ("中等", "Medium"),
+    Difficulty.HARD: ("困难", "Hard"),
+}
 
 
 class QuestionReviewDialog(QDialog):
@@ -105,14 +123,27 @@ class QuestionReviewDialog(QDialog):
         self.preview_label.setObjectName("dialogPreviewLabel")
         right_layout.addWidget(self.preview_label)
 
+        self.review_tabs = QTabWidget()
+        self.review_tabs.setObjectName("reviewTabs")
+
+        preview_page = QWidget()
+        preview_layout = QVBoxLayout(preview_page)
+        preview_layout.setContentsMargins(0, 8, 0, 0)
         self.detail_editor = QTextEdit()
         self.detail_editor.setReadOnly(True)
         self.detail_editor.setObjectName("dialogDetailEditor")
-        right_layout.addWidget(self.detail_editor, 1)
+        preview_layout.addWidget(self.detail_editor)
+        self.review_tabs.addTab(preview_page, self.lang_manager.get_text("预览", "Preview"))
 
+        edit_scroll = QScrollArea()
+        edit_scroll.setWidgetResizable(True)
+        edit_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        edit_page = QWidget()
+        edit_layout = QVBoxLayout(edit_page)
+        edit_layout.setContentsMargins(0, 8, 8, 0)
         self.edit_label = QLabel(self.lang_manager.get_text("编辑当前题目:", "Edit Current Question:"))
         self.edit_label.setObjectName("dialogEditLabel")
-        right_layout.addWidget(self.edit_label)
+        edit_layout.addWidget(self.edit_label)
 
         edit_form = QFormLayout()
         self.zh_stem_editor = QTextEdit()
@@ -158,12 +189,35 @@ class QuestionReviewDialog(QDialog):
         self.en_explanation_editor.setObjectName("reviewEnExplanationEditor")
         self.en_explanation_editor.setMaximumHeight(70)
         edit_form.addRow(self.lang_manager.get_text("英文解析", "EN Explanation"), self.en_explanation_editor)
-        right_layout.addLayout(edit_form)
+        edit_layout.addLayout(edit_form)
 
         self.apply_edit_btn = QPushButton(self.lang_manager.get_text("应用修改", "Apply Edits"))
         self.apply_edit_btn.setObjectName("secondaryButton")
         self.apply_edit_btn.clicked.connect(self._apply_current_edits)
-        right_layout.addWidget(self.apply_edit_btn)
+        edit_layout.addWidget(self.apply_edit_btn)
+        edit_layout.addStretch()
+        edit_scroll.setWidget(edit_page)
+        self.review_tabs.addTab(edit_scroll, self.lang_manager.get_text("编辑", "Edit"))
+
+        source_page = QWidget()
+        source_layout = QVBoxLayout(source_page)
+        source_layout.setContentsMargins(0, 8, 0, 0)
+        self.source_editor = QTextEdit()
+        self.source_editor.setObjectName("reviewSourceEditor")
+        self.source_editor.setReadOnly(True)
+        source_layout.addWidget(self.source_editor)
+        self.review_tabs.addTab(source_page, self.lang_manager.get_text("来源", "Sources"))
+
+        quality_page = QWidget()
+        quality_layout = QVBoxLayout(quality_page)
+        quality_layout.setContentsMargins(0, 8, 0, 0)
+        self.quality_editor = QTextEdit()
+        self.quality_editor.setObjectName("reviewQualityEditor")
+        self.quality_editor.setReadOnly(True)
+        quality_layout.addWidget(self.quality_editor)
+        self.review_tabs.addTab(quality_page, self.lang_manager.get_text("质量问题", "Quality"))
+        self.review_tabs.setCurrentIndex(0)
+        right_layout.addWidget(self.review_tabs, 1)
 
         # Accept/reject for current question
         action_layout = QHBoxLayout()
@@ -221,6 +275,10 @@ class QuestionReviewDialog(QDialog):
         self.reject_btn.setText(self.lang_manager.get_text("拒绝", "Reject"))
         self.edit_label.setText(self.lang_manager.get_text("编辑当前题目:", "Edit Current Question:"))
         self.apply_edit_btn.setText(self.lang_manager.get_text("应用修改", "Apply Edits"))
+        self.review_tabs.setTabText(0, self.lang_manager.get_text("预览", "Preview"))
+        self.review_tabs.setTabText(1, self.lang_manager.get_text("编辑", "Edit"))
+        self.review_tabs.setTabText(2, self.lang_manager.get_text("来源", "Sources"))
+        self.review_tabs.setTabText(3, self.lang_manager.get_text("质量问题", "Quality"))
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
         self.save_btn.setText(self.lang_manager.get_text("保存已接受的题目", "Save Accepted Questions"))
 
@@ -250,32 +308,42 @@ class QuestionReviewDialog(QDialog):
         self.preview_label.setText(f"Q{index + 1} — [{status}]")
 
         # Build detail text
-        lang = self.lang_manager.current
-        details = f"Type: {q.type.value}\n"
-        details += f"Difficulty: {q.difficulty.value}\n"
-        details += f"Topic: {q.topic_title()}\n"
-        details += f"Subtopic: {q.subtopic}\n"
-        details += f"Correct Answer: {q.correct_answer}\n"
-        details += f"\n--- ZH Stem ---\n{q.get_stem('zh')}\n"
+        details = f"{self.lang_manager.get_text('题型', 'Type')}: {self.lang_manager.get_text(*_TYPE_LABELS[q.type])}\n"
+        details += f"{self.lang_manager.get_text('难度', 'Difficulty')}: {self.lang_manager.get_text(*_DIFFICULTY_LABELS[q.difficulty])}\n"
+        details += f"{self.lang_manager.get_text('知识点', 'Topic')}: {q.topic_title()}\n"
+        details += f"{self.lang_manager.get_text('子主题', 'Subtopic')}: {q.subtopic}\n"
+        details += f"{self.lang_manager.get_text('正确答案', 'Correct Answer')}: {q.correct_answer}\n"
+        details += f"\n--- {self.lang_manager.get_text('中文题干', 'Chinese Stem')} ---\n{q.get_stem('zh')}\n"
         if q.get_options('zh'):
-            details += f"\nOptions:\n" + self._format_options_for_preview(q.get_options('zh'))
-        details += f"\n--- EN Stem ---\n{q.get_stem('en')}\n"
+            details += f"\n{self.lang_manager.get_text('选项', 'Options')}:\n" + self._format_options_for_preview(q.get_options('zh'))
+        details += f"\n--- {self.lang_manager.get_text('英文题干', 'English Stem')} ---\n{q.get_stem('en')}\n"
         if q.get_options('en'):
-            details += f"\nOptions:\n" + self._format_options_for_preview(q.get_options('en'))
-        details += f"\n--- Explanation (ZH) ---\n{q.get_explanation('zh')}"
-        details += f"\n--- Explanation (EN) ---\n{q.get_explanation('en')}"
+            details += f"\n{self.lang_manager.get_text('选项', 'Options')}:\n" + self._format_options_for_preview(q.get_options('en'))
+        details += f"\n--- {self.lang_manager.get_text('中文解析', 'Chinese Explanation')} ---\n{q.get_explanation('zh')}"
+        details += f"\n--- {self.lang_manager.get_text('英文解析', 'English Explanation')} ---\n{q.get_explanation('en')}"
         metadata = q.metadata or {}
         source_text = format_source_refs(
             metadata.get("source_refs", []),
             status=metadata.get("source_ref_status"),
         )
-        if source_text:
-            details += f"\n--- Source Evidence ---\n{source_text}"
         warnings = self._review_warnings(q)
-        if warnings:
-            details += "\n--- Review Warnings ---\n" + "\n".join(warnings)
 
         self.detail_editor.setPlainText(details)
+        self.source_editor.setPlainText(
+            source_text
+            or self.lang_manager.get_text(
+                "暂无来源证据。",
+                "No source evidence is available.",
+            )
+        )
+        self.quality_editor.setPlainText(
+            "\n".join(f"• {warning}" for warning in warnings)
+            if warnings
+            else self.lang_manager.get_text(
+                "未发现需要人工确认的质量问题。",
+                "No quality issues require manual review.",
+            )
+        )
         self._populate_edit_fields(q)
 
     def _accept_current(self):

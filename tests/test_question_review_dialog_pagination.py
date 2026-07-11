@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QApplication
 
 from models.course_project import CourseTopic
 from models.question import Question
+from core.language_manager import LanguageManager
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
 from utils.constants import Difficulty, QuestionType
 
@@ -37,6 +38,46 @@ def make_question(index: int) -> Question:
 
 
 class QuestionReviewDialogPaginationTests(unittest.TestCase):
+    def test_review_dialog_separates_preview_edit_source_and_quality_tabs(self):
+        question = make_question(1)
+        question.metadata["source_ref_status"] = "invalid_model_ref"
+        question.metadata["source_refs"] = [{
+            "chunk_id": "source-0007",
+            "source_file": "第21讲 Cache.pdf",
+            "page_or_slide": 8,
+        }]
+
+        dialog = QuestionReviewDialog([question], page_size=10)
+        self.addCleanup(dialog.close)
+
+        self.assertEqual(4, dialog.review_tabs.count())
+        self.assertEqual(["预览", "编辑", "来源", "质量问题"], [
+            dialog.review_tabs.tabText(index)
+            for index in range(dialog.review_tabs.count())
+        ])
+        self.assertEqual(0, dialog.review_tabs.currentIndex())
+        self.assertNotIn("Source Evidence", dialog.detail_editor.toPlainText())
+        self.assertNotIn("Review Warnings", dialog.detail_editor.toPlainText())
+        self.assertIn("第21讲 Cache.pdf", dialog.source_editor.toPlainText())
+        self.assertIn("来源", dialog.quality_editor.toPlainText())
+
+    def test_review_dialog_localizes_preview_and_tab_labels(self):
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
+        dialog = QuestionReviewDialog([make_question(1)], page_size=10)
+        self.addCleanup(dialog.close)
+
+        self.assertIn("题型:", dialog.detail_editor.toPlainText())
+        self.assertIn("知识点:", dialog.detail_editor.toPlainText())
+        self.assertNotIn("Type:", dialog.detail_editor.toPlainText())
+
+        language_manager.set_language("en")
+
+        self.assertEqual("Preview", dialog.review_tabs.tabText(0))
+        self.assertIn("Type:", dialog.detail_editor.toPlainText())
+
     def test_review_dialog_renders_only_current_page_for_large_batches(self):
         questions = [make_question(index) for index in range(25)]
 
@@ -98,8 +139,8 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.addCleanup(dialog.close)
 
         details = dialog.detail_editor.toPlainText()
-        self.assertIn("Topic: Interrupt-driven I/O", details)
-        self.assertNotIn("Topic: interrupt_io", details)
+        self.assertIn("知识点: Interrupt-driven I/O", details)
+        self.assertNotIn("知识点: interrupt_io", details)
 
     def test_review_dialog_displays_source_refs_for_generated_question(self):
         question = make_question(1)
@@ -115,8 +156,7 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         dialog = QuestionReviewDialog([question], page_size=10)
         self.addCleanup(dialog.close)
 
-        details = dialog.detail_editor.toPlainText()
-        self.assertIn("Source Evidence", details)
+        details = dialog.source_editor.toPlainText()
         self.assertIn("第21讲 Cache.pdf", details)
         self.assertIn("page 8", details.lower())
         self.assertIn("source-0007", details)
@@ -147,9 +187,8 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertIn("⚠", dialog.question_list.item(3).text())
 
         dialog.question_list.setCurrentRow(1)
-        details = dialog.detail_editor.toPlainText()
-        self.assertIn("Review Warnings", details)
-        self.assertIn("source", details.lower())
+        details = dialog.quality_editor.toPlainText()
+        self.assertIn("来源", details)
 
     def test_review_dialog_accept_all_keeps_warning_questions_rejected(self):
         good = make_question(1)
@@ -263,9 +302,9 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertIn("⚠", dialog.question_list.item(1).text())
 
         dialog.question_list.setCurrentRow(0)
-        self.assertIn("正确选项", dialog.detail_editor.toPlainText())
+        self.assertIn("正确选项", dialog.quality_editor.toPlainText())
         dialog.question_list.setCurrentRow(1)
-        self.assertIn("解析", dialog.detail_editor.toPlainText())
+        self.assertIn("解析", dialog.quality_editor.toPlainText())
 
     def test_review_dialog_can_edit_topic_title_without_changing_stable_topic_id(self):
         question = make_question(1)
@@ -282,8 +321,8 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertEqual(original_topic_id, edited.topic_id())
         self.assertEqual("进程调度", edited.metadata["topic_title"])
         self.assertEqual(Difficulty.HARD, edited.difficulty)
-        self.assertIn("Topic: 进程调度", dialog.detail_editor.toPlainText())
-        self.assertIn("Difficulty: hard", dialog.detail_editor.toPlainText())
+        self.assertIn("知识点: 进程调度", dialog.detail_editor.toPlainText())
+        self.assertIn("难度: 困难", dialog.detail_editor.toPlainText())
 
     def test_review_dialog_preserves_fill_answer_list_when_editing_explanation(self):
         topic = CourseTopic(topic_id="cache_mapping", title="Cache Mapping")

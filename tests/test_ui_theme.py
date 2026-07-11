@@ -843,6 +843,14 @@ class UiThemeTests(unittest.TestCase):
         ):
             self.assertNotRegex(button.text(), r"[^\w\s]")
 
+    def test_review_tabs_have_dark_selected_hover_and_focus_states(self):
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+
+        self.assertIn("qtabwidget::pane", qss)
+        self.assertIn("qtabbar::tab:selected", qss)
+        self.assertIn("qtabbar::tab:hover", qss)
+        self.assertIn("qtabbar::tab:focus", qss)
+
     def test_course_and_matching_widgets_use_theme_roles(self):
         self.assertNotIn(".setStyleSheet(", Path("ui/screens/course_screen.py").read_text(encoding="utf-8"))
 
