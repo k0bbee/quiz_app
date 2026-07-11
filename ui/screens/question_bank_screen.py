@@ -88,7 +88,7 @@ class QuestionBankScreen(QWidget):
         filter_row.addWidget(self.quality_filter)
 
         self.backfill_source_refs_btn = QPushButton(
-            self.lang_manager.get_text("补全来源证据", "Backfill Sources")
+            self.lang_manager.get_text("关联课程原文", "Link to Course Materials")
         )
         self.backfill_source_refs_btn.setObjectName("secondaryButton")
         self.backfill_source_refs_btn.setToolTip(
@@ -204,7 +204,7 @@ class QuestionBankScreen(QWidget):
         self.save_btn.setText(self.lang_manager.get_text("保存", "Save"))
         self.delete_btn.setText(self.lang_manager.get_text("删除", "Delete"))
         self.backfill_source_refs_btn.setText(
-            self.lang_manager.get_text("补全来源证据", "Backfill Sources")
+            self.lang_manager.get_text("关联课程原文", "Link to Course Materials")
         )
         self.backfill_source_refs_btn.setToolTip(
             self.lang_manager.get_text(
@@ -518,8 +518,8 @@ class QuestionBankScreen(QWidget):
                 self,
                 self.lang_manager.get_text("缺少课程", "No Course"),
                 self.lang_manager.get_text(
-                    "请先选择或导入课程，再补全来源证据。",
-                    "Select or import a course before backfilling source evidence.",
+                    "请先选择或导入课程，再关联课程原文。",
+                    "Select or import a course before linking to course materials.",
                 ),
             )
             return

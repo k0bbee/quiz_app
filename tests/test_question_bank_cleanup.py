@@ -11,6 +11,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QMessageBox, QAbstractItemView
 
 from core import course_index
+from core.language_manager import LanguageManager
 from core.progress_tracker import ProgressManager
 from core.question_bank_maintenance import (
     backfill_source_refs_from_course,
@@ -595,6 +596,25 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertTrue(screen.editor.isReadOnly())
             self.assertFalse(screen.save_btn.isEnabled())
             self.assertFalse(screen.delete_btn.isEnabled())
+
+    def test_question_bank_screen_uses_user_friendly_source_refs_label(self):
+        lang_manager = LanguageManager.instance()
+        previous_lang = lang_manager.current
+        self.addCleanup(lang_manager.set_language, previous_lang)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuestionBankScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+            )
+
+            lang_manager.set_language("zh")
+            self.assertNotIn("补全", screen.backfill_source_refs_btn.text())
+            self.assertNotIn("来源证据", screen.backfill_source_refs_btn.text())
+            self.assertIn("关联课程原文", screen.backfill_source_refs_btn.text())
+
+            lang_manager.set_language("en")
+            self.assertNotIn("Backfill", screen.backfill_source_refs_btn.text())
+            self.assertIn("Link to Course Materials", screen.backfill_source_refs_btn.text())
 
     def test_question_bank_screen_displays_source_refs_in_detail_panel(self):
         with tempfile.TemporaryDirectory() as tmpdir:
