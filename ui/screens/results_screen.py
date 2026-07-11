@@ -20,6 +20,9 @@ class ResultsScreen(QWidget):
     retry_unsure = pyqtSignal()
     retry_review = pyqtSignal()
     retry_all = pyqtSignal()
+    practice_topic_requested = pyqtSignal(str)
+    review_topic_requested = pyqtSignal(str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.current_record: ProgressRecord = None
@@ -63,6 +66,14 @@ class ResultsScreen(QWidget):
         self.next_action_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.next_action_label)
 
+        self.next_action_btn = QPushButton()
+        self.next_action_btn.setObjectName("primaryButton")
+        self.next_action_btn.setVisible(False)
+        self.next_action_btn.clicked.connect(self._emit_next_action)
+        layout.addWidget(self.next_action_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        self._recommended_topic_id = ""
+        self._recommended_action = ""
+
         # Divider
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
@@ -92,7 +103,7 @@ class ResultsScreen(QWidget):
         self.retry_incorrect_btn = QPushButton(
             self.lang_manager.get_text("只重做错题", "Retry Incorrect Only")
         )
-        self.retry_incorrect_btn.setObjectName("primaryButton")
+        self.retry_incorrect_btn.setObjectName("secondaryButton")
         self.retry_incorrect_btn.setMinimumHeight(40)
         self.retry_incorrect_btn.setMinimumWidth(150)
         self.retry_incorrect_btn.clicked.connect(self.retry_incorrect.emit)
@@ -152,6 +163,9 @@ class ResultsScreen(QWidget):
         self.current_record = record
         self._questions = questions or {}
         self._lang = lang
+        self._recommended_topic_id = ""
+        self._recommended_action = ""
+        self.next_action_btn.setVisible(False)
 
         if record is None:
             self.score_label.setText(
@@ -208,6 +222,7 @@ class ResultsScreen(QWidget):
 
         self.topic_stats_label.setText(self._build_topic_summary(record, lang))
         self.next_action_label.setText(self._build_next_action_text(record))
+        self._configure_next_action(record, lang)
 
         # Review cards
         self._clear_reviews()
@@ -246,6 +261,69 @@ class ResultsScreen(QWidget):
         self.retry_incorrect_btn.setEnabled(has_incorrect)
         self.retry_unsure_btn.setEnabled(has_unsure)
         self.retry_review_btn.setEnabled(has_review)
+
+    def _configure_next_action(self, record: ProgressRecord, lang: str) -> None:
+        """Expose one topic-specific action for the most useful next step."""
+        incorrect_topics: dict[str, dict] = {}
+        unsure_topics: dict[str, dict] = {}
+        for answer in record.answers:
+            question = self._questions.get(answer.question_id)
+            if question is None:
+                continue
+            topic_id = topic_value(question.topic)
+            bucket = {
+                "topic_id": topic_id,
+                "label": question.topic_title(),
+            }
+            if not answer.is_correct:
+                entry = incorrect_topics.setdefault(topic_id, {**bucket, "count": 0})
+                entry["count"] += 1
+            elif getattr(answer, "confidence", "sure") == "unsure":
+                entry = unsure_topics.setdefault(topic_id, {**bucket, "count": 0})
+                entry["count"] += 1
+
+        recommendation = self._highest_priority_topic(incorrect_topics)
+        action = "review" if recommendation else ""
+        if recommendation is None:
+            recommendation = self._highest_priority_topic(unsure_topics)
+            action = "practice" if recommendation else ""
+
+        self._recommended_topic_id = recommendation["topic_id"] if recommendation else ""
+        self._recommended_action = action
+        if recommendation is None:
+            self.next_action_btn.setVisible(False)
+            return
+
+        label = recommendation["label"]
+        if action == "review":
+            text = self.lang_manager.get_text(
+                f"复习 {label} 错题",
+                f"Review Incorrect: {label}",
+            )
+        else:
+            text = self.lang_manager.get_text(
+                f"练习 {label}",
+                f"Practice: {label}",
+            )
+        self.next_action_btn.setText(text)
+        self.next_action_btn.setVisible(True)
+
+    @staticmethod
+    def _highest_priority_topic(stats: dict[str, dict]):
+        if not stats:
+            return None
+        return sorted(
+            stats.values(),
+            key=lambda item: (-item["count"], item["topic_id"]),
+        )[0]
+
+    def _emit_next_action(self) -> None:
+        if not self._recommended_topic_id:
+            return
+        if self._recommended_action == "review":
+            self.review_topic_requested.emit(self._recommended_topic_id)
+        elif self._recommended_action == "practice":
+            self.practice_topic_requested.emit(self._recommended_topic_id)
 
     def _build_next_action_text(self, record: ProgressRecord) -> str:
         """Return a compact recommendation for the next learning action."""

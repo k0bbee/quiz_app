@@ -234,6 +234,8 @@ class MainWindow(QMainWindow):
         self.results_screen.retry_unsure.connect(self._on_retry_unsure)
         self.results_screen.retry_review.connect(self._on_retry_review)
         self.results_screen.retry_all.connect(self._on_retry_all)
+        self.results_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
+        self.results_screen.review_topic_requested.connect(self._on_review_progress_topic)
         self.progress_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
         self.progress_screen.review_topic_requested.connect(self._on_review_progress_topic)
         # Language manager

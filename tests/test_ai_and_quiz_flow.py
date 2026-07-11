@@ -1277,6 +1277,93 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertIn("下一步建议", screen.next_action_label.text())
         self.assertIn("先重做错题", screen.next_action_label.text())
 
+    def test_results_screen_recommends_action_for_topic_with_most_incorrect_answers(self):
+        record = ProgressRecord.create_new("set-1")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord(question_id="q-io-1", index_in_session=0, user_answer="B", is_correct=False),
+            AnswerRecord(question_id="q-cache", index_in_session=1, user_answer="B", is_correct=False),
+            AnswerRecord(question_id="q-io-2", index_in_session=2, user_answer="B", is_correct=False),
+        ]
+        record.summary = SessionSummary.compute(record.answers, total_questions=3, total_time=30)
+        questions = {
+            "q-io-1": self._make_question("q-io-1", "io"),
+            "q-cache": self._make_question("q-cache", "cache"),
+            "q-io-2": self._make_question("q-io-2", "io"),
+        }
+        screen = ResultsScreen()
+        emitted = []
+        screen.review_topic_requested.connect(emitted.append)
+
+        screen.set_results(record, questions, "zh")
+
+        self.assertFalse(screen.next_action_btn.isHidden())
+        self.assertIn("io", screen.next_action_btn.text().lower())
+        screen.next_action_btn.click()
+        self.assertEqual(["io"], emitted)
+
+    def test_results_screen_recommends_topic_practice_for_unsure_answers_without_errors(self):
+        record = ProgressRecord.create_new("set-1")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord(
+                question_id="q-cache",
+                index_in_session=0,
+                user_answer="A",
+                is_correct=True,
+                confidence="unsure",
+            ),
+            AnswerRecord(
+                question_id="q-io",
+                index_in_session=1,
+                user_answer="A",
+                is_correct=True,
+            ),
+        ]
+        record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
+        questions = {
+            "q-cache": self._make_question("q-cache", "cache"),
+            "q-io": self._make_question("q-io", "io"),
+        }
+        screen = ResultsScreen()
+        emitted = []
+        screen.practice_topic_requested.connect(emitted.append)
+
+        screen.set_results(record, questions, "zh")
+
+        self.assertFalse(screen.next_action_btn.isHidden())
+        self.assertIn("cache", screen.next_action_btn.text().lower())
+        screen.next_action_btn.click()
+        self.assertEqual(["cache"], emitted)
+
+    def test_main_window_routes_results_topic_actions_through_existing_progress_handlers(self):
+        source = Path("ui/main_window.py").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "self.results_screen.practice_topic_requested.connect(self._on_practice_progress_topic)",
+            source,
+        )
+        self.assertIn(
+            "self.results_screen.review_topic_requested.connect(self._on_review_progress_topic)",
+            source,
+        )
+
+    def test_results_screen_clears_stale_topic_action_when_results_are_unavailable(self):
+        question = self._make_question("q-cache", "cache")
+        record = ProgressRecord.create_new("set-1")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord(question_id=question.question_id, index_in_session=0, user_answer="B", is_correct=False),
+        ]
+        record.summary = SessionSummary.compute(record.answers, total_questions=1, total_time=10)
+        screen = ResultsScreen()
+        screen.set_results(record, {question.question_id: question}, "zh")
+        self.assertFalse(screen.next_action_btn.isHidden())
+
+        screen.set_results(None, {}, "zh")
+
+        self.assertTrue(screen.next_action_btn.isHidden())
+
     def test_results_screen_low_score_uses_review_oriented_badge(self):
         record = ProgressRecord.create_new("set-1")
         record.status = "completed"

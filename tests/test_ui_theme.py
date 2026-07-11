@@ -799,7 +799,8 @@ class UiThemeTests(unittest.TestCase):
         self.assertNotRegex(topic.rename_btn.text(), r"[^\w\s]")
         self.assertNotRegex(topic.start_btn.text(), r"[^\w\s]")
 
-        self.assertEqual("primaryButton", results.retry_incorrect_btn.objectName())
+        self.assertEqual("primaryButton", results.next_action_btn.objectName())
+        self.assertEqual("secondaryButton", results.retry_incorrect_btn.objectName())
         self.assertEqual("secondaryButton", results.retry_unsure_btn.objectName())
         self.assertEqual("secondaryButton", results.retry_all_btn.objectName())
         self.assertEqual("resultsNextActionLabel", results.next_action_label.objectName())
