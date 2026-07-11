@@ -454,9 +454,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, gm("错误", "Error"), gm("未找到该题目集的题目。", "No questions found for this set."))
             return
 
-        submission_mode = self._choose_quiz_submission_mode()
-        if submission_mode is None:
-            return
+        submission_mode = "practice"
 
         self._active_questions = {q.question_id: q for q in questions}
         self.quiz_screen.start_quiz(
@@ -466,36 +464,6 @@ class MainWindow(QMainWindow):
             submission_mode=submission_mode,
         )
         self.navigate_to(self.SCREEN_QUIZ)
-
-    def _choose_quiz_submission_mode(self) -> str | None:
-        """Ask how this quiz should be submitted before entering the quiz screen."""
-        gm = self.lang_manager.get_text
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Question)
-        box.setWindowTitle(gm("选择练习模式", "Choose Practice Mode"))
-        box.setText(
-            gm(
-                "请选择本次练习的反馈方式。逐题练习会即时反馈；模拟考试会在最后统一交卷。",
-                "Choose the feedback mode. Practice gives immediate feedback; mock exam submits at the end.",
-            )
-        )
-        practice_btn = box.addButton(
-            gm("逐题练习（即时反馈）", "Practice with Feedback"),
-            QMessageBox.ButtonRole.AcceptRole,
-        )
-        exam_btn = box.addButton(
-            gm("模拟考试（统一交卷）", "Mock Exam: Submit at End"),
-            QMessageBox.ButtonRole.ActionRole,
-        )
-        box.addButton(QMessageBox.StandardButton.Cancel)
-        box.setDefaultButton(practice_btn)
-        box.exec()
-        clicked = box.clickedButton()
-        if clicked == exam_btn:
-            return "exam"
-        if clicked == practice_btn:
-            return "practice"
-        return None
 
     def _on_export_mock_exam(self, set_id: str):
         """Export a selected question set as a Markdown mock exam."""

@@ -733,7 +733,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual(1, screen.session.answered_count)
             self.assertEqual("下一题", screen.next_question_btn.text())
 
-    def test_main_window_quiz_start_uses_selected_submission_mode(self):
+    def test_main_window_quiz_start_defaults_to_practice_mode(self):
         from ui.main_window import MainWindow
 
         question = self._make_question("q1")
@@ -753,7 +753,6 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             ),
             _active_questions={},
             _show_timer_setting=lambda: False,
-            _choose_quiz_submission_mode=lambda: "practice",
             SCREEN_QUIZ="quiz",
             navigate_to=lambda screen_name: started.update({"screen": screen_name}),
         )
@@ -762,64 +761,6 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
         self.assertEqual("practice", started["submission_mode"])
         self.assertEqual("quiz", started["screen"])
-
-    def test_quiz_mode_dialog_uses_clear_labels_and_defaults_to_practice(self):
-        from ui.main_window import MainWindow
-
-        created = {}
-
-        class FakeMessageBox:
-            class Icon:
-                Question = object()
-
-            class ButtonRole:
-                AcceptRole = object()
-                ActionRole = object()
-
-            class StandardButton:
-                Cancel = object()
-
-            def __init__(self, parent=None):
-                self.buttons = []
-                self.default_button = None
-                created["box"] = self
-
-            def setIcon(self, icon):
-                self.icon = icon
-
-            def setWindowTitle(self, title):
-                self.title = title
-
-            def setText(self, text):
-                self.text = text
-
-            def addButton(self, text_or_button, role=None):
-                if text_or_button is self.StandardButton.Cancel:
-                    button = types.SimpleNamespace(text="Cancel", role="cancel")
-                else:
-                    button = types.SimpleNamespace(text=text_or_button, role=role)
-                self.buttons.append(button)
-                return button
-
-            def setDefaultButton(self, button):
-                self.default_button = button
-
-            def exec(self):
-                return None
-
-            def clickedButton(self):
-                return self.default_button
-
-        shell = types.SimpleNamespace(lang_manager=LanguageManager.instance())
-        with patch("ui.main_window.QMessageBox", FakeMessageBox):
-            selected_mode = MainWindow._choose_quiz_submission_mode(shell)
-
-        labels = [button.text for button in created["box"].buttons]
-        self.assertEqual("practice", selected_mode)
-        self.assertIn("逐题练习（即时反馈）", labels)
-        self.assertIn("模拟考试（统一交卷）", labels)
-        self.assertNotIn("例题模式", labels)
-        self.assertEqual("逐题练习（即时反馈）", created["box"].default_button.text)
 
     def test_quiz_screen_captures_snapshot_with_current_state(self):
         qset = QuestionSet.create_new(
