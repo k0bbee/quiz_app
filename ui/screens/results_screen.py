@@ -278,8 +278,11 @@ class ResultsScreen(QWidget):
         """Remove all review cards from the layout."""
         while self.review_layout.count() > 1:  # Keep the stretch
             item = self.review_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item is not None:
+                w = item.widget()
+                if w is not None:
+                    w.setParent(None)
+                    w.deleteLater()
 
     def _build_topic_summary(self, record: ProgressRecord, lang: str) -> str:
         """Build a compact per-topic accuracy summary for the completed session."""

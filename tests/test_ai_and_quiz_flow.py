@@ -1325,6 +1325,29 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertIn("source-0007", source_text)
         self.assertIn("Cache Address Breakdown", source_text)
 
+    def test_clear_reviews_removes_all_widgets_and_keeps_only_stretch(self):
+        record = ProgressRecord.create_new("set-1")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord(question_id="q1", index_in_session=0, user_answer="A", is_correct=True),
+            AnswerRecord(question_id="q2", index_in_session=1, user_answer="B", is_correct=False),
+            AnswerRecord(question_id="q3", index_in_session=2, user_answer="C", is_correct=True),
+        ]
+        record.summary = SessionSummary.compute(record.answers, total_questions=3, total_time=30)
+        questions = {
+            "q1": self._make_question("q1"),
+            "q2": self._make_question("q2"),
+            "q3": self._make_question("q3"),
+        }
+
+        screen = ResultsScreen()
+        screen.set_results(record, questions, "zh")
+        self.assertGreater(screen.review_layout.count(), 1)
+
+        screen._clear_reviews()
+
+        self.assertEqual(screen.review_layout.count(), 1)
+
     def test_retry_unsure_starts_only_unsure_questions_for_current_course(self):
         from ui.main_window import MainWindow
 
