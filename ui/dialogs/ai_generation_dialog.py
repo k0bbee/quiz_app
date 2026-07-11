@@ -216,9 +216,15 @@ class AIGenerationDialog(QDialog):
         self.assistant_action_layout = QHBoxLayout()
         self.assistant_action_layout.addStretch()
         self.exam_assistant_btn = QPushButton(
-            self.lang_manager.get_text("试卷助手…", "Exam Assistant…")
+            self.lang_manager.get_text("用自然语言描述…", "Describe your exam…")
         )
         self.exam_assistant_btn.setObjectName("secondaryButton")
+        self.exam_assistant_btn.setToolTip(
+            self.lang_manager.get_text(
+                "用自然语言描述考试需求，AI 自动配置生成参数",
+                "Describe your exam in natural language — AI configures generation settings",
+            )
+        )
         self.exam_assistant_btn.clicked.connect(self._open_exam_assistant)
         self.assistant_action_layout.addWidget(self.exam_assistant_btn)
         config_layout.addRow("", self.assistant_action_layout)
@@ -702,7 +708,13 @@ class AIGenerationDialog(QDialog):
         self.generate_btn.setText(self.lang_manager.get_text("生成题目", "Generate Questions"))
         self.partial_recovery_label.setText(self._partial_recovery_hint(self.lang_manager.current))
         self.exam_assistant_btn.setText(
-            self.lang_manager.get_text("试卷助手…", "Exam Assistant…")
+            self.lang_manager.get_text("用自然语言描述…", "Describe your exam…")
+        )
+        self.exam_assistant_btn.setToolTip(
+            self.lang_manager.get_text(
+                "用自然语言描述考试需求，AI 自动配置生成参数",
+                "Describe your exam in natural language — AI configures generation settings",
+            )
         )
 
     def _toggle_all(self, selected: bool):

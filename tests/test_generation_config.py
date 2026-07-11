@@ -2064,6 +2064,25 @@ class GenerationConfigTests(unittest.TestCase):
         }
         self.assertEqual({"process"}, checked)
 
+    def test_exam_assistant_button_uses_descriptive_label_instead_of_jargon(self):
+        from core.language_manager import LanguageManager
+
+        lang_manager = LanguageManager.instance()
+        previous_lang = lang_manager.current
+        self.addCleanup(lang_manager.set_language, previous_lang)
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+
+        lang_manager.set_language("zh")
+        self.assertNotIn("试卷助手", dialog.exam_assistant_btn.text())
+
+        lang_manager.set_language("en")
+        self.assertNotIn("Exam Assistant", dialog.exam_assistant_btn.text())
+
     def test_accepted_exam_assistant_plan_is_applied(self):
         dialog = AIGenerationDialog(
             "course content",
