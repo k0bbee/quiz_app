@@ -2064,6 +2064,58 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual(0, question_bank.load_all_calls)
             self.assertEqual(1, screen.topic_table.rowCount())
 
+    def test_progress_dashboard_collapses_long_recent_history_until_requested(self):
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            progress_manager = ProgressManager(str(root / "progress"))
+            question_bank = QuestionBank(str(root / "questions"))
+            for index in range(6):
+                record = ProgressRecord.create_new(f"set-{index}")
+                record.status = "completed"
+                record.summary = SessionSummary.compute([], total_questions=1, total_time=10)
+                progress_manager.save(record)
+
+            screen = ProgressDashboard(progress_manager, question_bank)
+            screen.refresh()
+
+            self.assertEqual(6, screen.recent_list.count())
+            self.assertTrue(screen.recent_toggle_btn.isVisibleTo(screen))
+            self.assertFalse(screen.recent_list.isVisibleTo(screen))
+            self.assertIn("6", screen.recent_toggle_btn.text())
+            self.assertIn("展开", screen.recent_toggle_btn.text())
+
+            screen.recent_toggle_btn.click()
+
+            self.assertTrue(screen.recent_list.isVisibleTo(screen))
+            self.assertIn("收起", screen.recent_toggle_btn.text())
+
+            screen.refresh()
+
+            self.assertTrue(screen.recent_list.isVisibleTo(screen))
+            self.assertIn("收起", screen.recent_toggle_btn.text())
+
+    def test_progress_dashboard_keeps_short_recent_history_visible(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            progress_manager = ProgressManager(str(root / "progress"))
+            question_bank = QuestionBank(str(root / "questions"))
+            for index in range(5):
+                record = ProgressRecord.create_new(f"set-{index}")
+                record.status = "completed"
+                record.summary = SessionSummary.compute([], total_questions=1, total_time=10)
+                progress_manager.save(record)
+
+            screen = ProgressDashboard(progress_manager, question_bank)
+            screen.refresh()
+
+            self.assertTrue(screen.recent_list.isVisibleTo(screen))
+            self.assertFalse(screen.recent_toggle_btn.isVisibleTo(screen))
+
     def test_progress_dashboard_recommends_low_mastery_topics_for_current_course(self):
         language_manager = LanguageManager.instance()
         previous_language = language_manager.current

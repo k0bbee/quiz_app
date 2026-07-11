@@ -38,6 +38,7 @@ class ProgressDashboard(QWidget):
         self.lang_manager = LanguageManager.instance()
         self.mastery_overrides = mastery_overrides or MasteryOverrideStore()
         self._current_course_id = ""
+        self._recent_history_expanded = False
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -119,6 +120,15 @@ class ProgressDashboard(QWidget):
         # Recent sessions
         self.recent_group = QGroupBox()
         recent_layout = QVBoxLayout(self.recent_group)
+
+        recent_header = QHBoxLayout()
+        recent_header.addStretch()
+        self.recent_toggle_btn = QPushButton()
+        self.recent_toggle_btn.setObjectName("secondaryButton")
+        self.recent_toggle_btn.clicked.connect(self._toggle_recent_history)
+        self.recent_toggle_btn.hide()
+        recent_header.addWidget(self.recent_toggle_btn)
+        recent_layout.addLayout(recent_header)
 
         self.recent_list = QListWidget()
         self.recent_list.setObjectName("dashboardRecentList")
@@ -235,6 +245,25 @@ class ProgressDashboard(QWidget):
                 f"{scope_hint}"
             )
             self.recent_list.addItem(item)
+        self._update_recent_history_visibility()
+
+    def _toggle_recent_history(self) -> None:
+        """Respect the user's choice to reveal or hide a long session history."""
+        self._recent_history_expanded = not self._recent_history_expanded
+        self._update_recent_history_visibility()
+
+    def _update_recent_history_visibility(self) -> None:
+        """Keep short history visible and collapse long history by default."""
+        count = self.recent_list.count()
+        is_long_history = count > 5
+        self.recent_toggle_btn.setVisible(is_long_history)
+        self.recent_list.setVisible(not is_long_history or self._recent_history_expanded)
+        action_zh = "收起" if self._recent_history_expanded else "展开"
+        action_en = "Collapse" if self._recent_history_expanded else "Show"
+        self.recent_toggle_btn.setText(self.lang_manager.get_text(
+            f"{action_zh}最近记录（{count}）",
+            f"{action_en} Recent Sessions ({count})",
+        ))
 
     def set_current_course(self, course_id: str | None):
         """Scope displayed progress to the active course when one is selected."""
