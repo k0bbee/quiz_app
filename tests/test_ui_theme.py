@@ -544,6 +544,43 @@ class UiThemeTests(unittest.TestCase):
             settings.data_action_layout.indexOf(settings.export_app_data_btn),
             settings.data_action_layout.indexOf(settings.import_app_data_btn),
         )
+
+    def test_settings_explains_relative_weights_and_confirms_effective_share(self):
+        lang_manager = LanguageManager.instance()
+        previous_lang = lang_manager.current
+        self.addCleanup(lang_manager.set_language, previous_lang)
+        lang_manager.set_language("zh")
+        settings = SettingsScreen()
+
+        self.assertIn("相对权重", settings.weight_help_label.text())
+        self.assertIn("无需合计 100", settings.weight_help_label.text())
+        self.assertEqual("确认并更新占比", settings.refresh_default_weight_preview_btn.text())
+        self.assertEqual("", settings.default_mc_weight_input.suffix())
+
+        for spinbox in (
+            settings.default_mc_weight_input,
+            settings.default_scenario_weight_input,
+            settings.default_true_false_weight_input,
+            settings.default_fill_blank_weight_input,
+        ):
+            spinbox.setValue(50)
+        settings.refresh_default_weight_preview_btn.click()
+
+        settings.default_mc_weight_input.setValue(100)
+        settings.default_scenario_weight_input.setValue(0)
+        settings.default_true_false_weight_input.setValue(0)
+        settings.default_fill_blank_weight_input.setValue(0)
+        previous_preview = settings.question_type_weight_preview.text()
+
+        self.assertNotIn("选择题 100%", previous_preview)
+
+        settings.refresh_default_weight_preview_btn.click()
+
+        self.assertIn("选择题 100%", settings.question_type_weight_preview.text())
+
+        lang_manager.set_language("en")
+        self.assertIn("relative weights", settings.weight_help_label.text().lower())
+        self.assertEqual("Confirm Effective Shares", settings.refresh_default_weight_preview_btn.text())
         self.assertLess(
             settings.data_action_layout.indexOf(settings.import_app_data_btn),
             settings.data_action_layout.indexOf(settings.reset_progress_btn),

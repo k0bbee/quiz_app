@@ -329,8 +329,16 @@ class SettingsScreen(QWidget):
             self.default_template_combo,
         )
 
+        self.weight_help_label = QLabel(self.lang_manager.get_text(
+            "以下数值是相对权重，无需合计 100。调整后点击确认，下面才会更新最终占比。",
+            "The values below are relative weights and do not need to total 100. Confirm after editing to update the effective shares.",
+        ))
+        self.weight_help_label.setObjectName("settingsProviderHelp")
+        self.weight_help_label.setWordWrap(True)
+        self.practice_form_layout.addRow(self.weight_help_label)
+
         self.question_type_weight_label = QLabel(
-            self.lang_manager.get_text("默认题型权重", "Default question type weights")
+            self.lang_manager.get_text("默认题型相对权重", "Default question type relative weights")
         )
         self.question_type_weight_label.setObjectName("sectionLabel")
         self.practice_form_layout.addRow(self.question_type_weight_label)
@@ -382,7 +390,7 @@ class SettingsScreen(QWidget):
         )
 
         self.difficulty_weight_label = QLabel(
-            self.lang_manager.get_text("默认难度权重", "Default difficulty weights")
+            self.lang_manager.get_text("默认难度相对权重", "Default difficulty relative weights")
         )
         self.difficulty_weight_label.setObjectName("sectionLabel")
         self.practice_form_layout.addRow(self.difficulty_weight_label)
@@ -417,7 +425,7 @@ class SettingsScreen(QWidget):
         )
 
         self.refresh_default_weight_preview_btn = QPushButton(
-            self.lang_manager.get_text("更新权重显示", "Update Weight Preview")
+            self.lang_manager.get_text("确认并更新占比", "Confirm Effective Shares")
         )
         self.refresh_default_weight_preview_btn.setObjectName("secondaryButton")
         self.refresh_default_weight_preview_btn.clicked.connect(self._refresh_default_weight_previews)
@@ -571,8 +579,12 @@ class SettingsScreen(QWidget):
         )
         self._refresh_template_labels()
         self.question_type_weight_label.setText(
-            self.lang_manager.get_text("默认题型权重", "Default question type weights")
+            self.lang_manager.get_text("默认题型相对权重", "Default question type relative weights")
         )
+        self.weight_help_label.setText(self.lang_manager.get_text(
+            "以下数值是相对权重，无需合计 100。调整后点击确认，下面才会更新最终占比。",
+            "The values below are relative weights and do not need to total 100. Confirm after editing to update the effective shares.",
+        ))
         self.default_mc_weight_label.setText(self.lang_manager.get_text("选择题:", "Multiple choice:"))
         self.default_scenario_weight_label.setText(
             self.lang_manager.get_text("情境选择题:", "Scenario choice:")
@@ -587,7 +599,7 @@ class SettingsScreen(QWidget):
             self.lang_manager.get_text("有效占比:", "Effective share:")
         )
         self.difficulty_weight_label.setText(
-            self.lang_manager.get_text("默认难度权重", "Default difficulty weights")
+            self.lang_manager.get_text("默认难度相对权重", "Default difficulty relative weights")
         )
         self.default_easy_weight_label.setText(self.lang_manager.get_text("简单:", "Easy:"))
         self.default_medium_weight_label.setText(self.lang_manager.get_text("中等:", "Medium:"))
@@ -596,7 +608,7 @@ class SettingsScreen(QWidget):
             self.lang_manager.get_text("有效占比:", "Effective share:")
         )
         self.refresh_default_weight_preview_btn.setText(
-            self.lang_manager.get_text("更新权重显示", "Update Weight Preview")
+            self.lang_manager.get_text("确认并更新占比", "Confirm Effective Shares")
         )
         self.show_timer_checkbox.setText(
             self.lang_manager.get_text("练习时显示计时器", "Show timer during practice")
@@ -863,7 +875,6 @@ class SettingsScreen(QWidget):
         spinbox = WheelSafeSpinBox()
         spinbox.setRange(0, 100)
         spinbox.setSingleStep(5)
-        spinbox.setSuffix("%")
         spinbox.setValue(value)
         return spinbox
 
