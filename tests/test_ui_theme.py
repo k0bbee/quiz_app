@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QCloseEvent, QPalette
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QGridLayout, QLabel, QListWidget, QPushButton, QSplitter
 
 from core.language_manager import LanguageManager
@@ -36,12 +36,15 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class UiThemeTests(unittest.TestCase):
-    def tearDown(self):
-        """Close stray top-level widgets so PyQt does not crash during process teardown."""
+    def doCleanups(self):
+        """Run registered cleanups before draining deferred Qt deletions."""
+        result = super().doCleanups()
         for widget in QApplication.topLevelWidgets():
             widget.close()
             widget.deleteLater()
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         _APP.processEvents()
+        return result
 
     def test_stylesheet_font_scaling_is_based_on_original_sizes(self):
         from ui.font_scale import scale_stylesheet_font_sizes
