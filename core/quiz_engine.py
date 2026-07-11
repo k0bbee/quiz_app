@@ -132,7 +132,7 @@ class QuizSession(QObject):
             random.shuffle(self._questions)  # shuffle for fresh experience
         self._current_index = 0
         self._answers.clear()
-        self._language = language
+        self._language = language if language in ("zh", "en") else "zh"
         self._start_time = time.time()
 
         # Create progress record

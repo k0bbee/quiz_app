@@ -262,6 +262,23 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertEqual(2, session.current_index)
         self.assertEqual(QuizState.SHOWING_FEEDBACK, session.state)
 
+    def test_quiz_session_falls_back_to_zh_for_invalid_language(self):
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["test"],
+            question_ids=[],
+        )
+        question = self._make_question("q1")
+
+        session = QuizSession()
+        session.start(qset, [question], "fr")
+        self.assertEqual("zh", session._language)
+
+        session2 = QuizSession()
+        session2.start(qset, [question], "en")
+        self.assertEqual("en", session2._language)
+
     def test_quiz_screen_supports_question_preview_filter_and_free_navigation(self):
         language_manager = LanguageManager.instance()
         previous_language = language_manager.current
