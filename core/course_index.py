@@ -167,11 +167,11 @@ def retrieve_course_context(
 ) -> str:
     """Retrieve relevant context from a project, using cached scoring."""
     topic_key = tuple(sorted(str(t) for t in selected_topics))
-    payload_key = (project.course_id, project.updated_at)
+    payload_key = (project.course_id, project.updated_at, project.summary_path)
     if payload_key not in _PAYLOAD_CACHE:
         _PAYLOAD_CACHE[payload_key] = _project_payload(project)
         _trim_payload_cache()
-    return _retrieve_cached(project.course_id, project.updated_at, topic_key, max_chars)
+    return _retrieve_cached(project.course_id, project.updated_at, project.summary_path, topic_key, max_chars)
 
 
 def retrieve_course_source_refs(
@@ -239,13 +239,14 @@ def enrich_course_source_refs(project: CourseProject, source_refs) -> list[dict]
 def _retrieve_cached(
     course_id: str,
     updated_at: str,
+    summary_path: str,
     topic_key: tuple[str, ...],
     max_chars: int,
 ) -> str:
     """Cached retrieval; payload is a compact serialized index/summary string."""
     import json
 
-    payload = _PAYLOAD_CACHE.get((course_id, updated_at), "")
+    payload = _PAYLOAD_CACHE.get((course_id, updated_at, summary_path), "")
     try:
         data = json.loads(payload)
     except (json.JSONDecodeError, TypeError):

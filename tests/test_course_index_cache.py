@@ -549,5 +549,50 @@ class CourseIndexCacheTests(unittest.TestCase):
         self.assertIn("DMA transfers", context)
 
 
+    def test_payload_cache_is_isolated_by_project_directory(self):
+        summary_a = "## Cache\nDirect-mapped cache uses the lowest address bits."
+        summary_b = "## VM\nVirtual memory uses page tables and TLBs."
+        project_a = CourseProject(
+            course_id="same-id",
+            title="Sys A",
+            source_folder="",
+            summary_markdown=summary_a,
+            summary_path="/a/same-id_summary.md",
+            topics=[],
+            documents=[{
+                "path": "summary.md",
+                "title": "summary",
+                "extension": ".md",
+                "_course_index": course_index.build_course_index(summary_a),
+            }],
+            created_at="2026-07-01T00:00:00+00:00",
+            updated_at="2026-07-01T00:00:00+00:00",
+        )
+        project_b = CourseProject(
+            course_id="same-id",
+            title="Sys B",
+            source_folder="",
+            summary_markdown=summary_b,
+            summary_path="/b/same-id_summary.md",
+            topics=[],
+            documents=[{
+                "path": "summary.md",
+                "title": "summary",
+                "extension": ".md",
+                "_course_index": course_index.build_course_index(summary_b),
+            }],
+            created_at="2026-07-01T00:00:00+00:00",
+            updated_at="2026-07-01T00:00:00+00:00",
+        )
+
+        ctx_a = course_index.retrieve_course_context(project_a, ["cache"], max_chars=500)
+        ctx_b = course_index.retrieve_course_context(project_b, ["vm"], max_chars=500)
+
+        self.assertIn("Direct-mapped", ctx_a)
+        self.assertNotIn("Direct-mapped", ctx_b)
+        self.assertIn("page tables", ctx_b)
+        self.assertNotIn("page tables", ctx_a)
+
+
 if __name__ == "__main__":
     unittest.main()
