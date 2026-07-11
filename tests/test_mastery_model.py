@@ -45,6 +45,15 @@ def _question(question_id: str, topic: str) -> Question:
     )
 
 
+def test_skipped_answers_do_not_change_mastery_or_review_priority():
+    skipped = _answer("q-skipped", False)
+    skipped.skipped = True
+    records = [_record("skip", "2026-06-01T00:00:00+00:00", [skipped])]
+
+    assert "q-skipped" not in build_question_mastery(records)
+    assert prioritize_review_question_ids(records) == []
+
+
 def test_prioritizes_repeated_and_recent_wrong_questions_before_recovered_old_mistakes():
     records = [
         _record(

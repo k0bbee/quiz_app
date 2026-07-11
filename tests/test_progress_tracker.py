@@ -9,6 +9,21 @@ from utils.json_io import write_json
 
 
 class ProgressTrackerTests(unittest.TestCase):
+    def test_session_summary_distinguishes_skipped_from_incorrect_answers(self):
+        answers = [
+            AnswerRecord("q-right", 0, "A", True),
+            AnswerRecord("q-wrong", 1, "B", False),
+            AnswerRecord("q-skip", 2, None, False, skipped=True),
+        ]
+
+        summary = SessionSummary.compute(answers, total_questions=3, total_time=30)
+
+        self.assertEqual(2, summary.answered)
+        self.assertEqual(1, summary.correct)
+        self.assertEqual(1, summary.incorrect)
+        self.assertEqual(1, summary.skipped)
+        self.assertEqual(33.3, summary.to_dict()["score_percentage"])
+
     def test_load_all_logs_invalid_progress_records_with_filename(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             progress_dir = Path(tmpdir) / "progress"
@@ -71,6 +86,22 @@ class ProgressTrackerTests(unittest.TestCase):
             incorrect = manager.get_incorrect_question_ids()
 
             self.assertEqual({"q-completed-wrong"}, set(incorrect))
+
+    def test_get_incorrect_question_ids_excludes_skipped_answers(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            completed = ProgressRecord.create_new("set-ok")
+            completed.status = "completed"
+            completed.answers = [
+                AnswerRecord("q-skipped", 0, None, False, skipped=True),
+                AnswerRecord("q-wrong", 1, "B", False),
+            ]
+            completed.summary = SessionSummary.compute(
+                completed.answers, total_questions=2, total_time=10
+            )
+            manager.save(completed)
+
+            self.assertEqual(["q-wrong"], manager.get_incorrect_question_ids())
 
     def test_get_latest_abandoned_record_scans_files_without_loading_all_records(self):
         with tempfile.TemporaryDirectory() as tmpdir:

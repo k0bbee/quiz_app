@@ -21,6 +21,7 @@ class QuestionReviewCard(QFrame):
         self._question = None
         self._user_answer = None
         self._is_correct = None
+        self._skipped = False
 
         self.setFrameStyle(QFrame.Shape.StyledPanel | QFrame.Shadow.Plain)
         self.setObjectName("reviewCard")
@@ -69,12 +70,21 @@ class QuestionReviewCard(QFrame):
         if self._question is not None:
             self._render()
 
-    def set_result(self, index: int, question: Question, user_answer, is_correct: bool, lang: str = None):
+    def set_result(
+        self,
+        index: int,
+        question: Question,
+        user_answer,
+        is_correct: bool,
+        lang: str = None,
+        skipped: bool = False,
+    ):
         """Populate the card with question result data."""
         self._index = index
         self._question = question
         self._user_answer = user_answer
         self._is_correct = is_correct
+        self._skipped = skipped
         self._render()
 
     def _render(self):
@@ -85,7 +95,10 @@ class QuestionReviewCard(QFrame):
         self.index_label.setText(f"Q{self._index + 1}")
 
         # Icon + result text
-        if self._is_correct:
+        if self._skipped:
+            self.icon_label.setText("—")
+            self.result_label.setText(self.lang_manager.get_text("未答", "Unanswered"))
+        elif self._is_correct:
             self.icon_label.setText("✅")
             self.result_label.setText(self.lang_manager.get_text("正确 ✓", "Correct ✓"))
         else:

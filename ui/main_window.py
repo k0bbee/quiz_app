@@ -594,7 +594,11 @@ class MainWindow(QMainWindow):
         if not record:
             return
 
-        incorrect_ids = [a.question_id for a in record.answers if not a.is_correct]
+        incorrect_ids = [
+            answer.question_id
+            for answer in record.answers
+            if not answer.skipped and not answer.is_correct
+        ]
         if not incorrect_ids:
             QMessageBox.information(
                 self,
@@ -623,7 +627,7 @@ class MainWindow(QMainWindow):
         unsure_ids = [
             answer.question_id
             for answer in record.answers
-            if getattr(answer, "confidence", "sure") == "unsure"
+            if not answer.skipped and getattr(answer, "confidence", "sure") == "unsure"
         ]
         if not unsure_ids:
             QMessageBox.information(

@@ -1205,6 +1205,51 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
         self.assertIn("答对但不确定: 1", screen.stats_label.text())
 
+    def test_results_screen_distinguishes_skipped_from_incorrect(self):
+        record = ProgressRecord.create_new("set-1")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord("q-right", 0, "A", True),
+            AnswerRecord("q-wrong", 1, "B", False),
+            AnswerRecord("q-skip", 2, None, False, skipped=True),
+        ]
+        record.summary = SessionSummary.compute(record.answers, total_questions=3, total_time=30)
+
+        screen = ResultsScreen()
+        screen.set_results(record, {}, "zh")
+
+        self.assertEqual((1, 1, 1), (
+            screen.summary_bar._correct,
+            screen.summary_bar._incorrect,
+            screen.summary_bar._unanswered,
+        ))
+        self.assertIn("错误: 1", screen.stats_label.text())
+        self.assertIn("未答: 1", screen.stats_label.text())
+        self.assertIn("重做错题（1 题）", screen.next_action_label.text())
+
+    def test_retry_incorrect_excludes_skipped_answers(self):
+        from ui.main_window import MainWindow
+
+        record = ProgressRecord.create_new("set-1")
+        record.answers = [
+            AnswerRecord("q-skip", 0, None, False, skipped=True),
+            AnswerRecord("q-wrong", 1, "B", False),
+        ]
+        requested = []
+        question_bank = types.SimpleNamespace(
+            get_many=lambda ids, course_id="": requested.extend(ids) or []
+        )
+        shell = types.SimpleNamespace(
+            results_screen=types.SimpleNamespace(current_record=record),
+            lang_manager=LanguageManager.instance(),
+            question_bank=question_bank,
+            _current_course_id=lambda: "course-a",
+        )
+
+        MainWindow._on_retry_incorrect(shell)
+
+        self.assertEqual(["q-wrong"], requested)
+
     def test_results_screen_enables_retry_unsure_action_when_needed(self):
         record = ProgressRecord.create_new("set-1")
         record.status = "completed"

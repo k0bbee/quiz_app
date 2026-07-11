@@ -182,6 +182,8 @@ def _chronological_answers(records: list[ProgressRecord]) -> list[tuple[Progress
     for record_index, record in enumerate(records):
         record_time = _parse_timestamp(record.completed_at or record.started_at)
         for answer_index, answer in enumerate(record.answers):
+            if answer.skipped:
+                continue
             answer_time = _parse_timestamp(answer.attempted_at) if answer.attempted_at else record_time
             rows.append((answer_time, record_index, answer_index, record, answer))
     rows.sort(key=lambda row: (row[0], row[1], row[2]))

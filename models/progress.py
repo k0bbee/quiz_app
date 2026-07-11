@@ -55,6 +55,7 @@ class SessionSummary:
     answered: int
     correct: int
     incorrect: int = 0
+    skipped: int = 0
     score_percentage: float = 0.0
     total_time_seconds: float = 0.0
     average_time_per_question: float = 0.0
@@ -65,6 +66,7 @@ class SessionSummary:
             "answered": self.answered,
             "correct": self.correct,
             "incorrect": self.incorrect,
+            "skipped": self.skipped,
             "score_percentage": round(self.score_percentage, 1),
             "total_time_seconds": round(self.total_time_seconds, 1),
             "average_time_per_question": round(self.average_time_per_question, 1),
@@ -77,6 +79,7 @@ class SessionSummary:
             answered=data.get("answered", 0),
             correct=data.get("correct", 0),
             incorrect=data.get("incorrect", 0),
+            skipped=data.get("skipped", 0),
             score_percentage=data.get("score_percentage", 0.0),
             total_time_seconds=data.get("total_time_seconds", 0.0),
             average_time_per_question=data.get("average_time_per_question", 0.0),
@@ -85,9 +88,10 @@ class SessionSummary:
     @classmethod
     def compute(cls, answers: list[AnswerRecord], total_questions: int, total_time: float) -> SessionSummary:
         """Compute summary from a list of answers."""
-        answered = len(answers)
+        skipped = sum(1 for answer in answers if answer.skipped)
+        answered = len(answers) - skipped
         correct = sum(1 for a in answers if a.is_correct)
-        incorrect = answered - correct
+        incorrect = sum(1 for answer in answers if not answer.skipped and not answer.is_correct)
         score = (correct / total_questions * 100) if total_questions > 0 else 0.0
         avg_time = (total_time / answered) if answered > 0 else 0.0
         return cls(
@@ -95,6 +99,7 @@ class SessionSummary:
             answered=answered,
             correct=correct,
             incorrect=incorrect,
+            skipped=skipped,
             score_percentage=score,
             total_time_seconds=total_time,
             average_time_per_question=avg_time,
@@ -132,6 +137,18 @@ class ProgressRecord:
     def from_dict(cls, data: dict) -> ProgressRecord:
         answers = [AnswerRecord.from_dict(a) for a in data.get("answers", [])]
         summary = SessionSummary.from_dict(data["summary"]) if data.get("summary") else None
+        if summary is not None and answers:
+            corrected = SessionSummary.compute(
+                answers,
+                total_questions=summary.total_questions,
+                total_time=summary.total_time_seconds,
+            )
+            summary.answered = corrected.answered
+            summary.correct = corrected.correct
+            summary.incorrect = corrected.incorrect
+            summary.skipped = corrected.skipped
+            summary.score_percentage = corrected.score_percentage
+            summary.average_time_per_question = corrected.average_time_per_question
         return cls(
             progress_id=data.get("progress_id", ""),
             set_id=data.get("set_id", ""),

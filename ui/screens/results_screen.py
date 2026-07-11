@@ -193,8 +193,17 @@ class ResultsScreen(QWidget):
 
         self.score_label.setText(f"{emoji} {score:.0f}%")
 
-        # Summary bar
-        self.summary_bar.set_values(summary.correct, summary.incorrect, 0)
+        # Derive outcomes from answer records so legacy summaries are corrected too.
+        correct_count = sum(1 for answer in record.answers if answer.is_correct)
+        skipped_count = sum(1 for answer in record.answers if answer.skipped)
+        incorrect_count = sum(
+            1 for answer in record.answers if not answer.skipped and not answer.is_correct
+        )
+        if not record.answers:
+            correct_count = summary.correct
+            incorrect_count = summary.incorrect
+            skipped_count = getattr(summary, "skipped", 0)
+        self.summary_bar.set_values(correct_count, incorrect_count, skipped_count)
 
         # Stats
         unsure_correct = sum(
@@ -205,13 +214,13 @@ class ResultsScreen(QWidget):
         review_count = len(getattr(record, "marked_review_question_ids", []))
         self.stats_label.setText(
             self.lang_manager.get_text(
-                f"正确: {summary.correct} | 错误: {summary.incorrect} | "
+                f"正确: {correct_count} | 错误: {incorrect_count} | 未答: {skipped_count} | "
                 f"答对但不确定: {unsure_correct} | "
                 f"复查: {review_count} | "
                 f"总计: {summary.total_questions} | "
                 f"用时: {summary.total_time_seconds:.0f}秒 | "
                 f"平均: {summary.average_time_per_question:.1f}秒/题",
-                f"Correct: {summary.correct} | Incorrect: {summary.incorrect} | "
+                f"Correct: {correct_count} | Incorrect: {incorrect_count} | Unanswered: {skipped_count} | "
                 f"Correct but unsure: {unsure_correct} | "
                 f"Review: {review_count} | "
                 f"Total: {summary.total_questions} | "
@@ -230,11 +239,16 @@ class ResultsScreen(QWidget):
             card = QuestionReviewCard()
             q = self._questions.get(answer.question_id)
             if q:
-                card.set_result(i, q, answer.user_answer, answer.is_correct, lang)
+                card.set_result(
+                    i, q, answer.user_answer, answer.is_correct, lang, skipped=answer.skipped
+                )
             else:
                 # Minimal card without question data
                 card.index_label.setText(f"Q{i + 1}")
-                if answer.is_correct:
+                if answer.skipped:
+                    card.icon_label.setText("—")
+                    card.result_label.setText(self.lang_manager.get_text("未答", "Unanswered"))
+                elif answer.is_correct:
                     card.icon_label.setText("✅")
                     card.result_label.setText(self.lang_manager.get_text("正确", "Correct"))
                 else:
@@ -255,7 +269,7 @@ class ResultsScreen(QWidget):
             self.review_layout.insertWidget(self.review_layout.count() - 1, card)
 
         # Update retry buttons
-        has_incorrect = any(not a.is_correct for a in record.answers)
+        has_incorrect = any(not a.skipped and not a.is_correct for a in record.answers)
         has_unsure = any(getattr(a, "confidence", "sure") == "unsure" for a in record.answers)
         has_review = bool(getattr(record, "marked_review_question_ids", []))
         self.retry_incorrect_btn.setEnabled(has_incorrect)
@@ -267,6 +281,8 @@ class ResultsScreen(QWidget):
         incorrect_topics: dict[str, dict] = {}
         unsure_topics: dict[str, dict] = {}
         for answer in record.answers:
+            if answer.skipped:
+                continue
             question = self._questions.get(answer.question_id)
             if question is None:
                 continue
@@ -327,11 +343,13 @@ class ResultsScreen(QWidget):
 
     def _build_next_action_text(self, record: ProgressRecord) -> str:
         """Return a compact recommendation for the next learning action."""
-        incorrect_count = sum(1 for answer in record.answers if not answer.is_correct)
+        incorrect_count = sum(
+            1 for answer in record.answers if not answer.skipped and not answer.is_correct
+        )
         unsure_count = sum(
             1
             for answer in record.answers
-            if getattr(answer, "confidence", "sure") == "unsure"
+            if not answer.skipped and getattr(answer, "confidence", "sure") == "unsure"
         )
         if incorrect_count > 0:
             return self.lang_manager.get_text(
@@ -372,6 +390,8 @@ class ResultsScreen(QWidget):
 
         stats = {}
         for answer in record.answers:
+            if answer.skipped:
+                continue
             question = self._questions.get(answer.question_id)
             if not question:
                 continue

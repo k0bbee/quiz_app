@@ -174,7 +174,7 @@ class ProgressManager:
             if record.status != "completed":
                 continue
             for answer in record.answers:
-                if not answer.is_correct:
+                if not answer.skipped and not answer.is_correct:
                     incorrect.add(answer.question_id)
         return sorted(incorrect)
 
