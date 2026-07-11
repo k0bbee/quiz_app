@@ -8,7 +8,7 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication, QComboBox, QMessageBox, QRadioButton
 
 from ai.llm_client import LLMClient
 from models.progress import AnswerRecord, ProgressRecord, SessionSummary
@@ -416,6 +416,22 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         stale_button.setChecked(True)
 
         self.assertEqual([], emitted)
+
+    def test_multiple_choice_removes_old_buttons_from_widget_tree_immediately(self):
+        widget = MultipleChoiceWidget()
+        widget.set_options(["A", "B", "C", "D"])
+
+        widget.set_options(["E", "F", "G", "H"])
+
+        self.assertEqual(4, len(widget.findChildren(QRadioButton)))
+
+    def test_matching_removes_old_dynamic_rows_from_widget_tree_immediately(self):
+        widget = MatchingWidget()
+        widget.set_options({"left": ["CPU", "GPU"], "right": ["处理器", "图形"]})
+
+        widget.set_options({"left": ["RAM"], "right": ["内存"]})
+
+        self.assertEqual(1, len(widget.findChildren(QComboBox)))
 
     def test_ordering_widget_tracks_whether_user_reordered_default_order(self):
         area = AnswerArea()

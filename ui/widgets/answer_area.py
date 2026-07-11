@@ -14,6 +14,13 @@ from core.language_manager import LanguageManager
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 
 
+def _retire_dynamic_widget(widget: QWidget) -> None:
+    """Remove a rebuilt answer control from the live widget tree immediately."""
+    widget.hide()
+    widget.setParent(None)
+    widget.deleteLater()
+
+
 def _option_id(option) -> str:
     """Return the stable ID for a question option, falling back to its label."""
     if isinstance(option, dict):
@@ -239,7 +246,7 @@ class MultipleChoiceWidget(QWidget):
                 pass
             self.group.removeButton(btn)
             self.layout().removeWidget(btn)
-            btn.deleteLater()
+            _retire_dynamic_widget(btn)
         self.buttons.clear()
 
 
@@ -450,7 +457,7 @@ class MatchingWidget(QWidget):
             return
         widget = item.widget()
         if widget:
-            widget.deleteLater()
+            _retire_dynamic_widget(widget)
             return
         layout = item.layout()
         if layout:
