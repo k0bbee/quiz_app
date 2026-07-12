@@ -297,6 +297,19 @@ class UiThemeTests(unittest.TestCase):
         self.assertTrue(accepted_event.isAccepted())
         main_window.settings_screen.save_settings.assert_called_once_with(silent=True)
 
+    def test_close_event_waits_for_course_worker_shutdown_without_blocking(self):
+        main_window = MainWindow()
+        self.addCleanup(main_window.deleteLater)
+        main_window.settings_screen.save_settings = Mock()
+        main_window._course_screen.request_shutdown = Mock(return_value=False)
+        event = QCloseEvent()
+
+        main_window.closeEvent(event)
+
+        self.assertFalse(event.isAccepted())
+        main_window._course_screen.request_shutdown.assert_called_once_with()
+        main_window.settings_screen.save_settings.assert_not_called()
+
     def test_semantic_action_buttons_keep_tab_focus_without_mouse_focus(self):
         load_stylesheet(_APP)
 

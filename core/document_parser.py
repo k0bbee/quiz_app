@@ -16,6 +16,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from core.ocr_runtime import configure_pytesseract
+from core.background_task import TaskControl
 
 
 SUPPORTED_EXTENSIONS = {".pdf", ".pptx", ".docx", ".txt", ".md"}
@@ -57,7 +58,11 @@ class DocumentParser:
         r"^复习辅助\.md$",
     ]
 
-    def parse_folder(self, folder: str) -> list[ExtractedDocument]:
+    def parse_folder(
+        self,
+        folder: str,
+        task: TaskControl | None = None,
+    ) -> list[ExtractedDocument]:
         """Parse supported files under a folder recursively.
 
         Automatically skips common generated-output directories (data/, __pycache__/,
@@ -67,20 +72,24 @@ class DocumentParser:
         if not root.exists() or not root.is_dir():
             raise FileNotFoundError(f"Folder not found: {folder}")
 
+        paths = [
+            path
+            for path in sorted(root.rglob("*"), key=_source_sort_key)
+            if path.is_file()
+            and not path.name.startswith("~$")
+            and not self._should_skip_path(path)
+            and path.suffix.lower() in SUPPORTED_EXTENSIONS
+        ]
+        if task is not None:
+            task.report("files_found", total=len(paths), detail=str(root))
+
         docs: list[ExtractedDocument] = []
         seen_fingerprints: set[str] = set()
         seen_signatures: list[set[str]] = []
-        for path in sorted(root.rglob("*"), key=_source_sort_key):
-            if not path.is_file():
-                continue
-            if path.name.startswith("~$"):
-                continue
-            if self._should_skip_path(path):
-                continue
-            ext = path.suffix.lower()
-            if ext not in SUPPORTED_EXTENSIONS:
-                continue
-            doc = self.parse_file(path)
+        for index, path in enumerate(paths, start=1):
+            if task is not None:
+                task.report("parsing_file", index, len(paths), path.name)
+            doc = self.parse_file(path, task=task)
             if _is_auxiliary_text_document(doc):
                 continue
             fingerprint = _content_fingerprint(doc.text)
@@ -103,23 +112,25 @@ class DocumentParser:
         name = path.name.lower()
         return any(re.match(pattern, name, flags=re.IGNORECASE) for pattern in self._SKIP_FILE_PATTERNS)
 
-    def parse_file(self, path: Path) -> ExtractedDocument:
+    def parse_file(self, path: Path, task: TaskControl | None = None) -> ExtractedDocument:
         """Parse one supported file."""
         path = Path(path)
         ext = path.suffix.lower()
         title = path.stem
         cache_key = _file_cache_key(path)
+        if task is not None:
+            task.check_cancelled()
         if cache_key in self._FILE_CACHE:
             return _clone_document(self._FILE_CACHE[cache_key])
 
         if ext in {".txt", ".md"}:
             doc = self._parse_text(path)
         elif ext == ".pptx":
-            doc = self._parse_pptx(path)
+            doc = self._parse_pptx(path, task=task)
         elif ext == ".docx":
             doc = self._parse_docx(path)
         elif ext == ".pdf":
-            doc = self._parse_pdf(path)
+            doc = self._parse_pdf(path, task=task)
         else:
             doc = ExtractedDocument(str(path), title, ext, warnings=[f"Unsupported file type: {ext}"])
 
@@ -133,7 +144,7 @@ class DocumentParser:
         text = _normalize_text(text)
         return ExtractedDocument(str(path), path.stem, path.suffix.lower(), text=text, pages=[text])
 
-    def _parse_pptx(self, path: Path) -> ExtractedDocument:
+    def _parse_pptx(self, path: Path, task: TaskControl | None = None) -> ExtractedDocument:
         pages: list[str] = []
         warnings: list[str] = []
         try:
@@ -142,7 +153,9 @@ class DocumentParser:
                     [name for name in zf.namelist() if re.match(r"ppt/slides/slide\d+\.xml$", name)],
                     key=lambda name: int(re.search(r"slide(\d+)\.xml$", name).group(1)),
                 )
-                for slide_name in slide_names:
+                for index, slide_name in enumerate(slide_names, start=1):
+                    if task is not None:
+                        task.report("parsing_page", index, len(slide_names), path.name)
                     xml = zf.read(slide_name)
                     page = _extract_xml_text(xml)
                     if page:
@@ -164,7 +177,7 @@ class DocumentParser:
         text = _normalize_text("\n".join(paragraphs))
         return ExtractedDocument(str(path), path.stem, ".docx", text, [text] if text else [], warnings)
 
-    def _parse_pdf(self, path: Path) -> ExtractedDocument:
+    def _parse_pdf(self, path: Path, task: TaskControl | None = None) -> ExtractedDocument:
         warnings: list[str] = []
         pages: list[str] = []
         numbered_pages: list[tuple[int, str]] = []
@@ -172,7 +185,10 @@ class DocumentParser:
             import fitz  # type: ignore
 
             with fitz.open(path) as doc:
+                total_pages = len(doc)
                 for i, page in enumerate(doc):
+                    if task is not None:
+                        task.report("parsing_page", i + 1, total_pages, path.name)
                     text = page.get_text("text").strip()
                     if text:
                         normalized = _normalize_text(text)

@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
 from core.course_initializer import CourseInitializer
+from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
 from core.ocr_runtime import OCR_REMEDIATION
 from core.topic_identity_migration import TopicIdentityRepairReport, repair_question_topic_identities
 from models.course_project import CourseProjectManager
@@ -43,6 +44,7 @@ class CourseScreen(QWidget):
         self._regen_worker = None
         self._summary_markdown = ""
         self._summary_raw_mode = False
+        self._last_task_progress = None
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self.refresh()
@@ -114,9 +116,20 @@ class CourseScreen(QWidget):
         layout.addWidget(self.import_group)
 
         # Progress bar for import
+        progress_row = QHBoxLayout()
+        self.task_status_label = QLabel()
+        self.task_status_label.setObjectName("courseTaskStatusLabel")
+        self.task_status_label.setVisible(False)
+        progress_row.addWidget(self.task_status_label, 1)
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
-        layout.addWidget(self.progress_bar)
+        progress_row.addWidget(self.progress_bar, 2)
+        self.cancel_task_btn = QPushButton(self.lang_manager.get_text("停止", "Stop"))
+        self.cancel_task_btn.setObjectName("secondaryButton")
+        self.cancel_task_btn.setVisible(False)
+        self.cancel_task_btn.clicked.connect(self._cancel_course_task)
+        progress_row.addWidget(self.cancel_task_btn)
+        layout.addLayout(progress_row)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
@@ -233,15 +246,118 @@ class CourseScreen(QWidget):
             )
             return
 
-        self.init_btn.setEnabled(False)
-        self.init_btn.setText(self.lang_manager.get_text("解析中...", "Parsing..."))
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)  # indeterminate
+        self._set_course_task_active(True)
 
         self._init_worker = CourseScreen._InitWorker(folder, self.title_input.text(), self._build_initializer())
         self._init_worker.finished.connect(self._on_init_done)
         self._init_worker.error.connect(self._on_init_error)
+        self._init_worker.cancelled.connect(self._on_course_task_cancelled)
+        self._init_worker.progress.connect(self._on_course_task_progress)
         self._init_worker.start()
+
+    def _set_course_task_active(self, active: bool) -> None:
+        """Keep all course actions consistent while one background task owns state."""
+        self.progress_bar.setVisible(active)
+        self.task_status_label.setVisible(active)
+        self.cancel_task_btn.setVisible(active)
+        self.cancel_task_btn.setEnabled(active)
+        self.cancel_task_btn.setText(self.lang_manager.get_text("停止", "Stop"))
+        self.folder_input.setEnabled(not active)
+        self.title_input.setEnabled(not active)
+        self.browse_btn.setEnabled(not active)
+        self.init_btn.setEnabled(not active)
+        self.project_list.setEnabled(not active)
+        if active:
+            self.progress_bar.setRange(0, 0)
+            self.task_status_label.setText(self.lang_manager.get_text("正在准备…", "Preparing…"))
+            for button in (
+                self.set_current_btn,
+                self.rename_btn,
+                self.regenerate_btn,
+                self.delete_btn,
+                self.refresh_btn,
+            ):
+                button.setEnabled(False)
+        else:
+            self._last_task_progress = None
+            self.task_status_label.clear()
+            self.init_btn.setText(self.lang_manager.get_text(
+                "解析并生成总结", "Parse and generate summary"
+            ))
+            self.refresh_btn.setEnabled(True)
+            self._on_project_selected(self.project_list.currentItem(), None)
+
+    def _cancel_course_task(self) -> None:
+        worker = self._init_worker or self._regen_worker
+        if worker is None:
+            return
+        worker.cancel()
+        self.cancel_task_btn.setEnabled(False)
+        self.cancel_task_btn.setText(self.lang_manager.get_text("正在停止…", "Stopping…"))
+        self.task_status_label.setText(self.lang_manager.get_text(
+            "正在等待当前步骤安全结束…",
+            "Waiting for the current step to stop safely…",
+        ))
+
+    def request_shutdown(self) -> bool:
+        """Request cooperative cancellation; never block the GUI thread."""
+        workers = [worker for worker in (self._init_worker, self._regen_worker) if worker]
+        if not any(worker.isRunning() for worker in workers):
+            return True
+        self._cancel_course_task()
+        return False
+
+    def _on_course_task_progress(self, progress: TaskProgress) -> None:
+        sender = self.sender()
+        if sender is not None and sender not in (self._init_worker, self._regen_worker):
+            return
+        self._last_task_progress = progress
+        if progress.total > 0:
+            self.progress_bar.setRange(0, progress.total)
+            self.progress_bar.setValue(progress.current)
+        else:
+            self.progress_bar.setRange(0, 0)
+        self.task_status_label.setText(self._course_task_progress_text(progress))
+
+    def _course_task_progress_text(self, progress: TaskProgress) -> str:
+        stages = {
+            "parsing": ("扫描课程资料", "Scanning course materials"),
+            "files_found": ("已发现资料文件", "Course files found"),
+            "parsing_file": ("正在解析文件", "Parsing file"),
+            "parsing_page": ("正在解析页面", "Parsing page"),
+            "topics": ("识别课程主题", "Identifying course topics"),
+            "summary": ("生成本地总结", "Building local summary"),
+            "summary_ai": ("AI 正在整理课程总结", "AI is refining the course summary"),
+            "profile": ("生成出题配置", "Building quiz defaults"),
+            "index": ("构建来源索引", "Building source index"),
+            "saving": ("保存课程", "Saving course"),
+            "saved": ("课程已保存", "Course saved"),
+        }
+        zh, en = stages.get(progress.stage, ("处理课程资料", "Processing course materials"))
+        text = self.lang_manager.get_text(zh, en)
+        if progress.total > 0:
+            text += f"  {progress.current} / {progress.total}"
+        if progress.detail:
+            text += f"  {progress.detail}"
+        return text
+
+    def _on_course_task_cancelled(self) -> None:
+        sender = self.sender()
+        if sender is self._init_worker:
+            self._init_worker = None
+        elif sender is self._regen_worker:
+            self._regen_worker = None
+        elif sender is not None:
+            return
+        self._set_course_task_active(False)
+        QMessageBox.information(
+            self,
+            self.lang_manager.get_text("已停止", "Stopped"),
+            self.lang_manager.get_text(
+                "操作已安全停止，未保存未完成的更改。",
+                "The operation stopped safely; incomplete changes were not saved.",
+            ),
+        )
 
     def _build_initializer(self):
         """Build an initializer using current AI settings when available."""
@@ -266,9 +382,8 @@ class CourseScreen(QWidget):
         if not self._is_current_worker("_init_worker"):
             return
         self._init_worker = None
-        self.progress_bar.setVisible(False)
-        self.init_btn.setEnabled(True)
-        self.init_btn.setText(self.lang_manager.get_text("解析并生成总结", "Parse and generate summary"))
+        self._set_course_task_active(False)
+        self.cancel_task_btn.setText(self.lang_manager.get_text("停止", "Stop"))
 
         lang = self.lang_manager.current
         if lang == "zh":
@@ -290,9 +405,7 @@ class CourseScreen(QWidget):
         if not self._is_current_worker("_init_worker"):
             return
         self._init_worker = None
-        self.progress_bar.setVisible(False)
-        self.init_btn.setEnabled(True)
-        self.init_btn.setText(self.lang_manager.get_text("解析并生成总结", "Parse and generate summary"))
+        self._set_course_task_active(False)
         QMessageBox.critical(
             self,
             self.lang_manager.get_text("初始化失败", "Initialization Failed"),
@@ -304,17 +417,27 @@ class CourseScreen(QWidget):
         """Background worker for course initialization."""
         finished = pyqtSignal(object)  # CourseProject
         error = pyqtSignal(str)
+        cancelled = pyqtSignal()
+        progress = pyqtSignal(object)
 
         def __init__(self, folder, title, initializer):
             super().__init__()
             self._folder = folder
             self._title = title
             self._initializer = initializer
+            self._task = TaskControl(self.progress.emit)
+
+        def cancel(self):
+            self._task.cancel()
 
         def run(self):
             try:
-                project = self._initializer.initialize(self._folder, self._title)
+                project = self._initializer.initialize(
+                    self._folder, self._title, task=self._task
+                )
                 self.finished.emit(project)
+            except BackgroundTaskCancelled:
+                self.cancelled.emit()
             except Exception as exc:
                 self.error.emit(str(exc))
 
@@ -323,20 +446,30 @@ class CourseScreen(QWidget):
         """Background worker for course summary regeneration."""
         finished = pyqtSignal(object)
         error = pyqtSignal(str)
+        cancelled = pyqtSignal()
+        progress = pyqtSignal(object)
 
         def __init__(self, project, initializer, question_bank=None):
             super().__init__()
             self._project = project
             self._initializer = initializer
             self._question_bank = question_bank
+            self._task = TaskControl(self.progress.emit)
+
+        def cancel(self):
+            self._task.cancel()
 
         def run(self):
             try:
-                project = self._initializer.regenerate_summary(self._project)
+                project = self._initializer.regenerate_summary(
+                    self._project, task=self._task
+                )
                 report = None
                 if self._question_bank is not None:
                     report = repair_question_topic_identities(self._question_bank, project)
                 self.finished.emit((project, report))
+            except BackgroundTaskCancelled:
+                self.cancelled.emit()
             except Exception as exc:
                 self.error.emit(str(exc))
 
@@ -394,12 +527,7 @@ class CourseScreen(QWidget):
         if not project:
             return
 
-        self.regenerate_btn.setEnabled(False)
-        self.delete_btn.setEnabled(False)
-        self.rename_btn.setEnabled(False)
-        self.init_btn.setEnabled(False)
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)
+        self._set_course_task_active(True)
 
         self._regen_worker = CourseScreen._RegenWorker(
             project,
@@ -408,6 +536,8 @@ class CourseScreen(QWidget):
         )
         self._regen_worker.finished.connect(self._on_regen_done)
         self._regen_worker.error.connect(self._on_regen_error)
+        self._regen_worker.cancelled.connect(self._on_course_task_cancelled)
+        self._regen_worker.progress.connect(self._on_course_task_progress)
         self._regen_worker.start()
 
     def _delete_selected_project(self):
@@ -450,11 +580,7 @@ class CourseScreen(QWidget):
         else:
             project = result
             repair_report = None
-        self.progress_bar.setVisible(False)
-        self.init_btn.setEnabled(True)
-        self.regenerate_btn.setEnabled(True)
-        self.delete_btn.setEnabled(True)
-        self.rename_btn.setEnabled(self.project_list.currentItem() is not None)
+        self._set_course_task_active(False)
         self.refresh()
         self.summary_label.setText(project.title)
         self._show_summary(project.summary_markdown)
@@ -564,11 +690,7 @@ class CourseScreen(QWidget):
         if not self._is_current_worker("_regen_worker"):
             return
         self._regen_worker = None
-        self.progress_bar.setVisible(False)
-        self.init_btn.setEnabled(True)
-        self.regenerate_btn.setEnabled(self.project_list.currentItem() is not None)
-        self.delete_btn.setEnabled(self.project_list.currentItem() is not None)
-        self.rename_btn.setEnabled(self.project_list.currentItem() is not None)
+        self._set_course_task_active(False)
         QMessageBox.critical(
             self,
             self.lang_manager.get_text("Regeneration Failed", "Regeneration Failed"),

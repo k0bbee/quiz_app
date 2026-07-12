@@ -1044,5 +1044,8 @@ class MainWindow(QMainWindow):
         if self.stack.currentIndex() == self.SCREEN_QUIZ and not self.quiz_screen.confirm_exit():
             event.ignore()
             return
+        if self._course_screen is not None and not self._course_screen.request_shutdown():
+            event.ignore()
+            return
         self.settings_screen.save_settings(silent=True)
         super().closeEvent(event)

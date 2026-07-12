@@ -10,6 +10,7 @@ from pathlib import Path
 from core.document_parser import DocumentParser, ExtractedDocument
 from core.course_index import attach_index_to_project
 from core.term_extraction import extract_course_terms, is_low_value_keyword
+from core.background_task import TaskControl
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from utils.constants import topic_alias_values, topic_value
 from ai.course_generation_profile import (
@@ -89,24 +90,38 @@ class CourseInitializer:
         self.summary_generator = summary_generator
         self.profile_generator = profile_generator or CourseGenerationProfileGenerator()
 
-    def initialize(self, folder: str, title: str = "", make_current: bool = True) -> CourseProject:
+    def initialize(
+        self,
+        folder: str,
+        title: str = "",
+        make_current: bool = True,
+        task: TaskControl | None = None,
+    ) -> CourseProject:
         """Parse a folder and save a course project."""
-        docs = self.parser.parse_folder(folder)
+        self._report(task, "parsing", detail=str(folder))
+        docs = self.parser.parse_folder(folder, task=task) if task else self.parser.parse_folder(folder)
+        self._check(task)
         if not docs:
             raise ValueError("No supported course files found. Supported: docx, pptx, pdf, txt, md.")
 
         course_title = title.strip() or Path(folder).name
+        self._report(task, "topics")
         topics = infer_topics(docs)
+        self._report(task, "summary")
         summary = build_summary_markdown(course_title, docs, topics)
         summary_source = "local"
         summary_warning = ""
         if self.summary_generator is not None:
+            self._report(task, "summary_ai")
             summary = self.summary_generator.generate(course_title, docs, topics, summary)
+            self._check(task)
             summary_source = getattr(self.summary_generator, "summary_source", "llm")
             summary_warning = getattr(self.summary_generator, "summary_warning", "")
+        self._report(task, "profile")
         generation_profile, profile_source, profile_warning = self._generate_profile(
             course_title, topics, summary
         )
+        self._check(task)
         now = datetime.now(timezone.utc).isoformat()
         project = CourseProject(
             course_id=CourseProjectManager.new_id(),
@@ -124,27 +139,48 @@ class CourseInitializer:
             generation_profile_source=profile_source,
             generation_profile_warning=profile_warning,
         )
+        self._report(task, "index")
         project = attach_index_to_project(project)
+        self._report(task, "saving")
         self.manager.save(project, make_current=make_current)
+        if task is not None:
+            task.complete("saved")
         return project
 
-    def regenerate_summary(self, project: CourseProject, make_current: bool = True) -> CourseProject:
+    def regenerate_summary(
+        self,
+        project: CourseProject,
+        make_current: bool = True,
+        task: TaskControl | None = None,
+    ) -> CourseProject:
         """Re-parse an existing course's source folder and update its reusable summary."""
-        docs = self.parser.parse_folder(project.source_folder)
+        self._report(task, "parsing", detail=project.source_folder)
+        docs = (
+            self.parser.parse_folder(project.source_folder, task=task)
+            if task
+            else self.parser.parse_folder(project.source_folder)
+        )
+        self._check(task)
         if not docs:
             raise ValueError("No supported course files found. Supported: docx, pptx, pdf, txt, md.")
 
+        self._report(task, "topics")
         topics = reconcile_topic_identities(project.topics, infer_topics(docs))
+        self._report(task, "summary")
         summary = build_summary_markdown(project.title, docs, topics)
         summary_source = "local"
         summary_warning = ""
         if self.summary_generator is not None:
+            self._report(task, "summary_ai")
             summary = self.summary_generator.generate(project.title, docs, topics, summary)
+            self._check(task)
             summary_source = getattr(self.summary_generator, "summary_source", "llm")
             summary_warning = getattr(self.summary_generator, "summary_warning", "")
+        self._report(task, "profile")
         generation_profile, profile_source, profile_warning = self._generate_profile(
             project.title, topics, summary
         )
+        self._check(task)
 
         updated = CourseProject(
             course_id=project.course_id,
@@ -162,9 +198,29 @@ class CourseInitializer:
             generation_profile_source=profile_source,
             generation_profile_warning=profile_warning,
         )
+        self._report(task, "index")
         updated = attach_index_to_project(updated)
+        self._report(task, "saving")
         self.manager.save(updated, make_current=make_current)
+        if task is not None:
+            task.complete("saved")
         return updated
+
+    @staticmethod
+    def _check(task: TaskControl | None) -> None:
+        if task is not None:
+            task.check_cancelled()
+
+    @staticmethod
+    def _report(
+        task: TaskControl | None,
+        stage: str,
+        current: int = 0,
+        total: int = 0,
+        detail: str = "",
+    ) -> None:
+        if task is not None:
+            task.report(stage, current, total, detail)
 
     def _generate_profile(self, title, topics, summary) -> tuple[dict, str, str]:
         """Generate defaults without allowing an optional LLM failure to block import."""

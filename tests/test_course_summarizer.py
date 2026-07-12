@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import os
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -12,7 +12,8 @@ from PyQt6.QtWidgets import QApplication, QMessageBox, QTextBrowser
 from ai.course_summarizer import CourseSummaryGenerator
 from ai.exam_plan import ExamGenerationPlan
 from core.course_initializer import CourseInitializer, build_summary_markdown, infer_topics
-from core.document_parser import ExtractedDocument
+from core.document_parser import DocumentParser, ExtractedDocument
+from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
 from core.language_manager import LanguageManager
 from core.topic_identity_migration import TopicIdentityRepairReport, UnmatchedTopicQuestion
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
@@ -37,7 +38,7 @@ class FakeParser:
     def __init__(self, docs):
         self.docs = docs
 
-    def parse_folder(self, folder):
+    def parse_folder(self, folder, task=None):
         return self.docs
 
 
@@ -62,6 +63,147 @@ class FakeProfileGenerator:
 
 
 class CourseSummaryGeneratorTests(unittest.TestCase):
+    def test_initializer_cancelled_after_parsing_does_not_save_partial_project(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            task = TaskControl()
+
+            class CancellingParser:
+                def parse_folder(self, folder, task=None):
+                    task.cancel()
+                    return self_docs
+
+            self_docs = self._docs()
+            initializer = CourseInitializer(manager)
+            initializer.parser = CancellingParser()
+
+            with self.assertRaises(BackgroundTaskCancelled):
+                initializer.initialize(tmpdir, task=task)
+
+            self.assertEqual([], manager.load_all())
+
+    def test_initializer_reports_structured_stages_before_saving(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            events = []
+            task = TaskControl(events.append)
+            initializer = CourseInitializer(manager)
+            initializer.parser = FakeParser(self._docs())
+
+            project = initializer.initialize(tmpdir, task=task)
+
+            self.assertEqual(project.course_id, manager.current().course_id)
+            stages = [event.stage for event in events]
+            self.assertIn("topics", stages)
+            self.assertIn("summary", stages)
+            self.assertIn("profile", stages)
+            self.assertIn("index", stages)
+            self.assertEqual("saved", stages[-1])
+
+    def test_regeneration_cancel_does_not_overwrite_existing_project(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            project = CourseProject(
+                course_id="course-stable",
+                title="Systems",
+                source_folder=tmpdir,
+                summary_markdown="# Original Summary",
+                summary_path="",
+                topics=self._topics(),
+                documents=[],
+                created_at="2026-07-01T00:00:00+00:00",
+                updated_at="2026-07-01T00:00:00+00:00",
+            )
+            manager.save(project)
+            task = TaskControl()
+
+            class CancellingParser:
+                def parse_folder(self, folder, task=None):
+                    task.cancel()
+                    return self_docs
+
+            self_docs = self._docs()
+            initializer = CourseInitializer(manager)
+            initializer.parser = CancellingParser()
+
+            with self.assertRaises(BackgroundTaskCancelled):
+                initializer.regenerate_summary(project, task=task)
+
+            stored = manager.get(project.course_id)
+            self.assertEqual("# Original Summary", stored.summary_markdown)
+            self.assertEqual("2026-07-01T00:00:00+00:00", stored.updated_at)
+
+    def test_document_parser_cancels_between_files_and_reports_filename(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "first.txt").write_text("cache mapping " * 100, encoding="utf-8")
+            (root / "second.txt").write_text("process scheduling " * 100, encoding="utf-8")
+            events = []
+            task = TaskControl()
+
+            def on_progress(event):
+                events.append(event)
+                if event.stage == "parsing_file" and event.current == 1:
+                    task.cancel()
+
+            task = TaskControl(on_progress)
+
+            with self.assertRaises(BackgroundTaskCancelled):
+                DocumentParser().parse_folder(tmpdir, task=task)
+
+            parsed = [event for event in events if event.stage == "parsing_file"]
+            self.assertEqual(1, len(parsed))
+            self.assertEqual("first.txt", parsed[0].detail)
+            self.assertEqual(2, parsed[0].total)
+
+    def test_course_init_worker_emits_cancelled_instead_of_error(self):
+        class BlockingInitializer:
+            def initialize(self, folder, title, task=None):
+                task.check_cancelled()
+
+        worker = CourseScreen._InitWorker("folder", "title", BlockingInitializer())
+        cancelled = []
+        errors = []
+        worker.cancelled.connect(lambda: cancelled.append(True))
+        worker.error.connect(errors.append)
+
+        worker.cancel()
+        worker.run()
+
+        self.assertEqual([True], cancelled)
+        self.assertEqual([], errors)
+
+    def test_course_screen_progress_and_cancel_controls_follow_worker_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            screen = CourseScreen(manager)
+
+            screen._set_course_task_active(True)
+            screen._on_course_task_progress(TaskProgress(
+                "parsing_file", current=2, total=5, detail="lecture.pdf"
+            ))
+
+            self.assertTrue(screen.cancel_task_btn.isVisibleTo(screen))
+            self.assertEqual((0, 5), (screen.progress_bar.minimum(), screen.progress_bar.maximum()))
+            self.assertEqual(2, screen.progress_bar.value())
+            self.assertIn("2 / 5", screen.task_status_label.text())
+            self.assertIn("lecture.pdf", screen.task_status_label.text())
+
+            screen._set_course_task_active(False)
+            self.assertFalse(screen.cancel_task_btn.isVisibleTo(screen))
+
+    def test_course_screen_shutdown_requests_cancel_without_waiting(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = CourseScreen(CourseProjectManager(str(Path(tmpdir) / "projects")))
+            worker = Mock()
+            worker.isRunning.return_value = True
+            screen._init_worker = worker
+
+            ready = screen.request_shutdown()
+
+            self.assertFalse(ready)
+            worker.cancel.assert_called_once_with()
+            worker.wait.assert_not_called()
     def _docs(self):
         return [
             ExtractedDocument(
