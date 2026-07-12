@@ -94,7 +94,7 @@ def main():
     app.setOrganizationName("Course Quiz Studio")
     app.setApplicationName(APP_NAME)
 
-    settings = read_json(SETTINGS_FILE, default={}) or {}
+    settings = read_json(SETTINGS_FILE) or {}
     font_scale = normalize_font_scale(
         settings.get("font_scale", DEFAULT_SETTINGS["font_scale"])
     )

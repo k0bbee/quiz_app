@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+import main as main_module
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QCloseEvent, QPalette
@@ -56,6 +58,24 @@ class UiThemeTests(unittest.TestCase):
             scale_stylesheet_font_sizes(source, "large"),
         )
         self.assertEqual(source, scale_stylesheet_font_sizes(source, "medium"))
+
+    def test_main_reads_startup_settings_through_supported_json_api(self):
+        app = Mock()
+        app.exec.return_value = 0
+
+        def read_settings(filepath):
+            self.assertEqual(main_module.SETTINGS_FILE, filepath)
+            return {"font_scale": "large"}
+
+        with patch.object(main_module, "QApplication", return_value=app), \
+                patch.object(main_module, "MainWindow") as window_type, \
+                patch.object(main_module, "read_json", side_effect=read_settings), \
+                patch.object(main_module, "load_stylesheet") as load_theme:
+            with self.assertRaisesRegex(SystemExit, "0"):
+                main_module.main()
+
+        load_theme.assert_called_once_with(app, font_scale="large")
+        window_type.return_value.show.assert_called_once_with()
 
     def test_settings_exposes_and_persists_global_font_scale(self):
         with tempfile.TemporaryDirectory() as tmpdir:
