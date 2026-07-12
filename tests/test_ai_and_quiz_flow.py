@@ -1276,10 +1276,20 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         screen.retry_unsure.connect(lambda: emitted.append(True))
         screen.set_results(record, {}, "zh")
 
-        self.assertTrue(screen.retry_unsure_btn.isEnabled())
-        screen.retry_unsure_btn.click()
+        self.assertTrue(screen.retry_unsure_action.isEnabled())
+        screen.retry_unsure_action.trigger()
 
         self.assertEqual([True], emitted)
+
+    def test_results_screen_uses_one_primary_retry_and_compact_more_menu(self):
+        screen = ResultsScreen()
+
+        self.assertEqual("primaryButton", screen.retry_incorrect_btn.objectName())
+        self.assertEqual("secondaryButton", screen.more_practice_btn.objectName())
+        self.assertIs(screen.more_practice_menu, screen.more_practice_btn.menu())
+        self.assertFalse(hasattr(screen, "retry_unsure_btn"))
+        self.assertFalse(hasattr(screen, "retry_review_btn"))
+        self.assertFalse(hasattr(screen, "retry_all_btn"))
 
     def test_results_screen_shows_and_retries_marked_review_questions(self):
         record = ProgressRecord.create_new("set-1")
@@ -1297,8 +1307,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         screen.set_results(record, {}, "zh")
 
         self.assertIn("复查: 1", screen.stats_label.text())
-        self.assertTrue(screen.retry_review_btn.isEnabled())
-        screen.retry_review_btn.click()
+        self.assertTrue(screen.retry_review_action.isEnabled())
+        screen.retry_review_action.trigger()
         self.assertEqual([True], emitted)
 
     def test_results_screen_shows_next_action_recommendation(self):

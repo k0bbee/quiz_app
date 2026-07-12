@@ -2,9 +2,10 @@
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QFrame
+    QScrollArea, QFrame, QMenu
 )
 from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtGui import QAction
 
 from core.language_manager import LanguageManager
 from models.progress import ProgressRecord, AnswerRecord
@@ -71,7 +72,7 @@ class ResultsScreen(QWidget):
         layout.addWidget(self.next_action_label)
 
         self.next_action_btn = QPushButton()
-        self.next_action_btn.setObjectName("primaryButton")
+        self.next_action_btn.setObjectName("secondaryButton")
         self.next_action_btn.setVisible(False)
         self.next_action_btn.clicked.connect(self._emit_next_action)
         layout.addWidget(self.next_action_btn, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -104,60 +105,49 @@ class ResultsScreen(QWidget):
 
         # Action buttons
         btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
 
         self.retry_incorrect_btn = QPushButton(
-            self.lang_manager.get_text("只重做错题", "Retry Incorrect Only")
+            self.lang_manager.get_text("重做错题", "Retry Incorrect")
         )
-        self.retry_incorrect_btn.setObjectName("secondaryButton")
+        self.retry_incorrect_btn.setObjectName("primaryButton")
         self.retry_incorrect_btn.setMinimumHeight(40)
         self.retry_incorrect_btn.setMinimumWidth(150)
         self.retry_incorrect_btn.clicked.connect(self.retry_incorrect.emit)
         btn_layout.addWidget(self.retry_incorrect_btn)
 
-        self.retry_unsure_btn = QPushButton(
-            self.lang_manager.get_text("重做不确定题", "Retry Unsure")
-        )
-        self.retry_unsure_btn.setObjectName("secondaryButton")
-        self.retry_unsure_btn.setMinimumHeight(40)
-        self.retry_unsure_btn.setMinimumWidth(150)
-        self.retry_unsure_btn.clicked.connect(self.retry_unsure.emit)
-        btn_layout.addWidget(self.retry_unsure_btn)
-
-        self.retry_review_btn = QPushButton(
-            self.lang_manager.get_text("重做复查题", "Retry Review")
-        )
-        self.retry_review_btn.setObjectName("secondaryButton")
-        self.retry_review_btn.setMinimumHeight(40)
-        self.retry_review_btn.setMinimumWidth(150)
-        self.retry_review_btn.clicked.connect(self.retry_review.emit)
-        btn_layout.addWidget(self.retry_review_btn)
-
-        self.retry_all_btn = QPushButton(
-            self.lang_manager.get_text("重新练习全部", "Retry Entire Set")
-        )
-        self.retry_all_btn.setObjectName("secondaryButton")
-        self.retry_all_btn.setMinimumHeight(40)
-        self.retry_all_btn.setMinimumWidth(150)
-        self.retry_all_btn.clicked.connect(self.retry_all.emit)
-        btn_layout.addWidget(self.retry_all_btn)
+        self.more_practice_btn = QPushButton()
+        self.more_practice_btn.setObjectName("secondaryButton")
+        self.more_practice_btn.setMinimumHeight(40)
+        self.more_practice_btn.setMinimumWidth(130)
+        self.more_practice_menu = QMenu(self.more_practice_btn)
+        self.more_practice_menu.setObjectName("resultsMorePracticeMenu")
+        self.retry_unsure_action = QAction(self.more_practice_menu)
+        self.retry_unsure_action.triggered.connect(lambda _checked=False: self.retry_unsure.emit())
+        self.more_practice_menu.addAction(self.retry_unsure_action)
+        self.retry_review_action = QAction(self.more_practice_menu)
+        self.retry_review_action.triggered.connect(lambda _checked=False: self.retry_review.emit())
+        self.more_practice_menu.addAction(self.retry_review_action)
+        self.more_practice_menu.addSeparator()
+        self.retry_all_action = QAction(self.more_practice_menu)
+        self.retry_all_action.triggered.connect(lambda _checked=False: self.retry_all.emit())
+        self.more_practice_menu.addAction(self.retry_all_action)
+        self.more_practice_btn.setMenu(self.more_practice_menu)
+        btn_layout.addWidget(self.more_practice_btn)
 
         layout.addLayout(btn_layout)
+        self._on_language_changed(self.lang_manager.current)
 
     def _on_language_changed(self, lang):
         """Update all labels when language changes."""
         self.review_label.setText(self.lang_manager.get_text("回顾:", "Review:"))
         self.retry_incorrect_btn.setText(
-            self.lang_manager.get_text("只重做错题", "Retry Incorrect Only")
+            self.lang_manager.get_text("重做错题", "Retry Incorrect")
         )
-        self.retry_unsure_btn.setText(
-            self.lang_manager.get_text("重做不确定题", "Retry Unsure")
-        )
-        self.retry_review_btn.setText(
-            self.lang_manager.get_text("重做复查题", "Retry Review")
-        )
-        self.retry_all_btn.setText(
-            self.lang_manager.get_text("重新练习全部", "Retry Entire Set")
-        )
+        self.more_practice_btn.setText(self.lang_manager.get_text("更多练习", "More Practice"))
+        self.retry_unsure_action.setText(self.lang_manager.get_text("重做不确定题", "Retry Unsure"))
+        self.retry_review_action.setText(self.lang_manager.get_text("重做复查题", "Retry Review"))
+        self.retry_all_action.setText(self.lang_manager.get_text("重新练习全部", "Retry Entire Set"))
 
         # Re-render results if a record is loaded
         if self.current_record is not None:
@@ -171,6 +161,7 @@ class ResultsScreen(QWidget):
         self._recommended_topic_id = ""
         self._recommended_action = ""
         self.next_action_btn.setVisible(False)
+        self._set_retry_action_state(False, False, False, False)
 
         if record is None:
             self.score_label.setText(
@@ -281,11 +272,30 @@ class ResultsScreen(QWidget):
 
         # Update retry buttons
         has_incorrect = any(not a.skipped and not a.is_correct for a in record.answers)
-        has_unsure = any(getattr(a, "confidence", "sure") == "unsure" for a in record.answers)
+        has_unsure = any(
+            not answer.skipped and getattr(answer, "confidence", "sure") == "unsure"
+            for answer in record.answers
+        )
         has_review = bool(getattr(record, "marked_review_question_ids", []))
+        self._set_retry_action_state(
+            has_incorrect,
+            has_unsure,
+            has_review,
+            bool(record.answers),
+        )
+
+    def _set_retry_action_state(
+        self,
+        has_incorrect: bool,
+        has_unsure: bool,
+        has_review: bool,
+        has_questions: bool,
+    ) -> None:
         self.retry_incorrect_btn.setEnabled(has_incorrect)
-        self.retry_unsure_btn.setEnabled(has_unsure)
-        self.retry_review_btn.setEnabled(has_review)
+        self.retry_unsure_action.setEnabled(has_unsure)
+        self.retry_review_action.setEnabled(has_review)
+        self.retry_all_action.setEnabled(has_questions)
+        self.more_practice_btn.setEnabled(has_unsure or has_review or has_questions)
 
     def _configure_next_action(self, record: ProgressRecord, lang: str) -> None:
         """Expose one topic-specific action for the most useful next step."""
