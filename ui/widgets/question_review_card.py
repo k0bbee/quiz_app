@@ -7,6 +7,7 @@ from models.question import Question
 from core.language_manager import LanguageManager
 from core.answer_display import format_answer_for_display
 from ui.widgets.source_refs import format_source_refs
+from ui.widgets.source_refs_panel import SourceRefsPanel
 
 
 class QuestionReviewCard(QFrame):
@@ -63,6 +64,9 @@ class QuestionReviewCard(QFrame):
         self.source_label.setObjectName("reviewSourceRefs")
         self.source_label.setWordWrap(True)
         layout.addWidget(self.source_label)
+        self.source_panel = SourceRefsPanel()
+        self.source_panel.setVisible(False)
+        layout.addWidget(self.source_panel)
 
 
     def _on_language_changed(self, lang):
@@ -78,6 +82,7 @@ class QuestionReviewCard(QFrame):
         is_correct: bool,
         lang: str = None,
         skipped: bool = False,
+        course_project=None,
     ):
         """Populate the card with question result data."""
         self._index = index
@@ -85,6 +90,7 @@ class QuestionReviewCard(QFrame):
         self._user_answer = user_answer
         self._is_correct = is_correct
         self._skipped = skipped
+        self._course_project = course_project
         self._render()
 
     def _render(self):
@@ -130,7 +136,14 @@ class QuestionReviewCard(QFrame):
             status=metadata.get("source_ref_status"),
             language=self.lang_manager.current,
         ))
-        self.source_label.setVisible(bool(self.source_label.text()))
+        self.source_panel.set_source_refs(
+            metadata.get("source_refs", []),
+            course_project=getattr(self, "_course_project", None),
+            language=self.lang_manager.current,
+            label=self.lang_manager.get_text("来源", "Source Evidence"),
+            status=metadata.get("source_ref_status"),
+        )
+        self.source_label.setVisible(bool(self.source_label.text()) and self.source_panel.isHidden())
 
     def _format_answer(self, question: Question, answer, lang: str) -> str:
         """Render answer letters with their option text when possible."""

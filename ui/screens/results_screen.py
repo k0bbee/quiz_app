@@ -12,6 +12,7 @@ from ui.widgets.question_review_card import QuestionReviewCard
 from ui.widgets.progress_summary_bar import ProgressSummaryBar
 from utils.constants import topic_value
 from core.topic_display import topic_display_name
+from models.course_project import CourseProjectManager
 
 
 class ResultsScreen(QWidget):
@@ -24,12 +25,14 @@ class ResultsScreen(QWidget):
     practice_topic_requested = pyqtSignal(str)
     review_topic_requested = pyqtSignal(str)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, course_manager: CourseProjectManager | None = None):
         super().__init__(parent)
         self.current_record: ProgressRecord = None
         self._questions: dict = {}  # question_id -> Question (set externally)
         self._lang: str = "zh"
         self.lang_manager = LanguageManager.instance()
+        self.course_manager = course_manager or CourseProjectManager()
+        self._course_project = None
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -74,6 +77,7 @@ class ResultsScreen(QWidget):
         layout.addWidget(self.next_action_btn, alignment=Qt.AlignmentFlag.AlignCenter)
         self._recommended_topic_id = ""
         self._recommended_action = ""
+        self._course_project = self._resolve_course_project()
 
         # Divider
         line = QFrame()
@@ -241,7 +245,13 @@ class ResultsScreen(QWidget):
             q = self._questions.get(answer.question_id)
             if q:
                 card.set_result(
-                    i, q, answer.user_answer, answer.is_correct, lang, skipped=answer.skipped
+                    i,
+                    q,
+                    answer.user_answer,
+                    answer.is_correct,
+                    lang,
+                    skipped=answer.skipped,
+                    course_project=self._course_project,
                 )
             else:
                 # Minimal card without question data
@@ -374,6 +384,16 @@ class ResultsScreen(QWidget):
     def set_questions(self, questions: dict):
         """Provide question data for review rendering."""
         self._questions = questions
+
+    def _resolve_course_project(self):
+        course_ids = {
+            str((question.metadata or {}).get("course_id", "") or "").strip()
+            for question in self._questions.values()
+        }
+        course_ids.discard("")
+        if len(course_ids) == 1:
+            return self.course_manager.get(next(iter(course_ids)))
+        return self.course_manager.current()
 
     def _clear_reviews(self):
         """Remove all review cards from the layout."""

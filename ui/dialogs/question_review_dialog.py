@@ -13,6 +13,7 @@ from PyQt6.QtCore import Qt
 from models.question import Question
 from core.language_manager import LanguageManager
 from ui.widgets.source_refs import format_source_refs
+from ui.widgets.source_refs_panel import SourceRefsPanel
 from utils.constants import Difficulty, QuestionType
 
 
@@ -36,7 +37,13 @@ _DIFFICULTY_LABELS = {
 class QuestionReviewDialog(QDialog):
     """Review and approve/reject AI-generated questions before saving."""
 
-    def __init__(self, questions: list[Question], parent=None, page_size: int = 50):
+    def __init__(
+        self,
+        questions: list[Question],
+        parent=None,
+        page_size: int = 50,
+        course_project=None,
+    ):
         super().__init__(parent)
         self.questions = list(questions)
         self.page_size = max(1, int(page_size or 50))
@@ -45,6 +52,7 @@ class QuestionReviewDialog(QDialog):
         self.lang_manager = LanguageManager.instance()
         self._accepted: set[int] = self._initial_accepted_indexes()
         self._loading_edit_fields = False
+        self.course_project = course_project
 
         self.setWindowTitle(self.lang_manager.get_text("审查生成的题目", "Review Generated Questions"))
         self.resize(900, 600)
@@ -206,6 +214,9 @@ class QuestionReviewDialog(QDialog):
         self.source_editor.setObjectName("reviewSourceEditor")
         self.source_editor.setReadOnly(True)
         source_layout.addWidget(self.source_editor)
+        self.source_refs_panel = SourceRefsPanel()
+        self.source_refs_panel.setVisible(False)
+        source_layout.addWidget(self.source_refs_panel)
         self.review_tabs.addTab(source_page, self.lang_manager.get_text("来源", "Sources"))
 
         quality_page = QWidget()
@@ -338,6 +349,14 @@ class QuestionReviewDialog(QDialog):
                 "No source evidence is available.",
             )
         )
+        self.source_refs_panel.set_source_refs(
+            metadata.get("source_refs", []),
+            course_project=self.course_project,
+            language=self.lang_manager.current,
+            label=self.lang_manager.get_text("来源", "Source Evidence"),
+            status=metadata.get("source_ref_status"),
+        )
+        self.source_editor.setVisible(not bool(metadata.get("source_refs")))
         self.quality_editor.setPlainText(
             "\n".join(f"• {warning}" for warning in warnings)
             if warnings

@@ -14,7 +14,7 @@ from models.question import QuestionBank
 from models.question_set import SetManager
 from models.course_project import CourseProjectManager
 from core.topic_display import topic_display_name
-from ui.widgets.source_refs import format_source_refs
+from ui.widgets.source_refs_panel import SourceRefsPanel
 from utils.constants import topic_value
 from core.language_manager import LanguageManager
 from config import QUESTION_SETS_DIR
@@ -72,11 +72,11 @@ class ProgressDashboard(QWidget):
         self.recommendation_label.setWordWrap(True)
         summary_layout.addWidget(self.recommendation_label)
 
-        self.source_refs_label = QLabel()
-        self.source_refs_label.setObjectName("dashboardSourceRefsLabel")
-        self.source_refs_label.setWordWrap(True)
-        self.source_refs_label.setHidden(True)
-        summary_layout.addWidget(self.source_refs_label)
+        self.source_refs_panel = SourceRefsPanel()
+        self.source_refs_panel.setObjectName("dashboardSourceRefsLabel")
+        self.source_refs_panel.setHidden(True)
+        self.source_refs_label = self.source_refs_panel
+        summary_layout.addWidget(self.source_refs_panel)
 
         layout.addWidget(self.summary_group)
 
@@ -401,13 +401,12 @@ class ProgressDashboard(QWidget):
 
     def _set_source_refs(self, source_refs: list[dict]) -> None:
         """Show source refs only when they add useful information."""
-        text = format_source_refs(
+        self.source_refs_panel.set_source_refs(
             source_refs,
+            course_project=self._current_course_project(),
             label=self.lang_manager.get_text("相关来源", "Related sources"),
             language=self.lang_manager.current,
         )
-        self.source_refs_label.setText(text)
-        self.source_refs_label.setHidden(not bool(text))
 
     def _source_refs_for_topics(self, questions: list, topic_values: set[str]) -> list[dict]:
         """Return de-duplicated source refs for the currently recommended topics."""

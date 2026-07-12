@@ -17,7 +17,7 @@ from core.question_bank_maintenance import backfill_source_refs_from_course, rem
 from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
-from ui.widgets.source_refs import format_source_refs
+from ui.widgets.source_refs_panel import SourceRefsPanel
 from ui.widgets.question_form_editor import QuestionFormEditor
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 from utils.constants import Difficulty, QuestionType, topic_value
@@ -129,11 +129,11 @@ class QuestionBankScreen(QWidget):
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        self.source_refs_label = QLabel()
-        self.source_refs_label.setObjectName("questionBankSourceRefs")
-        self.source_refs_label.setWordWrap(True)
-        self.source_refs_label.setVisible(False)
-        right_layout.addWidget(self.source_refs_label)
+        self.source_refs_panel = SourceRefsPanel()
+        self.source_refs_panel.setObjectName("questionBankSourceRefs")
+        self.source_refs_panel.setVisible(False)
+        self.source_refs_label = self.source_refs_panel
+        right_layout.addWidget(self.source_refs_panel)
 
         editor_header = QHBoxLayout()
         self.json_label = QLabel(self.lang_manager.get_text("题目编辑", "Question Editor"))
@@ -774,18 +774,16 @@ class QuestionBankScreen(QWidget):
 
     def _set_source_refs_summary(self, question: Question | None) -> None:
         if question is None:
-            self.source_refs_label.clear()
-            self.source_refs_label.setVisible(False)
+            self.source_refs_panel.set_source_refs([])
             return
         metadata = question.metadata or {}
-        text = format_source_refs(
+        self.source_refs_panel.set_source_refs(
             metadata.get("source_refs", []),
+            course_project=self._active_course_project(),
             label=self.lang_manager.get_text("来源", "Source Evidence"),
             status=metadata.get("source_ref_status"),
             language=self.lang_manager.current,
         )
-        self.source_refs_label.setText(text)
-        self.source_refs_label.setVisible(bool(text))
 
     def _stem_preview(self, question: Question) -> str:
         stem = question.get_stem("zh") or question.get_stem("en") or ""

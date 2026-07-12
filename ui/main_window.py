@@ -89,7 +89,7 @@ class MainWindow(QMainWindow):
             self.progress_manager,
             snapshot_manager=self.snapshot_manager,
         )
-        self.results_screen = ResultsScreen()
+        self.results_screen = ResultsScreen(course_manager=self.course_manager)
         self.progress_screen = ProgressDashboard(
             self.progress_manager,
             self.question_bank,

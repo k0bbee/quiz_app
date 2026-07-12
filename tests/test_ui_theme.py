@@ -934,13 +934,17 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual("dangerButton", progress.reset_btn.objectName())
         self.assertEqual("dashboardRecommendationLabel", progress.recommendation_label.objectName())
         self.assertEqual("dashboardSourceRefsLabel", progress.source_refs_label.objectName())
+        self.assertEqual("sourcePanelHeader", progress.source_refs_panel.header_label.objectName())
+        self.assertEqual("sourcePanelList", progress.source_refs_panel.source_list.objectName())
         self.assertNotRegex(progress.refresh_btn.text(), r"[^\w\s]")
         self.assertNotRegex(progress.mark_mastered_btn.text(), r"[^\w\s]")
         self.assertNotRegex(progress.reset_btn.text(), r"[^\w\s]")
 
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
         self.assertIn("qlabel#dashboardrecommendationlabel", qss)
-        self.assertIn("qlabel#dashboardsourcerefslabel", qss)
+        self.assertIn("qwidget#dashboardsourcerefslabel", qss)
+        self.assertIn("qlabel#sourcepanelheader", qss)
+        self.assertIn("qlistwidget#sourcepanellist", qss)
         self.assertIn("qlabel#generationpartialrecoverylabel", qss)
 
         for button in (main_window.topics_btn, main_window.progress_btn, main_window.courses_btn):

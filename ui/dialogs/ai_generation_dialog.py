@@ -1762,7 +1762,14 @@ class AIGenerationDialog(QDialog):
     def _review_generated_questions(self) -> None:
         if not self.generated_questions:
             return
-        review_dialog = QuestionReviewDialog(self.generated_questions, self)
+        review_kwargs = (
+            {"course_project": self.course_project} if self.course_project is not None else {}
+        )
+        review_dialog = QuestionReviewDialog(
+            self.generated_questions,
+            self,
+            **review_kwargs,
+        )
         if review_dialog.exec() == QDialog.DialogCode.Accepted:
             accepted = review_dialog.get_accepted_questions()
             if not accepted:
