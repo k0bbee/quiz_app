@@ -16,6 +16,7 @@ from core.question_set_builder import build_ai_question_set
 from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.mastery_overrides import MasteryOverrideStore
+from core.topic_display import topic_display_name
 from models.course_project import CourseProjectManager
 from config import QUESTIONS_DIR, QUESTION_SETS_DIR, PROGRESS_DIR, QUIZ_SNAPSHOTS_DIR, APP_NAME
 
@@ -25,7 +26,7 @@ from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.settings_screen import SettingsScreen
-from utils.constants import Difficulty, topic_label, topic_value
+from utils.constants import Difficulty, topic_value
 from ai.course_summary_factory import provider_requires_api_key
 from ai.provider_presets import detect_local_agents
 from ai.settings_validation import validate_ai_settings
@@ -93,6 +94,7 @@ class MainWindow(QMainWindow):
             self.progress_manager,
             self.question_bank,
             mastery_overrides=self.mastery_overrides,
+            course_manager=self.course_manager,
         )
         self.settings_screen = SettingsScreen()
         self._course_screen = None
@@ -771,9 +773,13 @@ class MainWindow(QMainWindow):
     def _progress_topic_label(self, topic_key: str, questions: list) -> str:
         """Return a readable topic label for progress-triggered sessions."""
         lang = self.lang_manager.current
-        if questions:
-            return topic_label(questions[0].topic, lang)
-        return topic_label(topic_key, lang)
+        course_manager = getattr(self, "course_manager", None)
+        course_project = (
+            course_manager.get(self._current_course_id()) if course_manager else None
+        )
+        fallback_title = questions[0].topic_title() if questions else ""
+        topic = questions[0].topic if questions else topic_key
+        return topic_display_name(topic, course_project, lang, fallback_title)
 
     def _start_progress_topic_quiz(self, questions: list, label: str):
         """Open QuizScreen for a progress-topic action."""

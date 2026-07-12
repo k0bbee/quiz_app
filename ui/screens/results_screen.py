@@ -10,7 +10,8 @@ from core.language_manager import LanguageManager
 from models.progress import ProgressRecord, AnswerRecord
 from ui.widgets.question_review_card import QuestionReviewCard
 from ui.widgets.progress_summary_bar import ProgressSummaryBar
-from utils.constants import topic_label, topic_value
+from utils.constants import topic_value
+from core.topic_display import topic_display_name
 
 
 class ResultsScreen(QWidget):
@@ -289,7 +290,11 @@ class ResultsScreen(QWidget):
             topic_id = topic_value(question.topic)
             bucket = {
                 "topic_id": topic_id,
-                "label": question.topic_title(),
+                "label": topic_display_name(
+                    question.topic,
+                    language=lang,
+                    fallback_title=question.topic_title(),
+                ),
             }
             if not answer.is_correct:
                 entry = incorrect_topics.setdefault(topic_id, {**bucket, "count": 0})
@@ -410,7 +415,15 @@ class ResultsScreen(QWidget):
 
         parts = []
         for topic, value in sorted(stats.items(), key=lambda item: topic_value(item[0])):
-            label = topic_label(topic, lang)
+            question = next(
+                (q for q in self._questions.values() if topic_value(q.topic) == topic_value(topic)),
+                None,
+            )
+            label = topic_display_name(
+                topic,
+                language=lang,
+                fallback_title=question.topic_title() if question else "",
+            )
             total = value["total"]
             correct = value["correct"]
             parts.append(f"{label}: {correct}/{total}")

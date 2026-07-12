@@ -12,8 +12,10 @@ from core.mastery import build_topic_mastery
 from core.mastery_overrides import MasteryOverrideStore
 from models.question import QuestionBank
 from models.question_set import SetManager
+from models.course_project import CourseProjectManager
+from core.topic_display import topic_display_name
 from ui.widgets.source_refs import format_source_refs
-from utils.constants import topic_label, topic_value
+from utils.constants import topic_value
 from core.language_manager import LanguageManager
 from config import QUESTION_SETS_DIR
 
@@ -30,6 +32,7 @@ class ProgressDashboard(QWidget):
         question_bank: QuestionBank,
         parent=None,
         mastery_overrides: MasteryOverrideStore | None = None,
+        course_manager: CourseProjectManager | None = None,
     ):
         super().__init__(parent)
         self.progress_manager = progress_manager
@@ -37,7 +40,9 @@ class ProgressDashboard(QWidget):
         self.set_manager = SetManager(QUESTION_SETS_DIR)
         self.lang_manager = LanguageManager.instance()
         self.mastery_overrides = mastery_overrides or MasteryOverrideStore()
+        self.course_manager = course_manager or CourseProjectManager()
         self._current_course_id = ""
+        self._current_project = None
         self._recent_history_expanded = False
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
@@ -186,6 +191,11 @@ class ProgressDashboard(QWidget):
 
     def refresh(self):
         """Reload and display progress data."""
+        self._current_project = (
+            self.course_manager.get(self._current_course_id)
+            if self._current_course_id
+            else None
+        )
         visible_questions = self._visible_questions()
         visible_question_ids = (
             None
@@ -299,6 +309,7 @@ class ProgressDashboard(QWidget):
 
         # Map question_id -> topic
         qid_to_topic = {}
+        topic_titles = {}
         if visible_questions is None:
             questions = self.question_bank.load_all()
             if visible_question_ids is not None:
@@ -308,6 +319,7 @@ class ProgressDashboard(QWidget):
         topic_mastery = build_topic_mastery(completed, questions)
         for q in questions:
             qid_to_topic[q.question_id] = q.topic
+            topic_titles.setdefault(topic_value(q.topic), q.topic_title())
 
         # Aggregate by topic
         topic_stats = {}
@@ -325,7 +337,12 @@ class ProgressDashboard(QWidget):
         # Populate table
         self.topic_table.setRowCount(len(topic_stats))
         for row, (topic, stats) in enumerate(sorted(topic_stats.items(), key=lambda x: topic_value(x[0]))):
-            label = topic_label(topic, lang)
+            label = topic_display_name(
+                topic,
+                self._current_course_project(),
+                lang,
+                topic_titles.get(topic_value(topic), ""),
+            )
             accuracy = (stats["correct"] / stats["total"] * 100) if stats["total"] > 0 else 0
             mastery = topic_mastery.get(topic_value(topic))
             is_mastered = self.mastery_overrides.is_topic_mastered(self._current_course_id, topic)
@@ -361,7 +378,12 @@ class ProgressDashboard(QWidget):
                 continue
             seen_topics.add(value)
             recommended_topic_values.append(value)
-            labels.append(topic_label(question.topic, lang))
+            labels.append(topic_display_name(
+                question.topic,
+                self._current_course_project(),
+                lang,
+                question.topic_title(),
+            ))
             if len(labels) >= 3:
                 break
 
@@ -417,6 +439,9 @@ class ProgressDashboard(QWidget):
         row = selected[0].row()
         item = self.topic_table.item(row, 0)
         return str(item.data(Qt.ItemDataRole.UserRole) or "") if item else ""
+
+    def _current_course_project(self):
+        return self._current_project
 
     def _update_mastery_action_state(self):
         """Update the selected-topic mastery toggle button."""

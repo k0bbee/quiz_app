@@ -14,6 +14,7 @@ from ai.llm_client import LLMClient
 from models.progress import AnswerRecord, ProgressRecord, SessionSummary
 from models.question import Question
 from models.question import QuestionBank
+from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from models.quiz_snapshot import QuizSessionSnapshot
 from models.question_set import QuestionSet, SetManager
 from core.quiz_engine import QuizSession
@@ -2223,11 +2224,61 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen.refresh()
 
             self.assertIn("建议复习", screen.recommendation_label.text())
-            self.assertIn("cache", screen.recommendation_label.text())
-            self.assertNotIn("process", screen.recommendation_label.text())
-            self.assertNotIn("virtual memory", screen.recommendation_label.text())
+            self.assertIn("Cache", screen.recommendation_label.text())
+            self.assertNotIn("Process", screen.recommendation_label.text())
+            self.assertNotIn("Virtual Memory", screen.recommendation_label.text())
             self.assertEqual("", screen.source_refs_label.text())
             self.assertTrue(screen.source_refs_label.isHidden())
+
+    def test_progress_dashboard_uses_course_topic_title_instead_of_internal_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            course_manager = CourseProjectManager(str(root / "courses"))
+            course_manager.save(CourseProject(
+                course_id="course-a",
+                title="Computer Systems",
+                source_folder=str(root),
+                summary_markdown="",
+                summary_path=str(root / "summary.md"),
+                topics=[CourseTopic(
+                    topic_id="input_output_improvements",
+                    title="Input Output Improvements",
+                )],
+                documents=[],
+                created_at="2026-07-12T00:00:00+00:00",
+                updated_at="2026-07-12T00:00:00+00:00",
+            ))
+            question_bank = QuestionBank(str(root / "questions"))
+            progress_manager = ProgressManager(str(root / "progress"))
+            question = self._make_question("q-io")
+            question.topic = "input_output_improvements"
+            question.metadata["course_id"] = "course-a"
+            question_bank.save(question)
+            record = ProgressRecord.create_new("set-io")
+            record.status = "completed"
+            record.answers = [AnswerRecord("q-io", 0, "B", False)]
+            record.summary = SessionSummary.compute(record.answers, 1, 10)
+            progress_manager.save(record)
+
+            screen = ProgressDashboard(
+                progress_manager,
+                question_bank,
+                course_manager=course_manager,
+            )
+            screen.set_current_course("course-a")
+            screen.refresh()
+
+            self.assertEqual("Input Output Improvements", screen.topic_table.item(0, 0).text())
+            self.assertIn("Input Output Improvements", screen.recommendation_label.text())
+            self.assertNotIn("input_output_improvements", screen.recommendation_label.text())
+
+    def test_topic_display_name_humanizes_unknown_stable_id(self):
+        from core.topic_display import topic_display_name
+
+        self.assertEqual(
+            "Virtual Memory Address Translation",
+            topic_display_name("virtual_memory_address_translation", language="en"),
+        )
 
     def test_progress_dashboard_shows_source_refs_for_recommended_topics(self):
         language_manager = LanguageManager.instance()
@@ -2345,7 +2396,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen.set_current_course("course-a")
             screen.refresh()
 
-            self.assertIn("cache", screen.recommendation_label.text())
+            self.assertIn("Cache", screen.recommendation_label.text())
 
             cache_row = 0
             screen.topic_table.selectRow(cache_row)
@@ -2353,13 +2404,13 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             self.assertTrue(mastery_overrides.is_topic_mastered("course-a", "cache"))
             self.assertEqual("已掌握", screen.topic_table.item(cache_row, 3).text())
-            self.assertNotIn("cache", screen.recommendation_label.text())
-            self.assertIn("process", screen.recommendation_label.text())
+            self.assertNotIn("Cache", screen.recommendation_label.text())
+            self.assertIn("Process", screen.recommendation_label.text())
 
             screen.mark_mastered_btn.click()
 
             self.assertFalse(mastery_overrides.is_topic_mastered("course-a", "cache"))
-            self.assertIn("cache", screen.recommendation_label.text())
+            self.assertIn("Cache", screen.recommendation_label.text())
 
     def test_progress_dashboard_topic_action_buttons_emit_selected_topic(self):
         with tempfile.TemporaryDirectory() as tmpdir:
