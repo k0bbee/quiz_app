@@ -128,6 +128,7 @@ class QuestionReviewCard(QFrame):
             metadata.get("source_refs", []),
             label=self.lang_manager.get_text("来源", "Source Evidence"),
             status=metadata.get("source_ref_status"),
+            language=self.lang_manager.current,
         ))
         self.source_label.setVisible(bool(self.source_label.text()))
 

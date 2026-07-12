@@ -8,10 +8,11 @@ def format_source_refs(
     label: str = "Source Evidence",
     html: bool = False,
     status: str | None = None,
+    language: str = "en",
 ) -> str:
     """Format stored source_refs without exposing raw JSON."""
-    lines = _source_ref_lines(source_refs, html=html)
-    status_label = _source_ref_status_label(status)
+    lines = _source_ref_lines(source_refs, html=html, language=language)
+    status_label = _source_ref_status_label(status, language=language)
     if not lines and not status_label:
         return ""
     separator = "<br>" if html else "\n"
@@ -23,7 +24,7 @@ def format_source_refs(
     return separator.join([title, *lines])
 
 
-def _source_ref_lines(source_refs, html: bool = False) -> list[str]:
+def _source_ref_lines(source_refs, html: bool = False, language: str = "en") -> list[str]:
     if not isinstance(source_refs, list):
         return []
     lines = []
@@ -38,7 +39,8 @@ def _source_ref_lines(source_refs, html: bool = False) -> list[str]:
         if source_file:
             parts.append(source_file)
         if page_or_slide not in ("", None):
-            parts.append(f"page {page_or_slide}")
+            page_label = "页码/幻灯片" if language == "zh" else "page"
+            parts.append(f"{page_label} {page_or_slide}")
         if chunk_id:
             parts.append(chunk_id)
         if heading:
@@ -51,7 +53,8 @@ def _source_ref_lines(source_refs, html: bool = False) -> list[str]:
             if excerpt:
                 if html:
                     excerpt = html_escape(excerpt)
-                lines.append(f"   Excerpt: {excerpt}")
+                excerpt_label = "摘录" if language == "zh" else "Excerpt"
+                lines.append(f"   {excerpt_label}: {excerpt}")
     return lines
 
 
@@ -62,20 +65,21 @@ def _compact_excerpt(value, limit: int = 120) -> str:
     return text[:limit].rstrip() + "…"
 
 
-def _source_ref_status_label(status: str | None) -> str:
+def _source_ref_status_label(status: str | None, language: str = "en") -> str:
     value = str(status or "").strip().lower()
     labels = {
-        "valid_model_ref": "Exact",
-        "partial_model_ref": "Partial",
-        "fallback_plan_evidence": "Plan Fallback",
-        "fallback_global_evidence": "Global Fallback",
-        "global_fallback": "Global Fallback",
-        "recovered": "Recovered",
-        "invalid_model_ref": "Invalid",
-        "missing": "Missing",
+        "valid_model_ref": ("精确来源", "Exact"),
+        "partial_model_ref": ("部分匹配", "Partial"),
+        "fallback_plan_evidence": ("计划证据补全", "Plan Fallback"),
+        "fallback_global_evidence": ("全局检索补全", "Global Fallback"),
+        "global_fallback": ("全局检索补全", "Global Fallback"),
+        "recovered": ("已恢复旧来源", "Recovered"),
+        "invalid_model_ref": ("无效来源", "Invalid"),
+        "missing": ("缺少来源", "Missing"),
     }
     if value in labels:
-        return labels[value]
+        return labels[value][0 if language == "zh" else 1]
     if not value:
         return ""
-    return value.replace("_", " ").title()
+    readable = value.replace("_", " ").title()
+    return f"未知状态（{readable}）" if language == "zh" else readable

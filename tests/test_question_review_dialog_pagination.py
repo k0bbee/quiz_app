@@ -158,7 +158,7 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
 
         details = dialog.source_editor.toPlainText()
         self.assertIn("第21讲 Cache.pdf", details)
-        self.assertIn("page 8", details.lower())
+        self.assertIn("页码/幻灯片 8", details)
         self.assertIn("source-0007", details)
         self.assertIn("Cache Address Breakdown", details)
 

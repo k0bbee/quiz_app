@@ -324,7 +324,9 @@ class QuestionReviewDialog(QDialog):
         metadata = q.metadata or {}
         source_text = format_source_refs(
             metadata.get("source_refs", []),
+            label=self.lang_manager.get_text("来源", "Source Evidence"),
             status=metadata.get("source_ref_status"),
+            language=self.lang_manager.current,
         )
         warnings = self._review_warnings(q)
 

@@ -1102,7 +1102,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             feedback = screen.explanation_label.text()
             self.assertIn("第21讲 Cache.pdf", feedback)
-            self.assertIn("page 8", feedback.lower())
+            self.assertIn("页码/幻灯片 8", feedback)
             self.assertIn("source-0007", feedback)
             self.assertIn("Cache Address Breakdown", feedback)
 
@@ -1458,7 +1458,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         card = screen.review_layout.itemAt(0).widget()
         source_text = card.source_label.text()
         self.assertIn("第21讲 Cache.pdf", source_text)
-        self.assertIn("page 8", source_text.lower())
+        self.assertIn("页码/幻灯片 8", source_text)
         self.assertIn("source-0007", source_text)
         self.assertIn("Cache Address Breakdown", source_text)
 
@@ -2345,7 +2345,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertFalse(screen.source_refs_label.isHidden())
             self.assertIn("相关来源", source_text)
             self.assertIn("Cache.pdf", source_text)
-            self.assertIn("page 8", source_text)
+            self.assertIn("页码/幻灯片 8", source_text)
             self.assertIn("cache-chunk-8", source_text)
             self.assertNotIn("Process.pdf", source_text)
 

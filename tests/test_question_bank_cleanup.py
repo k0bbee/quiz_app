@@ -637,7 +637,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
             source_text = screen.source_refs_label.text()
             self.assertIn("第21讲 Cache.pdf", source_text)
-            self.assertIn("page 8", source_text.lower())
+            self.assertIn("页码/幻灯片 8", source_text)
             self.assertIn("source-0007", source_text)
             self.assertIn("Cache Address Breakdown", source_text)
             self.assertFalse(screen.source_refs_label.isHidden())

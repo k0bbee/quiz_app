@@ -1007,6 +1007,7 @@ class QuizScreen(QWidget):
             label=self.lang_manager.get_text("来源", "Source Evidence"),
             html=True,
             status=metadata.get("source_ref_status"),
+            language=self.lang_manager.current,
         )
         if source_text:
             feedback += f"<br><br>{source_text}"

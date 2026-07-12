@@ -404,6 +404,7 @@ class ProgressDashboard(QWidget):
         text = format_source_refs(
             source_refs,
             label=self.lang_manager.get_text("相关来源", "Related sources"),
+            language=self.lang_manager.current,
         )
         self.source_refs_label.setText(text)
         self.source_refs_label.setHidden(not bool(text))

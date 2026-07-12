@@ -69,6 +69,45 @@ class SourceRefsFormattingTests(unittest.TestCase):
         self.assertIn("<b>来源:</b> Exact", text)
         self.assertIn("<br>", text)
 
+    def test_format_source_refs_localizes_chinese_status_page_and_excerpt(self):
+        statuses = {
+            "valid_model_ref": "精确来源",
+            "partial_model_ref": "部分匹配",
+            "fallback_plan_evidence": "计划证据补全",
+            "fallback_global_evidence": "全局检索补全",
+            "global_fallback": "全局检索补全",
+            "recovered": "已恢复旧来源",
+            "invalid_model_ref": "无效来源",
+            "missing": "缺少来源",
+        }
+        for status, expected in statuses.items():
+            with self.subTest(status=status):
+                text = format_source_refs(
+                    [{
+                        "source_file": "课件.pdf",
+                        "page_or_slide": 12,
+                        "excerpt": "中断驱动输入输出",
+                    }],
+                    label="来源",
+                    status=status,
+                    language="zh",
+                )
+                self.assertIn(f"来源: {expected}", text)
+                self.assertIn("页码/幻灯片 12", text)
+                self.assertIn("摘录: 中断驱动输入输出", text)
+                self.assertNotIn("Excerpt", text)
+
+    def test_format_source_refs_localizes_chinese_html_status(self):
+        text = format_source_refs(
+            [{"source_file": "课件.pdf"}],
+            label="来源",
+            html=True,
+            status="valid_model_ref",
+            language="zh",
+        )
+
+        self.assertIn("<b>来源:</b> 精确来源", text)
+
     def test_format_source_refs_escapes_generated_values_in_html_mode(self):
         text = format_source_refs(
             [
