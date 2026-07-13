@@ -27,6 +27,9 @@ PROGRESS_DIR = os.path.join(DATA_DIR, "progress")
 # Quiz snapshots: resumable in-progress quiz sessions
 QUIZ_SNAPSHOTS_DIR = os.path.join(DATA_DIR, "quiz_snapshots")
 
+# Imported historical exams and their immutable extracted source content
+PAST_EXAMS_DIR = os.path.join(DATA_DIR, "past_exams")
+
 # Settings
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 API_KEY_STORE_FILE = os.path.join(DATA_DIR, ".api_key.dpapi")

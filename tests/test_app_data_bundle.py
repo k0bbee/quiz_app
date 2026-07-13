@@ -20,12 +20,17 @@ class AppDataBundleTests(unittest.TestCase):
             (data_dir / "question_sets").mkdir()
             (data_dir / "progress").mkdir()
             (data_dir / "quiz_snapshots").mkdir()
+            (data_dir / "past_exams" / "past-exam-a").mkdir(parents=True)
             (data_dir / "courses" / "course-a" / "summary.md").write_text("# 课程总结", encoding="utf-8")
             (data_dir / "questions" / "q1.json").write_text('{"question_id": "q1"}', encoding="utf-8")
             (data_dir / "question_sets" / "set1.json").write_text('{"set_id": "set1"}', encoding="utf-8")
             (data_dir / "progress" / "p1.json").write_text('{"progress_id": "p1"}', encoding="utf-8")
             (data_dir / "quiz_snapshots" / "snapshot1.json").write_text(
                 '{"snapshot_id": "snapshot1"}',
+                encoding="utf-8",
+            )
+            (data_dir / "past_exams" / "past-exam-a" / "record.json").write_text(
+                '{"exam_id": "past-exam-a"}',
                 encoding="utf-8",
             )
             (data_dir / "current_course.json").write_text('{"course_id": "course-a"}', encoding="utf-8")
@@ -49,6 +54,7 @@ class AppDataBundleTests(unittest.TestCase):
                 self.assertIn("question_sets/set1.json", names)
                 self.assertIn("progress/p1.json", names)
                 self.assertIn("quiz_snapshots/snapshot1.json", names)
+                self.assertIn("past_exams/past-exam-a/record.json", names)
                 self.assertIn("current_course.json", names)
                 self.assertIn("mastery_overrides.json", names)
                 self.assertIn("settings.json", names)
