@@ -2313,6 +2313,53 @@ class GenerationConfigTests(unittest.TestCase):
 
         dialog_class.return_value.configure_from_course_profile.assert_called_once_with(course)
 
+    def test_predicted_generation_prefills_reviewable_plan_after_course_defaults(self):
+        from core.language_manager import LanguageManager
+        from ui.main_window import MainWindow
+
+        settings = {
+            "ai_provider": "local_agent",
+            "ai_base_url": "local-agent://auto",
+            "ai_model": "codex",
+        }
+        course = SimpleNamespace(
+            course_id="course-a",
+            title="Systems",
+            summary_markdown="summary",
+            topics=[CourseTopic("io", "I/O")],
+            generation_profile={"question_count": 10},
+        )
+        plan = ExamGenerationPlan(
+            question_count=20,
+            difficulty="mixed",
+            template="final_exam",
+            selected_topics=("io",),
+            topic_weights={"io": 100},
+        )
+        prediction = SimpleNamespace(plan=plan, source_count=2, warnings=("short_answer",))
+        shell = SimpleNamespace(
+            settings_screen=SimpleNamespace(_settings=settings),
+            lang_manager=LanguageManager.instance(),
+        )
+
+        with patch("ui.main_window._ai_generation_settings_error", return_value=""), \
+             patch("ui.dialogs.ai_generation_dialog.AIGenerationDialog") as dialog_class:
+            dialog = dialog_class.return_value
+            dialog.exec.return_value = QDialog.DialogCode.Rejected
+
+            MainWindow._on_ai_generate(
+                shell,
+                course_override=course,
+                initial_plan=plan,
+                prediction=prediction,
+            )
+
+        dialog.configure_from_course_profile.assert_called_once_with(course)
+        dialog.apply_exam_plan.assert_called_once_with(plan)
+        dialog.set_title_input.setText.assert_called_once_with("Systems预测模拟卷")
+        self.assertIn("2 份历史真题画像", dialog.status_label.setText.call_args.args[0])
+        self.assertIn("不代表未来考题", dialog.status_label.setText.call_args.args[0])
+
     def test_main_generation_flow_rolls_back_questions_when_question_set_save_fails(self):
         from core.language_manager import LanguageManager
         from models.question import QuestionBank

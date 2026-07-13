@@ -171,6 +171,9 @@ class MainWindow(QMainWindow):
                 self.past_exam_manager,
                 self.course_manager,
             )
+            self._past_exam_screen.prediction_requested.connect(
+                self._on_generate_predicted_exam
+            )
             self.stack.insertWidget(self.SCREEN_PAST_EXAMS, self._past_exam_screen)
         return self._past_exam_screen
 
@@ -823,7 +826,13 @@ class MainWindow(QMainWindow):
         )
         self.navigate_to(self.SCREEN_QUIZ)
 
-    def _on_ai_generate(self):
+    def _on_ai_generate(
+        self,
+        *,
+        course_override=None,
+        initial_plan=None,
+        prediction=None,
+    ):
         """Open the AI question generation dialog."""
         gm = self.lang_manager.get_text
 
@@ -831,7 +840,12 @@ class MainWindow(QMainWindow):
         settings = self.settings_screen._settings
 
         # Check course content first
-        course_content, available_topics, course_project = self._load_generation_context()
+        if course_override is None:
+            course_content, available_topics, course_project = self._load_generation_context()
+        else:
+            course_project = course_override
+            course_content = str(getattr(course_project, "summary_markdown", "") or "")
+            available_topics = list(getattr(course_project, "topics", []) or [])
         if not course_content:
             QMessageBox.warning(
                 self,
@@ -863,6 +877,32 @@ class MainWindow(QMainWindow):
             course_project=course_project,
         )
         dialog.configure_from_course_profile(course_project)
+        if initial_plan is not None:
+            try:
+                dialog.apply_exam_plan(initial_plan)
+            except ValueError as exc:
+                QMessageBox.warning(
+                    self,
+                    gm("预测配置不可用", "Prediction Plan Unavailable"),
+                    str(exc),
+                )
+                return
+            if hasattr(dialog, "set_title_input"):
+                course_title = str(getattr(course_project, "title", "") or "").strip()
+                dialog.set_title_input.setText(gm(
+                    f"{course_title}预测模拟卷" if course_title else "预测模拟卷",
+                    f"{course_title} Predicted Mock Exam" if course_title else "Predicted Mock Exam",
+                ))
+            if prediction is not None and hasattr(dialog, "status_label"):
+                source_count = int(getattr(prediction, "source_count", 0) or 0)
+                excluded_note = gm(
+                    " 部分当前生成器不支持的历史题型未计入题型权重。",
+                    " Historical types unsupported by the current generator were excluded.",
+                ) if getattr(prediction, "warnings", ()) else ""
+                dialog.status_label.setText(gm(
+                    f"已按 {source_count} 份历史真题画像预填；这反映历史分布，不代表未来考题。{excluded_note}",
+                    f"Pre-filled from {source_count} historical exam profiles; this reflects past distribution, not future questions.{excluded_note}",
+                ))
         if dialog.exec() == QDialog.DialogCode.Accepted:
             questions = dialog.generated_questions
             if questions:
@@ -896,6 +936,25 @@ class MainWindow(QMainWindow):
                        f"Saved {saved} questions and created a question set:\n{qset.get_title(lang)}"),
                 )
                 self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+
+    def _on_generate_predicted_exam(self, course_id: str, prediction):
+        """Open the normal generation review flow with a historical profile plan."""
+        course = self.course_manager.get(course_id)
+        if course is None:
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text("课程不存在", "Course Not Found"),
+                self.lang_manager.get_text(
+                    "该真题关联的课程已不存在，请重新选择课程。",
+                    "The course linked to this exam no longer exists. Choose another course.",
+                ),
+            )
+            return
+        self._on_ai_generate(
+            course_override=course,
+            initial_plan=prediction.plan,
+            prediction=prediction,
+        )
 
     def _on_regenerate_question_set(self, set_id: str):
         """Regenerate questions for an existing question set in place."""

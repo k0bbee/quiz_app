@@ -27,6 +27,7 @@ from core.background_task import BackgroundTaskCancelled, TaskControl
 from core.language_manager import LanguageManager
 from core.past_exam_analyzer import PastExamAnalysisService
 from core.past_exam_importer import PastExamImporter
+from core.past_exam_prediction import PastExamPredictionPlanner
 
 
 _MAX_PREVIEW_CHARS = 40000
@@ -90,6 +91,8 @@ class PastExamAnalysisWorker(QThread):
 
 class PastExamScreen(QWidget):
     """Import, preview and assign historical exam source documents."""
+
+    prediction_requested = pyqtSignal(str, object)
 
     def __init__(self, manager, course_manager, parent=None):
         super().__init__(parent)
@@ -187,16 +190,21 @@ class PastExamScreen(QWidget):
         self.metadata_label.setObjectName("pastExamMetadata")
         self.metadata_label.setWordWrap(True)
         right_layout.addWidget(self.metadata_label)
-        analysis_row = QHBoxLayout()
         self.analysis_summary = QLabel()
         self.analysis_summary.setObjectName("pastExamAnalysisSummary")
         self.analysis_summary.setWordWrap(True)
-        analysis_row.addWidget(self.analysis_summary, 1)
+        right_layout.addWidget(self.analysis_summary)
+        analysis_actions = QHBoxLayout()
+        analysis_actions.addStretch()
         self.analyze_btn = QPushButton()
         self.analyze_btn.setObjectName("secondaryButton")
         self.analyze_btn.clicked.connect(self._start_analysis)
-        analysis_row.addWidget(self.analyze_btn, 0, Qt.AlignmentFlag.AlignTop)
-        right_layout.addLayout(analysis_row)
+        analysis_actions.addWidget(self.analyze_btn)
+        self.predict_btn = QPushButton()
+        self.predict_btn.setObjectName("primaryButton")
+        self.predict_btn.clicked.connect(self._request_prediction)
+        analysis_actions.addWidget(self.predict_btn)
+        right_layout.addLayout(analysis_actions)
         self.content_preview = QTextBrowser()
         self.content_preview.setObjectName("pastExamContentPreview")
         self.content_preview.setReadOnly(True)
@@ -224,6 +232,7 @@ class PastExamScreen(QWidget):
         ))
         self.save_assignment_btn.setText(gm("保存课程归属", "Save Course Assignment"))
         self.analyze_btn.setText(gm("分析真题", "Analyze Exam"))
+        self.predict_btn.setText(gm("生成预测模拟卷", "Generate Predicted Exam"))
         self._reload_course_choices()
         self.refresh()
 
@@ -394,6 +403,20 @@ class PastExamScreen(QWidget):
             self.import_btn,
         ):
             widget.setEnabled(not busy)
+        if busy:
+            for widget in (
+                self.assignment_combo,
+                self.save_assignment_btn,
+                self.analyze_btn,
+                self.predict_btn,
+            ):
+                widget.setEnabled(False)
+        else:
+            record = self.manager.get(self._selected_exam_id())
+            if record is not None:
+                self.assignment_combo.setEnabled(True)
+                self.save_assignment_btn.setEnabled(True)
+                self._show_analysis(record)
         self.progress_label.setVisible(busy)
         self.progress_bar.setVisible(busy)
         self.cancel_btn.setVisible(busy)
@@ -450,6 +473,7 @@ class PastExamScreen(QWidget):
         analysis = self.manager.get_analysis(record.exam_id)
         gm = self.lang_manager.get_text
         self.analyze_btn.setEnabled(bool(record.course_id) and self._analysis_worker is None)
+        self.predict_btn.setEnabled(self._prediction_available(record.course_id))
         self.analyze_btn.setText(gm(
             "重新分析" if analysis else "分析真题",
             "Reanalyze" if analysis else "Analyze Exam",
@@ -494,6 +518,34 @@ class PastExamScreen(QWidget):
             f"Profile: {analysis.detected_question_count} questions · {type_text}\nTopics: {topic_text}",
         ))
 
+    def _prediction_available(self, course_id):
+        if not course_id:
+            return False
+        return any(
+            record.course_id == course_id
+            and record.analysis_status == "complete"
+            and self.manager.get_analysis(record.exam_id) is not None
+            for record in self.manager.load_all()
+        )
+
+    def _request_prediction(self):
+        record = self.manager.get(self._selected_exam_id())
+        if record is None or not record.course_id:
+            return
+        course = self.course_manager.get(record.course_id)
+        if course is None:
+            return
+        try:
+            prediction = PastExamPredictionPlanner(self.manager).build(course)
+        except ValueError as exc:
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text("无法生成预测", "Cannot Build Prediction"),
+                str(exc),
+            )
+            return
+        self.prediction_requested.emit(record.course_id, prediction)
+
     def _start_analysis(self):
         exam_id = self._selected_exam_id()
         if not exam_id or self._analysis_worker is not None:
@@ -508,6 +560,7 @@ class PastExamScreen(QWidget):
         worker.finished.connect(self._on_analysis_worker_finished)
         self._set_import_busy(True)
         self.analyze_btn.setEnabled(False)
+        self.predict_btn.setEnabled(False)
         worker.start()
 
     def _on_analyzed(self, exam_id):

@@ -307,6 +307,18 @@ class UiThemeTests(unittest.TestCase):
         main_window.quiz_screen.confirm_exit.assert_called_once()
         self.assertEqual(main_window.SCREEN_SETTINGS, main_window.stack.currentIndex())
 
+    def test_historical_exam_prediction_is_routed_to_main_generation_flow(self):
+        main_window = MainWindow()
+        self.addCleanup(main_window.close)
+        handler = Mock()
+        main_window._on_generate_predicted_exam = handler
+
+        screen = main_window._get_past_exam_screen()
+        prediction = object()
+        screen.prediction_requested.emit("course-a", prediction)
+
+        handler.assert_called_once_with("course-a", prediction)
+
     def test_close_event_confirms_before_closing_active_quiz(self):
         main_window = MainWindow()
         self.addCleanup(main_window.deleteLater)

@@ -52,7 +52,13 @@ class PastExamScreenTests(unittest.TestCase):
             self.assertIn("预览已截断", preview)
             self.assertIn("Systems", screen.assignment_status.text())
             self.assertEqual("course-a", screen.assignment_combo.currentData())
-            for button in (screen.browse_btn, screen.import_btn, screen.save_assignment_btn):
+            for button in (
+                screen.browse_btn,
+                screen.import_btn,
+                screen.save_assignment_btn,
+                screen.analyze_btn,
+                screen.predict_btn,
+            ):
                 self.assertTrue(button.icon().isNull())
 
     def test_import_worker_receives_manual_or_automatic_assignment(self):
@@ -139,16 +145,34 @@ class PastExamScreenTests(unittest.TestCase):
             screen = PastExamScreen(manager, self._course_manager(with_topics=True))
 
             self.assertTrue(screen.analyze_btn.isEnabled())
+            self.assertTrue(screen.predict_btn.isEnabled())
+            screen._set_import_busy(True)
+            self.assertFalse(screen.assignment_combo.isEnabled())
+            self.assertFalse(screen.save_assignment_btn.isEnabled())
+            self.assertFalse(screen.analyze_btn.isEnabled())
+            self.assertFalse(screen.predict_btn.isEnabled())
+            screen._set_import_busy(False)
+            self.assertTrue(screen.assignment_combo.isEnabled())
+            self.assertTrue(screen.predict_btn.isEnabled())
             self.assertIn("1 题", screen.analysis_summary.text())
             self.assertIn("判断题 1", screen.analysis_summary.text())
             self.assertIn("I/O 中断 100%", screen.analysis_summary.text())
             self.assertIn("i o 中断", screen.analysis_summary.text())
             self.assertTrue(screen.analyze_btn.icon().isNull())
+            self.assertTrue(screen.predict_btn.icon().isNull())
+
+            requested = []
+            screen.prediction_requested.connect(lambda course_id, prediction: requested.append((course_id, prediction)))
+            screen.predict_btn.click()
+            self.assertEqual("course-a", requested[0][0])
+            self.assertEqual((record.exam_id,), requested[0][1].exam_ids)
+            self.assertEqual(("io",), requested[0][1].plan.selected_topics)
 
             manager.reassign_course(record.exam_id, "")
             screen.refresh()
             screen._select_exam(record.exam_id)
             self.assertFalse(screen.analyze_btn.isEnabled())
+            self.assertFalse(screen.predict_btn.isEnabled())
             self.assertIn("归属课程", screen.analysis_summary.text())
 
     @staticmethod
