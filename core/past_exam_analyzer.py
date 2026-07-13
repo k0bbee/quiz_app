@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from dataclasses import replace
 from datetime import datetime, timezone
 import math
 import re
@@ -91,11 +90,12 @@ class PastExamAnalysisService:
             task=task,
         )
         _task_report(task, "saving_analysis", 2, 3)
-        if not self.exam_manager.save_analysis(exam_id, analysis):
-            raise OSError("Failed to save historical exam analysis")
-        completed = replace(record, analysis_status="complete")
-        if not self.exam_manager.save_record(completed):
-            raise OSError("Failed to mark historical exam analysis complete")
+        self.exam_manager.publish_analysis(
+            exam_id,
+            analysis,
+            expected_course_id=record.course_id,
+            expected_source_sha256=record.source_sha256,
+        )
         if task is not None:
             task.complete("analysis_complete")
         return analysis

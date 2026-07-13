@@ -4,10 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+import threading
 from typing import Optional
 
 from config import PAST_EXAMS_DIR
 from utils.json_io import read_json, sanitize_filename_part, write_json
+
+
+class PastExamStateConflict(RuntimeError):
+    """Raised when a background result no longer matches the current exam state."""
 
 
 @dataclass(frozen=True)
@@ -182,6 +187,7 @@ class PastExamManager:
 
     def __init__(self, exams_dir: str | Path = PAST_EXAMS_DIR):
         self._dir = Path(exams_dir)
+        self._lock = threading.RLock()
         self._dir.mkdir(parents=True, exist_ok=True)
 
     @property
@@ -237,6 +243,36 @@ class PastExamManager:
             return None
         return analysis
 
+    def publish_analysis(
+        self,
+        exam_id: str,
+        analysis: PastExamAnalysis,
+        *,
+        expected_course_id: str,
+        expected_source_sha256: str,
+    ) -> PastExamRecord:
+        """Conditionally publish analysis without overwriting newer assignment state."""
+        with self._lock:
+            current = self.get(exam_id)
+            if (
+                current is None
+                or current.course_id != expected_course_id
+                or current.source_sha256 != expected_source_sha256
+            ):
+                raise PastExamStateConflict(
+                    "Historical exam changed during analysis; run analysis again"
+                )
+            if analysis.source_sha256 != expected_source_sha256:
+                raise PastExamStateConflict(
+                    "Historical exam source changed during analysis; run analysis again"
+                )
+            if not self.save_analysis(exam_id, analysis):
+                raise OSError("Failed to save historical exam analysis")
+            completed = replace(current, analysis_status="complete")
+            if not self.save_record(completed):
+                raise OSError("Failed to mark historical exam analysis complete")
+            return completed
+
     def load_all(self) -> list[PastExamRecord]:
         records = []
         for path in self._dir.glob("*/record.json"):
@@ -262,27 +298,28 @@ class PastExamManager:
 
     def reassign_course(self, exam_id: str, course_id: str) -> Optional[PastExamRecord]:
         """Persist a user-confirmed course assignment, or explicit unassignment."""
-        record = self.get(exam_id)
-        if record is None:
-            return None
-        normalized_course_id = str(course_id or "").strip()
-        course_changed = normalized_course_id != record.course_id
-        updated = replace(
-            record,
-            course_id=normalized_course_id,
-            assignment_mode="manual" if normalized_course_id else "unassigned",
-            analysis_status="pending" if course_changed else record.analysis_status,
-        )
-        if not self.save_record(updated):
-            raise OSError(f"Failed to update historical exam {exam_id}")
-        if course_changed:
-            analysis_path = self.exam_directory(exam_id) / "analysis.json"
-            try:
-                analysis_path.unlink(missing_ok=True)
-            except OSError:
-                # The pending record status prevents stale analysis from being consumed.
-                pass
-        return updated
+        with self._lock:
+            record = self.get(exam_id)
+            if record is None:
+                return None
+            normalized_course_id = str(course_id or "").strip()
+            course_changed = normalized_course_id != record.course_id
+            updated = replace(
+                record,
+                course_id=normalized_course_id,
+                assignment_mode="manual" if normalized_course_id else "unassigned",
+                analysis_status="pending" if course_changed else record.analysis_status,
+            )
+            if not self.save_record(updated):
+                raise OSError(f"Failed to update historical exam {exam_id}")
+            if course_changed:
+                analysis_path = self.exam_directory(exam_id) / "analysis.json"
+                try:
+                    analysis_path.unlink(missing_ok=True)
+                except OSError:
+                    # The pending record status prevents stale analysis from being consumed.
+                    pass
+            return updated
 
     def resolve_source_path(self, record: PastExamRecord) -> Path:
         exam_dir = self.exam_directory(record.exam_id).resolve()

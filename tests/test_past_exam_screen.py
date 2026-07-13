@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -122,6 +122,20 @@ class PastExamScreenTests(unittest.TestCase):
             self.assertFalse(screen.request_shutdown())
 
             worker.cancel.assert_called_once_with()
+
+    def test_analysis_conflict_message_explains_that_stale_result_was_not_saved(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = PastExamScreen(PastExamManager(tmpdir), self._course_manager())
+
+            with patch("ui.screens.past_exam_screen.QMessageBox.critical") as critical:
+                screen._on_analysis_failed(
+                    "Historical exam changed during analysis; run analysis again"
+                )
+
+            message = critical.call_args.args[2]
+            self.assertIn("课程归属已变化", message)
+            self.assertIn("未保存", message)
+            self.assertIn("重新分析", message)
 
     def test_analysis_action_requires_course_and_displays_explainable_profile(self):
         with tempfile.TemporaryDirectory() as tmpdir:

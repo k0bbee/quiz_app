@@ -5,7 +5,11 @@ from pathlib import Path
 from core.background_task import BackgroundTaskCancelled, TaskControl
 from core.past_exam_analyzer import PastExamAnalyzer, PastExamAnalysisService
 from models.course_project import CourseProject, CourseTopic
-from models.past_exam import PastExamContent, PastExamManager, PastExamRecord
+from models.past_exam import (
+    PastExamContent,
+    PastExamManager,
+    PastExamRecord,
+)
 
 
 def _course(topics):
@@ -162,6 +166,48 @@ A. 选项一 B. 选项二 C. 选项三 D. 选项四
 
             self.assertEqual("pending", manager.get("exam-1").analysis_status)
             self.assertIsNone(manager.get_analysis("exam-1"))
+
+    def test_course_change_during_analysis_cannot_be_overwritten_by_stale_result(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            manager = PastExamManager(temp_dir)
+            record = PastExamRecord(
+                exam_id="exam-1",
+                title="系统真题",
+                source_filename="exam.txt",
+                source_path="source.txt",
+                content_path="content.json",
+                source_sha256="abc",
+                imported_at="2026-07-13T00:00:00+00:00",
+                course_id="systems",
+                assignment_mode="manual",
+            )
+            manager.exam_directory(record.exam_id).mkdir(parents=True)
+            manager.save_record(record)
+            manager.save_content(record.exam_id, PastExamContent("一、判断题\n1. 中断用于通知。（ ）"))
+            course = _course([CourseTopic("io", "中断")])
+
+            class ReassigningAnalyzer:
+                def analyze(self, text, selected_course, *, source_sha256, task=None):
+                    manager.reassign_course("exam-1", "other-course")
+                    return PastExamAnalyzer().analyze(
+                        text,
+                        selected_course,
+                        source_sha256=source_sha256,
+                        task=task,
+                    )
+
+            with self.assertRaisesRegex(RuntimeError, "changed during analysis"):
+                PastExamAnalysisService(
+                    manager,
+                    _CourseManager(course),
+                    analyzer=ReassigningAnalyzer(),
+                ).analyze("exam-1")
+
+            current = manager.get("exam-1")
+            self.assertEqual("other-course", current.course_id)
+            self.assertEqual("pending", current.analysis_status)
+            self.assertIsNone(manager.get_analysis("exam-1"))
+            self.assertFalse((Path(temp_dir) / "exam-1" / "analysis.json").exists())
 
 
 if __name__ == "__main__":

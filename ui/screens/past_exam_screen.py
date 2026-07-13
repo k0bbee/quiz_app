@@ -570,10 +570,16 @@ class PastExamScreen(QWidget):
 
     def _on_analysis_failed(self, message):
         self._finish_import()
+        display_message = str(message)
+        if "changed during analysis" in display_message.casefold():
+            display_message = self.lang_manager.get_text(
+                "课程归属已变化，本次旧分析结果未保存。请按当前课程重新分析。",
+                "The course assignment changed. The stale analysis was not saved; analyze again for the current course.",
+            )
         QMessageBox.critical(
             self,
             self.lang_manager.get_text("分析失败", "Analysis Failed"),
-            str(message),
+            display_message,
         )
 
     def _on_analysis_cancelled(self):
