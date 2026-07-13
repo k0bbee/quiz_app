@@ -142,7 +142,8 @@ class CourseInitializer:
         self._report(task, "index")
         project = attach_index_to_project(project)
         self._report(task, "saving")
-        self.manager.save(project, make_current=make_current)
+        if not self.manager.save(project, make_current=make_current):
+            raise OSError("Failed to save course data.")
         if task is not None:
             task.complete("saved")
         return project
@@ -201,7 +202,8 @@ class CourseInitializer:
         self._report(task, "index")
         updated = attach_index_to_project(updated)
         self._report(task, "saving")
-        self.manager.save(updated, make_current=make_current)
+        if not self.manager.save(updated, make_current=make_current):
+            raise OSError("Failed to save course data.")
         if task is not None:
             task.complete("saved")
         return updated

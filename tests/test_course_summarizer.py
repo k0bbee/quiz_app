@@ -63,6 +63,15 @@ class FakeProfileGenerator:
 
 
 class CourseSummaryGeneratorTests(unittest.TestCase):
+    def test_initializer_reports_save_failure_instead_of_returning_unsaved_course(self):
+        manager = Mock()
+        manager.save.return_value = False
+        initializer = CourseInitializer(manager)
+        initializer.parser = FakeParser(self._docs())
+
+        with self.assertRaisesRegex(OSError, "save course data"):
+            initializer.initialize("unused-source", make_current=False)
+
     def test_initializer_cancelled_after_parsing_does_not_save_partial_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
@@ -620,6 +629,97 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertEqual(repaired_summary, Path(project.summary_path))
             self.assertEqual("# Repaired Summary\n", repaired_summary.read_text(encoding="utf-8"))
             self.assertFalse(stale_summary.exists())
+
+    def test_project_manager_rolls_back_all_course_files_when_commit_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            manager = CourseProjectManager(str(root / "projects"))
+            current_file = root / "current_course.json"
+            project = CourseProject(
+                course_id="course-transaction",
+                title="Systems",
+                source_folder=str(root / "source"),
+                summary_markdown="# Original Summary\n",
+                summary_path="",
+                topics=self._topics(),
+                documents=[],
+                created_at="2026-07-13T00:00:00+00:00",
+                updated_at="2026-07-13T00:00:00+00:00",
+            )
+            self.assertTrue(manager.save(project, make_current=False))
+            current_file.write_text('{"course_id": "course-other"}', encoding="utf-8")
+
+            project.summary_markdown = "# Replacement Summary\n"
+            project.updated_at = "2026-07-13T01:00:00+00:00"
+
+            real_replace = os.replace
+            forward_replacements = 0
+
+            def fail_current_pointer_commit(source, destination):
+                nonlocal forward_replacements
+                if ".course-save-" in str(source):
+                    forward_replacements += 1
+                    if forward_replacements == 3:
+                        raise OSError("disk full")
+                return real_replace(source, destination)
+
+            with patch("models.course_project.CURRENT_COURSE_FILE", str(current_file)), \
+                    patch("models.course_project.os.replace", side_effect=fail_current_pointer_commit):
+                self.assertFalse(manager.save(project, make_current=True))
+
+            stored = manager.get(project.course_id)
+            self.assertEqual("# Original Summary\n", stored.summary_markdown)
+            self.assertEqual("2026-07-13T00:00:00+00:00", stored.updated_at)
+            self.assertEqual(
+                "# Original Summary\n",
+                Path(stored.summary_path).read_text(encoding="utf-8"),
+            )
+            self.assertEqual(
+                {"course_id": "course-other"},
+                json.loads(current_file.read_text(encoding="utf-8")),
+            )
+
+    def test_project_manager_prepare_failure_leaves_project_and_disk_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            project = CourseProject(
+                course_id="course-invalid",
+                title="Systems",
+                source_folder=str(Path(tmpdir) / "source"),
+                summary_markdown="# Summary\n",
+                summary_path="",
+                topics=self._topics(),
+                documents=[{"not_serializable": object()}],
+                created_at="2026-07-13T00:00:00+00:00",
+                updated_at="2026-07-13T00:00:00+00:00",
+            )
+
+            self.assertFalse(manager.save(project, make_current=False))
+
+            self.assertEqual("", project.summary_path)
+            self.assertFalse((Path(manager.directory) / "course-invalid.json").exists())
+            self.assertFalse((Path(manager.directory) / "course-invalid_summary.md").exists())
+
+    def test_project_manager_rejects_conflicting_course_artifact_paths(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            conflicting_path = Path(manager.directory) / "course-conflict.json"
+            project = CourseProject(
+                course_id="course-conflict",
+                title="Systems",
+                source_folder=str(Path(tmpdir) / "source"),
+                summary_markdown="# Summary\n",
+                summary_path=str(conflicting_path),
+                topics=self._topics(),
+                documents=[],
+                created_at="2026-07-13T00:00:00+00:00",
+                updated_at="2026-07-13T00:00:00+00:00",
+            )
+
+            self.assertFalse(manager.save(project, make_current=False))
+
+            self.assertEqual(str(conflicting_path), project.summary_path)
+            self.assertFalse(conflicting_path.exists())
 
     def test_project_manager_persists_summary_generation_status(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
+import shutil
+import tempfile
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -11,6 +14,7 @@ from typing import Optional
 
 from config import COURSE_PROJECTS_DIR, CURRENT_COURSE_FILE
 from utils.json_io import read_json, write_json, list_json_files, delete_json, sanitize_filename_part
+from utils.logger import error
 
 
 @dataclass
@@ -132,16 +136,25 @@ class CourseProjectManager:
 
     def save(self, project: CourseProject, make_current: bool = True) -> bool:
         safe_id = sanitize_filename_part(project.course_id)
-        path = os.path.join(self._dir, f"{safe_id}.json")
+        project_path = Path(self._dir) / f"{safe_id}.json"
         summary_path = self._normalize_summary_path(project, safe_id)
-        os.makedirs(summary_path.parent, exist_ok=True)
+        original_summary_path = project.summary_path
         project.summary_path = str(summary_path)
-        with open(project.summary_path, "w", encoding="utf-8") as f:
-            f.write(project.summary_markdown)
-        ok = write_json(path, project.to_dict())
-        if ok and make_current:
-            write_json(CURRENT_COURSE_FILE, {"course_id": project.course_id})
-        return ok
+        try:
+            files = [
+                (summary_path, project.summary_markdown.encode("utf-8")),
+                (project_path, _json_bytes(project.to_dict())),
+            ]
+            if make_current:
+                files.append((
+                    Path(CURRENT_COURSE_FILE),
+                    _json_bytes({"course_id": project.course_id}),
+                ))
+            return _commit_course_files(files, Path(self._dir).parent)
+        except (OSError, TypeError, ValueError) as exc:
+            project.summary_path = original_summary_path
+            error(f"Failed to save course {project.course_id}: {exc}")
+            return False
 
     def get(self, course_id: str) -> Optional[CourseProject]:
         try:
@@ -196,3 +209,77 @@ class CourseProjectManager:
     @staticmethod
     def new_id() -> str:
         return f"course-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{uuid.uuid4().hex[:8]}"
+
+
+def _json_bytes(data: dict) -> bytes:
+    return json.dumps(
+        data,
+        ensure_ascii=False,
+        indent=2,
+        allow_nan=False,
+    ).encode("utf-8")
+
+
+def _commit_course_files(files: list[tuple[Path, bytes]], transaction_parent: Path) -> bool:
+    """Commit all course artifacts or restore their previous contents."""
+    destinations = [destination.resolve() for destination, _payload in files]
+    if len(set(destinations)) != len(destinations):
+        raise ValueError("Course artifact paths must be distinct")
+
+    transaction_parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix=".course-save-",
+        dir=transaction_parent,
+    ) as temporary_directory:
+        transaction_dir = Path(temporary_directory)
+        staging_dir = transaction_dir / "staging"
+        backup_dir = transaction_dir / "backup"
+        staged_files: list[tuple[Path, Path]] = []
+
+        for index, (destination, payload) in enumerate(files):
+            staged_path = staging_dir / str(index)
+            staged_path.parent.mkdir(parents=True, exist_ok=True)
+            staged_path.write_bytes(payload)
+            staged_files.append((destination, staged_path))
+
+        backups: list[tuple[Path, Path]] = []
+        created_paths: list[Path] = []
+        try:
+            for index, (destination, staged_path) in enumerate(staged_files):
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                if destination.exists():
+                    backup_path = backup_dir / str(index)
+                    backup_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(destination, backup_path)
+                    backups.append((destination, backup_path))
+                else:
+                    created_paths.append(destination)
+                os.replace(staged_path, destination)
+        except Exception as commit_error:
+            recovery_errors = _restore_course_files(backups, created_paths)
+            if recovery_errors:
+                details = "; ".join(str(recovery_error) for recovery_error in recovery_errors)
+                raise RuntimeError(
+                    f"Course save failed ({commit_error}); rollback also failed: {details}"
+                ) from commit_error
+            raise
+    return True
+
+
+def _restore_course_files(
+    backups: list[tuple[Path, Path]],
+    created_paths: list[Path],
+) -> list[Exception]:
+    errors: list[Exception] = []
+    for path in reversed(created_paths):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            errors.append(exc)
+    for destination, backup_path in reversed(backups):
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(backup_path, destination)
+        except OSError as exc:
+            errors.append(exc)
+    return errors
