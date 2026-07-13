@@ -867,6 +867,20 @@ QLabel#reviewIndexLabel {
     font-weight: 600;
 }
 
+QLabel#courseRemovalImpact {
+    color: #f0f0f0;
+    background-color: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-weight: 600;
+}
+
+QLabel#secondaryText {
+    color: #9d9d9d;
+    font-size: 12px;
+}
+
 QListWidget#matchingLeftList,
 QLabel#matchingLeftItem,
 QComboBox#matchingCombo {

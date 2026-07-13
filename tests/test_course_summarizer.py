@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 import os
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -11,6 +12,11 @@ from PyQt6.QtWidgets import QApplication, QMessageBox, QTextBrowser
 
 from ai.course_summarizer import CourseSummaryGenerator
 from ai.exam_plan import ExamGenerationPlan
+from core.course_asset_lifecycle import (
+    CourseAssetImpact,
+    CourseRemovalMode,
+    CourseRemovalResult,
+)
 from core.course_initializer import CourseInitializer, build_summary_markdown, infer_topics
 from core.document_parser import DocumentParser, ExtractedDocument
 from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
@@ -1064,6 +1070,96 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 self.assertTrue(manager.set_current(kept.course_id))
                 self.assertEqual(kept.course_id, manager.current().course_id)
 
+    def test_course_screen_delete_uses_impact_snapshot_and_selected_policy(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            project = CourseProject(
+                course_id="course-delete-policy",
+                title="Systems",
+                source_folder=str(Path(tmpdir) / "source"),
+                summary_markdown="# Summary\n",
+                summary_path="",
+                topics=self._topics(),
+                documents=[],
+                created_at="2026-07-13T00:00:00+00:00",
+                updated_at="2026-07-13T00:00:00+00:00",
+            )
+            self.assertTrue(manager.save(project, make_current=False))
+            question_bank = Mock(name="question_bank")
+            set_manager = Mock(name="set_manager")
+            progress_manager = Mock(name="progress_manager")
+            snapshot_manager = Mock(name="snapshot_manager")
+            screen = CourseScreen(
+                manager,
+                question_bank=question_bank,
+                set_manager=set_manager,
+                progress_manager=progress_manager,
+                snapshot_manager=snapshot_manager,
+            )
+            screen.project_list.setCurrentRow(0)
+            impact = CourseAssetImpact(
+                course_id=project.course_id,
+                question_ids=("q1", "q2"),
+                direct_set_ids=("set-a",),
+                affected_set_ids=("set-a", "set-b"),
+                progress_ids=("progress-a",),
+                snapshot_ids=("snapshot-a",),
+            )
+            result = CourseRemovalResult(True, impact)
+
+            with patch(
+                "ui.screens.course_screen.analyze_course_asset_impact",
+                return_value=impact,
+            ) as analyze, patch.object(
+                screen,
+                "_choose_course_removal_mode",
+                return_value=CourseRemovalMode.UNLINK_ASSETS,
+            ), patch(
+                "ui.screens.course_screen.remove_course_assets",
+                return_value=result,
+            ) as remove:
+                screen._delete_selected_project()
+
+            analyze.assert_called_once_with(
+                project.course_id,
+                question_bank,
+                set_manager,
+                progress_manager,
+                snapshot_manager,
+            )
+            remove.assert_called_once_with(
+                project.course_id,
+                CourseRemovalMode.UNLINK_ASSETS,
+                course_manager=manager,
+                question_bank=question_bank,
+                set_manager=set_manager,
+                progress_manager=progress_manager,
+                snapshot_manager=snapshot_manager,
+            )
+
+    def test_course_removal_impact_text_explains_counts_and_preserved_history(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = CourseScreen(CourseProjectManager(str(Path(tmpdir) / "projects")))
+            project = SimpleNamespace(title="Systems")
+            impact = CourseAssetImpact(
+                course_id="course-a",
+                question_ids=("q1", "q2"),
+                affected_set_ids=("set-a",),
+                progress_ids=("progress-a", "progress-b", "progress-c"),
+                snapshot_ids=("snapshot-a",),
+            )
+            language_manager = LanguageManager.instance()
+            previous_language = language_manager.current
+            self.addCleanup(language_manager.set_language, previous_language)
+            language_manager.set_language("zh")
+
+            text = screen._course_removal_impact_text(project, impact)
+
+            self.assertIn("相关题目：2", text)
+            self.assertIn("相关题集：1", text)
+            self.assertIn("学习记录：3（始终保留）", text)
+            self.assertIn("未完成草稿：1", text)
+
     def test_project_manager_current_returns_none_without_explicit_pointer(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             current_file = str(Path(tmpdir) / "current.json")
@@ -1141,7 +1237,11 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 screen.refresh()
                 screen.project_list.setCurrentRow(0)
 
-                with patch("ui.screens.course_screen.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
+                with patch.object(
+                    screen,
+                    "_choose_course_removal_mode",
+                    return_value=CourseRemovalMode.KEEP_ASSETS,
+                ):
                     screen.delete_btn.click()
 
                 self.assertIsNone(manager.get(project.course_id))

@@ -136,7 +136,13 @@ class MainWindow(QMainWindow):
         """Lazy-init the course screen on first access."""
         if self._course_screen is None:
             from ui.screens.course_screen import CourseScreen
-            self._course_screen = CourseScreen(self.course_manager, question_bank=self.question_bank)
+            self._course_screen = CourseScreen(
+                self.course_manager,
+                question_bank=self.question_bank,
+                set_manager=self.set_manager,
+                progress_manager=self.progress_manager,
+                snapshot_manager=self.snapshot_manager,
+            )
             self.stack.insertWidget(self.SCREEN_COURSES, self._course_screen)
         return self._course_screen
 

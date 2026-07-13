@@ -127,6 +127,8 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn('qlabel#settingssavestatus[savestate="dirty"]', qss)
         self.assertIn('qlabel#settingssavestatus[savestate="saved"]', qss)
         self.assertIn("qlabel#settingsweightpreview", qss)
+        self.assertIn("qlabel#courseremovalimpact", qss)
+        self.assertIn("qlabel#secondarytext", qss)
         self.assertIn("qlistwidget#settingsnavlist", qss)
         self.assertIn("qlistwidget#settingsnavlist::item:selected", qss)
 

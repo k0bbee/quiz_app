@@ -8,11 +8,17 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
-    QSplitter, QGroupBox, QProgressBar, QInputDialog, QTextBrowser
+    QSplitter, QGroupBox, QProgressBar, QInputDialog, QTextBrowser,
+    QDialog, QRadioButton,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
 from core.course_initializer import CourseInitializer
+from core.course_asset_lifecycle import (
+    CourseRemovalMode,
+    analyze_course_asset_impact,
+    remove_course_assets,
+)
 from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
 from core.ocr_runtime import OCR_REMEDIATION
 from core.topic_identity_migration import TopicIdentityRepairReport, repair_question_topic_identities
@@ -34,10 +40,21 @@ class CourseScreen(QWidget):
 
     current_course_changed = pyqtSignal()
 
-    def __init__(self, manager: CourseProjectManager, question_bank=None, parent=None):
+    def __init__(
+        self,
+        manager: CourseProjectManager,
+        question_bank=None,
+        set_manager=None,
+        progress_manager=None,
+        snapshot_manager=None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.manager = manager
         self.question_bank = question_bank
+        self.set_manager = set_manager
+        self.progress_manager = progress_manager
+        self.snapshot_manager = snapshot_manager
         self.initializer = CourseInitializer(manager)
         self.lang_manager = LanguageManager.instance()
         self._init_worker = None
@@ -548,28 +565,149 @@ class CourseScreen(QWidget):
         project = self.manager.get(course_id)
         if not project:
             return
-        reply = QMessageBox.question(
-            self,
-            self.lang_manager.get_text("删除课程", "Delete Course"),
-            self.lang_manager.get_text(
-                f"确定删除课程“{project.title}”吗？这会删除生成的课程摘要，但不会删除原始课件文件夹。",
-                f"Delete course '{project.title}'? This removes the generated summary but not the original material folder.",
-            ),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
+        impact = analyze_course_asset_impact(
+            course_id,
+            self.question_bank,
+            self.set_manager,
+            self.progress_manager,
+            self.snapshot_manager,
         )
-        if reply != QMessageBox.StandardButton.Yes:
+        mode = self._choose_course_removal_mode(project, impact)
+        if mode is None:
             return
-        if not self.manager.delete(course_id):
+        result = remove_course_assets(
+            course_id,
+            mode,
+            course_manager=self.manager,
+            question_bank=self.question_bank,
+            set_manager=self.set_manager,
+            progress_manager=self.progress_manager,
+            snapshot_manager=self.snapshot_manager,
+        )
+        if not result.success:
+            rollback_note = ""
+            if result.rollback_errors:
+                rollback_note = self.lang_manager.get_text(
+                    "\n部分数据恢复失败，请立即从应用数据备份恢复。",
+                    "\nSome data could not be restored. Restore an app-data backup immediately.",
+                )
             QMessageBox.critical(
                 self,
                 self.lang_manager.get_text("删除失败", "Delete Failed"),
-                self.lang_manager.get_text("课程项目删除失败。", "Failed to delete the course project."),
+                self.lang_manager.get_text(
+                    f"课程删除未完成，已尝试恢复原数据。\n{result.error}{rollback_note}",
+                    f"Course removal did not complete; the original data was restored.\n{result.error}{rollback_note}",
+                ),
             )
             return
         self.summary_preview.clear()
         self.current_course_changed.emit()
         self.refresh()
+
+    def _choose_course_removal_mode(self, project, impact):
+        dialog = QDialog(self)
+        dialog.setWindowTitle(self.lang_manager.get_text("删除课程", "Delete Course"))
+        dialog.setMinimumWidth(520)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(12)
+
+        impact_label = QLabel(self._course_removal_impact_text(project, impact))
+        impact_label.setWordWrap(True)
+        impact_label.setObjectName("courseRemovalImpact")
+        layout.addWidget(impact_label)
+
+        choices = (
+            (
+                CourseRemovalMode.KEEP_ASSETS,
+                self.lang_manager.get_text("仅删除课程资料", "Delete Course Only"),
+                self.lang_manager.get_text(
+                    "保留题目、题集、学习记录和草稿；以后仍可独立练习。",
+                    "Keep questions, sets, learning records, and drafts for independent practice.",
+                ),
+            ),
+            (
+                CourseRemovalMode.UNLINK_ASSETS,
+                self.lang_manager.get_text("解除关联并删除课程", "Unlink and Delete Course"),
+                self.lang_manager.get_text(
+                    "保留全部练习数据，但移除课程与来源定位信息。",
+                    "Keep all practice data but remove course and source-location links.",
+                ),
+            ),
+            (
+                CourseRemovalMode.DELETE_LINKED_BANK,
+                self.lang_manager.get_text("删除课程及关联题库", "Delete Course and Linked Bank"),
+                self.lang_manager.get_text(
+                    "删除关联题目并清理题集和草稿；学习记录仍会保留。",
+                    "Delete linked questions and clean sets and drafts; learning records remain.",
+                ),
+            ),
+        )
+        radios = {}
+        for mode, title, description in choices:
+            radio = QRadioButton(title)
+            radios[mode] = radio
+            layout.addWidget(radio)
+            detail = QLabel(description)
+            detail.setObjectName("secondaryText")
+            detail.setWordWrap(True)
+            detail.setContentsMargins(24, 0, 0, 4)
+            layout.addWidget(detail)
+        radios[CourseRemovalMode.KEEP_ASSETS].setChecked(True)
+
+        source_note = QLabel(self.lang_manager.get_text(
+            "原始课件文件夹始终不会被删除。",
+            "The original material folder is never deleted.",
+        ))
+        source_note.setObjectName("secondaryText")
+        layout.addWidget(source_note)
+
+        footer = QHBoxLayout()
+        footer.addStretch(1)
+        cancel_button = QPushButton(self.lang_manager.get_text("取消", "Cancel"))
+        cancel_button.setObjectName("secondaryButton")
+        cancel_button.clicked.connect(dialog.reject)
+        footer.addWidget(cancel_button)
+        continue_button = QPushButton(self.lang_manager.get_text("继续", "Continue"))
+        continue_button.setObjectName("primaryButton")
+        continue_button.clicked.connect(dialog.accept)
+        footer.addWidget(continue_button)
+        layout.addLayout(footer)
+
+        def sync_continue_style():
+            object_name = (
+                "dangerButton"
+                if radios[CourseRemovalMode.DELETE_LINKED_BANK].isChecked()
+                else "primaryButton"
+            )
+            continue_button.setObjectName(object_name)
+            continue_button.style().unpolish(continue_button)
+            continue_button.style().polish(continue_button)
+
+        for radio in radios.values():
+            radio.toggled.connect(sync_continue_style)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return next(mode for mode, radio in radios.items() if radio.isChecked())
+
+    def _course_removal_impact_text(self, project, impact) -> str:
+        return self.lang_manager.get_text(
+            (
+                f"删除课程“{project.title}”\n\n"
+                f"相关题目：{impact.question_count}\n"
+                f"相关题集：{impact.question_set_count}\n"
+                f"学习记录：{impact.progress_count}（始终保留）\n"
+                f"未完成草稿：{impact.snapshot_count}"
+            ),
+            (
+                f"Delete course '{project.title}'\n\n"
+                f"Linked questions: {impact.question_count}\n"
+                f"Linked question sets: {impact.question_set_count}\n"
+                f"Learning records: {impact.progress_count} (always kept)\n"
+                f"Unfinished drafts: {impact.snapshot_count}"
+            ),
+        )
 
     def _on_regen_done(self, result):
         if not self._is_current_worker("_regen_worker"):
