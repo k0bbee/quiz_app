@@ -127,6 +127,9 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn('qlabel#settingssavestatus[savestate="dirty"]', qss)
         self.assertIn('qlabel#settingssavestatus[savestate="saved"]', qss)
         self.assertIn("qlabel#settingsweightpreview", qss)
+        self.assertIn("qwidget#hometodayplan", qss)
+        self.assertIn("qlabel#hometodayplantitle", qss)
+        self.assertIn("qlabel#hometodayplandetail", qss)
         self.assertIn("qlabel#courseremovalimpact", qss)
         self.assertIn("qlabel#secondarytext", qss)
         self.assertIn("qlistwidget#settingsnavlist", qss)
@@ -398,7 +401,14 @@ class UiThemeTests(unittest.TestCase):
             )
 
             self.assertEqual("primary", home.start_btn.property("homeAction"))
-            for button in (home.resume_btn, home.incorrect_btn, home.ai_btn, home.progress_btn, home.settings_btn):
+            for button in (
+                home.free_practice_btn,
+                home.resume_btn,
+                home.incorrect_btn,
+                home.ai_btn,
+                home.progress_btn,
+                home.settings_btn,
+            ):
                 self.assertEqual("secondary", button.property("homeAction"))
 
     def test_home_incorrect_action_stays_clickable_when_no_incorrect_questions_exist(self):
@@ -413,7 +423,7 @@ class UiThemeTests(unittest.TestCase):
             self.assertTrue(home.incorrect_btn.isEnabled())
             self.assertEqual("true", home.incorrect_btn.property("emptyState"))
 
-    def test_home_screen_shows_first_use_guidance_when_no_progress_exists(self):
+    def test_home_screen_uses_today_plan_as_first_use_guidance(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = HomeScreen(
                 ProgressManager(str(Path(tmpdir) / "progress")),
@@ -422,11 +432,9 @@ class UiThemeTests(unittest.TestCase):
 
             home.refresh()
 
-            self.assertFalse(home.first_use_label.isHidden())
-            guide = home.first_use_label.text()
-            self.assertIn("导入课程", guide)
-            self.assertIn("AI 生成题目", guide)
-            self.assertIn("开始练习", guide)
+            self.assertTrue(home.first_use_label.isHidden())
+            self.assertIn("导入", home.start_btn.text())
+            self.assertIn("导入课件", home.today_plan_detail.text())
             self.assertTrue(home.stats_label.isHidden())
 
     def test_home_actions_have_dedicated_hover_pressed_and_focus_feedback(self):
@@ -477,7 +485,14 @@ class UiThemeTests(unittest.TestCase):
             settings = SettingsScreen()
 
             self.assertEqual("primaryButton", home.start_btn.objectName())
-            for button in (home.resume_btn, home.incorrect_btn, home.ai_btn, home.progress_btn, home.settings_btn):
+            for button in (
+                home.free_practice_btn,
+                home.resume_btn,
+                home.incorrect_btn,
+                home.ai_btn,
+                home.progress_btn,
+                home.settings_btn,
+            ):
                 self.assertEqual("secondaryButton", button.objectName())
             self.assertEqual("primaryButton", settings.save_btn.objectName())
             for button in (
@@ -536,12 +551,14 @@ class UiThemeTests(unittest.TestCase):
             def position(button):
                 return home.action_layout.getItemPosition(home.action_layout.indexOf(button))
 
-            self.assertEqual((0, 0, 1, 2), position(home.start_btn))
-            self.assertEqual((1, 0, 1, 2), position(home.resume_btn))
-            self.assertEqual((2, 0, 1, 1), position(home.incorrect_btn))
-            self.assertEqual((2, 1, 1, 1), position(home.ai_btn))
-            self.assertEqual((3, 0, 1, 1), position(home.progress_btn))
-            self.assertEqual((3, 1, 1, 1), position(home.settings_btn))
+            self.assertEqual((0, 0, 1, 2), position(home.today_plan_frame))
+            self.assertEqual((1, 0, 1, 2), position(home.start_btn))
+            self.assertEqual((2, 0, 1, 1), position(home.free_practice_btn))
+            self.assertEqual((2, 1, 1, 1), position(home.incorrect_btn))
+            self.assertEqual((3, 0, 1, 1), position(home.ai_btn))
+            self.assertEqual((3, 1, 1, 1), position(home.progress_btn))
+            self.assertEqual(-1, home.action_layout.indexOf(home.resume_btn))
+            self.assertEqual(-1, home.action_layout.indexOf(home.settings_btn))
 
     def test_home_screen_shows_current_course_context(self):
         with tempfile.TemporaryDirectory() as tmpdir:

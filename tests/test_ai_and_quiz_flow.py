@@ -1978,25 +1978,74 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             screen.set_resume_draft("系统结构练习", 3)
 
-            self.assertFalse(screen.resume_btn.isHidden())
-            self.assertIn("继续草稿", screen.resume_btn.text())
-            self.assertIn("3", screen.resume_btn.text())
+            self.assertTrue(screen.resume_btn.isHidden())
+            self.assertIn("继续练习", screen.start_btn.text())
+            self.assertIn("系统结构练习", screen.today_plan_detail.text())
+            self.assertIn("3", screen.today_plan_detail.text())
 
             screen.set_resume_draft("系统结构练习", 13, current_index=6, total_count=20)
 
-            self.assertIn("第 7/20 题", screen.resume_btn.text())
+            self.assertIn("13", screen.today_plan_detail.text())
 
             screen.set_resume_draft("系统结构练习", 13, current_index=6, total_count=20, mode="exam")
 
-            self.assertIn("继续模拟卷草稿", screen.resume_btn.text())
+            self.assertIn("继续模拟卷", screen.start_btn.text())
 
             screen.set_resume_draft("系统结构练习", 13, current_index=6, total_count=20, mode="practice")
 
-            self.assertIn("继续练习草稿", screen.resume_btn.text())
+            self.assertIn("继续练习", screen.start_btn.text())
+            resumed = []
+            screen.resume_practice.connect(lambda: resumed.append(True))
+            screen.start_btn.click()
+            self.assertEqual([True], resumed)
 
             screen.clear_resume_draft()
 
             self.assertTrue(screen.resume_btn.isHidden())
+            self.assertNotIn("继续练习", screen.start_btn.text())
+
+    def test_home_primary_action_routes_to_course_scoped_incorrect_review(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            progress_manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            question = self._make_question("course-a-q")
+            question.metadata["course_id"] = "course-a"
+            question_bank.save(question)
+            record = ProgressRecord.create_new("set-a")
+            record.status = "completed"
+            record.answers = [AnswerRecord(
+                question_id=question.question_id,
+                index_in_session=0,
+                user_answer="B",
+                is_correct=False,
+            )]
+            record.summary = SessionSummary.compute(record.answers, 1, 10)
+            progress_manager.save(record)
+            screen = HomeScreen(progress_manager, question_bank)
+            screen.set_current_course("course-a", "Systems")
+            review_requests = []
+            screen.practice_incorrect.connect(lambda: review_requests.append(True))
+
+            self.assertIn("错题", screen.start_btn.text())
+            self.assertIn("1", screen.today_plan_detail.text())
+            screen.start_btn.click()
+
+            self.assertEqual([True], review_requests)
+
+    def test_home_primary_action_routes_new_users_to_course_import(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = HomeScreen(
+                ProgressManager(str(Path(tmpdir) / "progress")),
+                QuestionBank(str(Path(tmpdir) / "questions")),
+            )
+            import_requests = []
+            screen.manage_courses.connect(lambda: import_requests.append(True))
+            screen.refresh()
+
+            self.assertIn("导入", screen.start_btn.text())
+            screen.start_btn.click()
+
+            self.assertEqual([True], import_requests)
 
     def test_progress_stats_can_filter_by_question_ids(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -734,6 +734,23 @@ QLabel#resultsStatsLabel {
     font-size: 13px;
 }
 
+QWidget#homeTodayPlan {
+    background-color: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 14px;
+}
+
+QLabel#homeTodayPlanTitle {
+    color: #f0f0f0;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QLabel#homeTodayPlanDetail {
+    color: #b8b8b8;
+    font-size: 13px;
+}
+
 QLabel#dashboardOverallLabel {
     font-size: 16px;
 }
