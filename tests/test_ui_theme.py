@@ -130,6 +130,9 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("qwidget#hometodayplan", qss)
         self.assertIn("qlabel#hometodayplantitle", qss)
         self.assertIn("qlabel#hometodayplandetail", qss)
+        self.assertIn("qlabel#pastexamassignmentstatus", qss)
+        self.assertIn("qlabel#pastexammetadata", qss)
+        self.assertIn("qtextedit#pastexamcontentpreview", qss)
         self.assertIn("qlabel#courseremovalimpact", qss)
         self.assertIn("qlabel#secondarytext", qss)
         self.assertIn("qlistwidget#settingsnavlist", qss)
@@ -252,11 +255,11 @@ class UiThemeTests(unittest.TestCase):
 
         buttons = main_window.navigation_buttons()
         self.assertEqual(
-            ["Back", "Home", "Question Sets", "Progress", "Courses", "Question Bank", "Settings", "About"],
+            ["Back", "Home", "Question Sets", "Progress", "Courses", "Historical Exams", "Question Bank", "Settings", "About"],
             [button.text() for button in buttons],
         )
         self.assertEqual(
-            ["navigation", "navigation", "practice", "practice", "management", "management", "management", "support"],
+            ["navigation", "navigation", "practice", "practice", "management", "management", "management", "management", "support"],
             [button.property("navGroup") for button in buttons],
         )
         self.assertGreaterEqual(
@@ -278,6 +281,11 @@ class UiThemeTests(unittest.TestCase):
         main_window.navigate_to(main_window.SCREEN_SETTINGS)
         main_window.nav_home_btn.click()
         self.assertEqual(main_window.SCREEN_HOME, main_window.stack.currentIndex())
+
+        main_window.past_exams_btn.click()
+        self.assertEqual(main_window.SCREEN_PAST_EXAMS, main_window.stack.currentIndex())
+        self.assertIs(main_window.past_exam_manager, main_window._past_exam_screen.manager)
+        self.assertIs(main_window.course_manager, main_window._past_exam_screen.course_manager)
 
     def test_top_navigation_confirms_before_leaving_active_quiz(self):
         main_window = MainWindow()
@@ -984,7 +992,12 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("qlistwidget#sourcepanellist", qss)
         self.assertIn("qlabel#generationpartialrecoverylabel", qss)
 
-        for button in (main_window.topics_btn, main_window.progress_btn, main_window.courses_btn):
+        for button in (
+            main_window.topics_btn,
+            main_window.progress_btn,
+            main_window.courses_btn,
+            main_window.past_exams_btn,
+        ):
             self.assertEqual("toolbarButton", button.objectName())
 
     def test_review_dialog_and_ordering_controls_use_theme_roles(self):

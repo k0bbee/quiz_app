@@ -751,6 +751,26 @@ QLabel#homeTodayPlanDetail {
     font-size: 13px;
 }
 
+QLabel#pastExamAssignmentStatus {
+    color: #f0f0f0;
+    background-color: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 8px;
+    padding: 9px 11px;
+    font-weight: 600;
+}
+
+QLabel#pastExamMetadata,
+QLabel#pastExamProgressLabel,
+QLabel#pastExamEmptyLabel {
+    color: #9d9d9d;
+}
+
+QTextEdit#pastExamContentPreview {
+    font-family: consolas, "Cascadia Mono", "Microsoft YaHei UI", monospace;
+    font-size: 12px;
+}
+
 QLabel#dashboardOverallLabel {
     font-size: 16px;
 }

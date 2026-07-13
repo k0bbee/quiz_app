@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Optional
 
@@ -143,6 +143,21 @@ class PastExamManager:
             ),
             None,
         )
+
+    def reassign_course(self, exam_id: str, course_id: str) -> Optional[PastExamRecord]:
+        """Persist a user-confirmed course assignment, or explicit unassignment."""
+        record = self.get(exam_id)
+        if record is None:
+            return None
+        normalized_course_id = str(course_id or "").strip()
+        updated = replace(
+            record,
+            course_id=normalized_course_id,
+            assignment_mode="manual" if normalized_course_id else "unassigned",
+        )
+        if not self.save_record(updated):
+            raise OSError(f"Failed to update historical exam {exam_id}")
+        return updated
 
     def resolve_source_path(self, record: PastExamRecord) -> Path:
         exam_dir = self.exam_directory(record.exam_id).resolve()

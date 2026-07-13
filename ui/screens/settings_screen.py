@@ -1360,8 +1360,8 @@ class SettingsScreen(QWidget):
             self,
             self.lang_manager.get_text("导入应用数据?", "Import App Data?"),
             self.lang_manager.get_text(
-                "将导入课程、题库、题目集、进度和非敏感设置；同名文件会被覆盖。API Key 不会从导入包读取。继续吗？",
-                "This imports courses, questions, question sets, progress, and non-sensitive settings; files with the same name will be overwritten. API keys are never read from the bundle. Continue?",
+                "将导入课程、历史真题、题库、题目集、草稿、进度和非敏感设置；同名文件会被覆盖。API Key 不会从导入包读取。继续吗？",
+                "This imports courses, historical exams, questions, question sets, drafts, progress, and non-sensitive settings; files with the same name will be overwritten. API keys are never read from the bundle. Continue?",
             ),
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,

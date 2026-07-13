@@ -18,6 +18,7 @@ from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.mastery_overrides import MasteryOverrideStore
 from core.topic_display import topic_display_name
 from models.course_project import CourseProjectManager
+from models.past_exam import PastExamManager
 from config import QUESTIONS_DIR, QUESTION_SETS_DIR, PROGRESS_DIR, QUIZ_SNAPSHOTS_DIR, APP_NAME
 
 from ui.screens.home_screen import HomeScreen
@@ -63,6 +64,7 @@ class MainWindow(QMainWindow):
     SCREEN_SETTINGS = 5
     SCREEN_COURSES = 6
     SCREEN_QUESTION_BANK = 7
+    SCREEN_PAST_EXAMS = 8
 
     def __init__(self):
         super().__init__()
@@ -76,6 +78,7 @@ class MainWindow(QMainWindow):
         self.snapshot_manager = QuizSnapshotManager(QUIZ_SNAPSHOTS_DIR)
         self.mastery_overrides = MasteryOverrideStore()
         self.course_manager = CourseProjectManager()
+        self.past_exam_manager = PastExamManager()
         self.lang_manager = LanguageManager.instance()
 
         # Central stacked widget
@@ -99,10 +102,11 @@ class MainWindow(QMainWindow):
         self.settings_screen = SettingsScreen()
         self._course_screen = None
         self._question_bank_screen = None
+        self._past_exam_screen = None
         self._active_questions: dict = {}
         self._navigation_history: list[int] = []
 
-        # Screens 6-7 are lazily created on first access (see properties below)
+        # Management screens 6-8 are lazily created on first access.
         self.stack.addWidget(self.home_screen)       # 0
         self.stack.addWidget(self.topic_screen)       # 1
         self.stack.addWidget(self.quiz_screen)        # 2
@@ -159,6 +163,17 @@ class MainWindow(QMainWindow):
             self.stack.insertWidget(self.SCREEN_QUESTION_BANK, self._question_bank_screen)
         return self._question_bank_screen
 
+    def _get_past_exam_screen(self):
+        """Lazy-init the historical exam workbench on first access."""
+        if self._past_exam_screen is None:
+            from ui.screens.past_exam_screen import PastExamScreen
+            self._past_exam_screen = PastExamScreen(
+                self.past_exam_manager,
+                self.course_manager,
+            )
+            self.stack.insertWidget(self.SCREEN_PAST_EXAMS, self._past_exam_screen)
+        return self._past_exam_screen
+
     def _create_toolbar(self):
         self.toolbar = QToolBar("")
         self.toolbar.setMovable(False)
@@ -176,6 +191,8 @@ class MainWindow(QMainWindow):
         self.progress_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
         self.courses_btn = self._create_toolbar_button("management")
         self.courses_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
+        self.past_exams_btn = self._create_toolbar_button("management")
+        self.past_exams_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_PAST_EXAMS))
         self.bank_btn = self._create_toolbar_button("management")
         self.bank_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_QUESTION_BANK))
         self.settings_btn = self._create_toolbar_button("management")
@@ -190,6 +207,7 @@ class MainWindow(QMainWindow):
         self.toolbar.addWidget(self.progress_btn)
         self.toolbar.addSeparator()
         self.toolbar.addWidget(self.courses_btn)
+        self.toolbar.addWidget(self.past_exams_btn)
         self.toolbar.addWidget(self.bank_btn)
         self.toolbar.addWidget(self.settings_btn)
         self.toolbar.addSeparator()
@@ -209,6 +227,7 @@ class MainWindow(QMainWindow):
             self.topics_btn,
             self.progress_btn,
             self.courses_btn,
+            self.past_exams_btn,
             self.bank_btn,
             self.settings_btn,
             self.about_btn,
@@ -264,6 +283,7 @@ class MainWindow(QMainWindow):
         self.topics_btn.setText(gm("题目集", "Question Sets"))
         self.progress_btn.setText(gm("进度", "Progress"))
         self.courses_btn.setText(gm("课程", "Courses"))
+        self.past_exams_btn.setText(gm("真题", "Historical Exams"))
         self.bank_btn.setText(gm("题库", "Question Bank"))
         self.settings_btn.setText(gm("设置", "Settings"))
         self.about_btn.setText(gm("关于", "About"))
@@ -275,6 +295,8 @@ class MainWindow(QMainWindow):
         if confirm_current and not self._confirm_current_navigation(screen_index):
             self._update_navigation_actions()
             return False
+        if screen_index == self.SCREEN_PAST_EXAMS:
+            self._get_past_exam_screen()
         if remember and current_index >= 0 and current_index != screen_index:
             if not leaving_quiz:
                 self._navigation_history.append(current_index)
@@ -295,6 +317,8 @@ class MainWindow(QMainWindow):
         elif screen_index == self.SCREEN_QUESTION_BANK:
             self._sync_question_bank_screen_course()
             self._get_question_bank_screen().refresh()
+        elif screen_index == self.SCREEN_PAST_EXAMS:
+            self._get_past_exam_screen().refresh()
         self._update_navigation_actions()
         return True
 
@@ -1039,6 +1063,7 @@ class MainWindow(QMainWindow):
             f"{gm('一个基于PyQt的课件导入与刷题工具。', 'A PyQt-based course-material ingestion and quiz practice tool.')}<br><br>"
             f"{gm('功能特性：', 'Features:')}<br>"
             f"{gm('• 导入PPTX/PDF/DOCX/TXT/Markdown课件', '• Import PPTX/PDF/DOCX/TXT/Markdown course materials')}<br>"
+            f"{gm('• 导入文本或OCR历史真题', '• Import text or OCR historical exams')}<br>"
             f"{gm('• 生成可复用的课件摘要', '• Generate reusable course summaries')}<br>"
             f"{gm('• AI生成双语题目', '• AI-generated bilingual questions')}<br>"
             f"{gm('• 选择题/判断题自动评分', '• Auto-grading for multiple choice / true-false')}<br>"
@@ -1052,6 +1077,9 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         if self._course_screen is not None and not self._course_screen.request_shutdown():
+            event.ignore()
+            return
+        if self._past_exam_screen is not None and not self._past_exam_screen.request_shutdown():
             event.ignore()
             return
         self.settings_screen.save_settings(silent=True)

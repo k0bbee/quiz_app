@@ -48,6 +48,9 @@ class PastExamImporter:
         source_hash = _sha256_file(source, task=task)
         duplicate = self.manager.find_by_hash(source_hash)
         if duplicate is not None:
+            if manual_course_id is not None:
+                course_id, _mode = self._assignment(manual_course_id, "")
+                duplicate = self.manager.reassign_course(duplicate.exam_id, course_id) or duplicate
             return PastExamImportResult(duplicate, duplicate=True)
 
         document = self.parser.parse_file(source, task=task)
@@ -76,8 +79,10 @@ class PastExamImporter:
         return PastExamImportResult(record)
 
     def _assignment(self, manual_course_id, automatic_course_id) -> tuple[str, str]:
-        manual = str(manual_course_id or "").strip()
-        if manual:
+        if manual_course_id is not None:
+            manual = str(manual_course_id or "").strip()
+            if not manual:
+                return "", "unassigned"
             if self.course_manager is None or self.course_manager.get(manual) is None:
                 raise ValueError(f"Unknown course for historical exam: {manual}")
             return manual, "manual"

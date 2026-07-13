@@ -52,6 +52,12 @@ class PastExamImportTests(unittest.TestCase):
                 manager.resolve_source_path(record),
             )
 
+            reassigned = manager.reassign_course(record.exam_id, "course-b")
+            self.assertEqual("course-b", reassigned.course_id)
+            self.assertEqual("manual", reassigned.assignment_mode)
+            self.assertEqual(record.match_candidates, reassigned.match_candidates)
+            self.assertEqual("course-b", manager.get(record.exam_id).course_id)
+
     def test_course_matcher_auto_assigns_only_a_clear_explainable_match(self):
         systems = SimpleNamespace(
             course_id="course-systems",
@@ -132,6 +138,25 @@ class PastExamImportTests(unittest.TestCase):
             self.assertIn("cache mapping", content.text)
             self.assertEqual([content.text], content.pages)
 
+    def test_importer_can_explicitly_leave_exam_unassigned(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "exam.txt"
+            source.write_text("DMA interrupt polling input output", encoding="utf-8")
+            manager = PastExamManager(root / "past_exams")
+
+            result = PastExamImporter(
+                manager,
+                self._course_manager([self._systems_course()]),
+            ).import_file(
+                source,
+                title="Computer Systems I/O Exam",
+                manual_course_id="",
+            )
+
+            self.assertEqual("", result.record.course_id)
+            self.assertEqual("unassigned", result.record.assignment_mode)
+
     def test_importer_reuses_parser_ocr_output_and_auto_assigns_course(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -180,6 +205,31 @@ class PastExamImportTests(unittest.TestCase):
             self.assertFalse(first.duplicate)
             self.assertTrue(second.duplicate)
             self.assertEqual(first.record.exam_id, second.record.exam_id)
+            parser.parse_file.assert_called_once()
+
+    def test_duplicate_import_honors_new_manual_course_choice_without_reparsing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "exam.txt"
+            source.write_text("Generic examination content", encoding="utf-8")
+            manager = PastExamManager(root / "past_exams")
+            parser = Mock()
+            parser.parse_file.return_value = ExtractedDocument(
+                str(source), "exam", ".txt", "Generic examination content", ["Generic examination content"]
+            )
+            importer = PastExamImporter(
+                manager,
+                self._course_manager([self._systems_course()]),
+                parser=parser,
+            )
+
+            first = importer.import_file(source, manual_course_id="")
+            second = importer.import_file(source, manual_course_id="course-systems")
+
+            self.assertEqual("", first.record.course_id)
+            self.assertTrue(second.duplicate)
+            self.assertEqual("course-systems", second.record.course_id)
+            self.assertEqual("manual", second.record.assignment_mode)
             parser.parse_file.assert_called_once()
 
     def test_importer_commit_failure_leaves_no_partial_exam_directory(self):
