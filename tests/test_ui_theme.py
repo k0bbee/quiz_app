@@ -132,6 +132,7 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("qlabel#hometodayplandetail", qss)
         self.assertIn("qlabel#pastexamassignmentstatus", qss)
         self.assertIn("qlabel#pastexammetadata", qss)
+        self.assertIn("qlabel#pastexamanalysissummary", qss)
         self.assertIn("qtextedit#pastexamcontentpreview", qss)
         self.assertIn("qlabel#courseremovalimpact", qss)
         self.assertIn("qlabel#secondarytext", qss)

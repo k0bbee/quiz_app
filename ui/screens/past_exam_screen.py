@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 
 from core.background_task import BackgroundTaskCancelled, TaskControl
 from core.language_manager import LanguageManager
+from core.past_exam_analyzer import PastExamAnalysisService
 from core.past_exam_importer import PastExamImporter
 
 
@@ -63,6 +64,30 @@ class PastExamImportWorker(QThread):
         self.control.cancel()
 
 
+class PastExamAnalysisWorker(QThread):
+    analyzed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+    progress = pyqtSignal(object)
+
+    def __init__(self, service, exam_id, parent=None):
+        super().__init__(parent)
+        self.service = service
+        self.exam_id = exam_id
+        self.control = TaskControl(self.progress.emit)
+
+    def run(self):
+        try:
+            self.analyzed.emit(self.service.analyze(self.exam_id, task=self.control))
+        except BackgroundTaskCancelled:
+            self.cancelled.emit()
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+    def cancel(self):
+        self.control.cancel()
+
+
 class PastExamScreen(QWidget):
     """Import, preview and assign historical exam source documents."""
 
@@ -72,6 +97,7 @@ class PastExamScreen(QWidget):
         self.course_manager = course_manager
         self.lang_manager = LanguageManager.instance()
         self._import_worker = None
+        self._analysis_worker = None
         self._courses = []
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
@@ -161,6 +187,16 @@ class PastExamScreen(QWidget):
         self.metadata_label.setObjectName("pastExamMetadata")
         self.metadata_label.setWordWrap(True)
         right_layout.addWidget(self.metadata_label)
+        analysis_row = QHBoxLayout()
+        self.analysis_summary = QLabel()
+        self.analysis_summary.setObjectName("pastExamAnalysisSummary")
+        self.analysis_summary.setWordWrap(True)
+        analysis_row.addWidget(self.analysis_summary, 1)
+        self.analyze_btn = QPushButton()
+        self.analyze_btn.setObjectName("secondaryButton")
+        self.analyze_btn.clicked.connect(self._start_analysis)
+        analysis_row.addWidget(self.analyze_btn, 0, Qt.AlignmentFlag.AlignTop)
+        right_layout.addLayout(analysis_row)
         self.content_preview = QTextBrowser()
         self.content_preview.setObjectName("pastExamContentPreview")
         self.content_preview.setReadOnly(True)
@@ -187,6 +223,7 @@ class PastExamScreen(QWidget):
             "No historical exams yet. Choose a file above to import one.",
         ))
         self.save_assignment_btn.setText(gm("保存课程归属", "Save Course Assignment"))
+        self.analyze_btn.setText(gm("分析真题", "Analyze Exam"))
         self._reload_course_choices()
         self.refresh()
 
@@ -288,8 +325,8 @@ class PastExamScreen(QWidget):
         worker.start()
 
     def _cancel_import(self):
-        if self._import_worker is not None:
-            self._import_worker.cancel()
+        if self._import_worker is not None or self._analysis_worker is not None:
+            self.cancel_active_task()
             self.progress_label.setText(self.lang_manager.get_text("正在停止…", "Stopping…"))
             self.cancel_btn.setEnabled(False)
 
@@ -299,6 +336,11 @@ class PastExamScreen(QWidget):
             "parsing_page": self.lang_manager.get_text("解析页面/OCR", "Parsing pages/OCR"),
             "copying_source": self.lang_manager.get_text("复制原文件", "Copying source"),
             "publishing": self.lang_manager.get_text("保存真题", "Saving exam"),
+            "loading_exam": self.lang_manager.get_text("读取真题", "Loading exam"),
+            "analyzing_structure": self.lang_manager.get_text("识别题型结构", "Analyzing structure"),
+            "analyzing_topics": self.lang_manager.get_text("匹配课程知识点", "Matching course topics"),
+            "saving_analysis": self.lang_manager.get_text("保存真题画像", "Saving exam profile"),
+            "analysis_complete": self.lang_manager.get_text("分析完成", "Analysis complete"),
         }
         label = labels.get(progress.stage, progress.stage)
         self.progress_label.setText(f"{label}  {progress.detail}".strip())
@@ -402,6 +444,95 @@ class PastExamScreen(QWidget):
         self.content_preview.setPlainText(text)
         self.assignment_combo.setEnabled(True)
         self.save_assignment_btn.setEnabled(True)
+        self._show_analysis(record)
+
+    def _show_analysis(self, record):
+        analysis = self.manager.get_analysis(record.exam_id)
+        gm = self.lang_manager.get_text
+        self.analyze_btn.setEnabled(bool(record.course_id) and self._analysis_worker is None)
+        self.analyze_btn.setText(gm(
+            "重新分析" if analysis else "分析真题",
+            "Reanalyze" if analysis else "Analyze Exam",
+        ))
+        if not record.course_id:
+            self.analysis_summary.setText(gm(
+                "请先归属课程，再分析题型与知识点。",
+                "Assign a course before analyzing question types and topics.",
+            ))
+            return
+        if analysis is None:
+            self.analysis_summary.setText(gm(
+                "尚未分析。画像仅采用明确题型分节和课程知识点命中证据。",
+                "Not analyzed yet. The profile uses explicit sections and course-topic evidence only.",
+            ))
+            return
+        type_labels = {
+            "multiple_choice": gm("选择题", "Multiple choice"),
+            "scenario_choice": gm("情境选择题", "Scenario choice"),
+            "true_false": gm("判断题", "True/false"),
+            "fill_in_blank": gm("填空题", "Fill in the blank"),
+            "matching": gm("匹配题", "Matching"),
+            "ordering": gm("排序题", "Ordering"),
+            "short_answer": gm("简答/主观题", "Short answer / essay"),
+        }
+        type_text = " · ".join(
+            f"{type_labels.get(item.question_type, item.question_type)} {item.count}"
+            for item in analysis.question_types
+        ) or gm("未识别明确题型", "No explicit types detected")
+        topic_parts = []
+        for item in analysis.topic_profile[:5]:
+            if item.weight <= 0:
+                continue
+            terms = ", ".join(item.matched_terms[:3])
+            part = f"{item.topic_title} {item.weight}%"
+            if terms:
+                part += gm(f"（命中：{terms}）", f" (matched: {terms})")
+            topic_parts.append(part)
+        topic_text = " · ".join(topic_parts) or gm("未找到可靠知识点证据", "No reliable topic evidence")
+        self.analysis_summary.setText(gm(
+            f"画像：{analysis.detected_question_count} 题 · {type_text}\n知识点：{topic_text}",
+            f"Profile: {analysis.detected_question_count} questions · {type_text}\nTopics: {topic_text}",
+        ))
+
+    def _start_analysis(self):
+        exam_id = self._selected_exam_id()
+        if not exam_id or self._analysis_worker is not None:
+            return
+        service = PastExamAnalysisService(self.manager, self.course_manager)
+        worker = PastExamAnalysisWorker(service, exam_id, self)
+        self._analysis_worker = worker
+        worker.analyzed.connect(lambda _analysis: self._on_analyzed(exam_id))
+        worker.failed.connect(self._on_analysis_failed)
+        worker.cancelled.connect(self._on_analysis_cancelled)
+        worker.progress.connect(self._on_import_progress)
+        worker.finished.connect(self._on_analysis_worker_finished)
+        self._set_import_busy(True)
+        self.analyze_btn.setEnabled(False)
+        worker.start()
+
+    def _on_analyzed(self, exam_id):
+        self._finish_import()
+        self.refresh()
+        self._select_exam(exam_id)
+
+    def _on_analysis_failed(self, message):
+        self._finish_import()
+        QMessageBox.critical(
+            self,
+            self.lang_manager.get_text("分析失败", "Analysis Failed"),
+            str(message),
+        )
+
+    def _on_analysis_cancelled(self):
+        self._finish_import()
+
+    def _on_analysis_worker_finished(self):
+        sender = self.sender()
+        if sender is self._analysis_worker:
+            self._analysis_worker = None
+            current = self.manager.get(self._selected_exam_id())
+            if current is not None:
+                self._show_analysis(current)
 
     def _save_assignment(self):
         exam_id = self._selected_exam_id()
@@ -436,18 +567,24 @@ class PastExamScreen(QWidget):
         self.assignment_status.clear()
         self.metadata_label.clear()
         self.content_preview.clear()
+        self.analysis_summary.clear()
         self.assignment_combo.setEnabled(False)
         self.save_assignment_btn.setEnabled(False)
+        self.analyze_btn.setEnabled(False)
 
     def cancel_active_task(self):
         if self._import_worker is not None:
             self._import_worker.cancel()
+        if self._analysis_worker is not None:
+            self._analysis_worker.cancel()
 
     def request_shutdown(self) -> bool:
         """Cooperatively stop OCR/import without blocking the GUI thread."""
-        if self._import_worker is None or not self._import_worker.isRunning():
+        import_running = self._import_worker is not None and self._import_worker.isRunning()
+        analysis_running = self._analysis_worker is not None and self._analysis_worker.isRunning()
+        if not import_running and not analysis_running:
             return True
-        self._cancel_import()
+        self.cancel_active_task()
         return False
 
 

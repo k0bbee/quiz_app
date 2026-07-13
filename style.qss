@@ -766,6 +766,14 @@ QLabel#pastExamEmptyLabel {
     color: #9d9d9d;
 }
 
+QLabel#pastExamAnalysisSummary {
+    color: #d8d8d8;
+    background-color: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 8px;
+    padding: 9px 11px;
+}
+
 QTextEdit#pastExamContentPreview {
     font-family: consolas, "Cascadia Mono", "Microsoft YaHei UI", monospace;
     font-size: 12px;

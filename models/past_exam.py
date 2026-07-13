@@ -27,6 +27,104 @@ class PastExamContent:
 
 
 @dataclass(frozen=True)
+class PastExamQuestionTypeProfile:
+    question_type: str
+    count: int
+    confidence: float
+    evidence: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict:
+        return {
+            "question_type": self.question_type,
+            "count": self.count,
+            "confidence": self.confidence,
+            "evidence": list(self.evidence),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PastExamQuestionTypeProfile":
+        return cls(
+            question_type=str(data.get("question_type", "") or ""),
+            count=max(0, int(data.get("count", 0) or 0)),
+            confidence=float(data.get("confidence", 0.0) or 0.0),
+            evidence=tuple(str(item) for item in data.get("evidence", []) or []),
+        )
+
+
+@dataclass(frozen=True)
+class PastExamTopicProfile:
+    topic_id: str
+    topic_title: str
+    weight: int
+    match_count: int
+    matched_terms: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict:
+        return {
+            "topic_id": self.topic_id,
+            "topic_title": self.topic_title,
+            "weight": self.weight,
+            "match_count": self.match_count,
+            "matched_terms": list(self.matched_terms),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PastExamTopicProfile":
+        return cls(
+            topic_id=str(data.get("topic_id", "") or ""),
+            topic_title=str(data.get("topic_title", "") or ""),
+            weight=max(0, int(data.get("weight", 0) or 0)),
+            match_count=max(0, int(data.get("match_count", 0) or 0)),
+            matched_terms=tuple(str(item) for item in data.get("matched_terms", []) or []),
+        )
+
+
+@dataclass(frozen=True)
+class PastExamAnalysis:
+    source_sha256: str
+    analyzed_at: str
+    detected_question_count: int
+    question_types: tuple[PastExamQuestionTypeProfile, ...] = ()
+    topic_profile: tuple[PastExamTopicProfile, ...] = ()
+    warnings: tuple[str, ...] = ()
+    method: str = "local_rules_v1"
+    schema_version: int = 1
+
+    def to_dict(self) -> dict:
+        return {
+            "schema_version": self.schema_version,
+            "source_sha256": self.source_sha256,
+            "analyzed_at": self.analyzed_at,
+            "method": self.method,
+            "detected_question_count": self.detected_question_count,
+            "question_types": [item.to_dict() for item in self.question_types],
+            "topic_profile": [item.to_dict() for item in self.topic_profile],
+            "warnings": list(self.warnings),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "PastExamAnalysis":
+        return cls(
+            schema_version=max(1, int(data.get("schema_version", 1) or 1)),
+            source_sha256=str(data.get("source_sha256", "") or ""),
+            analyzed_at=str(data.get("analyzed_at", "") or ""),
+            method=str(data.get("method", "local_rules_v1") or "local_rules_v1"),
+            detected_question_count=max(0, int(data.get("detected_question_count", 0) or 0)),
+            question_types=tuple(
+                PastExamQuestionTypeProfile.from_dict(item)
+                for item in data.get("question_types", []) or []
+                if isinstance(item, dict)
+            ),
+            topic_profile=tuple(
+                PastExamTopicProfile.from_dict(item)
+                for item in data.get("topic_profile", []) or []
+                if isinstance(item, dict)
+            ),
+            warnings=tuple(str(item) for item in data.get("warnings", []) or []),
+        )
+
+
+@dataclass(frozen=True)
 class PastExamRecord:
     exam_id: str
     title: str
@@ -121,6 +219,24 @@ class PastExamManager:
         data = read_json(str(path))
         return PastExamContent.from_dict(data) if isinstance(data, dict) else None
 
+    def save_analysis(self, exam_id: str, analysis: PastExamAnalysis) -> bool:
+        return write_json(
+            str(self.exam_directory(exam_id) / "analysis.json"),
+            analysis.to_dict(),
+        )
+
+    def get_analysis(self, exam_id: str) -> Optional[PastExamAnalysis]:
+        record = self.get(exam_id)
+        if record is None or record.analysis_status != "complete":
+            return None
+        data = read_json(str(self.exam_directory(exam_id) / "analysis.json"))
+        if not isinstance(data, dict):
+            return None
+        analysis = PastExamAnalysis.from_dict(data)
+        if analysis.source_sha256 != record.source_sha256:
+            return None
+        return analysis
+
     def load_all(self) -> list[PastExamRecord]:
         records = []
         for path in self._dir.glob("*/record.json"):
@@ -150,13 +266,22 @@ class PastExamManager:
         if record is None:
             return None
         normalized_course_id = str(course_id or "").strip()
+        course_changed = normalized_course_id != record.course_id
         updated = replace(
             record,
             course_id=normalized_course_id,
             assignment_mode="manual" if normalized_course_id else "unassigned",
+            analysis_status="pending" if course_changed else record.analysis_status,
         )
         if not self.save_record(updated):
             raise OSError(f"Failed to update historical exam {exam_id}")
+        if course_changed:
+            analysis_path = self.exam_directory(exam_id) / "analysis.json"
+            try:
+                analysis_path.unlink(missing_ok=True)
+            except OSError:
+                # The pending record status prevents stale analysis from being consumed.
+                pass
         return updated
 
     def resolve_source_path(self, record: PastExamRecord) -> Path:

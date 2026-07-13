@@ -11,7 +11,14 @@ from PyQt6.QtCore import QEvent
 from PyQt6.QtWidgets import QApplication, QSplitter
 
 from core.language_manager import LanguageManager
-from models.past_exam import PastExamContent, PastExamManager, PastExamRecord
+from models.past_exam import (
+    PastExamAnalysis,
+    PastExamContent,
+    PastExamManager,
+    PastExamQuestionTypeProfile,
+    PastExamRecord,
+    PastExamTopicProfile,
+)
 from ui.screens.past_exam_screen import PastExamScreen
 
 
@@ -110,6 +117,40 @@ class PastExamScreenTests(unittest.TestCase):
 
             worker.cancel.assert_called_once_with()
 
+    def test_analysis_action_requires_course_and_displays_explainable_profile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = PastExamManager(tmpdir)
+            record = self._record(course_id="course-a", assignment_mode="manual")
+            manager.save_record(record)
+            manager.save_content(record.exam_id, PastExamContent("一、判断题\n1. I/O 中断。（ ）"))
+            analysis = PastExamAnalysis(
+                source_sha256=record.source_sha256,
+                analyzed_at="2026-07-13T00:00:00+00:00",
+                detected_question_count=1,
+                question_types=(PastExamQuestionTypeProfile("true_false", 1, 0.95, ("一、判断题",)),),
+                topic_profile=(PastExamTopicProfile("io", "I/O 中断", 100, 2, ("i o 中断",)),),
+            )
+            manager.save_analysis(record.exam_id, analysis)
+            manager.save_record(PastExamRecord.from_dict({
+                **record.to_dict(),
+                "analysis_status": "complete",
+            }))
+
+            screen = PastExamScreen(manager, self._course_manager(with_topics=True))
+
+            self.assertTrue(screen.analyze_btn.isEnabled())
+            self.assertIn("1 题", screen.analysis_summary.text())
+            self.assertIn("判断题 1", screen.analysis_summary.text())
+            self.assertIn("I/O 中断 100%", screen.analysis_summary.text())
+            self.assertIn("i o 中断", screen.analysis_summary.text())
+            self.assertTrue(screen.analyze_btn.icon().isNull())
+
+            manager.reassign_course(record.exam_id, "")
+            screen.refresh()
+            screen._select_exam(record.exam_id)
+            self.assertFalse(screen.analyze_btn.isEnabled())
+            self.assertIn("归属课程", screen.analysis_summary.text())
+
     @staticmethod
     def _record(course_id="", assignment_mode="unassigned"):
         return PastExamRecord(
@@ -132,9 +173,15 @@ class PastExamScreenTests(unittest.TestCase):
         )
 
     @staticmethod
-    def _course_manager():
+    def _course_manager(with_topics=False):
+        topics = [SimpleNamespace(
+            topic_id="io",
+            title="I/O 中断",
+            aliases=[],
+            keywords=["中断"],
+        )] if with_topics else []
         courses = [
-            SimpleNamespace(course_id="course-a", title="Systems", topics=[]),
+            SimpleNamespace(course_id="course-a", title="Systems", topics=topics),
             SimpleNamespace(course_id="course-b", title="Marxism", topics=[]),
         ]
         by_id = {course.course_id: course for course in courses}
