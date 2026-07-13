@@ -9,7 +9,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
+import shutil
+import tempfile
 import zipfile
 
 
@@ -67,39 +70,135 @@ def export_app_data_bundle(data_dir: str | Path, output_path: str | Path) -> Pat
 
 
 def import_app_data_bundle(bundle_path: str | Path, data_dir: str | Path) -> AppDataImportResult:
-    """Import whitelisted runtime data from a bundle into data_dir."""
+    """Atomically import whitelisted runtime data from a bundle into data_dir."""
     target_dir = Path(data_dir)
-    target_dir.mkdir(parents=True, exist_ok=True)
-    imported = 0
-    skipped: list[str] = []
+    target_dir.parent.mkdir(parents=True, exist_ok=True)
 
-    with zipfile.ZipFile(bundle_path) as archive:
-        _validate_manifest(archive)
-        for info in archive.infolist():
-            name = info.filename
-            if info.is_dir() or name == "manifest.json":
-                continue
-            if not _is_allowed_bundle_member(name):
-                skipped.append(name)
-                continue
+    with tempfile.TemporaryDirectory(
+        prefix=".app-data-import-",
+        dir=target_dir.parent,
+    ) as temporary_directory:
+        transaction_dir = Path(temporary_directory)
+        staging_dir = transaction_dir / "staging"
+        backup_dir = transaction_dir / "backup"
 
-            relative_path = Path(name)
-            output_path = target_dir / relative_path
-            if not _is_within_directory(target_dir, output_path):
-                skipped.append(name)
-                continue
+        with zipfile.ZipFile(bundle_path) as archive:
+            _validate_manifest(archive)
+            staged_files, skipped = _prepare_bundle(archive, staging_dir)
 
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            if name == "settings.json":
-                settings = json.loads(archive.read(info).decode("utf-8"))
-                for key in SECRET_SETTING_KEYS:
-                    settings.pop(key, None)
-                output_path.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
-            else:
-                output_path.write_bytes(archive.read(info))
-            imported += 1
+        imported = _commit_staged_files(staged_files, target_dir, backup_dir)
 
     return AppDataImportResult(imported_files=imported, skipped_files=skipped)
+
+
+def _prepare_bundle(
+    archive: zipfile.ZipFile,
+    staging_dir: Path,
+) -> tuple[list[tuple[Path, Path]], list[str]]:
+    """Validate every import candidate and write it only to staging."""
+    staged_files: list[tuple[Path, Path]] = []
+    skipped: list[str] = []
+    seen: set[str] = set()
+
+    for info in archive.infolist():
+        name = info.filename
+        if info.is_dir() or name == "manifest.json":
+            continue
+        if not _is_allowed_bundle_member(name):
+            skipped.append(name)
+            continue
+        if name in seen:
+            raise ValueError(f"Duplicate data bundle member: {name}")
+        seen.add(name)
+
+        relative_path = Path(name)
+        staged_path = staging_dir / relative_path
+        if not _is_within_directory(staging_dir, staged_path):
+            skipped.append(name)
+            continue
+
+        payload = archive.read(info)
+        if relative_path.suffix.lower() == ".json":
+            payload = _validated_json_payload(name, payload)
+
+        staged_path.parent.mkdir(parents=True, exist_ok=True)
+        staged_path.write_bytes(payload)
+        staged_files.append((relative_path, staged_path))
+
+    return staged_files, skipped
+
+
+def _validated_json_payload(name: str, payload: bytes) -> bytes:
+    """Validate JSON payload and sanitize portable settings."""
+    try:
+        data = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid JSON data bundle member: {name}") from exc
+
+    if name != "settings.json":
+        return payload
+    if not isinstance(data, dict):
+        raise ValueError("Invalid settings.json in data bundle: expected an object")
+    for key in SECRET_SETTING_KEYS:
+        data.pop(key, None)
+    return json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def _commit_staged_files(
+    staged_files: list[tuple[Path, Path]],
+    target_dir: Path,
+    backup_dir: Path,
+) -> int:
+    """Commit staged files, restoring the original target state on failure."""
+    backups: list[tuple[Path, Path]] = []
+    created_paths: list[Path] = []
+
+    try:
+        for relative_path, staged_path in staged_files:
+            destination = target_dir / relative_path
+            if not _is_within_directory(target_dir, destination):
+                raise ValueError(f"Unsafe staged data path: {relative_path.as_posix()}")
+
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists():
+                backup_path = backup_dir / relative_path
+                backup_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(destination, backup_path)
+                backups.append((destination, backup_path))
+            else:
+                created_paths.append(destination)
+
+            os.replace(staged_path, destination)
+    except Exception as commit_error:
+        recovery_errors = _restore_import_target(backups, created_paths)
+        if recovery_errors:
+            details = "; ".join(str(error) for error in recovery_errors)
+            raise RuntimeError(
+                f"App data import failed ({commit_error}); rollback also failed: {details}"
+            ) from commit_error
+        raise
+
+    return len(staged_files)
+
+
+def _restore_import_target(
+    backups: list[tuple[Path, Path]],
+    created_paths: list[Path],
+) -> list[Exception]:
+    """Best-effort rollback for a failed import commit."""
+    errors: list[Exception] = []
+    for path in reversed(created_paths):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            errors.append(exc)
+    for destination, backup_path in reversed(backups):
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(backup_path, destination)
+        except OSError as exc:
+            errors.append(exc)
+    return errors
 
 
 def _portable_settings(path: Path) -> dict:
@@ -117,6 +216,8 @@ def _portable_settings(path: Path) -> dict:
 
 
 def _validate_manifest(archive: zipfile.ZipFile) -> None:
+    if sum(info.filename == "manifest.json" for info in archive.infolist()) != 1:
+        raise ValueError("Invalid quiz app data bundle manifest")
     try:
         manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
     except (KeyError, json.JSONDecodeError) as exc:

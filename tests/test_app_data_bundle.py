@@ -1,8 +1,12 @@
 import json
+import os
 import tempfile
 import unittest
+import warnings
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from core.app_data_bundle import export_app_data_bundle, import_app_data_bundle
 
@@ -80,6 +84,85 @@ class AppDataBundleTests(unittest.TestCase):
             self.assertEqual({"language": "en"}, imported_settings)
             self.assertFalse((Path(tmpdir) / "escape.txt").exists())
             self.assertIn("../escape.txt", result.skipped_files)
+
+    def test_import_rejects_invalid_json_without_changing_target_data(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bundle_path = root / "bundle.quizdata"
+            target_dir = root / "target"
+            existing = target_dir / "questions" / "q1.json"
+            existing.parent.mkdir(parents=True)
+            existing.write_text('{"question_id": "original"}', encoding="utf-8")
+
+            with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
+                archive.writestr("questions/q1.json", '{"question_id": "replacement"}')
+                archive.writestr("questions/q2.json", '{"question_id":')
+
+            with self.assertRaisesRegex(ValueError, "questions/q2.json"):
+                import_app_data_bundle(bundle_path, target_dir)
+
+            self.assertEqual(
+                {"question_id": "original"},
+                json.loads(existing.read_text(encoding="utf-8")),
+            )
+            self.assertFalse((target_dir / "questions" / "q2.json").exists())
+
+    def test_import_rejects_duplicate_allowed_members_without_writing_data(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bundle_path = root / "bundle.quizdata"
+            target_dir = root / "target"
+
+            with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
+                archive.writestr("questions/q1.json", '{"question_id": "first"}')
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    archive.writestr("questions/q1.json", '{"question_id": "second"}')
+
+            with self.assertRaisesRegex(ValueError, "Duplicate.*questions/q1.json"):
+                import_app_data_bundle(bundle_path, target_dir)
+
+            self.assertFalse((target_dir / "questions" / "q1.json").exists())
+
+    def test_import_rolls_back_overwrites_and_new_files_when_commit_fails(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bundle_path = root / "bundle.quizdata"
+            target_dir = root / "target"
+            existing = target_dir / "questions" / "q1.json"
+            existing.parent.mkdir(parents=True)
+            existing.write_text('{"question_id": "original"}', encoding="utf-8")
+
+            with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
+                archive.writestr("questions/q1.json", '{"question_id": "replacement"}')
+                archive.writestr("questions/q2.json", '{"question_id": "new"}')
+
+            real_replace = os.replace
+            forward_replacements = 0
+
+            def fail_second_forward_replace(source, destination):
+                nonlocal forward_replacements
+                if ".app-data-import-" in str(source):
+                    forward_replacements += 1
+                    if forward_replacements == 2:
+                        raise OSError("disk full")
+                return real_replace(source, destination)
+
+            from core import app_data_bundle
+
+            fake_os = SimpleNamespace(replace=fail_second_forward_replace)
+            with patch.object(app_data_bundle, "os", fake_os, create=True):
+                with self.assertRaisesRegex(OSError, "disk full"):
+                    import_app_data_bundle(bundle_path, target_dir)
+
+            self.assertEqual(
+                {"question_id": "original"},
+                json.loads(existing.read_text(encoding="utf-8")),
+            )
+            self.assertFalse((target_dir / "questions" / "q2.json").exists())
 
 
 if __name__ == "__main__":
