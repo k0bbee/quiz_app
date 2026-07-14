@@ -75,8 +75,6 @@ class CourseProject:
         self.exam_scope_topic_ids = self._ordered_topic_ids(self.exam_scope_topic_ids)
         if self.exam_scope_mode == "all":
             self.exam_scope_topic_ids = []
-        elif self.topics and not self.exam_scope_topic_ids:
-            self.exam_scope_mode = "all"
 
     def exam_topics(self) -> list[CourseTopic]:
         """Return course topics currently included in the exam scope."""

@@ -32,6 +32,7 @@ class HomeScreen(QWidget):
         self.lang_manager = LanguageManager.instance()
         self._current_course_id = ""
         self._current_course_title = ""
+        self._exam_topic_ids: set[str] | None = None
         self._resume_title = ""
         self._resume_remaining_count = 0
         self._resume_current_index: int | None = None
@@ -204,14 +205,15 @@ class HomeScreen(QWidget):
             self._refresh_today_plan()
             return
 
-        visible_question_ids = (
-            set(self.question_bank.question_ids(course_id=self._current_course_id))
-            if self._current_course_id else None
+        all_course_question_ids = set(
+            self.question_bank.question_ids(course_id=self._current_course_id)
         )
+        visible_question_ids = self._visible_question_ids()
         total_questions = self.question_bank.count(course_id=self._current_course_id)
-        stats = self.progress_manager.get_aggregated_stats(visible_question_ids)
+        stats_filter = all_course_question_ids if self._current_course_id else None
+        stats = self.progress_manager.get_aggregated_stats(stats_filter)
         incorrect_ids = self.progress_manager.get_incorrect_question_ids()
-        if visible_question_ids is not None:
+        if self._current_course_id:
             incorrect_ids = [
                 question_id
                 for question_id in incorrect_ids
@@ -225,7 +227,7 @@ class HomeScreen(QWidget):
                 if question_id in existing_ids
             ]
         incorrect_count = len(incorrect_ids)
-        self._refresh_today_plan(total_questions, incorrect_ids)
+        self._refresh_today_plan(len(visible_question_ids), incorrect_ids)
         self.incorrect_btn.setEnabled(True)
         self._set_incorrect_empty_state(incorrect_count <= 0)
 
@@ -287,16 +289,64 @@ class HomeScreen(QWidget):
         self.resume_btn.hide()
         self._refresh_today_plan()
 
-    def set_current_course(self, course_id: str | None, course_title: str | None = None):
+    def set_current_course(
+        self,
+        course_id: str | None,
+        course_title: str | None = None,
+        exam_topic_ids: set[str] | list[str] | tuple[str, ...] | None = None,
+    ):
         """Restrict home quick stats to the active course."""
         course_id = course_id or ""
         course_title = (course_title or "").strip()
-        if course_id == self._current_course_id and course_title == self._current_course_title:
+        normalized_scope = (
+            None
+            if exam_topic_ids is None
+            else {
+                str(topic_id or "").strip()
+                for topic_id in exam_topic_ids
+                if str(topic_id or "").strip()
+            }
+        )
+        if (
+            course_id == self._current_course_id
+            and course_title == self._current_course_title
+            and normalized_scope == self._exam_topic_ids
+        ):
             return
         self._current_course_id = course_id
         self._current_course_title = course_title
+        self._exam_topic_ids = normalized_scope
         self._update_course_context_label()
         self.refresh()
+
+    def _visible_question_ids(self) -> set[str]:
+        """Return current-course question IDs inside the selected exam scope."""
+        if self.question_bank is None:
+            return set()
+        course_ids = set(
+            self.question_bank.question_ids(course_id=self._current_course_id)
+        )
+        if self._exam_topic_ids is None:
+            return course_ids
+        topic_index = self.question_bank.topic_index(course_id=self._current_course_id)
+        return {
+            question_id
+            for question_id in course_ids
+            if str((topic_index.get(question_id) or ("", ""))[0]) in self._exam_topic_ids
+        }
+
+    def _visible_topic_index(self) -> dict[str, tuple[str, str]]:
+        """Return topic labels restricted to the selected exam scope."""
+        if self.question_bank is None:
+            return {}
+        topic_index = self.question_bank.topic_index(course_id=self._current_course_id)
+        if self._exam_topic_ids is None:
+            return topic_index
+        return {
+            question_id: topic
+            for question_id, topic in topic_index.items()
+            if str((topic or ("", ""))[0]) in self._exam_topic_ids
+        }
 
     def _update_course_context_label(self):
         """Show which course scope the home actions and stats currently use."""
@@ -363,15 +413,11 @@ class HomeScreen(QWidget):
             )
 
         if total_questions is None:
-            total_questions = (
-                self.question_bank.count(course_id=self._current_course_id)
-                if self.question_bank is not None
-                else 0
-            )
+            total_questions = len(self._visible_question_ids())
         if incorrect_ids is None:
             incorrect_ids = []
             if self.progress_manager is not None and self.question_bank is not None:
-                visible_ids = set(self.question_bank.question_ids(course_id=self._current_course_id))
+                visible_ids = self._visible_question_ids()
                 incorrect_ids = [
                     question_id
                     for question_id in self.progress_manager.get_incorrect_question_ids()
@@ -381,7 +427,7 @@ class HomeScreen(QWidget):
         topic_index = {}
         progress_records = []
         if draft is None and not incorrect_ids and total_questions > 0:
-            topic_index = self.question_bank.topic_index(course_id=self._current_course_id)
+            topic_index = self._visible_topic_index()
             progress_records = self.progress_manager.load_all()
         self._today_plan = build_today_learning_plan(
             total_questions=total_questions,

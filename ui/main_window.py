@@ -845,13 +845,32 @@ class MainWindow(QMainWindow):
         else:
             course_project = course_override
             course_content = str(getattr(course_project, "summary_markdown", "") or "")
-            available_topics = list(getattr(course_project, "topics", []) or [])
+            scoped_topics = getattr(course_project, "exam_topics", None)
+            available_topics = list(
+                scoped_topics()
+                if callable(scoped_topics)
+                else getattr(course_project, "topics", []) or []
+            )
         if not course_content:
             QMessageBox.warning(
                 self,
                 gm("缺少课程内容", "No Course Content"),
                 gm("尚未导入任何课程资料。请先通过「课程资料」页面导入课件文件夹（支持 pptx/pdf/docx/md/txt），\n系统将自动解析并生成课程摘要，之后即可使用 AI 出题功能。",
                    "No course materials imported yet. Please go to Course Materials to import a folder\n(pptx/pdf/docx/md/txt). The system will parse and generate a summary for AI generation."),
+            )
+            return
+        if (
+            course_project is not None
+            and getattr(course_project, "exam_scope_mode", "all") == "selected"
+            and not available_topics
+        ):
+            QMessageBox.warning(
+                self,
+                gm("考试范围为空", "Empty Exam Scope"),
+                gm(
+                    "当前指定范围中的知识点已不存在。请到课程页重新设置考试范围后再出题。",
+                    "The topics in the selected scope no longer exist. Reset the exam scope on the Courses page before generating questions.",
+                ),
             )
             return
 
@@ -894,15 +913,9 @@ class MainWindow(QMainWindow):
                     f"{course_title} Predicted Mock Exam" if course_title else "Predicted Mock Exam",
                 ))
             if prediction is not None and hasattr(dialog, "status_label"):
-                source_count = int(getattr(prediction, "source_count", 0) or 0)
-                excluded_note = gm(
-                    " 部分当前生成器不支持的历史题型未计入题型权重。",
-                    " Historical types unsupported by the current generator were excluded.",
-                ) if getattr(prediction, "warnings", ()) else ""
-                dialog.status_label.setText(gm(
-                    f"已按 {source_count} 份历史真题画像预填；这反映历史分布，不代表未来考题。{excluded_note}",
-                    f"Pre-filled from {source_count} historical exam profiles; this reflects past distribution, not future questions.{excluded_note}",
-                ))
+                dialog.status_label.setText(
+                    MainWindow._prediction_prefill_status(prediction, gm)
+                )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             questions = dialog.generated_questions
             if questions:
@@ -936,6 +949,27 @@ class MainWindow(QMainWindow):
                        f"Saved {saved} questions and created a question set:\n{qset.get_title(lang)}"),
                 )
                 self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+
+    @staticmethod
+    def _prediction_prefill_status(prediction, get_text) -> str:
+        """Return accurate localized notes for each prediction exclusion reason."""
+        source_count = int(getattr(prediction, "source_count", 0) or 0)
+        text = get_text(
+            f"已按 {source_count} 份历史真题画像预填；这反映历史分布，不代表未来考题。",
+            f"Pre-filled from {source_count} historical exam profiles; this reflects past distribution, not future questions.",
+        )
+        warnings = tuple(str(item or "") for item in getattr(prediction, "warnings", ()) or ())
+        if any("outside the current exam scope" in item.lower() for item in warnings):
+            text += get_text(
+                " 考试范围外的历史知识点证据已排除。",
+                " Historical topic evidence outside the exam scope was excluded.",
+            )
+        if any("not available in the current ai generation controls" in item.lower() for item in warnings):
+            text += get_text(
+                " 当前生成器不支持的历史题型未计入题型权重。",
+                " Historical types unsupported by the current generator were excluded.",
+            )
+        return text
 
     def _on_generate_predicted_exam(self, course_id: str, prediction):
         """Open the normal generation review flow with a historical profile plan."""
@@ -972,6 +1006,20 @@ class MainWindow(QMainWindow):
                 gm("缺少课程内容", "No Course Content"),
                 gm("请先导入课程资料并生成课程总结，然后再重新生成题目。",
                    "Import course materials and generate a course summary before regenerating questions."),
+            )
+            return
+        if (
+            course_project is not None
+            and getattr(course_project, "exam_scope_mode", "all") == "selected"
+            and not available_topics
+        ):
+            QMessageBox.warning(
+                self,
+                gm("考试范围为空", "Empty Exam Scope"),
+                gm(
+                    "当前指定范围中的知识点已不存在。请到课程页重新设置考试范围后再重新生成题目。",
+                    "The topics in the selected scope no longer exist. Reset the exam scope on the Courses page before regenerating questions.",
+                ),
             )
             return
 
@@ -1081,7 +1129,14 @@ class MainWindow(QMainWindow):
         gm = self.lang_manager.get_text
         course = self.course_manager.current()
         if course:
-            topics = list(course.topics) or [gm("综合", "General")]
+            scoped_topics = getattr(course, "exam_topics", None)
+            topics = list(
+                scoped_topics()
+                if callable(scoped_topics)
+                else getattr(course, "topics", []) or []
+            )
+            if not topics and getattr(course, "exam_scope_mode", "all") != "selected":
+                topics = [gm("综合", "General")]
             return course.summary_markdown, topics, course
         return "", [], None
 
@@ -1099,9 +1154,15 @@ class MainWindow(QMainWindow):
 
     def _sync_home_screen_course(self):
         course = self.course_manager.current()
+        exam_topic_ids = None
+        if course and getattr(course, "exam_scope_mode", "all") == "selected":
+            scoped_topics = getattr(course, "exam_topics", None)
+            topics = scoped_topics() if callable(scoped_topics) else getattr(course, "topics", [])
+            exam_topic_ids = {topic.topic_id for topic in topics}
         self.home_screen.set_current_course(
             course.course_id if course else "",
             course.title if course else "",
+            exam_topic_ids,
         )
         self._update_home_resume_draft()
 

@@ -46,12 +46,25 @@ class PastExamPredictionPlanner:
         if not profiles:
             raise ValueError("No completed historical exam profiles are available for this course")
 
-        available_topics = [
+        all_course_topics = [
             str(getattr(topic, "topic_id", "") or "").strip()
             for topic in getattr(course, "topics", []) or []
         ]
+        all_course_topics = [topic_id for topic_id in all_course_topics if topic_id]
+        scoped_topics = (
+            course.exam_topics()
+            if callable(getattr(course, "exam_topics", None))
+            else getattr(course, "topics", []) or []
+        )
+        available_topics = [
+            str(getattr(topic, "topic_id", "") or "").strip()
+            for topic in scoped_topics
+        ]
         available_topics = [topic_id for topic_id in available_topics if topic_id]
+        available_topic_ids = set(available_topics)
+        all_course_topic_ids = set(all_course_topics)
         topic_totals = Counter()
+        excluded_scope_topics = Counter()
         type_totals = Counter()
         unsupported_types = Counter()
         question_counts = []
@@ -64,8 +77,10 @@ class PastExamPredictionPlanner:
                 elif item.count > 0:
                     unsupported_types[item.question_type] += item.count
             for item in analysis.topic_profile:
-                if item.topic_id in available_topics and item.weight > 0:
+                if item.topic_id in available_topic_ids and item.weight > 0:
                     topic_totals[item.topic_id] += item.weight
+                elif item.topic_id in all_course_topic_ids and item.weight > 0:
+                    excluded_scope_topics[item.topic_id] += item.weight
 
         selected_topics = tuple(topic_id for topic_id in available_topics if topic_totals[topic_id] > 0)
         if not selected_topics:
@@ -82,6 +97,12 @@ class PastExamPredictionPlanner:
             question_type_weights = dict(DEFAULT_QUESTION_TYPE_WEIGHTS)
 
         warnings = []
+        if excluded_scope_topics:
+            details = ", ".join(sorted(excluded_scope_topics))
+            warnings.append(
+                "Historical topic evidence outside the current exam scope was excluded: "
+                f"{details}"
+            )
         if unsupported_types:
             details = ", ".join(
                 f"{key}={unsupported_types[key]}"
