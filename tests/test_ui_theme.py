@@ -541,8 +541,13 @@ class UiThemeTests(unittest.TestCase):
             )
 
             self.assertEqual("primaryButton", course.init_btn.objectName())
-            self.assertEqual("dangerButton", course.delete_btn.objectName())
-            for button in (course.browse_btn, course.set_current_btn, course.rename_btn, course.regenerate_btn, course.refresh_btn):
+            self.assertEqual("dangerAction", course.delete_action.objectName())
+            for button in (
+                course.browse_btn,
+                course.set_current_btn,
+                course.scope_btn,
+                course.more_actions_btn,
+            ):
                 self.assertEqual("secondaryButton", button.objectName())
 
             self.assertEqual("primaryButton", bank.save_btn.objectName())

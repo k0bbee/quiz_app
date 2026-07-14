@@ -781,7 +781,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertEqual({}, legacy.generation_profile)
             self.assertEqual("local", legacy.generation_profile_source)
 
-    def test_course_screen_enables_regenerate_button_for_selected_project(self):
+    def test_course_screen_enables_regenerate_action_for_selected_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source"
             source.mkdir()
@@ -793,9 +793,9 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             screen = CourseScreen(manager)
             screen.refresh()
 
-            self.assertFalse(screen.regenerate_btn.isEnabled())
+            self.assertFalse(screen.regenerate_action.isEnabled())
             screen.project_list.setCurrentRow(0)
-            self.assertTrue(screen.regenerate_btn.isEnabled())
+            self.assertTrue(screen.regenerate_action.isEnabled())
 
     def test_course_screen_reports_llm_fallback_after_initialization(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1242,7 +1242,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                     "_choose_course_removal_mode",
                     return_value=CourseRemovalMode.KEEP_ASSETS,
                 ):
-                    screen.delete_btn.click()
+                    screen.delete_action.trigger()
 
                 self.assertIsNone(manager.get(project.course_id))
                 self.assertEqual(0, screen.project_list.count())
@@ -1263,7 +1263,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertIn("还没有课程", screen.empty_state_label.text())
             self.assertIn("导入", screen.empty_state_label.text())
             self.assertFalse(screen.set_current_btn.isEnabled())
-            self.assertFalse(screen.delete_btn.isEnabled())
+            self.assertFalse(screen.delete_action.isEnabled())
 
     def test_course_screen_can_rename_selected_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1281,7 +1281,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 "ui.screens.course_screen.QInputDialog.getText",
                 return_value=("计算机系统期末", True),
             ):
-                screen.rename_btn.click()
+                screen.rename_action.trigger()
 
             renamed = manager.get(project.course_id)
             self.assertEqual("计算机系统期末", renamed.title)

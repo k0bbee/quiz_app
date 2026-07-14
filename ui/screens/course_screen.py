@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
+from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
     QSplitter, QGroupBox, QProgressBar, QInputDialog, QTextBrowser,
-    QDialog, QRadioButton,
+    QDialog, QRadioButton, QMenu,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
@@ -25,6 +27,7 @@ from core.topic_identity_migration import TopicIdentityRepairReport, repair_ques
 from models.course_project import CourseProjectManager
 from core.language_manager import LanguageManager
 from config import SETTINGS_FILE
+from ui.dialogs.course_exam_scope_dialog import CourseExamScopeDialog
 from utils.json_io import read_json
 
 
@@ -83,10 +86,12 @@ class CourseScreen(QWidget):
         self.init_btn.setText(self.lang_manager.get_text("解析并生成总结", "Parse and generate summary"))
         self.list_label.setText(self.lang_manager.get_text("已导入的课程:", "Imported courses:"))
         self.set_current_btn.setText(self.lang_manager.get_text("设为当前", "Set Current"))
-        self.rename_btn.setText(self.lang_manager.get_text("重命名", "Rename"))
-        self.regenerate_btn.setText(self.lang_manager.get_text("重新生成总结", "Regenerate Summary"))
-        self.delete_btn.setText(self.lang_manager.get_text("删除课程", "Delete Course"))
-        self.refresh_btn.setText(self.lang_manager.get_text("刷新", "Refresh"))
+        self.scope_btn.setText(self.lang_manager.get_text("考试范围", "Exam Scope"))
+        self.more_actions_btn.setText(self.lang_manager.get_text("更多操作", "More Actions"))
+        self.rename_action.setText(self.lang_manager.get_text("重命名", "Rename"))
+        self.regenerate_action.setText(self.lang_manager.get_text("重新生成总结", "Regenerate Summary"))
+        self.refresh_action.setText(self.lang_manager.get_text("刷新", "Refresh"))
+        self.delete_action.setText(self.lang_manager.get_text("删除课程", "Delete Course"))
         self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
         self._update_summary_mode_button_text()
         self.refresh()
@@ -163,30 +168,41 @@ class CourseScreen(QWidget):
         left_layout.addWidget(self.empty_state_label, 1)
         self.project_list = QListWidget()
         self.project_list.currentItemChanged.connect(self._on_project_selected)
-        left_layout.addWidget(self.project_list, 1)
 
-        btn_row = QHBoxLayout()
+        self.course_action_layout = QHBoxLayout()
         self.set_current_btn = QPushButton(self.lang_manager.get_text("设为当前", "Set Current"))
         self.set_current_btn.setObjectName("secondaryButton")
         self.set_current_btn.clicked.connect(self._set_current)
-        btn_row.addWidget(self.set_current_btn)
-        self.rename_btn = QPushButton(self.lang_manager.get_text("重命名", "Rename"))
-        self.rename_btn.setObjectName("secondaryButton")
-        self.rename_btn.clicked.connect(self._rename_selected_project)
-        btn_row.addWidget(self.rename_btn)
-        self.regenerate_btn = QPushButton(self.lang_manager.get_text("重新生成总结", "Regenerate Summary"))
-        self.regenerate_btn.setObjectName("secondaryButton")
-        self.regenerate_btn.clicked.connect(self._regenerate_selected_project)
-        btn_row.addWidget(self.regenerate_btn)
-        self.delete_btn = QPushButton(self.lang_manager.get_text("删除课程", "Delete Course"))
-        self.delete_btn.setObjectName("dangerButton")
-        self.delete_btn.clicked.connect(self._delete_selected_project)
-        btn_row.addWidget(self.delete_btn)
-        self.refresh_btn = QPushButton(self.lang_manager.get_text("刷新", "Refresh"))
-        self.refresh_btn.setObjectName("secondaryButton")
-        self.refresh_btn.clicked.connect(self.refresh)
-        btn_row.addWidget(self.refresh_btn)
-        left_layout.addLayout(btn_row)
+        self.course_action_layout.addWidget(self.set_current_btn)
+        self.scope_btn = QPushButton(self.lang_manager.get_text("考试范围", "Exam Scope"))
+        self.scope_btn.setObjectName("secondaryButton")
+        self.scope_btn.clicked.connect(self._edit_exam_scope)
+        self.course_action_layout.addWidget(self.scope_btn)
+
+        self.more_actions_menu = QMenu(self)
+        self.rename_action = QAction(self.lang_manager.get_text("重命名", "Rename"), self)
+        self.rename_action.triggered.connect(self._rename_selected_project)
+        self.more_actions_menu.addAction(self.rename_action)
+        self.regenerate_action = QAction(
+            self.lang_manager.get_text("重新生成总结", "Regenerate Summary"), self
+        )
+        self.regenerate_action.triggered.connect(self._regenerate_selected_project)
+        self.more_actions_menu.addAction(self.regenerate_action)
+        self.refresh_action = QAction(self.lang_manager.get_text("刷新", "Refresh"), self)
+        self.refresh_action.triggered.connect(self.refresh)
+        self.more_actions_menu.addAction(self.refresh_action)
+        self.more_actions_menu.addSeparator()
+        self.delete_action = QAction(self.lang_manager.get_text("删除课程", "Delete Course"), self)
+        self.delete_action.setObjectName("dangerAction")
+        self.delete_action.triggered.connect(self._delete_selected_project)
+        self.more_actions_menu.addAction(self.delete_action)
+
+        self.more_actions_btn = QPushButton(self.lang_manager.get_text("更多操作", "More Actions"))
+        self.more_actions_btn.setObjectName("secondaryButton")
+        self.more_actions_btn.clicked.connect(self._show_more_actions_menu)
+        self.course_action_layout.addWidget(self.more_actions_btn)
+        left_layout.addLayout(self.course_action_layout)
+        left_layout.addWidget(self.project_list, 1)
         splitter.addWidget(left)
 
         right = QWidget()
@@ -217,11 +233,14 @@ class CourseScreen(QWidget):
         self.project_list.clear()
         current = self.manager.current()
         current_id = current.course_id if current else ""
-        topics_label = self.lang_manager.get_text("个主题", "topics")
         projects = self.manager.load_all()
         for project in projects:
             prefix = "★ " if project.course_id == current_id else ""
-            item = QListWidgetItem(f"{prefix}{project.title}  [{len(project.topics)} {topics_label}]")
+            scope_count = len(project.exam_topics())
+            scope_label = self.lang_manager.get_text("范围", "scope")
+            item = QListWidgetItem(
+                f"{prefix}{project.title}  [{scope_count}/{len(project.topics)} {scope_label}]"
+            )
             item.setData(Qt.ItemDataRole.UserRole, project.course_id)
             self.project_list.addItem(item)
         is_empty = not projects
@@ -232,9 +251,10 @@ class CourseScreen(QWidget):
         self.empty_state_label.setVisible(is_empty)
         self.project_list.setVisible(not is_empty)
         self.set_current_btn.setEnabled(False)
-        self.rename_btn.setEnabled(False)
-        self.regenerate_btn.setEnabled(False)
-        self.delete_btn.setEnabled(False)
+        self.scope_btn.setEnabled(False)
+        self.rename_action.setEnabled(False)
+        self.regenerate_action.setEnabled(False)
+        self.delete_action.setEnabled(False)
         if current:
             current_label = self.lang_manager.get_text("当前:", "Current:")
             self.summary_label.setText(f"{current_label} {current.title}")
@@ -287,22 +307,25 @@ class CourseScreen(QWidget):
         if active:
             self.progress_bar.setRange(0, 0)
             self.task_status_label.setText(self.lang_manager.get_text("正在准备…", "Preparing…"))
-            for button in (
-                self.set_current_btn,
-                self.rename_btn,
-                self.regenerate_btn,
-                self.delete_btn,
-                self.refresh_btn,
-            ):
+            for button in (self.set_current_btn, self.scope_btn, self.more_actions_btn):
                 button.setEnabled(False)
+            for action in self.more_actions_menu.actions():
+                action.setEnabled(False)
         else:
             self._last_task_progress = None
             self.task_status_label.clear()
             self.init_btn.setText(self.lang_manager.get_text(
                 "解析并生成总结", "Parse and generate summary"
             ))
-            self.refresh_btn.setEnabled(True)
+            self.more_actions_btn.setEnabled(True)
+            self.refresh_action.setEnabled(True)
             self._on_project_selected(self.project_list.currentItem(), None)
+
+    def _show_more_actions_menu(self) -> None:
+        """Open secondary course actions without adding an icon or menu arrow."""
+        self.more_actions_menu.popup(
+            self.more_actions_btn.mapToGlobal(self.more_actions_btn.rect().bottomLeft())
+        )
 
     def _cancel_course_task(self) -> None:
         worker = self._init_worker or self._regen_worker
@@ -493,20 +516,64 @@ class CourseScreen(QWidget):
     def _on_project_selected(self, current, previous):
         if current is None:
             self.set_current_btn.setEnabled(False)
-            self.rename_btn.setEnabled(False)
-            self.regenerate_btn.setEnabled(False)
-            self.delete_btn.setEnabled(False)
+            self.scope_btn.setEnabled(False)
+            self.rename_action.setEnabled(False)
+            self.regenerate_action.setEnabled(False)
+            self.delete_action.setEnabled(False)
             return
         course_id = current.data(Qt.ItemDataRole.UserRole)
         project = self.manager.get(course_id)
         if not project:
             return
         self.set_current_btn.setEnabled(True)
-        self.rename_btn.setEnabled(True)
-        self.regenerate_btn.setEnabled(True)
-        self.delete_btn.setEnabled(True)
+        self.scope_btn.setEnabled(True)
+        self.rename_action.setEnabled(True)
+        self.regenerate_action.setEnabled(True)
+        self.delete_action.setEnabled(True)
         self.summary_label.setText(project.title)
         self._show_summary(project.summary_markdown)
+
+    def _edit_exam_scope(self):
+        current = self.project_list.currentItem()
+        if not current:
+            return
+        course_id = current.data(Qt.ItemDataRole.UserRole)
+        project = self.manager.get(course_id)
+        if not project:
+            return
+        dialog = CourseExamScopeDialog(project, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        mode, topic_ids = dialog.scope()
+        updated = deepcopy(project)
+        try:
+            updated.set_exam_scope(mode, topic_ids)
+        except ValueError as exc:
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text("范围无效", "Invalid Scope"),
+                str(exc),
+            )
+            return
+        updated.updated_at = datetime.now(timezone.utc).isoformat()
+        if not self.manager.save(updated, make_current=False):
+            QMessageBox.critical(
+                self,
+                self.lang_manager.get_text("保存失败", "Save Failed"),
+                self.lang_manager.get_text(
+                    "考试范围未保存，原课程数据保持不变。请检查数据目录后重试。",
+                    "The exam scope was not saved. Original course data remains unchanged. Check the data directory and retry.",
+                ),
+            )
+            return
+        self.refresh()
+        for row in range(self.project_list.count()):
+            item = self.project_list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == course_id:
+                self.project_list.setCurrentRow(row)
+                break
+        self.current_course_changed.emit()
 
     def _rename_selected_project(self):
         current = self.project_list.currentItem()
