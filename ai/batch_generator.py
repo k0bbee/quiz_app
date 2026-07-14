@@ -49,7 +49,6 @@ class GenerationWorker(QThread):
         self._generation_service = QuestionGenerationService(self.topics)
         self._cancelled = threading.Event()
         self._cached_context: str | None = None
-        self._batch_scheduler = GenerationBatchScheduler(self.count)
         self._cached_source_refs: list[dict] = []
         self._cached_source_refs_by_topic: dict[str, list[dict]] = {}
         self._source_resolver = GenerationSourceResolver()
@@ -64,7 +63,6 @@ class GenerationWorker(QThread):
             # Cache context once — it doesn't change between batches
             course_context = self._build_course_context()
             scheduler = self._make_batch_scheduler()
-            self._batch_scheduler = scheduler
             max_attempts = scheduler.max_attempts
             result_state = self._make_result_accumulator(max_attempts)
             quotas = self._make_quota_tracker()
@@ -252,35 +250,6 @@ class GenerationWorker(QThread):
             ai_model=getattr(self.client, "model", ""),
             course_metadata=self._course_metadata(),
         )
-
-    def _candidate_batch_count(self, accept_target: int) -> int:
-        """Request extra candidates so strict quota filtering can recover from model drift.
-
-        The UI/requested total remains self.count. This only enlarges the
-        background candidate pool for one LLM call, keeping large generations
-        chunked instead of making one huge request.
-        """
-        return self._batch_scheduler.plan_next(accept_target).candidate_count
-
-    def _accept_target_count(self, remaining: int) -> int:
-        return self._batch_scheduler.plan_next(remaining).accept_target
-
-    def _reduce_batch_after_json_truncation(self, detail: str, candidate_count: int) -> bool:
-        """Recover from likely output-token truncation by asking for fewer questions.
-
-        Authentication, network, and quota errors should still surface immediately.
-        This recovery is deliberately limited to JSON parse failures that match an
-        incomplete response shape.
-        """
-        return self._batch_scheduler.recover_from_failure(detail, candidate_count)
-
-    @staticmethod
-    def _looks_like_json_truncation(detail: str) -> bool:
-        return GenerationBatchScheduler.looks_like_json_truncation(detail)
-
-    @staticmethod
-    def _json_truncation_error(detail: str) -> AppError:
-        return GenerationBatchScheduler.truncation_error(detail)
 
     def _build_course_context(self) -> str:
         """Retrieve the best context for currently selected topics."""

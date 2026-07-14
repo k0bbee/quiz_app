@@ -777,43 +777,6 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual("scenario", batches[0][0].metadata["target_skill"])
         self.assertEqual(["source-process-01"], batches[0][0].metadata["plan_evidence_chunk_ids"])
 
-    def test_worker_uses_recovery_pool_for_small_generation_requests(self):
-        config = GenerationConfig(
-            question_type_weights={
-                "multiple_choice": 100,
-                "scenario_choice": 0,
-                "true_false": 0,
-                "fill_in_blank": 0,
-            },
-            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
-            topic_weights={"cache": 100},
-        )
-        client = TopicDriftClient()
-        worker = GenerationWorker(
-            client,
-            course_content="content",
-            topics=["cache"],
-            count=3,
-            difficulty="mixed",
-            generation_config=config,
-        )
-
-        self.assertEqual(4, worker._candidate_batch_count(3))
-
-    def test_worker_candidate_batch_count_is_monotonic_for_small_targets(self):
-        worker = GenerationWorker(
-            SequenceClient([{"questions": []}]),
-            course_content="content",
-            topics=["cache"],
-            count=4,
-            difficulty="mixed",
-        )
-
-        counts = [worker._candidate_batch_count(target) for target in range(1, 5)]
-
-        self.assertEqual(sorted(counts), counts)
-        self.assertGreaterEqual(worker._candidate_batch_count(2), worker._candidate_batch_count(1))
-
     def test_worker_oversamples_candidates_when_quota_filtering_rejects_model_drift(self):
         config = GenerationConfig(
             question_type_weights={
