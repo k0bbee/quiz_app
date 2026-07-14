@@ -16,8 +16,7 @@ from ai.question_generation_service import QuestionGenerationService
 from ai.question_plan import QuestionPlanItem
 from core.app_errors import AppError
 from core.course_index import retrieve_course_context, retrieve_course_source_refs
-from models.question import Question
-from utils.constants import QuestionType, Difficulty, topic_value
+from utils.constants import topic_value
 
 
 ACCEPT_TARGET_BATCH_SIZE = 1
@@ -416,7 +415,3 @@ def _rejection_reason_key(reason: str) -> str:
     if not normalized:
         return "unknown rejection"
     return normalized
-
-
-def _normalize_plan_id(value) -> str:
-    return str(value or "").strip()
