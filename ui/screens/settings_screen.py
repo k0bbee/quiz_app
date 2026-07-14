@@ -362,6 +362,15 @@ class SettingsScreen(QWidget):
         self.default_fill_blank_weight_input = self._make_weight_spinbox(
             DEFAULT_QUESTION_TYPE_WEIGHTS["fill_in_blank"]
         )
+        self.default_matching_weight_input = self._make_weight_spinbox(
+            DEFAULT_QUESTION_TYPE_WEIGHTS["matching"]
+        )
+        self.default_ordering_weight_input = self._make_weight_spinbox(
+            DEFAULT_QUESTION_TYPE_WEIGHTS["ordering"]
+        )
+        self.default_short_answer_weight_input = self._make_weight_spinbox(
+            DEFAULT_QUESTION_TYPE_WEIGHTS["short_answer"]
+        )
         self.default_mc_weight_label = QLabel(self.lang_manager.get_text("选择题:", "Multiple choice:"))
         self.default_scenario_weight_label = QLabel(
             self.lang_manager.get_text("情境选择题:", "Scenario choice:")
@@ -371,6 +380,19 @@ class SettingsScreen(QWidget):
         )
         self.default_fill_blank_weight_label = QLabel(
             self.lang_manager.get_text("填空题:", "Fill in the blank:")
+        )
+        self.advanced_question_type_weight_label = QLabel(
+            self.lang_manager.get_text("高级题型（默认关闭）", "Advanced types (off by default)")
+        )
+        self.advanced_question_type_weight_label.setObjectName("sectionLabel")
+        self.default_matching_weight_label = QLabel(
+            self.lang_manager.get_text("配对题:", "Matching:")
+        )
+        self.default_ordering_weight_label = QLabel(
+            self.lang_manager.get_text("排序题:", "Ordering:")
+        )
+        self.default_short_answer_weight_label = QLabel(
+            self.lang_manager.get_text("简答题（需自评）:", "Short answer (self-assessed):")
         )
         self.practice_form_layout.addRow(self.default_mc_weight_label, self.default_mc_weight_input)
         self.practice_form_layout.addRow(
@@ -384,6 +406,19 @@ class SettingsScreen(QWidget):
         self.practice_form_layout.addRow(
             self.default_fill_blank_weight_label,
             self.default_fill_blank_weight_input,
+        )
+        self.practice_form_layout.addRow(self.advanced_question_type_weight_label)
+        self.practice_form_layout.addRow(
+            self.default_matching_weight_label,
+            self.default_matching_weight_input,
+        )
+        self.practice_form_layout.addRow(
+            self.default_ordering_weight_label,
+            self.default_ordering_weight_input,
+        )
+        self.practice_form_layout.addRow(
+            self.default_short_answer_weight_label,
+            self.default_short_answer_weight_input,
         )
         self.question_type_weight_preview = QLabel()
         self.question_type_weight_preview.setObjectName("settingsWeightPreview")
@@ -610,6 +645,18 @@ class SettingsScreen(QWidget):
         self.default_fill_blank_weight_label.setText(
             self.lang_manager.get_text("填空题:", "Fill in the blank:")
         )
+        self.advanced_question_type_weight_label.setText(self.lang_manager.get_text(
+            "高级题型（默认关闭）", "Advanced types (off by default)"
+        ))
+        self.default_matching_weight_label.setText(
+            self.lang_manager.get_text("配对题:", "Matching:")
+        )
+        self.default_ordering_weight_label.setText(
+            self.lang_manager.get_text("排序题:", "Ordering:")
+        )
+        self.default_short_answer_weight_label.setText(self.lang_manager.get_text(
+            "简答题（需自评）:", "Short answer (self-assessed):"
+        ))
         self.question_type_weight_preview_title.setText(
             self.lang_manager.get_text("有效占比:", "Effective share:")
         )
@@ -754,6 +801,9 @@ class SettingsScreen(QWidget):
         self.default_scenario_weight_input.setValue(question_type_weights["scenario_choice"])
         self.default_true_false_weight_input.setValue(question_type_weights["true_false"])
         self.default_fill_blank_weight_input.setValue(question_type_weights["fill_in_blank"])
+        self.default_matching_weight_input.setValue(question_type_weights["matching"])
+        self.default_ordering_weight_input.setValue(question_type_weights["ordering"])
+        self.default_short_answer_weight_input.setValue(question_type_weights["short_answer"])
         difficulty_weights = self._settings_weights(
             "default_difficulty_weights",
             DEFAULT_DIFFICULTY_WEIGHTS,
@@ -790,6 +840,9 @@ class SettingsScreen(QWidget):
                 "scenario_choice": self.default_scenario_weight_input.value(),
                 "true_false": self.default_true_false_weight_input.value(),
                 "fill_in_blank": self.default_fill_blank_weight_input.value(),
+                "matching": self.default_matching_weight_input.value(),
+                "ordering": self.default_ordering_weight_input.value(),
+                "short_answer": self.default_short_answer_weight_input.value(),
             }
             self._settings["default_difficulty_weights"] = {
                 "easy": self.default_easy_weight_input.value(),
@@ -860,6 +913,9 @@ class SettingsScreen(QWidget):
             self.default_scenario_weight_input,
             self.default_true_false_weight_input,
             self.default_fill_blank_weight_input,
+            self.default_matching_weight_input,
+            self.default_ordering_weight_input,
+            self.default_short_answer_weight_input,
             self.default_easy_weight_input,
             self.default_medium_weight_input,
             self.default_hard_weight_input,
@@ -919,6 +975,9 @@ class SettingsScreen(QWidget):
             "scenario_choice": self.default_scenario_weight_input.value(),
             "true_false": self.default_true_false_weight_input.value(),
             "fill_in_blank": self.default_fill_blank_weight_input.value(),
+            "matching": self.default_matching_weight_input.value(),
+            "ordering": self.default_ordering_weight_input.value(),
+            "short_answer": self.default_short_answer_weight_input.value(),
         })
         difficulty_weights = _normalize_weight_shares({
             "easy": self.default_easy_weight_input.value(),
@@ -932,12 +991,18 @@ class SettingsScreen(QWidget):
                     f"情境选择题 {type_weights['scenario_choice']}%",
                     f"判断题 {type_weights['true_false']}%",
                     f"填空题 {type_weights['fill_in_blank']}%",
+                    f"配对题 {type_weights['matching']}%",
+                    f"排序题 {type_weights['ordering']}%",
+                    f"简答题 {type_weights['short_answer']}%",
                 ]),
                 "; ".join([
                     f"Multiple choice {type_weights['multiple_choice']}%",
                     f"Scenario choice {type_weights['scenario_choice']}%",
                     f"True / false {type_weights['true_false']}%",
                     f"Fill in the blank {type_weights['fill_in_blank']}%",
+                    f"Matching {type_weights['matching']}%",
+                    f"Ordering {type_weights['ordering']}%",
+                    f"Short answer {type_weights['short_answer']}%",
                 ]),
             )
         )

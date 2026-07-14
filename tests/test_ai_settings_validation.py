@@ -256,6 +256,9 @@ class AISettingsValidationTests(unittest.TestCase):
         screen.default_scenario_weight_input.setValue(35)
         screen.default_true_false_weight_input.setValue(15)
         screen.default_fill_blank_weight_input.setValue(5)
+        screen.default_matching_weight_input.setValue(10)
+        screen.default_ordering_weight_input.setValue(8)
+        screen.default_short_answer_weight_input.setValue(2)
         screen.default_easy_weight_input.setValue(10)
         screen.default_medium_weight_input.setValue(70)
         screen.default_hard_weight_input.setValue(20)
@@ -274,6 +277,9 @@ class AISettingsValidationTests(unittest.TestCase):
                 "scenario_choice": 35,
                 "true_false": 15,
                 "fill_in_blank": 5,
+                "matching": 10,
+                "ordering": 8,
+                "short_answer": 2,
             },
             saved["default_question_type_weights"],
         )
@@ -315,15 +321,19 @@ class AISettingsValidationTests(unittest.TestCase):
         screen.default_scenario_weight_input.setValue(80)
         screen.default_true_false_weight_input.setValue(0)
         screen.default_fill_blank_weight_input.setValue(0)
+        screen.default_matching_weight_input.setValue(20)
+        screen.default_ordering_weight_input.setValue(0)
+        screen.default_short_answer_weight_input.setValue(0)
 
         self.assertEqual(initial_preview, screen.question_type_weight_preview.text())
 
         screen.refresh_default_weight_preview_btn.click()
 
-        self.assertIn("选择题 56%", screen.question_type_weight_preview.text())
-        self.assertIn("情境选择题 44%", screen.question_type_weight_preview.text())
+        self.assertIn("选择题 50%", screen.question_type_weight_preview.text())
+        self.assertIn("情境选择题 40%", screen.question_type_weight_preview.text())
         self.assertIn("判断题 0%", screen.question_type_weight_preview.text())
         self.assertIn("填空题 0%", screen.question_type_weight_preview.text())
+        self.assertIn("配对题 10%", screen.question_type_weight_preview.text())
 
     def test_settings_screen_does_not_reveal_existing_api_key(self):
         manager = SimpleNamespace(
