@@ -6,6 +6,7 @@ import threading
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from ai.llm_client import LLMClient
+from ai.generation_batch_scheduler import GenerationBatchScheduler
 from ai.generation_candidate_processor import GenerationCandidateProcessor
 from ai.generation_config import GenerationConfig, allocate_weighted_counts
 from ai.generation_quota_tracker import GenerationQuotaTracker
@@ -19,9 +20,6 @@ from core.course_index import retrieve_course_context, retrieve_course_source_re
 from utils.constants import topic_value
 
 
-ACCEPT_TARGET_BATCH_SIZE = 1
-MAX_CANDIDATE_BATCH_SIZE = 4
-JSON_RECOVERY_BATCH_SIZE = 3
 GENERATION_CONTEXT_MAX_CHARS = 12000
 
 
@@ -51,8 +49,7 @@ class GenerationWorker(QThread):
         self._generation_service = QuestionGenerationService(self.topics)
         self._cancelled = threading.Event()
         self._cached_context: str | None = None
-        self._candidate_batch_limit: int | None = None
-        self._last_json_truncation_detail: str = ""
+        self._batch_scheduler = GenerationBatchScheduler(self.count)
         self._cached_source_refs: list[dict] = []
         self._cached_source_refs_by_topic: dict[str, list[dict]] = {}
         self._source_resolver = GenerationSourceResolver()
@@ -66,7 +63,9 @@ class GenerationWorker(QThread):
 
             # Cache context once — it doesn't change between batches
             course_context = self._build_course_context()
-            max_attempts = max(3, (self.count // ACCEPT_TARGET_BATCH_SIZE + 1) * 3)
+            scheduler = self._make_batch_scheduler()
+            self._batch_scheduler = scheduler
+            max_attempts = scheduler.max_attempts
             result_state = self._make_result_accumulator(max_attempts)
             quotas = self._make_quota_tracker()
             candidate_processor = self._make_candidate_processor(quotas)
@@ -78,8 +77,8 @@ class GenerationWorker(QThread):
             ):
                 attempt = result_state.start_attempt()
                 remaining = self.count - result_state.accepted_count
-                batch_count = self._accept_target_count(remaining)
-                candidate_count = self._candidate_batch_count(batch_count)
+                batch_plan = scheduler.plan_next(remaining)
+                candidate_count = batch_plan.candidate_count
                 plan_summary = quotas.pending_plan_summary(candidate_count)
                 self.progress.emit(
                     f"Generating question {result_state.accepted_count + 1}/{self.count}... "
@@ -106,19 +105,17 @@ class GenerationWorker(QThread):
 
                 if data is None:
                     detail = getattr(self.client, "last_error", "") or "Check your API key, model, provider, and network connection."
-                    if self._reduce_batch_after_json_truncation(detail, candidate_count):
-                        self._last_json_truncation_detail = detail
+                    if scheduler.recover_from_failure(detail, candidate_count):
                         self.progress.emit(
                             "AI response looked truncated. Retrying with a smaller batch..."
                         )
                         continue
-                    if self._looks_like_json_truncation(detail):
-                        self.error.emit(self._json_truncation_error(detail))
+                    if scheduler.looks_like_json_truncation(detail):
+                        self.error.emit(scheduler.truncation_error(detail))
                         return
                     self.error.emit(detail)
                     return
-                self._last_json_truncation_detail = ""
-                self._candidate_batch_limit = None
+                scheduler.record_success()
                 if not isinstance(data, dict):
                     self.error.emit("AI response JSON must be an object with a questions list.")
                     return
@@ -175,8 +172,10 @@ class GenerationWorker(QThread):
                 return
 
             if result_state.accepted_count != self.count:
-                if self._last_json_truncation_detail:
-                    self.error.emit(self._json_truncation_error(self._last_json_truncation_detail))
+                if scheduler.last_truncation_detail:
+                    self.error.emit(
+                        scheduler.truncation_error(scheduler.last_truncation_detail)
+                    )
                     return
                 shortfall = quotas.shortfall_error(
                     result_state.accepted_count,
@@ -234,6 +233,9 @@ class GenerationWorker(QThread):
             template=self.generation_config.template,
         )
 
+    def _make_batch_scheduler(self) -> GenerationBatchScheduler:
+        return GenerationBatchScheduler(self.count)
+
     def _make_candidate_processor(
         self,
         quotas: GenerationQuotaTracker,
@@ -258,18 +260,10 @@ class GenerationWorker(QThread):
         background candidate pool for one LLM call, keeping large generations
         chunked instead of making one huge request.
         """
-        if accept_target <= 0:
-            return 0
-        count = min(MAX_CANDIDATE_BATCH_SIZE, accept_target + 3)
-        if self._candidate_batch_limit is not None:
-            count = min(count, self._candidate_batch_limit)
-        return count
+        return self._batch_scheduler.plan_next(accept_target).candidate_count
 
     def _accept_target_count(self, remaining: int) -> int:
-        count = min(ACCEPT_TARGET_BATCH_SIZE, remaining)
-        if self._candidate_batch_limit is not None:
-            count = min(count, self._candidate_batch_limit)
-        return count
+        return self._batch_scheduler.plan_next(remaining).accept_target
 
     def _reduce_batch_after_json_truncation(self, detail: str, candidate_count: int) -> bool:
         """Recover from likely output-token truncation by asking for fewer questions.
@@ -278,42 +272,15 @@ class GenerationWorker(QThread):
         This recovery is deliberately limited to JSON parse failures that match an
         incomplete response shape.
         """
-        if not self._looks_like_json_truncation(detail) or candidate_count <= 1:
-            return False
-
-        next_limit = max(1, min(JSON_RECOVERY_BATCH_SIZE, candidate_count // 2))
-        if self._candidate_batch_limit is not None and next_limit >= self._candidate_batch_limit:
-            next_limit = self._candidate_batch_limit - 1
-        if next_limit < 1:
-            return False
-        self._candidate_batch_limit = next_limit
-        return True
+        return self._batch_scheduler.recover_from_failure(detail, candidate_count)
 
     @staticmethod
     def _looks_like_json_truncation(detail: str) -> bool:
-        normalized = detail.lower()
-        return (
-            "json parse error" in normalized
-            and (
-                "unterminated string" in normalized
-                or "expecting value" in normalized
-                or "expecting ',' delimiter" in normalized
-            )
-        )
+        return GenerationBatchScheduler.looks_like_json_truncation(detail)
 
     @staticmethod
     def _json_truncation_error(detail: str) -> AppError:
-        return AppError(
-            code="GEN-AI-JSON-001",
-            severity="error",
-            title_zh="AI 输出解析失败",
-            title_en="AI output parse failed",
-            message_zh="AI 返回的题目 JSON 可能输出过长或被截断，程序无法安全解析。",
-            message_en="The AI returned quiz JSON that appears too long or truncated, so it could not be parsed safely.",
-            action_zh="请减少题目数量，缩小知识点/题型覆盖范围，或换用支持更大输出上限的模型后重试。",
-            action_en="Reduce the question count, narrow topic/type coverage, or retry with a model/provider that supports a larger output limit.",
-            technical_detail=detail,
-        )
+        return GenerationBatchScheduler.truncation_error(detail)
 
     def _build_course_context(self) -> str:
         """Retrieve the best context for currently selected topics."""

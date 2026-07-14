@@ -2,6 +2,7 @@ import unittest
 import re
 
 from ai.batch_generator import GenerationWorker, allocate_weighted_counts
+from ai.generation_batch_scheduler import GenerationBatchScheduler
 from ai.generation_candidate_processor import CandidateProcessingResult
 from ai.generation_config import GenerationConfig
 from ai.generation_quota_tracker import GenerationQuotaTracker
@@ -208,6 +209,21 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual(2, state.requested_count)
         self.assertEqual(9, state.max_attempts)
         self.assertEqual("final_exam", state.template)
+
+    def test_worker_builds_batch_scheduler_from_pure_business_module(self):
+        worker = GenerationWorker(
+            SequenceClient([]),
+            course_content="content",
+            topics=["cache"],
+            count=7,
+            difficulty="medium",
+        )
+
+        scheduler = worker._make_batch_scheduler()
+
+        self.assertIsInstance(scheduler, GenerationBatchScheduler)
+        self.assertEqual(7, scheduler.requested_count)
+        self.assertEqual(24, scheduler.max_attempts)
 
     def test_worker_delegates_candidate_acceptance_to_pure_processor(self):
         candidate = raw_question("multiple_choice", "medium", "cache")
