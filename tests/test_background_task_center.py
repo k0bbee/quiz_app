@@ -167,6 +167,27 @@ class BackgroundTaskCenterTests(unittest.TestCase):
             self.assertEqual("course-os", restored.metadata["course_id"])
             self.assertEqual(["io.pdf"], restored.metadata["files"])
 
+    def test_dismiss_removes_only_terminal_tasks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ids = iter(["task-1", "task-2"])
+            center = BackgroundTaskCenter(
+                Path(tmpdir) / "background_tasks.json",
+                id_factory=lambda: next(ids),
+            )
+            running = center.create(kind="ocr", title="正在识别")
+            center.start(running.task_id)
+            completed = center.create(kind="generation", title="已经完成")
+            center.start(completed.task_id)
+            center.complete(completed.task_id, result_count=3)
+
+            with self.assertRaisesRegex(ValueError, "running"):
+                center.dismiss(running.task_id)
+            center.dismiss(completed.task_id)
+
+            self.assertEqual([running.task_id], [item.task_id for item in center.snapshots()])
+            restored = BackgroundTaskCenter(center.path)
+            self.assertEqual([running.task_id], [item.task_id for item in restored.snapshots()])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -35,6 +35,12 @@ _RETRYABLE_STATUSES = {
     TaskStatus.CANCELLED,
     TaskStatus.INTERRUPTED,
 }
+_TERMINAL_STATUSES = {
+    TaskStatus.COMPLETED,
+    TaskStatus.FAILED,
+    TaskStatus.CANCELLED,
+    TaskStatus.INTERRUPTED,
+}
 
 
 @dataclass(frozen=True)
@@ -268,6 +274,27 @@ class BackgroundTaskCenter:
             metadata=original.metadata,
             retry_of=original.task_id,
         )
+
+    def dismiss(self, task_id: str) -> None:
+        """Remove one terminal task from persisted history."""
+        with self._lock:
+            snapshot = self.get(task_id)
+            if snapshot.status not in _TERMINAL_STATUSES:
+                raise ValueError(
+                    f"cannot dismiss task in {snapshot.status.value} state"
+                )
+            records = dict(self._records)
+            records.pop(task_id)
+            payload = {
+                "schema_version": _SCHEMA_VERSION,
+                "tasks": [item.to_dict() for item in records.values()],
+            }
+            if not write_json(str(self.path), payload):
+                raise OSError(f"failed to persist background tasks: {self.path}")
+            self._records = records
+            self._cancel_callbacks.pop(task_id, None)
+            self._cancel_notified.discard(task_id)
+            self._last_progress_persisted.pop(task_id, None)
 
     def _transition(self, task_id: str, status: TaskStatus, **changes) -> TaskSnapshot:
         with self._lock:
