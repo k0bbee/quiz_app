@@ -20,6 +20,7 @@ from core.course_asset_lifecycle import (
 from core.course_initializer import CourseInitializer, build_summary_markdown, infer_topics
 from core.document_parser import DocumentParser, ExtractedDocument
 from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
+from core.background_task_center import BackgroundTaskCenter, TaskStatus
 from core.language_manager import LanguageManager
 from core.topic_identity_migration import TopicIdentityRepairReport, UnmatchedTopicQuestion
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
@@ -219,6 +220,71 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertFalse(ready)
             worker.cancel.assert_called_once_with()
             worker.wait.assert_not_called()
+
+    def test_course_import_persists_runtime_progress_and_completion(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "source"
+            source.mkdir()
+            manager = CourseProjectManager(str(root / "projects"))
+            task_center = BackgroundTaskCenter(root / "tasks.json")
+            screen = CourseScreen(manager, task_center=task_center)
+            screen.folder_input.setText(str(source))
+            screen.title_input.setText("Systems")
+
+            with patch.object(screen, "_build_initializer", return_value=Mock()), \
+                 patch.object(CourseScreen._InitWorker, "start"):
+                screen._initialize_course()
+
+            snapshot = task_center.snapshots()[0]
+            self.assertEqual("course_import", snapshot.kind)
+            self.assertEqual(TaskStatus.RUNNING, snapshot.status)
+            self.assertEqual(str(source), snapshot.metadata["source_folder"])
+
+            screen._on_course_task_progress(
+                TaskProgress("parsing_file", current=2, total=5, detail="io.pdf")
+            )
+            self.assertEqual(
+                "parsing_file", task_center.get(snapshot.task_id).progress.stage
+            )
+
+            project = SimpleNamespace(
+                title="Systems",
+                documents=[{"path": "io.pdf", "warnings": []}],
+                topics=[SimpleNamespace(topic_id="io")],
+                summary_warning="",
+                generation_profile_warning="",
+            )
+            with patch("ui.screens.course_screen.QMessageBox.information"):
+                screen._on_init_done(project)
+
+            completed = task_center.get(snapshot.task_id)
+            self.assertEqual(TaskStatus.COMPLETED, completed.status)
+            self.assertEqual(1, completed.result_count)
+
+    def test_course_task_cancel_uses_persistent_cancel_callback(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "source"
+            source.mkdir()
+            task_center = BackgroundTaskCenter(root / "tasks.json")
+            screen = CourseScreen(
+                CourseProjectManager(str(root / "projects")),
+                task_center=task_center,
+            )
+            screen.folder_input.setText(str(source))
+
+            with patch.object(screen, "_build_initializer", return_value=Mock()), \
+                 patch.object(CourseScreen._InitWorker, "start"), \
+                 patch.object(CourseScreen._InitWorker, "cancel") as cancel:
+                screen._initialize_course()
+                screen._cancel_course_task()
+
+                cancel.assert_called_once_with()
+                self.assertEqual(
+                    TaskStatus.CANCELLING,
+                    task_center.snapshots()[0].status,
+                )
     def _docs(self):
         return [
             ExtractedDocument(

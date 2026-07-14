@@ -131,6 +131,7 @@ def _kind_text(kind: str, language: str) -> str:
     labels = {
         "question_generation": ("AI 出题", "AI generation"),
         "course_import": ("课程导入", "Course import"),
+        "course_summary": ("课程总结", "Course summary"),
         "past_exam_ocr": ("真题 OCR", "Exam OCR"),
         "app_data_import": ("数据导入", "Data import"),
         "app_data_export": ("数据导出", "Data export"),

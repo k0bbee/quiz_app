@@ -156,6 +156,7 @@ class MainWindow(QMainWindow):
                 set_manager=self.set_manager,
                 progress_manager=self.progress_manager,
                 snapshot_manager=self.snapshot_manager,
+                task_center=self.task_center,
             )
             self.stack.insertWidget(self.SCREEN_COURSES, self._course_screen)
         return self._course_screen
