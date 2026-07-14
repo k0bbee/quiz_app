@@ -34,6 +34,7 @@ PAST_EXAMS_DIR = os.path.join(DATA_DIR, "past_exams")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 API_KEY_STORE_FILE = os.path.join(DATA_DIR, ".api_key.dpapi")
 MASTERY_OVERRIDES_FILE = os.path.join(DATA_DIR, "mastery_overrides.json")
+BACKGROUND_TASKS_FILE = os.path.join(DATA_DIR, "background_tasks.json")
 
 # Active course pointer
 CURRENT_COURSE_FILE = os.path.join(DATA_DIR, "current_course.json")

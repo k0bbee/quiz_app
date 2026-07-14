@@ -1,5 +1,7 @@
 import unittest
 import re
+import tempfile
+from pathlib import Path
 
 from ai.batch_generator import GenerationWorker, allocate_weighted_counts
 from ai.generation_batch_scheduler import GenerationBatchScheduler
@@ -12,6 +14,7 @@ from ai.generation_request_service import GenerationRequestService
 from ai.generation_result_accumulator import GenerationResultAccumulator
 from ai.question_plan import QuestionPlanItem
 from core.app_errors import AppError
+from core.background_task_center import BackgroundTaskCenter, TaskStatus
 from models.course_project import CourseTopic
 from utils.constants import topic_value
 
@@ -311,6 +314,62 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual("runner progress", progress[-1])
         self.assertEqual([[accepted_sentinel]], ready)
         self.assertEqual([[accepted_sentinel]], completed)
+
+    def test_worker_maps_runner_events_to_persistent_task_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            center = BackgroundTaskCenter(
+                Path(tmpdir) / "background_tasks.json",
+                id_factory=lambda: "task-1",
+                progress_persist_interval=0,
+            )
+            task = center.create(kind="question_generation", title="生成题目")
+            worker = GenerationWorker(
+                SequenceClient([]),
+                course_content="content",
+                topics=["cache"],
+                count=1,
+                difficulty="medium",
+                task_center=center,
+                task_id=task.task_id,
+            )
+            accepted_sentinel = object()
+
+            class RecordingRunner:
+                def events(self):
+                    yield ProgressEvent("Generating question 1/1")
+                    yield QuestionsReadyEvent((accepted_sentinel,))
+                    yield CompletedEvent((accepted_sentinel,))
+
+            worker._make_runner = lambda _course_context: RecordingRunner()
+
+            worker.run()
+
+            snapshot = center.get(task.task_id)
+            self.assertEqual(TaskStatus.COMPLETED, snapshot.status)
+            self.assertEqual(1, snapshot.result_count)
+
+    def test_worker_cancel_updates_persistent_task_before_signalling_runner(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            center = BackgroundTaskCenter(
+                Path(tmpdir) / "background_tasks.json",
+                id_factory=lambda: "task-1",
+            )
+            task = center.create(kind="question_generation", title="生成题目")
+            worker = GenerationWorker(
+                SequenceClient([]),
+                course_content="content",
+                topics=["cache"],
+                count=1,
+                difficulty="medium",
+                task_center=center,
+                task_id=task.task_id,
+            )
+            worker._task_bridge.start(worker._cancelled.set)
+
+            worker.cancel()
+
+            self.assertEqual(TaskStatus.CANCELLING, center.get(task.task_id).status)
+            self.assertTrue(worker._cancelled.is_set())
 
     def test_worker_normalizes_matching_options_and_answers_to_stable_ids(self):
         worker = GenerationWorker(

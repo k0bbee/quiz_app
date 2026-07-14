@@ -340,7 +340,11 @@ class BackgroundTaskCenter:
 
 
 _ALLOWED_TRANSITIONS = {
-    TaskStatus.QUEUED: {TaskStatus.RUNNING, TaskStatus.CANCELLED},
+    TaskStatus.QUEUED: {
+        TaskStatus.RUNNING,
+        TaskStatus.FAILED,
+        TaskStatus.CANCELLED,
+    },
     TaskStatus.RUNNING: {
         TaskStatus.CANCELLING,
         TaskStatus.COMPLETED,

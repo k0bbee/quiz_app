@@ -54,12 +54,22 @@ def _compact_label_text(text: str, limit: int = 34) -> str:
 class AIGenerationDialog(QDialog):
     """Dialog for generating questions via AI."""
 
-    def __init__(self, course_content: str, settings: dict, parent=None, available_topics: list = None, course_project=None):
+    def __init__(
+        self,
+        course_content: str,
+        settings: dict,
+        parent=None,
+        available_topics: list = None,
+        course_project=None,
+        task_center=None,
+    ):
         super().__init__(parent)
         self.course_content = course_content
         self.settings = settings
         self.available_topics = available_topics or []
         self.course_project = course_project
+        self.task_center = task_center
+        self._generation_task_id: str | None = None
         self.lang_manager = LanguageManager.instance()
         self.generated_questions: list[Question] = []
         self.worker: GenerationWorker = None
@@ -1273,14 +1283,25 @@ class AIGenerationDialog(QDialog):
         self.progress_bar.setVisible(True)
         self.progress_bar.setRange(0, 0)  # Indeterminate
 
+        task_id = None
         try:
             # Create client and worker
             client = LLMClient(api_key=api_key, base_url=base_url, model=model, provider=provider)
+            task_id = self._register_generation_task(
+                topics,
+                count=count,
+                provider=provider,
+                model=model,
+                template=generation_config.template,
+                retry=retry_plan is not None,
+            )
             self.worker = GenerationWorker(
                 client, self.course_content, topics, count, difficulty,
                 course_project=self.course_project,
                 generation_config=generation_config,
                 question_plan_items=retry_plan.plan_items if retry_plan is not None else None,
+                task_center=self.task_center,
+                task_id=task_id,
             )
             self.worker.progress.connect(self._on_progress)
             self.worker.question_ready.connect(self._on_question_ready)
@@ -1291,6 +1312,11 @@ class AIGenerationDialog(QDialog):
             self._apply_runtime_instruction_to_worker(announce=False)
             self.worker.start()
         except Exception as exc:
+            if self.task_center is not None and task_id:
+                try:
+                    self.task_center.fail(task_id, exc)
+                except (KeyError, ValueError, OSError):
+                    pass
             self.worker = None
             self._on_error(
                 self.lang_manager.get_text(
@@ -1298,6 +1324,40 @@ class AIGenerationDialog(QDialog):
                     f"Generation worker failed to start: {exc}",
                 )
             )
+
+    def _register_generation_task(
+        self,
+        topics: list,
+        *,
+        count: int,
+        provider: str,
+        model: str,
+        template: str,
+        retry: bool,
+    ) -> str | None:
+        if self.task_center is None:
+            return None
+        previous_task_id = self._generation_task_id if retry else ""
+        course_title = str(getattr(self.course_project, "title", "") or "").strip()
+        title = self.lang_manager.get_text(
+            f"AI 出题 · {course_title}" if course_title else "AI 出题",
+            f"AI Generation · {course_title}" if course_title else "AI Generation",
+        )
+        task = self.task_center.create(
+            kind="question_generation",
+            title=title,
+            metadata={
+                "course_id": str(getattr(self.course_project, "course_id", "") or ""),
+                "requested_count": int(count),
+                "topic_ids": [topic_value(topic) for topic in topics],
+                "provider": str(provider or ""),
+                "model": str(model or ""),
+                "template": str(template or ""),
+            },
+            retry_of=previous_task_id,
+        )
+        self._generation_task_id = task.task_id
+        return task.task_id
 
     def _start_retry_generation(self):
         """Generate only the remaining failed plan slots from a partial run."""

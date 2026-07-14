@@ -20,6 +20,7 @@ from ai.generation_request_service import GenerationRequestService
 from ai.generation_result_accumulator import GenerationResultAccumulator
 from ai.generation_runner import GenerationRunner
 from ai.generation_source_resolver import GenerationSourceResolver
+from ai.generation_task_bridge import GenerationTaskBridge
 from ai.question_generation_service import QuestionGenerationService
 from ai.question_plan import QuestionPlanItem
 from core.course_index import retrieve_course_context, retrieve_course_source_refs
@@ -42,8 +43,11 @@ class GenerationWorker(QThread):
     def __init__(self, llm_client: LLMClient, course_content: str,
                  topics: list, count: int, difficulty: str, course_project=None,
                  generation_config: GenerationConfig | None = None,
-                 question_plan_items: list[QuestionPlanItem] | None = None):
+                 question_plan_items: list[QuestionPlanItem] | None = None,
+                 task_center=None, task_id: str | None = None):
         super().__init__()
+        if (task_center is None) != (task_id is None):
+            raise ValueError("task_center and task_id must be provided together")
         self.client = llm_client
         self.course_content = course_content
         self.topics = topics
@@ -60,21 +64,38 @@ class GenerationWorker(QThread):
         self._source_resolver = GenerationSourceResolver()
         self._runtime_instruction = ""
         self._runtime_instruction_lock = threading.Lock()
+        self._task_bridge = (
+            GenerationTaskBridge(task_center, task_id, requested_count=count)
+            if task_center is not None
+            else None
+        )
 
     def run(self):
         """Execute generation in background thread."""
         try:
-            self.progress.emit("Building prompt...")
+            if self._task_bridge is not None:
+                if not self._task_bridge.start(self._cancelled.set):
+                    return
+            self._emit_generation_event(ProgressEvent("Building prompt..."))
             course_context = self._build_course_context()
             runner = self._make_runner(course_context)
             for event in runner.events():
                 self._emit_generation_event(event)
         except Exception as e:
+            if self._task_bridge is not None:
+                self._task_bridge.fail(e)
             self.error.emit(f"Unexpected error: {str(e)}")
         finally:
+            if self._task_bridge is not None and not self._task_bridge.is_terminal:
+                if self._cancelled.is_set():
+                    self._task_bridge.finish_cancelled()
+                else:
+                    self._task_bridge.fail("Generation ended without a terminal result")
             self.finished.emit()
 
     def _emit_generation_event(self, event) -> None:
+        if self._task_bridge is not None:
+            self._task_bridge.handle(event)
         if isinstance(event, ProgressEvent):
             self.progress.emit(event.message)
         elif isinstance(event, QuestionsReadyEvent):
@@ -90,7 +111,13 @@ class GenerationWorker(QThread):
 
     def cancel(self):
         """Signal the worker to stop."""
-        self._cancelled.set()
+        if self._task_bridge is None:
+            self._cancelled.set()
+            return
+        try:
+            self._task_bridge.task_center.request_cancel(self._task_bridge.task_id)
+        except (KeyError, ValueError):
+            self._cancelled.set()
 
     def set_runtime_instruction(self, instruction: str) -> None:
         """Apply a user adjustment to future LLM requests."""

@@ -16,10 +16,18 @@ from core.question_set_builder import build_ai_question_set
 from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.mastery_overrides import MasteryOverrideStore
+from core.background_task_center import BackgroundTaskCenter
 from core.topic_display import topic_display_name
 from models.course_project import CourseProjectManager
 from models.past_exam import PastExamManager
-from config import QUESTIONS_DIR, QUESTION_SETS_DIR, PROGRESS_DIR, QUIZ_SNAPSHOTS_DIR, APP_NAME
+from config import (
+    APP_NAME,
+    BACKGROUND_TASKS_FILE,
+    PROGRESS_DIR,
+    QUESTIONS_DIR,
+    QUESTION_SETS_DIR,
+    QUIZ_SNAPSHOTS_DIR,
+)
 
 from ui.screens.home_screen import HomeScreen
 from ui.screens.topic_selection_screen import TopicSelectionScreen
@@ -80,6 +88,7 @@ class MainWindow(QMainWindow):
         self.mastery_overrides = MasteryOverrideStore()
         self.course_manager = CourseProjectManager()
         self.past_exam_manager = PastExamManager()
+        self.task_center = BackgroundTaskCenter(BACKGROUND_TASKS_FILE)
         self.lang_manager = LanguageManager.instance()
 
         # Central stacked widget
@@ -907,6 +916,7 @@ class MainWindow(QMainWindow):
             self,
             available_topics=available_topics,
             course_project=course_project,
+            task_center=getattr(self, "task_center", None),
         )
         dialog.configure_from_course_profile(course_project)
         if initial_plan is not None:
@@ -1054,6 +1064,7 @@ class MainWindow(QMainWindow):
             self,
             available_topics=available_topics,
             course_project=course_project,
+            task_center=getattr(self, "task_center", None),
         )
         dialog.configure_from_course_profile(course_project)
         dialog.configure_from_question_set(qset)

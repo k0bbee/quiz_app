@@ -18,6 +18,7 @@ from ai.llm_client import LLMClient
 from ai.generation_report import GenerationReport
 from ai.prompt_templates import PromptBuilder
 from core.app_errors import AppError
+from core.background_task_center import BackgroundTaskCenter, TaskStatus
 from core import course_index
 from core.question_set_builder import build_ai_question_set
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
@@ -1604,6 +1605,94 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIsInstance(dialog.worker, FakeWorker)
         self.assertTrue(dialog.worker.started)
 
+    def test_generation_dialog_registers_worker_with_persistent_task_center(self):
+        class FakeSignal:
+            def connect(self, _callback):
+                pass
+
+        class FakeWorker:
+            def __init__(self, *args, **kwargs):
+                self.progress = FakeSignal()
+                self.question_ready = FakeSignal()
+                self.batch_done = FakeSignal()
+                self.partial_done = FakeSignal()
+                self.error = FakeSignal()
+                self.finished = FakeSignal()
+                self.kwargs = kwargs
+
+            def start(self):
+                pass
+
+            def set_runtime_instruction(self, _instruction):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            center = BackgroundTaskCenter(
+                Path(tmpdir) / "background_tasks.json",
+                id_factory=lambda: "task-1",
+            )
+            dialog = AIGenerationDialog(
+                "course content",
+                {
+                    "ai_provider": "local_agent",
+                    "ai_base_url": "local-agent://auto",
+                    "ai_model": "codex",
+                },
+                available_topics=["cache"],
+                task_center=center,
+            )
+            dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+
+            with patch("ui.dialogs.ai_generation_dialog.GenerationWorker", FakeWorker):
+                dialog._start_generation()
+
+            self.assertIs(center, dialog.worker.kwargs["task_center"])
+            self.assertEqual("task-1", dialog.worker.kwargs["task_id"])
+            task = center.get("task-1")
+            self.assertEqual(TaskStatus.QUEUED, task.status)
+            self.assertEqual("question_generation", task.kind)
+            self.assertEqual(15, task.metadata["requested_count"])
+            self.assertEqual(["cache"], task.metadata["topic_ids"])
+
+    def test_generation_retry_task_links_back_to_partial_attempt(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ids = iter(["task-1", "task-2"])
+            center = BackgroundTaskCenter(
+                Path(tmpdir) / "background_tasks.json",
+                id_factory=lambda: next(ids),
+            )
+            dialog = AIGenerationDialog(
+                "course content",
+                {
+                    "ai_provider": "local_agent",
+                    "ai_base_url": "local-agent://auto",
+                    "ai_model": "codex",
+                },
+                available_topics=["cache"],
+                task_center=center,
+            )
+            first_id = dialog._register_generation_task(
+                ["cache"],
+                count=5,
+                provider="local_agent",
+                model="codex",
+                template="quick_review",
+                retry=False,
+            )
+            center.start(first_id)
+            center.fail(first_id, "partial", result_count=2)
+
+            retry_id = dialog._register_generation_task(
+                ["cache"],
+                count=3,
+                provider="local_agent",
+                model="codex",
+                template="quick_review",
+                retry=True,
+            )
+
+            self.assertEqual(first_id, center.get(retry_id).retry_of)
+
     def test_dialog_applies_runtime_instruction_to_generation_worker(self):
         class FakeSignal:
             def connect(self, _callback):
@@ -2054,22 +2143,29 @@ class GenerationConfigTests(unittest.TestCase):
             def start(self):
                 raise RuntimeError("worker start failed")
 
-        dialog = AIGenerationDialog(
-            "course content",
-            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
-            available_topics=["cache"],
-        )
-        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            center = BackgroundTaskCenter(
+                Path(tmpdir) / "background_tasks.json",
+                id_factory=lambda: "task-1",
+            )
+            dialog = AIGenerationDialog(
+                "course content",
+                {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+                available_topics=["cache"],
+                task_center=center,
+            )
+            dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
 
-        with patch("ui.dialogs.ai_generation_dialog.GenerationWorker", FailingWorker), \
-             patch("ui.dialogs.ai_generation_dialog.QMessageBox.critical") as critical:
-            dialog._start_generation()
+            with patch("ui.dialogs.ai_generation_dialog.GenerationWorker", FailingWorker), \
+                 patch("ui.dialogs.ai_generation_dialog.QMessageBox.critical") as critical:
+                dialog._start_generation()
 
-        self.assertTrue(critical.called)
-        self.assertFalse(dialog.generation_status_timer.isActive())
-        self.assertIsNone(dialog._generation_started_at)
-        self.assertTrue(dialog.generate_btn.isEnabled())
-        self.assertFalse(dialog.progress_bar.isVisible())
+            self.assertTrue(critical.called)
+            self.assertFalse(dialog.generation_status_timer.isActive())
+            self.assertIsNone(dialog._generation_started_at)
+            self.assertTrue(dialog.generate_btn.isEnabled())
+            self.assertFalse(dialog.progress_bar.isVisible())
+            self.assertEqual(TaskStatus.FAILED, center.get("task-1").status)
 
     def test_dialog_can_prefill_from_existing_question_set(self):
         dialog = AIGenerationDialog(
@@ -2353,10 +2449,12 @@ class GenerationConfigTests(unittest.TestCase):
             "ai_model": "codex",
         }
         course = SimpleNamespace(generation_profile={"question_count": 20})
+        task_center = object()
         shell = SimpleNamespace(
             settings_screen=SimpleNamespace(_settings=settings),
             lang_manager=LanguageManager.instance(),
             _load_generation_context=lambda: ("summary", ["cache"], course),
+            task_center=task_center,
         )
 
         with patch("ui.main_window._ai_generation_settings_error", return_value=""), \
@@ -2367,6 +2465,7 @@ class GenerationConfigTests(unittest.TestCase):
             MainWindow._on_ai_generate(shell)
 
         dialog_class.return_value.configure_from_course_profile.assert_called_once_with(course)
+        self.assertIs(task_center, dialog_class.call_args.kwargs["task_center"])
 
     def test_predicted_generation_prefills_reviewable_plan_after_course_defaults(self):
         from core.language_manager import LanguageManager
