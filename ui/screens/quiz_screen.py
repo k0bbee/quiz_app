@@ -5,7 +5,7 @@ from html import escape as html_escape
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QProgressBar, QFrame, QScrollArea, QMessageBox,
-    QListWidget, QListWidgetItem, QSplitter, QCheckBox, QDialog
+    QListWidget, QListWidgetItem, QSplitter, QCheckBox, QDialog, QButtonGroup
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
@@ -82,10 +82,27 @@ class QuizScreen(QWidget):
 
         info_row.addStretch()
 
-        self.mode_switch_btn = QPushButton()
-        self.mode_switch_btn.setObjectName("secondaryButton")
-        self.mode_switch_btn.clicked.connect(self._toggle_submission_mode)
-        info_row.addWidget(self.mode_switch_btn)
+        mode_layout = QHBoxLayout()
+        mode_layout.setSpacing(0)
+        self.mode_button_group = QButtonGroup(self)
+        self.mode_button_group.setExclusive(True)
+        self.practice_mode_btn = QPushButton()
+        self.practice_mode_btn.setObjectName("quizModeOption")
+        self.practice_mode_btn.setCheckable(True)
+        self.practice_mode_btn.clicked.connect(
+            lambda checked: checked and self._set_submission_mode("practice")
+        )
+        self.exam_mode_btn = QPushButton()
+        self.exam_mode_btn.setObjectName("quizModeOption")
+        self.exam_mode_btn.setCheckable(True)
+        self.exam_mode_btn.clicked.connect(
+            lambda checked: checked and self._set_submission_mode("exam")
+        )
+        self.mode_button_group.addButton(self.practice_mode_btn)
+        self.mode_button_group.addButton(self.exam_mode_btn)
+        mode_layout.addWidget(self.practice_mode_btn)
+        mode_layout.addWidget(self.exam_mode_btn)
+        info_row.addLayout(mode_layout)
 
         self.review_toggle_btn = QPushButton(
             self.lang_manager.get_text("整卷复查", "Review Paper")
@@ -570,9 +587,17 @@ class QuizScreen(QWidget):
 
     def _toggle_submission_mode(self) -> None:
         """Switch feedback timing only while the quiz is still untouched."""
-        if not self._can_switch_submission_mode():
+        target = "exam" if self.submission_mode == "practice" else "practice"
+        self._set_submission_mode(target)
+
+    def _set_submission_mode(self, mode: str) -> None:
+        """Select one inline mode without opening a separate start dialog."""
+        if mode not in {"practice", "exam"}:
             return
-        self.submission_mode = "exam" if self.submission_mode == "practice" else "practice"
+        if mode != self.submission_mode and not self._can_switch_submission_mode():
+            self._refresh_mode_switch_state()
+            return
+        self.submission_mode = mode
         self._refresh_navigation_button_state()
 
     def _can_switch_submission_mode(self) -> bool:
@@ -585,17 +610,30 @@ class QuizScreen(QWidget):
         )
 
     def _refresh_mode_switch_state(self) -> None:
-        """Keep the mode action clear, localized, and safe for the current state."""
-        switch_to_exam = self.submission_mode == "practice"
-        self.mode_switch_btn.setText(self.lang_manager.get_text(
-            "切换为模拟考试" if switch_to_exam else "切换为逐题练习",
-            "Switch to Mock Exam" if switch_to_exam else "Switch to Practice",
+        """Keep the inline mode selector localized and safe for the current state."""
+        self.practice_mode_btn.setText(
+            self.lang_manager.get_text("逐题练习", "Practice")
+        )
+        self.exam_mode_btn.setText(
+            self.lang_manager.get_text("模拟考试", "Mock Exam")
+        )
+        self.practice_mode_btn.setToolTip(self.lang_manager.get_text(
+            "每题提交后立即查看答案与解析。开始作答后模式锁定。",
+            "See the answer and explanation after each submission. The mode locks after answering begins.",
         ))
-        self.mode_switch_btn.setToolTip(self.lang_manager.get_text(
-            "逐题练习会即时反馈；模拟考试会在最后统一交卷。提交或离开首题后不可切换。",
-            "Practice gives immediate feedback; mock exam submits at the end. The mode locks after submitting or leaving the first question.",
+        self.exam_mode_btn.setToolTip(self.lang_manager.get_text(
+            "自由切换题目，最后统一交卷。开始作答后模式锁定。",
+            "Navigate freely and submit the whole paper at the end. The mode locks after answering begins.",
         ))
-        self.mode_switch_btn.setEnabled(self._can_switch_submission_mode())
+        self.practice_mode_btn.blockSignals(True)
+        self.exam_mode_btn.blockSignals(True)
+        self.practice_mode_btn.setChecked(self.submission_mode == "practice")
+        self.exam_mode_btn.setChecked(self.submission_mode == "exam")
+        self.practice_mode_btn.blockSignals(False)
+        self.exam_mode_btn.blockSignals(False)
+        can_switch = self._can_switch_submission_mode()
+        self.practice_mode_btn.setEnabled(can_switch)
+        self.exam_mode_btn.setEnabled(can_switch)
 
     def _refresh_mark_review_state(self):
         """Legacy compatibility hook for callers that refresh review state."""

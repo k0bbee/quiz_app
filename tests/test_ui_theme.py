@@ -947,6 +947,14 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("qcheckbox#quizuncertaincheck:checked", qss)
         self.assertIn("qcheckbox#quizreviewcheck:checked", qss)
 
+    def test_quiz_mode_selector_uses_compact_checked_and_focus_states(self):
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+
+        self.assertIn("qpushbutton#quizmodeoption", qss)
+        self.assertIn("qpushbutton#quizmodeoption:checked", qss)
+        self.assertIn("qpushbutton#quizmodeoption:hover", qss)
+        self.assertIn("qpushbutton#quizmodeoption:focus", qss)
+
     def test_main_flow_pages_use_theme_button_roles(self):
         for path in (
             Path("ui/screens/topic_selection_screen.py"),
