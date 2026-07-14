@@ -832,6 +832,39 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual("fallback_global_evidence", status)
         self.assertEqual([], invalid)
 
+    def test_worker_delegates_source_resolution_with_explicit_plan_refs(self):
+        worker = GenerationWorker(
+            llm_client=None,
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="medium",
+        )
+
+        class RecordingResolver:
+            def __init__(self):
+                self.call = None
+
+            def resolve(self, qdata, plan_item=None, plan_refs=None):
+                self.call = (qdata, plan_item, plan_refs)
+                return [{"chunk_id": "delegated"}], "valid_model_ref", []
+
+        class Quotas:
+            def evidence_refs_for_item(self, plan_item):
+                return [{"chunk_id": "plan-source"}]
+
+        resolver = RecordingResolver()
+        worker._source_resolver = resolver
+
+        result = worker._question_source_refs(
+            {"source_refs": [{"chunk_id": "model-source"}]},
+            plan_item=None,
+            quotas=Quotas(),
+        )
+
+        self.assertEqual(([{"chunk_id": "delegated"}], "valid_model_ref", []), result)
+        self.assertEqual([{"chunk_id": "plan-source"}], resolver.call[2])
+
     def test_worker_marks_valid_model_source_ref_from_current_evidence(self):
         class FakeClient:
             model = "test-model"

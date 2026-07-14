@@ -9,6 +9,7 @@ from ai.llm_client import LLMClient
 from ai.generation_config import GenerationConfig, allocate_weighted_counts
 from ai.generation_quota_tracker import GenerationQuotaTracker
 from ai.generation_report import GenerationReport
+from ai.generation_source_resolver import GenerationSourceResolver
 from ai.prompt_templates import PromptBuilder
 from ai.question_generation_service import QuestionGenerationService
 from ai.question_plan import QuestionPlanItem
@@ -55,6 +56,7 @@ class GenerationWorker(QThread):
         self._cached_source_refs: list[dict] = []
         self._cached_source_refs_by_topic: dict[str, list[dict]] = {}
         self._source_ref_registry: dict[str, dict] = {}
+        self._source_resolver = GenerationSourceResolver()
         self._runtime_instruction = ""
         self._runtime_instruction_lock = threading.Lock()
 
@@ -378,6 +380,10 @@ class GenerationWorker(QThread):
                 self._cached_source_refs,
                 self._cached_source_refs_by_topic,
             )
+            self._source_resolver = GenerationSourceResolver(
+                self._cached_source_refs,
+                self._cached_source_refs_by_topic,
+            )
             return retrieve_course_context(
                 self.course_project,
                 topic_keys,
@@ -385,6 +391,7 @@ class GenerationWorker(QThread):
             )
         self._cached_source_refs_by_topic = {}
         self._source_ref_registry = {}
+        self._source_resolver = GenerationSourceResolver()
         return self.course_content
 
     def _question_source_refs(
@@ -394,24 +401,15 @@ class GenerationWorker(QThread):
         quotas: GenerationQuotaTracker | None = None,
     ) -> tuple[list[dict], str, list[str]]:
         """Return sanitized model source refs, falling back to retrieved evidence."""
-        refs = qdata.get("source_refs")
-        if isinstance(refs, list):
-            sanitized = [_sanitize_source_ref(ref) for ref in refs]
-            sanitized = [ref for ref in sanitized if ref]
-            if sanitized:
-                valid_refs, invalid_ref_ids = self._validated_model_source_refs(
-                    sanitized,
-                    plan_item,
-                )
-                if valid_refs:
-                    status = "valid_model_ref" if not invalid_ref_ids else "partial_model_ref"
-                    return valid_refs, status, invalid_ref_ids
-                fallback, _fallback_status = self._fallback_source_refs(plan_item, quotas)
-                return fallback, "invalid_model_ref", invalid_ref_ids
-        fallback, fallback_status = self._fallback_source_refs(plan_item, quotas)
-        if fallback:
-            return fallback, fallback_status, []
-        return [], "", []
+        resolver = self._source_resolver
+        if isinstance(resolver, GenerationSourceResolver):
+            resolver = GenerationSourceResolver(
+                self._cached_source_refs,
+                self._cached_source_refs_by_topic,
+            )
+            self._source_resolver = resolver
+        plan_refs = quotas.evidence_refs_for_item(plan_item) if quotas is not None else []
+        return resolver.resolve(qdata, plan_item=plan_item, plan_refs=plan_refs)
 
     def _fallback_source_refs(
         self,
