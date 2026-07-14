@@ -5,7 +5,7 @@ from html import escape as html_escape
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QProgressBar, QFrame, QScrollArea, QMessageBox,
-    QListWidget, QListWidgetItem, QSplitter, QCheckBox
+    QListWidget, QListWidgetItem, QSplitter, QCheckBox, QDialog
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
@@ -23,6 +23,7 @@ from ui.widgets.question_card import QuestionCard
 from ui.widgets.answer_area import AnswerArea
 from ui.widgets.source_refs import format_source_refs
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
+from ui.dialogs.short_answer_assessment_dialog import ShortAnswerAssessmentDialog
 
 
 class QuizScreen(QWidget):
@@ -492,11 +493,21 @@ class QuizScreen(QWidget):
             return
         self._last_user_answer = user_answer
         q = self.session.current_question
+        manual_is_correct = None
+        if q is not None and q.type == QuestionType.SHORT_ANSWER:
+            manual_grades = self._assess_short_answers({q.question_id: user_answer})
+            if manual_grades is None:
+                return
+            manual_is_correct = manual_grades[q.question_id]
         confidence = "sure"
         if q is not None:
             confidence = "unsure" if q.question_id in self._unsure_question_ids else "sure"
             self._draft_answers_by_question_id.pop(q.question_id, None)
-        is_correct, normalized = self.session.submit_answer(user_answer, confidence=confidence)
+        is_correct, normalized = self.session.submit_answer(
+            user_answer,
+            confidence=confidence,
+            manual_is_correct=manual_is_correct,
+        )
         self._refresh_navigation_button_state()
 
     def _confirm_default_ordering_answer(self) -> bool:
@@ -812,10 +823,37 @@ class QuizScreen(QWidget):
     def _finish_from_drafts(self):
         """Submit all saved drafts at the end of the navigation-first quiz flow."""
         self._save_current_draft_answer(self.session.current_index)
+        drafts = dict(self._draft_answers_by_question_id)
+        manual_grades = self._assess_short_answers(drafts)
+        if manual_grades is None:
+            return
         self.session.complete_with_drafts(
-            dict(self._draft_answers_by_question_id),
+            drafts,
             set(self._unsure_question_ids),
+            manual_grades=manual_grades,
         )
+
+    def _assess_short_answers(self, answers: dict[str, object]) -> dict[str, bool] | None:
+        """Collect transparent self-grades before short answers affect progress."""
+        items = [
+            (question, answers[question.question_id])
+            for question in self.session.questions
+            if question.type == QuestionType.SHORT_ANSWER
+            and self._draft_has_answer(answers.get(question.question_id))
+        ]
+        if not items:
+            return {}
+        dialog = ShortAnswerAssessmentDialog(
+            items,
+            language=self.session.language,
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        grades = dialog.grades()
+        if len(grades) != len(items):
+            return None
+        return grades
 
     def _next_question(self):
         """Move to the next question."""
@@ -979,14 +1017,21 @@ class QuizScreen(QWidget):
         """Render feedback for a stored answer record."""
         lang = self.session.language
 
+        is_manual = getattr(record, "grading_method", "automatic") == "manual_self_assessment"
         if record.is_correct:
             self.correct_indicator.setText(
-                self.lang_manager.get_text("正确", "Correct")
+                self.lang_manager.get_text(
+                    "自评：基本正确" if is_manual else "正确",
+                    "Self-assessed: Correct" if is_manual else "Correct",
+                )
             )
             self._set_correct_indicator_state("correct")
         else:
             self.correct_indicator.setText(
-                self.lang_manager.get_text("错误", "Incorrect")
+                self.lang_manager.get_text(
+                    "自评：仍需复习" if is_manual else "错误",
+                    "Self-assessed: Review Needed" if is_manual else "Incorrect",
+                )
             )
             self._set_correct_indicator_state("incorrect")
 
@@ -995,7 +1040,10 @@ class QuizScreen(QWidget):
         explanation = html_escape(question.get_explanation(lang))
 
         your_answer_text = self.lang_manager.get_text("你的答案", "Your answer")
-        correct_answer_text = self.lang_manager.get_text("正确答案", "Correct answer")
+        correct_answer_text = self.lang_manager.get_text(
+            "参考答案" if is_manual else "正确答案",
+            "Reference answer" if is_manual else "Correct answer",
+        )
         feedback = (
             f"<b>{your_answer_text}:</b> {user_answer}<br>"
             f"<b>{correct_answer_text}:</b> {correct_answer}<br><br>"
