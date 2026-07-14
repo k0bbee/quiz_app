@@ -8,6 +8,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from ai.llm_client import LLMClient
 from ai.generation_config import DIFFICULTY_DEFAULTS, QUESTION_TYPE_DEFAULTS, GenerationConfig, allocate_weighted_counts
+from ai.generation_quota_tracker import GenerationQuotaTracker as PureGenerationQuotaTracker
 from ai.generation_report import GenerationReport
 from ai.prompt_templates import PromptBuilder
 from ai.question_generation_service import QuestionGenerationService
@@ -552,8 +553,8 @@ class GenerationWorker(QThread):
         with self._runtime_instruction_lock:
             return self._runtime_instruction
 
-    def _make_quota_tracker(self) -> GenerationQuotaTracker:
-        return GenerationQuotaTracker(
+    def _make_quota_tracker(self) -> PureGenerationQuotaTracker:
+        return PureGenerationQuotaTracker(
             self.generation_config,
             self.topics,
             self.count,
@@ -657,7 +658,7 @@ class GenerationWorker(QThread):
         self,
         qdata: dict,
         plan_item: QuestionPlanItem | None = None,
-        quotas: GenerationQuotaTracker | None = None,
+        quotas: PureGenerationQuotaTracker | None = None,
     ) -> tuple[list[dict], str, list[str]]:
         """Return sanitized model source refs, falling back to retrieved evidence."""
         refs = qdata.get("source_refs")
@@ -682,7 +683,7 @@ class GenerationWorker(QThread):
     def _fallback_source_refs(
         self,
         plan_item: QuestionPlanItem | None,
-        quotas: GenerationQuotaTracker | None,
+        quotas: PureGenerationQuotaTracker | None,
     ) -> tuple[list[dict], str]:
         if quotas is not None:
             plan_refs = quotas.evidence_refs_for_item(plan_item)

@@ -179,6 +179,17 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual(0, tracker.remaining_difficulties["medium"])
         self.assertEqual(0, tracker.remaining_topics["cache"])
 
+    def test_worker_builds_quota_tracker_from_pure_business_module(self):
+        worker = GenerationWorker(
+            SequenceClient([]),
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="medium",
+        )
+
+        self.assertIsInstance(worker._make_quota_tracker(), GenerationQuotaTracker)
+
     def test_worker_normalizes_matching_options_and_answers_to_stable_ids(self):
         worker = GenerationWorker(
             SequenceClient([]),
