@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 )
 
 from core.background_task import BackgroundTaskCancelled, TaskControl
+from core.background_task_bridge import BackgroundTaskBridge
 from core.language_manager import LanguageManager
 from core.past_exam_analyzer import PastExamAnalysisService
 from core.past_exam_importer import PastExamImporter
@@ -94,13 +95,15 @@ class PastExamScreen(QWidget):
 
     prediction_requested = pyqtSignal(str, object)
 
-    def __init__(self, manager, course_manager, parent=None):
+    def __init__(self, manager, course_manager, parent=None, task_center=None):
         super().__init__(parent)
         self.manager = manager
         self.course_manager = course_manager
+        self.task_center = task_center
         self.lang_manager = LanguageManager.instance()
         self._import_worker = None
         self._analysis_worker = None
+        self._task_bridge = None
         self._courses = []
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
@@ -330,8 +333,40 @@ class PastExamScreen(QWidget):
         worker.cancelled.connect(self._on_import_cancelled)
         worker.progress.connect(self._on_import_progress)
         worker.finished.connect(self._on_import_worker_finished)
+        self._begin_persistent_task(
+            kind="past_exam_ocr",
+            title=self.lang_manager.get_text(
+                f"导入真题：{self.title_input.text().strip() or source.stem}",
+                f"Import exam: {self.title_input.text().strip() or source.stem}",
+            ),
+            metadata={
+                "source_path": str(source),
+                "manual_course_id": self.import_course_combo.currentData(),
+            },
+            worker=worker,
+        )
         self._set_import_busy(True)
         worker.start()
+
+    def _begin_persistent_task(self, *, kind, title, metadata, worker):
+        if self.task_center is None:
+            self._task_bridge = None
+            return
+        snapshot = self.task_center.create(
+            kind=kind,
+            title=title,
+            metadata=metadata,
+        )
+        bridge = BackgroundTaskBridge(self.task_center, snapshot.task_id)
+        bridge.start(worker.cancel)
+        self._task_bridge = bridge
+
+    def _finish_persistent_task(self, outcome, **kwargs):
+        bridge = self._task_bridge
+        if bridge is None:
+            return
+        getattr(bridge, outcome)(**kwargs)
+        self._task_bridge = None
 
     def _cancel_import(self):
         if self._import_worker is not None or self._analysis_worker is not None:
@@ -340,6 +375,8 @@ class PastExamScreen(QWidget):
             self.cancel_btn.setEnabled(False)
 
     def _on_import_progress(self, progress):
+        if self._task_bridge is not None:
+            self._task_bridge.report(progress)
         labels = {
             "hashing_source": self.lang_manager.get_text("校验文件", "Checking file"),
             "parsing_page": self.lang_manager.get_text("解析页面/OCR", "Parsing pages/OCR"),
@@ -360,6 +397,11 @@ class PastExamScreen(QWidget):
             self.progress_bar.setRange(0, 0)
 
     def _on_imported(self, result):
+        self._finish_persistent_task(
+            "complete",
+            result_summary=f"Imported exam {result.record.title}",
+            result_count=0 if result.duplicate else 1,
+        )
         self._finish_import()
         self.refresh()
         self._select_exam(result.record.exam_id)
@@ -375,6 +417,7 @@ class PastExamScreen(QWidget):
         )
 
     def _on_import_failed(self, message):
+        self._finish_persistent_task("fail", error=message)
         self._finish_import()
         QMessageBox.critical(
             self,
@@ -383,6 +426,7 @@ class PastExamScreen(QWidget):
         )
 
     def _on_import_cancelled(self):
+        self._finish_persistent_task("cancelled")
         self._finish_import()
         self.progress_label.setText(self.lang_manager.get_text("导入已停止", "Import stopped"))
 
@@ -553,22 +597,41 @@ class PastExamScreen(QWidget):
         service = PastExamAnalysisService(self.manager, self.course_manager)
         worker = PastExamAnalysisWorker(service, exam_id, self)
         self._analysis_worker = worker
-        worker.analyzed.connect(lambda _analysis: self._on_analyzed(exam_id))
+        worker.analyzed.connect(lambda analysis: self._on_analyzed(exam_id, analysis))
         worker.failed.connect(self._on_analysis_failed)
         worker.cancelled.connect(self._on_analysis_cancelled)
         worker.progress.connect(self._on_import_progress)
         worker.finished.connect(self._on_analysis_worker_finished)
+        record = self.manager.get(exam_id)
+        self._begin_persistent_task(
+            kind="past_exam_analysis",
+            title=self.lang_manager.get_text(
+                f"分析真题：{record.title if record else exam_id}",
+                f"Analyze exam: {record.title if record else exam_id}",
+            ),
+            metadata={
+                "exam_id": exam_id,
+                "course_id": record.course_id if record else "",
+            },
+            worker=worker,
+        )
         self._set_import_busy(True)
         self.analyze_btn.setEnabled(False)
         self.predict_btn.setEnabled(False)
         worker.start()
 
-    def _on_analyzed(self, exam_id):
+    def _on_analyzed(self, exam_id, analysis=None):
+        self._finish_persistent_task(
+            "complete",
+            result_summary=f"Analyzed exam {exam_id}",
+            result_count=getattr(analysis, "detected_question_count", 0),
+        )
         self._finish_import()
         self.refresh()
         self._select_exam(exam_id)
 
     def _on_analysis_failed(self, message):
+        self._finish_persistent_task("fail", error=message)
         self._finish_import()
         display_message = str(message)
         if "changed during analysis" in display_message.casefold():
@@ -583,6 +646,7 @@ class PastExamScreen(QWidget):
         )
 
     def _on_analysis_cancelled(self):
+        self._finish_persistent_task("cancelled")
         self._finish_import()
 
     def _on_analysis_worker_finished(self):
@@ -632,6 +696,9 @@ class PastExamScreen(QWidget):
         self.analyze_btn.setEnabled(False)
 
     def cancel_active_task(self):
+        if self._task_bridge is not None:
+            self.task_center.request_cancel(self._task_bridge.task_id)
+            return
         if self._import_worker is not None:
             self._import_worker.cancel()
         if self._analysis_worker is not None:

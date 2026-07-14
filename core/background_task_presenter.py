@@ -133,6 +133,7 @@ def _kind_text(kind: str, language: str) -> str:
         "course_import": ("课程导入", "Course import"),
         "course_summary": ("课程总结", "Course summary"),
         "past_exam_ocr": ("真题 OCR", "Exam OCR"),
+        "past_exam_analysis": ("真题分析", "Exam analysis"),
         "app_data_import": ("数据导入", "Data import"),
         "app_data_export": ("数据导出", "Data export"),
     }

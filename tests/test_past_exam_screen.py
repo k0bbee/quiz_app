@@ -10,6 +10,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import QEvent
 from PyQt6.QtWidgets import QApplication, QSplitter
 
+from core.background_task import TaskProgress
+from core.background_task_center import BackgroundTaskCenter, TaskStatus
 from core.language_manager import LanguageManager
 from models.past_exam import (
     PastExamAnalysis,
@@ -19,7 +21,11 @@ from models.past_exam import (
     PastExamRecord,
     PastExamTopicProfile,
 )
-from ui.screens.past_exam_screen import PastExamScreen
+from ui.screens.past_exam_screen import (
+    PastExamAnalysisWorker,
+    PastExamImportWorker,
+    PastExamScreen,
+)
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -88,6 +94,72 @@ class PastExamScreenTests(unittest.TestCase):
                 screen.import_course_combo.findData("")
             )
             self.assertEqual("", screen._create_import_worker().manual_course_id)
+
+    def test_exam_import_persists_ocr_progress_and_completion(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "exam.pdf"
+            source.write_bytes(b"pdf")
+            task_center = BackgroundTaskCenter(root / "tasks.json")
+            screen = PastExamScreen(
+                PastExamManager(root / "past_exams"),
+                self._course_manager(),
+                task_center=task_center,
+            )
+            screen.file_input.setText(str(source))
+            screen.title_input.setText("2025 Final")
+
+            with patch.object(PastExamImportWorker, "start"):
+                screen._start_import()
+
+            snapshot = task_center.snapshots()[0]
+            self.assertEqual("past_exam_ocr", snapshot.kind)
+            self.assertEqual(TaskStatus.RUNNING, snapshot.status)
+            self.assertEqual(str(source), snapshot.metadata["source_path"])
+
+            screen._on_import_progress(
+                TaskProgress("parsing_page", current=3, total=8, detail="page 3")
+            )
+            self.assertEqual(
+                "parsing_page", task_center.get(snapshot.task_id).progress.stage
+            )
+
+            result = SimpleNamespace(record=self._record(), duplicate=False)
+            with patch("ui.screens.past_exam_screen.QMessageBox.information"):
+                screen._on_imported(result)
+
+            completed = task_center.get(snapshot.task_id)
+            self.assertEqual(TaskStatus.COMPLETED, completed.status)
+            self.assertEqual(1, completed.result_count)
+
+    def test_exam_analysis_failure_is_persisted_with_exam_identity(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            manager = PastExamManager(root / "past_exams")
+            record = self._record(course_id="course-a", assignment_mode="manual")
+            manager.save_record(record)
+            manager.save_content(record.exam_id, PastExamContent("Question one"))
+            task_center = BackgroundTaskCenter(root / "tasks.json")
+            screen = PastExamScreen(
+                manager,
+                self._course_manager(),
+                task_center=task_center,
+            )
+            screen._select_exam(record.exam_id)
+
+            with patch.object(PastExamAnalysisWorker, "start"):
+                screen._start_analysis()
+
+            snapshot = task_center.snapshots()[0]
+            self.assertEqual("past_exam_analysis", snapshot.kind)
+            self.assertEqual(record.exam_id, snapshot.metadata["exam_id"])
+
+            with patch("ui.screens.past_exam_screen.QMessageBox.critical"):
+                screen._on_analysis_failed("analysis failed")
+
+            failed = task_center.get(snapshot.task_id)
+            self.assertEqual(TaskStatus.FAILED, failed.status)
+            self.assertEqual("analysis failed", failed.error)
 
     def test_user_can_reassign_or_unassign_an_imported_exam(self):
         with tempfile.TemporaryDirectory() as tmpdir:

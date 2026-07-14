@@ -181,6 +181,7 @@ class MainWindow(QMainWindow):
             self._past_exam_screen = PastExamScreen(
                 self.past_exam_manager,
                 self.course_manager,
+                task_center=self.task_center,
             )
             self._past_exam_screen.prediction_requested.connect(
                 self._on_generate_predicted_exam
