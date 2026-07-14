@@ -2,7 +2,6 @@
 from utils.logger import debug, warning, error
 
 import threading
-import re
 from dataclasses import replace
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -16,7 +15,7 @@ from ai.question_plan import QuestionPlanItem, build_question_plan
 from core.app_errors import AppError
 from core.course_index import retrieve_course_context, retrieve_course_source_refs
 from models.question import Question
-from utils.constants import QuestionType, Difficulty, topic_alias_values, topic_label, topic_value
+from utils.constants import QuestionType, Difficulty, topic_label, topic_value
 
 
 ACCEPT_TARGET_BATCH_SIZE = 1
@@ -753,19 +752,6 @@ class GenerationWorker(QThread):
         return self._generation_service.normalize_topic(raw_topic)
 
 
-def _topic_match_key(value: str) -> str:
-    return " ".join(re.findall(r"[a-z0-9]+", str(value or "").lower()))
-
-
-def _topic_tokens_cover(raw_key: str, label_key: str) -> bool:
-    """Return whether raw and label match by meaningful token boundaries."""
-    raw_tokens = {token for token in raw_key.split() if len(token) >= 3}
-    label_tokens = {token for token in label_key.split() if len(token) >= 3}
-    if not raw_tokens or not label_tokens:
-        return False
-    return raw_tokens.issuperset(label_tokens) or label_tokens.issuperset(raw_tokens)
-
-
 def _record_rejection(reasons: dict[str, int], reason: str) -> None:
     key = _rejection_reason_key(reason)
     reasons[key] = reasons.get(key, 0) + 1
@@ -820,206 +806,6 @@ def _source_ref_matches_registered(ref: dict, registered: dict) -> bool:
     if actual_page is not None and expected_page is not None and actual_page != expected_page:
         return False
     return True
-
-
-def _normalize_matching_option_ids(qdata: dict) -> dict:
-    normalized = dict(qdata)
-    bilingual = dict(normalized.get("bilingual", {}) or {})
-    left_ids = _stable_ids_for_parallel_options(
-        [bilingual.get(lang, {}).get("options", {}).get("left", []) for lang in ("zh", "en")],
-        "left",
-    )
-    right_ids = _stable_ids_for_parallel_options(
-        [bilingual.get(lang, {}).get("options", {}).get("right", []) for lang in ("zh", "en")],
-        "right",
-    )
-    label_to_id: dict[str, str] = {}
-
-    for lang in ("zh", "en"):
-        content = dict(bilingual.get(lang, {}) or {})
-        options = dict(content.get("options", {}) or {})
-        left = options.get("left", []) or []
-        right = options.get("right", []) or []
-        options["left"] = _normalize_option_list(left, left_ids, label_to_id, lang)
-        options["right"] = _normalize_option_list(right, right_ids, label_to_id, lang)
-        content["options"] = options
-        bilingual[lang] = content
-
-    answer = normalized.get("correct_answer")
-    if isinstance(answer, list):
-        normalized["correct_answer"] = [
-            [
-                _normalize_answer_token(pair[0], label_to_id),
-                _normalize_answer_token(pair[1], label_to_id),
-            ]
-            for pair in answer
-            if isinstance(pair, (list, tuple)) and len(pair) == 2
-        ]
-    normalized["bilingual"] = bilingual
-    return normalized
-
-
-def _normalize_ordering_option_ids(qdata: dict) -> dict:
-    normalized = dict(qdata)
-    bilingual = dict(normalized.get("bilingual", {}) or {})
-    item_ids = _stable_ids_for_parallel_options(
-        [bilingual.get(lang, {}).get("options", []) for lang in ("zh", "en")],
-        "item",
-    )
-    label_to_id: dict[str, str] = {}
-
-    for lang in ("zh", "en"):
-        content = dict(bilingual.get(lang, {}) or {})
-        options = content.get("options", []) or []
-        content["options"] = _normalize_option_list(options, item_ids, label_to_id, lang)
-        bilingual[lang] = content
-
-    answer = normalized.get("correct_answer")
-    if isinstance(answer, list):
-        normalized["correct_answer"] = [
-            _normalize_answer_token(item, label_to_id)
-            for item in answer
-        ]
-    normalized["bilingual"] = bilingual
-    return normalized
-
-
-def _stable_ids_for_parallel_options(option_lists: list[list], prefix: str) -> list[str]:
-    max_count = max((len(options or []) for options in option_lists), default=0)
-    ids: list[str] = []
-    for index in range(max_count):
-        found = ""
-        for options in option_lists:
-            if index < len(options or []):
-                found = _raw_option_id(options[index])
-                if found:
-                    break
-        ids.append(found or f"{prefix}_{index + 1}")
-    return ids
-
-
-def _normalize_option_list(options: list, ids: list[str], label_to_id: dict[str, str], lang: str) -> list[dict]:
-    normalized = []
-    for index, option in enumerate(options or []):
-        option_id = ids[index] if index < len(ids) else _raw_option_id(option) or f"item_{index + 1}"
-        label = _raw_option_label(option, lang)
-        normalized.append({"id": option_id, "text": label})
-        for alias in _raw_option_aliases(option, label):
-            if alias:
-                label_to_id.setdefault(alias.strip().lower(), option_id)
-        label_to_id.setdefault(option_id.strip().lower(), option_id)
-    return normalized
-
-
-def _raw_option_id(option) -> str:
-    if isinstance(option, dict):
-        for key in ("id", "value", "key"):
-            value = option.get(key)
-            if value is not None and str(value).strip():
-                return str(value).strip()
-    return ""
-
-
-def _raw_option_label(option, lang: str = "") -> str:
-    if isinstance(option, dict):
-        for key in (lang, "text", "label", "title", "name", "value", "id"):
-            value = option.get(key)
-            if value is not None and str(value).strip():
-                return str(value).strip()
-    return str(option)
-
-
-def _raw_option_aliases(option, label: str) -> list[str]:
-    aliases = [label]
-    if isinstance(option, dict):
-        for key in ("id", "value", "key", "text", "label", "title", "name", "zh", "en"):
-            value = option.get(key)
-            if value is not None and str(value).strip():
-                aliases.append(str(value).strip())
-    else:
-        aliases.append(str(option))
-    return aliases
-
-
-def _normalize_answer_token(value, label_to_id: dict[str, str]) -> str:
-    text = str(value or "").strip()
-    return label_to_id.get(text.lower(), text)
-
-
-def _has_option_id(option) -> bool:
-    return isinstance(option, dict) and bool(str(option.get("id", "") or "").strip())
-
-
-def _choice_stem_leaks_correct_answer_keyword(bilingual: dict, answer: str) -> bool:
-    answer = str(answer or "").strip().upper()
-    if answer not in {"A", "B", "C", "D"}:
-        return False
-    for lang in ("zh", "en"):
-        content = bilingual.get(lang, {}) or {}
-        options = content.get("options", []) or []
-        option_text = _choice_option_text(options, answer)
-        if not option_text:
-            continue
-        stem_tokens = _answer_leak_tokens(content.get("stem", ""))
-        correct_tokens = _answer_leak_tokens(option_text)
-        wrong_tokens = set()
-        for index, option in enumerate(options):
-            if index == ord(answer) - ord("A"):
-                continue
-            wrong_tokens.update(_answer_leak_tokens(option))
-        leaked = [
-            token
-            for token in correct_tokens
-            if token in stem_tokens and token not in wrong_tokens
-        ]
-        if leaked:
-            return True
-    return False
-
-
-def _choice_option_text(options, answer: str) -> str:
-    if not isinstance(options, list):
-        return ""
-    index = ord(answer) - ord("A")
-    if index < 0 or index >= len(options):
-        return ""
-    return _strip_choice_prefix(_raw_option_label(options[index]))
-
-
-def _strip_choice_prefix(text: str) -> str:
-    return re.sub(r"^\s*[A-Da-d][\.\)、)]\s*", "", str(text or "")).strip()
-
-
-def _answer_leak_tokens(value) -> set[str]:
-    text = str(value or "").lower()
-    tokens: set[str] = set()
-    for token in re.findall(r"[a-z][a-z\-]{2,}", text):
-        normalized = token.strip("-")
-        if normalized not in _ANSWER_LEAK_STOPWORDS:
-            tokens.add(normalized)
-        if "-" in normalized:
-            for part in normalized.split("-"):
-                if len(part) >= 4 and part not in _ANSWER_LEAK_STOPWORDS:
-                    tokens.add(part)
-    for chunk in re.findall(r"[\u4e00-\u9fff]{2,}", text):
-        if chunk not in _ANSWER_LEAK_STOPWORDS:
-            tokens.add(chunk)
-        max_n = min(4, len(chunk))
-        for size in range(2, max_n + 1):
-            for start in range(0, len(chunk) - size + 1):
-                token = chunk[start:start + size]
-                if token not in _ANSWER_LEAK_STOPWORDS:
-                    tokens.add(token)
-    return tokens
-
-
-_ANSWER_LEAK_STOPWORDS = {
-    "the", "and", "for", "with", "which", "what", "when", "where",
-    "question", "answer", "option",
-    "statement", "correct", "right", "wrong",
-    "cpu", "io", "i/o", "方式", "以下", "哪种", "通知", "完成",
-    "同步", "直接", "存储", "数据", "工作", "正确", "错误", "说法",
-}
 
 
 def _sanitize_source_ref(ref) -> dict:
