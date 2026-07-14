@@ -6,6 +6,7 @@ import threading
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from ai.llm_client import LLMClient
+from ai.generation_candidate_processor import GenerationCandidateProcessor
 from ai.generation_config import GenerationConfig, allocate_weighted_counts
 from ai.generation_quota_tracker import GenerationQuotaTracker
 from ai.generation_report import GenerationReport
@@ -72,6 +73,7 @@ class GenerationWorker(QThread):
             course_context = self._build_course_context()
             max_attempts = max(3, (self.count // ACCEPT_TARGET_BATCH_SIZE + 1) * 3)
             quotas = self._make_quota_tracker()
+            candidate_processor = self._make_candidate_processor(quotas)
 
             while len(all_questions) < self.count and not self._cancelled.is_set() and attempts < max_attempts:
                 attempts += 1
@@ -132,77 +134,17 @@ class GenerationWorker(QThread):
                 for qdata in raw_questions:
                     if self._cancelled.is_set():
                         break
-                    try:
-                        qdata = self._normalize_raw_question(qdata)
-                        ok, reason = self._validate_raw_question(qdata)
-                        if not ok:
-                            rejected += 1
-                            _record_rejection(rejection_reasons, reason)
-                            debug(f"Skipping invalid generated question: {reason}")
-                            continue
-
-                        q = Question.create_new(
-                            qtype=QuestionType(qdata.get("type", "multiple_choice")),
-                            difficulty=Difficulty(qdata.get("difficulty", "medium")),
-                            bilingual=qdata.get("bilingual", {}),
-                            correct_answer=qdata.get("correct_answer"),
-                            topic=self._normalize_topic(qdata.get("topic")),
-                            subtopic=qdata.get("subtopic", ""),
-                            source="ai_generated",
-                        )
-                        # Set AI model in metadata
-                        q.metadata["ai_model"] = self.client.model
-                        q.metadata.update(self._course_metadata())
-                        errors = q.validate()
-                        if not errors:
-                            plan_id = _normalize_plan_id(qdata.get("plan_id"))
-                            quota_reason = quotas.rejection_reason(
-                                q.type.value,
-                                q.difficulty.value,
-                                topic_value(q.topic),
-                                plan_id,
-                            )
-                            if quota_reason:
-                                rejected += 1
-                                _record_rejection(rejection_reasons, quota_reason)
-                                debug(f"Skipping generated question: {quota_reason}")
-                                continue
-                            plan_item, plan_match_status = quotas.accept(
-                                q.type.value,
-                                q.difficulty.value,
-                                topic_value(q.topic),
-                                plan_id,
-                            )
-                            if plan_item is not None:
-                                q.metadata["plan_id"] = plan_item.plan_id
-                                q.metadata["plan_topic_id"] = plan_item.topic_id
-                                q.metadata["plan_topic_title"] = plan_item.topic_title
-                                q.metadata["target_skill"] = plan_item.target_skill
-                                if plan_item.evidence_chunk_ids:
-                                    q.metadata["plan_evidence_chunk_ids"] = list(plan_item.evidence_chunk_ids)
-                            if plan_match_status:
-                                q.metadata["plan_match_status"] = plan_match_status
-                            source_refs, source_ref_status, invalid_ref_ids = self._question_source_refs(
-                                qdata,
-                                plan_item,
-                                quotas,
-                            )
-                            if source_refs:
-                                q.metadata["source_refs"] = source_refs
-                            if source_ref_status:
-                                q.metadata["source_ref_status"] = source_ref_status
-                            if invalid_ref_ids:
-                                q.metadata["invalid_source_ref_ids"] = invalid_ref_ids
-                            batch_questions.append(q)
-                        else:
-                            rejected += 1
-                            _record_rejection(rejection_reasons, "question validation failed")
-                            debug(f"Skipping invalid question: {errors}")
-                    except (ValueError, KeyError) as e:
+                    outcome = candidate_processor.process(qdata)
+                    if outcome.accepted:
+                        batch_questions.append(outcome.question)
+                    else:
                         rejected += 1
-                        _record_rejection(rejection_reasons, "malformed question")
-                        debug(f"Skipping malformed question: {e}")
-                        continue
+                        _record_rejection(rejection_reasons, outcome.rejection_reason)
+                        detail = f" ({outcome.detail})" if outcome.detail else ""
+                        debug(
+                            "Skipping generated question: "
+                            f"{outcome.rejection_reason}{detail}"
+                        )
 
                 all_questions.extend(batch_questions)
                 if batch_questions:
@@ -294,6 +236,23 @@ class GenerationWorker(QThread):
             self.count,
             self._cached_source_refs_by_topic,
             self.question_plan_items or None,
+        )
+
+    def _make_candidate_processor(
+        self,
+        quotas: GenerationQuotaTracker,
+    ) -> GenerationCandidateProcessor:
+        resolver = GenerationSourceResolver(
+            self._cached_source_refs,
+            self._cached_source_refs_by_topic,
+        )
+        self._source_resolver = resolver
+        return GenerationCandidateProcessor(
+            self._generation_service,
+            quotas,
+            resolver,
+            ai_model=getattr(self.client, "model", ""),
+            course_metadata=self._course_metadata(),
         )
 
     def _candidate_batch_count(self, accept_target: int) -> int:

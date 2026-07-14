@@ -2,6 +2,7 @@ import unittest
 import re
 
 from ai.batch_generator import GenerationWorker, allocate_weighted_counts
+from ai.generation_candidate_processor import CandidateProcessingResult
 from ai.generation_config import GenerationConfig
 from ai.generation_quota_tracker import GenerationQuotaTracker
 from ai.generation_report import GenerationReport
@@ -189,6 +190,35 @@ class GenerationQuotaTests(unittest.TestCase):
         )
 
         self.assertIsInstance(worker._make_quota_tracker(), GenerationQuotaTracker)
+
+    def test_worker_delegates_candidate_acceptance_to_pure_processor(self):
+        candidate = raw_question("multiple_choice", "medium", "cache")
+        worker = GenerationWorker(
+            SequenceClient([{"questions": [candidate]}]),
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="medium",
+        )
+        accepted_sentinel = object()
+
+        class RecordingProcessor:
+            def __init__(self):
+                self.payloads = []
+
+            def process(self, payload):
+                self.payloads.append(payload)
+                return CandidateProcessingResult(question=accepted_sentinel)
+
+        processor = RecordingProcessor()
+        worker._make_candidate_processor = lambda quotas: processor
+        completed = []
+        worker.batch_done.connect(completed.append)
+
+        worker.run()
+
+        self.assertEqual([candidate], processor.payloads)
+        self.assertEqual([[accepted_sentinel]], completed)
 
     def test_worker_normalizes_matching_options_and_answers_to_stable_ids(self):
         worker = GenerationWorker(
