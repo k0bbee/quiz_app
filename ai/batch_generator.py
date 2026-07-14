@@ -11,6 +11,7 @@ from ai.llm_client import LLMClient
 from ai.generation_config import DIFFICULTY_DEFAULTS, QUESTION_TYPE_DEFAULTS, GenerationConfig, allocate_weighted_counts
 from ai.generation_report import GenerationReport
 from ai.prompt_templates import PromptBuilder
+from ai.question_generation_service import QuestionGenerationService
 from ai.question_plan import QuestionPlanItem, build_question_plan
 from core.app_errors import AppError
 from core.course_index import retrieve_course_context, retrieve_course_source_refs
@@ -313,6 +314,7 @@ class GenerationWorker(QThread):
         self.course_project = course_project
         self.generation_config = generation_config or GenerationConfig()
         self.question_plan_items = list(question_plan_items or [])
+        self._generation_service = QuestionGenerationService(self.topics)
         self._cancelled = threading.Event()
         self._cached_context: str | None = None
         self._candidate_batch_limit: int | None = None
@@ -740,130 +742,15 @@ class GenerationWorker(QThread):
         return keywords
 
     def _normalize_raw_question(self, qdata):
-        if not isinstance(qdata, dict):
-            return qdata
-        normalized = dict(qdata)
-        qtype = normalized.get("type")
-        if qtype == QuestionType.FILL_IN_BLANK.value:
-            answer = normalized.get("correct_answer")
-            if isinstance(answer, str):
-                normalized["correct_answer"] = [answer.strip()] if answer.strip() else []
-            elif isinstance(answer, (list, tuple)):
-                normalized["correct_answer"] = [
-                    str(item).strip()
-                    for item in answer
-                    if str(item).strip()
-                ]
-        elif qtype == QuestionType.MATCHING.value:
-            normalized = _normalize_matching_option_ids(normalized)
-        elif qtype == QuestionType.ORDERING.value:
-            normalized = _normalize_ordering_option_ids(normalized)
-        return normalized
+        return self._generation_service.normalize_raw_question(qdata)
 
     def _validate_raw_question(self, qdata: dict) -> tuple[bool, str]:
         """Validate raw model output before converting it to a Question."""
-        if not isinstance(qdata, dict):
-            return False, "question is not an object"
-
-        qtype = qdata.get("type", "multiple_choice")
-        try:
-            question_type = QuestionType(qtype)
-        except ValueError:
-            return False, f"unknown question type: {qtype}"
-
-        topic = self._normalize_topic(qdata.get("topic"))
-        if topic is None:
-            return False, f"topic {qdata.get('topic')} was not selected"
-
-        bilingual = qdata.get("bilingual", {})
-        if not isinstance(bilingual, dict):
-            return False, "bilingual content must be an object"
-        for lang in ("zh", "en"):
-            content = bilingual.get(lang, {})
-            if not isinstance(content, dict):
-                return False, f"{lang} content must be an object"
-            if not content.get("stem"):
-                return False, f"missing {lang} stem"
-            if not content.get("explanation") or len(content.get("explanation", "")) < 20:
-                return False, f"missing or weak {lang} explanation"
-
-        if question_type in (
-            QuestionType.MULTIPLE_CHOICE,
-            QuestionType.SCENARIO_CHOICE,
-            QuestionType.TRUE_FALSE,
-        ):
-            answer = str(qdata.get("correct_answer", "")).strip()
-            if question_type == QuestionType.TRUE_FALSE:
-                if answer.lower() not in {"true", "false"}:
-                    return False, "true_false answer must be true/false"
-            else:
-                if answer.upper() not in {"A", "B", "C", "D"}:
-                    return False, "choice answer must be A/B/C/D"
-                for lang in ("zh", "en"):
-                    options = bilingual.get(lang, {}).get("options", [])
-                    if len(options) != 4:
-                        return False, f"{lang} choice question must have 4 options"
-                if _choice_stem_leaks_correct_answer_keyword(bilingual, answer):
-                    return False, "answer keyword leaked in choice stem"
-        elif question_type == QuestionType.FILL_IN_BLANK:
-            answer = qdata.get("correct_answer")
-            if not isinstance(answer, list) or not answer:
-                return False, "fill_in_blank answer must be a non-empty list"
-        elif question_type == QuestionType.MATCHING:
-            for lang in ("zh", "en"):
-                options = bilingual.get(lang, {}).get("options", {})
-                if not isinstance(options, dict):
-                    return False, f"{lang} matching options must contain left/right lists"
-                left = options.get("left", [])
-                right = options.get("right", [])
-                if not left or len(left) != len(right):
-                    return False, f"{lang} matching left/right options must be non-empty and equal length"
-                if not all(_has_option_id(item) for item in left + right):
-                    return False, f"{lang} matching options must have stable ids"
-            answer = qdata.get("correct_answer")
-            if not isinstance(answer, list) or not answer:
-                return False, "matching answer must be a non-empty list of id pairs"
-            if not all(isinstance(pair, (list, tuple)) and len(pair) == 2 for pair in answer):
-                return False, "matching answer must contain pairs"
-        elif question_type == QuestionType.ORDERING:
-            for lang in ("zh", "en"):
-                options = bilingual.get(lang, {}).get("options", [])
-                if not isinstance(options, list) or not options:
-                    return False, f"{lang} ordering options must be a non-empty list"
-                if not all(_has_option_id(item) for item in options):
-                    return False, f"{lang} ordering options must have stable ids"
-            answer = qdata.get("correct_answer")
-            if not isinstance(answer, list) or not answer:
-                return False, "ordering answer must be a non-empty list of item ids"
-        elif question_type == QuestionType.SHORT_ANSWER:
-            answer = str(qdata.get("correct_answer", "") or "").strip()
-            if len(answer) < 10:
-                return False, "short_answer must include a meaningful reference answer"
-
-        return True, ""
+        return self._generation_service.validate_raw_question(qdata)
 
     def _normalize_topic(self, raw_topic):
         """Map model topic output to one of the selected topics."""
-        if not self.topics:
-            return str(raw_topic or "general")
-        raw = str(raw_topic or "").strip().lower()
-        raw_key = _topic_match_key(raw)
-        selected = {value.lower(): t for t in self.topics for value in topic_alias_values(t)}
-        if raw in selected:
-            return selected[raw]
-        canonical_selected = {
-            _topic_match_key(value): t
-            for t in self.topics
-            for value in topic_alias_values(t) | {topic_label(t)}
-        }
-        if raw_key in canonical_selected:
-            return canonical_selected[raw_key]
-        for topic in self.topics:
-            for label in topic_alias_values(topic) | {topic_label(topic)}:
-                label = str(label or "").lower()
-                if _topic_tokens_cover(raw_key, _topic_match_key(label)):
-                    return topic
-        return None
+        return self._generation_service.normalize_topic(raw_topic)
 
 
 def _topic_match_key(value: str) -> str:

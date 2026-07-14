@@ -253,6 +253,31 @@ class GenerationConfigTests(unittest.TestCase):
 
         self.assertIs(worker.generation_config, config)
 
+    def test_worker_delegates_payload_preparation_to_pure_generation_service(self):
+        worker = GenerationWorker(
+            LLMClient(api_key="", base_url="local-agent://auto", model="codex"),
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="medium",
+        )
+
+        class RecordingService:
+            def normalize_raw_question(self, qdata):
+                return {"normalized": qdata}
+
+            def validate_raw_question(self, qdata):
+                return False, f"checked {qdata['value']}"
+
+            def normalize_topic(self, raw_topic):
+                return f"topic:{raw_topic}"
+
+        worker._generation_service = RecordingService()
+
+        self.assertEqual({"normalized": {"value": 1}}, worker._normalize_raw_question({"value": 1}))
+        self.assertEqual((False, "checked 2"), worker._validate_raw_question({"value": 2}))
+        self.assertEqual("topic:cache", worker._normalize_topic("cache"))
+
     def test_worker_topic_normalization_does_not_use_ambiguous_substrings(self):
         worker = GenerationWorker(
             LLMClient(api_key="", base_url="local-agent://auto", model="codex"),
