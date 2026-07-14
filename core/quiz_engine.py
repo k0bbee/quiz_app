@@ -13,7 +13,7 @@ from models.question import Question
 from models.question_set import QuestionSet
 from models.progress import AnswerRecord, ProgressRecord, SessionSummary
 from core.grader import Grader
-from utils.constants import QuizState
+from utils.constants import QuestionType, QuizState
 
 
 class QuizSession(QObject):
@@ -178,7 +178,12 @@ class QuizSession(QObject):
         )
         self.question_changed.emit(self._current_index + 1, len(self._questions))
 
-    def submit_answer(self, user_answer, confidence: str = "sure") -> tuple[bool, object]:
+    def submit_answer(
+        self,
+        user_answer,
+        confidence: str = "sure",
+        manual_is_correct: bool | None = None,
+    ) -> tuple[bool, object]:
         """Submit an answer for the current question. Returns (is_correct, normalized_answer)."""
         # Guard: reject if not in IN_PROGRESS (prevents double-submit)
         if self._state != QuizState.IN_PROGRESS:
@@ -192,13 +197,24 @@ class QuizSession(QObject):
         if existing is not None:
             self._set_state(QuizState.SHOWING_FEEDBACK)
             return existing.is_correct, existing.user_answer
+        requires_manual_grade = question.type == QuestionType.SHORT_ANSWER
+        if requires_manual_grade and not isinstance(manual_is_correct, bool):
+            raise ValueError("short_answer requires manual self-assessment")
+        if not requires_manual_grade and manual_is_correct is not None:
+            raise ValueError("manual self-assessment is only valid for short_answer")
 
         # Re-entrancy guard: prevent signal handlers from calling
         # next_question() mid-submit (which would corrupt the index).
         self._in_submit = True
 
         try:
-            is_correct, normalized = Grader.grade(question, user_answer)
+            if requires_manual_grade:
+                is_correct = manual_is_correct
+                normalized = str(user_answer or "").strip()
+                grading_method = "manual_self_assessment"
+            else:
+                is_correct, normalized = Grader.grade(question, user_answer)
+                grading_method = "automatic"
             time_spent = time.time() - self._question_start_time
 
             record = AnswerRecord(
@@ -207,6 +223,7 @@ class QuizSession(QObject):
                 user_answer=normalized,
                 is_correct=is_correct,
                 confidence=confidence if confidence in ("sure", "unsure") else "sure",
+                grading_method=grading_method,
                 time_spent_seconds=round(time_spent, 1),
                 attempted_at=datetime.now(timezone.utc).isoformat(),
             )
@@ -268,12 +285,26 @@ class QuizSession(QObject):
         self,
         draft_answers: dict[str, object],
         unsure_question_ids: set[str] | list[str] | tuple[str, ...] = (),
+        manual_grades: dict[str, bool] | None = None,
     ) -> Optional[ProgressRecord]:
         """Finalize by grading saved drafts and treating blank drafts as skipped."""
         if self._state not in (QuizState.IN_PROGRESS, QuizState.SHOWING_FEEDBACK):
             return self.get_progress_record() if self._state == QuizState.COMPLETED else None
 
         unsure_ids = {str(question_id) for question_id in unsure_question_ids}
+        manual_grades = dict(manual_grades or {})
+        missing_manual_grades = [
+            question.question_id
+            for question in self._questions
+            if question.type == QuestionType.SHORT_ANSWER
+            and _draft_has_answer(draft_answers.get(question.question_id))
+            and not isinstance(manual_grades.get(question.question_id), bool)
+        ]
+        if missing_manual_grades:
+            raise ValueError(
+                "short_answer requires manual self-assessment: "
+                + ", ".join(missing_manual_grades)
+            )
         existing_by_id = {answer.question_id: answer for answer in self._answers}
         completed_answers: list[AnswerRecord] = []
         attempted_at = datetime.now(timezone.utc).isoformat()
@@ -282,7 +313,13 @@ class QuizSession(QObject):
             question_id = question.question_id
             draft = draft_answers.get(question_id)
             if _draft_has_answer(draft):
-                is_correct, normalized = Grader.grade(question, draft)
+                if question.type == QuestionType.SHORT_ANSWER:
+                    is_correct = manual_grades[question_id]
+                    normalized = str(draft or "").strip()
+                    grading_method = "manual_self_assessment"
+                else:
+                    is_correct, normalized = Grader.grade(question, draft)
+                    grading_method = "automatic"
                 completed_answers.append(
                     AnswerRecord(
                         question_id=question_id,
@@ -290,6 +327,7 @@ class QuizSession(QObject):
                         user_answer=normalized,
                         is_correct=is_correct,
                         confidence="unsure" if question_id in unsure_ids else "sure",
+                        grading_method=grading_method,
                         time_spent_seconds=0.0,
                         attempted_at=attempted_at,
                     )

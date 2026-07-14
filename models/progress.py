@@ -18,6 +18,7 @@ class AnswerRecord:
     is_correct: bool
     skipped: bool = False
     confidence: str = "sure"  # "sure" or "unsure"
+    grading_method: str = "automatic"
     time_spent_seconds: float = 0.0
     attempted_at: str = ""
 
@@ -29,6 +30,7 @@ class AnswerRecord:
             "is_correct": self.is_correct,
             "skipped": self.skipped,
             "confidence": self.confidence,
+            "grading_method": self.grading_method,
             "time_spent_seconds": self.time_spent_seconds,
             "attempted_at": self.attempted_at,
         }
@@ -42,6 +44,7 @@ class AnswerRecord:
             is_correct=data.get("is_correct", False),
             skipped=data.get("skipped", False),
             confidence=data.get("confidence", "sure"),
+            grading_method=data.get("grading_method", "automatic"),
             time_spent_seconds=data.get("time_spent_seconds", 0.0),
             attempted_at=data.get("attempted_at", ""),
         )

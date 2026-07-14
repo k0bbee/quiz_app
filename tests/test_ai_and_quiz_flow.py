@@ -129,6 +129,81 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
         self.assertEqual("unsure", loaded.confidence)
 
+    def test_answer_record_persists_manual_self_assessment_method(self):
+        record = AnswerRecord(
+            question_id="short-1",
+            index_in_session=0,
+            user_answer="我的回答",
+            is_correct=True,
+            grading_method="manual_self_assessment",
+        )
+
+        loaded = AnswerRecord.from_dict(record.to_dict())
+
+        self.assertEqual("manual_self_assessment", loaded.grading_method)
+
+    def test_quiz_session_requires_and_records_short_answer_self_assessment(self):
+        question = Question.create_new(
+            qtype=QuestionType.SHORT_ANSWER,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": {"stem": "解释 DMA", "options": [], "explanation": "DMA 的解释说明。"},
+                "en": {"stem": "Explain DMA", "options": [], "explanation": "DMA explanation."},
+            },
+            correct_answer="设备可绕过 CPU 直接传输数据。",
+            topic="io",
+        )
+        qset = QuestionSet.create_new(
+            title={"zh": "简答", "en": "Short Answer"},
+            description={"zh": "", "en": ""},
+            topics=["io"],
+            question_ids=[question.question_id],
+        )
+        session = QuizSession()
+        session.start_fixed_order(qset, [question], language="zh")
+
+        with self.assertRaisesRegex(ValueError, "manual self-assessment"):
+            session.submit_answer("我的回答")
+
+        is_correct, _answer = session.submit_answer(
+            "我的回答",
+            manual_is_correct=True,
+        )
+
+        self.assertTrue(is_correct)
+        self.assertEqual("manual_self_assessment", session.answers[0].grading_method)
+
+    def test_exam_drafts_require_short_answer_self_assessment_mapping(self):
+        question = Question.create_new(
+            qtype=QuestionType.SHORT_ANSWER,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": {"stem": "解释中断", "options": [], "explanation": "中断的解释说明。"},
+                "en": {"stem": "Explain interrupts", "options": [], "explanation": "Interrupt explanation."},
+            },
+            correct_answer="设备通过中断通知 CPU。",
+            topic="io",
+        )
+        qset = QuestionSet.create_new(
+            title={"zh": "模拟", "en": "Exam"},
+            description={"zh": "", "en": ""},
+            topics=["io"],
+            question_ids=[question.question_id],
+        )
+        session = QuizSession()
+        session.start_fixed_order(qset, [question], language="zh")
+
+        with self.assertRaisesRegex(ValueError, "manual self-assessment"):
+            session.complete_with_drafts({question.question_id: "我的回答"})
+
+        record = session.complete_with_drafts(
+            {question.question_id: "我的回答"},
+            manual_grades={question.question_id: False},
+        )
+
+        self.assertFalse(record.answers[0].is_correct)
+        self.assertEqual("manual_self_assessment", record.answers[0].grading_method)
+
     def test_progress_record_persists_marked_review_questions(self):
         record = ProgressRecord.create_new("set-1")
         record.marked_review_question_ids = ["q1", "q3"]
