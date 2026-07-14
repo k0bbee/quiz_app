@@ -5,8 +5,7 @@ import json
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QTextEdit, QSplitter,
-    QMessageBox, QWidget, QFormLayout, QLineEdit, QComboBox,
-    QTabWidget, QScrollArea, QFrame,
+    QMessageBox, QWidget, QTabWidget,
 )
 from PyQt6.QtCore import Qt
 
@@ -14,6 +13,7 @@ from models.question import Question
 from core.language_manager import LanguageManager
 from ui.widgets.source_refs import format_source_refs
 from ui.widgets.source_refs_panel import SourceRefsPanel
+from ui.widgets.question_form_editor import QuestionFormEditor
 from utils.constants import Difficulty, QuestionType
 
 
@@ -143,69 +143,22 @@ class QuestionReviewDialog(QDialog):
         preview_layout.addWidget(self.detail_editor)
         self.review_tabs.addTab(preview_page, self.lang_manager.get_text("预览", "Preview"))
 
-        edit_scroll = QScrollArea()
-        edit_scroll.setWidgetResizable(True)
-        edit_scroll.setFrameShape(QFrame.Shape.NoFrame)
         edit_page = QWidget()
         edit_layout = QVBoxLayout(edit_page)
         edit_layout.setContentsMargins(0, 8, 8, 0)
         self.edit_label = QLabel(self.lang_manager.get_text("编辑当前题目:", "Edit Current Question:"))
         self.edit_label.setObjectName("dialogEditLabel")
         edit_layout.addWidget(self.edit_label)
-
-        edit_form = QFormLayout()
-        self.zh_stem_editor = QTextEdit()
-        self.zh_stem_editor.setObjectName("reviewZhStemEditor")
-        self.zh_stem_editor.setMaximumHeight(52)
-        edit_form.addRow(self.lang_manager.get_text("中文题干", "ZH Stem"), self.zh_stem_editor)
-
-        self.en_stem_editor = QTextEdit()
-        self.en_stem_editor.setObjectName("reviewEnStemEditor")
-        self.en_stem_editor.setMaximumHeight(52)
-        edit_form.addRow(self.lang_manager.get_text("英文题干", "EN Stem"), self.en_stem_editor)
-
-        self.zh_options_editor = QTextEdit()
-        self.zh_options_editor.setObjectName("reviewZhOptionsEditor")
-        self.zh_options_editor.setMaximumHeight(70)
-        edit_form.addRow(self.lang_manager.get_text("中文选项", "ZH Options"), self.zh_options_editor)
-
-        self.en_options_editor = QTextEdit()
-        self.en_options_editor.setObjectName("reviewEnOptionsEditor")
-        self.en_options_editor.setMaximumHeight(70)
-        edit_form.addRow(self.lang_manager.get_text("英文选项", "EN Options"), self.en_options_editor)
-
-        self.topic_editor = QLineEdit()
-        self.topic_editor.setObjectName("reviewTopicEditor")
-        edit_form.addRow(self.lang_manager.get_text("主题", "Topic"), self.topic_editor)
-
-        self.difficulty_editor = QComboBox()
-        self.difficulty_editor.setObjectName("reviewDifficultyEditor")
-        for difficulty in Difficulty:
-            self.difficulty_editor.addItem(difficulty.value, difficulty.value)
-        edit_form.addRow(self.lang_manager.get_text("难度", "Difficulty"), self.difficulty_editor)
-
-        self.correct_answer_editor = QLineEdit()
-        self.correct_answer_editor.setObjectName("reviewCorrectAnswerEditor")
-        edit_form.addRow(self.lang_manager.get_text("正确答案", "Correct Answer"), self.correct_answer_editor)
-
-        self.zh_explanation_editor = QTextEdit()
-        self.zh_explanation_editor.setObjectName("reviewZhExplanationEditor")
-        self.zh_explanation_editor.setMaximumHeight(70)
-        edit_form.addRow(self.lang_manager.get_text("中文解析", "ZH Explanation"), self.zh_explanation_editor)
-
-        self.en_explanation_editor = QTextEdit()
-        self.en_explanation_editor.setObjectName("reviewEnExplanationEditor")
-        self.en_explanation_editor.setMaximumHeight(70)
-        edit_form.addRow(self.lang_manager.get_text("英文解析", "EN Explanation"), self.en_explanation_editor)
-        edit_layout.addLayout(edit_form)
+        self.form_editor = QuestionFormEditor(edit_page)
+        if self.course_project is not None:
+            self.form_editor.set_topics(getattr(self.course_project, "topics", []) or [])
+        edit_layout.addWidget(self.form_editor, 1)
 
         self.apply_edit_btn = QPushButton(self.lang_manager.get_text("应用修改", "Apply Edits"))
         self.apply_edit_btn.setObjectName("secondaryButton")
         self.apply_edit_btn.clicked.connect(self._apply_current_edits)
         edit_layout.addWidget(self.apply_edit_btn)
-        edit_layout.addStretch()
-        edit_scroll.setWidget(edit_page)
-        self.review_tabs.addTab(edit_scroll, self.lang_manager.get_text("编辑", "Edit"))
+        self.review_tabs.addTab(edit_page, self.lang_manager.get_text("编辑", "Edit"))
 
         source_page = QWidget()
         source_layout = QVBoxLayout(source_page)
@@ -500,17 +453,7 @@ class QuestionReviewDialog(QDialog):
     def _populate_edit_fields(self, question: Question):
         """Load the selected question into editable fields."""
         self._loading_edit_fields = True
-        self.zh_stem_editor.setPlainText(question.get_stem("zh"))
-        self.en_stem_editor.setPlainText(question.get_stem("en"))
-        self.zh_options_editor.setPlainText(self._format_options_for_edit(question.get_options("zh")))
-        self.en_options_editor.setPlainText(self._format_options_for_edit(question.get_options("en")))
-        self.topic_editor.setText(question.topic_title())
-        difficulty_index = self.difficulty_editor.findData(question.difficulty.value)
-        if difficulty_index >= 0:
-            self.difficulty_editor.setCurrentIndex(difficulty_index)
-        self.correct_answer_editor.setText(self._format_answer_for_edit(question.correct_answer))
-        self.zh_explanation_editor.setPlainText(question.get_explanation("zh"))
-        self.en_explanation_editor.setPlainText(question.get_explanation("en"))
+        self.form_editor.load_payload(question.to_dict())
         self._loading_edit_fields = False
 
     def _apply_current_edits(self, checked: bool = False, refresh: bool = True):
@@ -520,36 +463,8 @@ class QuestionReviewDialog(QDialog):
         if self._current_index < 0 or self._current_index >= len(self.questions):
             return
         question = self.questions[self._current_index]
-        question.bilingual.setdefault("zh", {})
-        question.bilingual.setdefault("en", {})
-        question.bilingual["zh"]["stem"] = self.zh_stem_editor.toPlainText().strip()
-        question.bilingual["en"]["stem"] = self.en_stem_editor.toPlainText().strip()
-        question.bilingual["zh"]["options"] = self._edited_options(
-            self.zh_options_editor,
-            question.get_options("zh"),
-            question.type,
-        )
-        question.bilingual["en"]["options"] = self._edited_options(
-            self.en_options_editor,
-            question.get_options("en"),
-            question.type,
-        )
-        question.bilingual["zh"]["explanation"] = self.zh_explanation_editor.toPlainText().strip()
-        question.bilingual["en"]["explanation"] = self.en_explanation_editor.toPlainText().strip()
-        topic_title = self.topic_editor.text().strip()
-        question.metadata = dict(question.metadata or {})
-        if topic_title:
-            question.metadata["topic_title"] = topic_title
-        else:
-            question.metadata.pop("topic_title", None)
-        difficulty = self.difficulty_editor.currentData()
-        if difficulty in {item.value for item in Difficulty}:
-            question.difficulty = Difficulty(difficulty)
-        question.correct_answer = self._edited_answer(
-            self.correct_answer_editor.text(),
-            question.correct_answer,
-            question.type,
-        )
+        updated = Question.from_dict(self.form_editor.to_payload())
+        question.__dict__.update(updated.__dict__)
         self._update_list_item(self._current_index)
         if refresh:
             self._on_selection_changed(self.question_list.currentRow())
@@ -560,73 +475,6 @@ class QuestionReviewDialog(QDialog):
         if isinstance(options, list) and all(isinstance(option, str) for option in options):
             return "\n".join(options)
         return json.dumps(options, ensure_ascii=False, indent=2)
-
-    @staticmethod
-    def _format_options_for_edit(options: object) -> str:
-        """Return editable options text without losing structured IDs."""
-        if isinstance(options, list) and all(isinstance(option, str) for option in options):
-            return "\n".join(options)
-        if options in (None, [], {}):
-            return ""
-        return json.dumps(options, ensure_ascii=False, indent=2)
-
-    @staticmethod
-    def _format_answer_for_edit(answer: object) -> str:
-        """Return editable answer text while preserving structured answers."""
-        if isinstance(answer, str):
-            return answer
-        return json.dumps(answer, ensure_ascii=False)
-
-    @staticmethod
-    def _edited_options(editor: QTextEdit, original_options: object, question_type: QuestionType) -> object:
-        """Return edited options, preserving structured option shapes by default."""
-        text = editor.toPlainText().strip()
-        if question_type in {
-            QuestionType.MULTIPLE_CHOICE,
-            QuestionType.SCENARIO_CHOICE,
-            QuestionType.TRUE_FALSE,
-        }:
-            return [line.strip() for line in text.splitlines() if line.strip()]
-        if not text:
-            return [] if isinstance(original_options, list) else {}
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError:
-            return original_options
-        if question_type == QuestionType.MATCHING and isinstance(parsed, dict):
-            return parsed
-        if question_type == QuestionType.ORDERING and isinstance(parsed, list):
-            return parsed
-        if question_type == QuestionType.FILL_IN_BLANK:
-            return parsed if isinstance(parsed, list) else original_options
-        return parsed
-
-    @staticmethod
-    def _edited_answer(text: str, original_answer: object, question_type: QuestionType) -> object:
-        """Return edited correct answer without coercing structured answers to strings."""
-        clean = text.strip()
-        if question_type in {
-            QuestionType.MULTIPLE_CHOICE,
-            QuestionType.SCENARIO_CHOICE,
-            QuestionType.TRUE_FALSE,
-        }:
-            return clean
-        if not clean:
-            return original_answer
-        try:
-            parsed = json.loads(clean)
-        except json.JSONDecodeError:
-            if question_type == QuestionType.FILL_IN_BLANK:
-                values = [line.strip() for line in clean.splitlines() if line.strip()]
-                return values or original_answer
-            return original_answer
-        if question_type == QuestionType.FILL_IN_BLANK and isinstance(parsed, list):
-            return parsed
-        if question_type == QuestionType.MATCHING and isinstance(parsed, list):
-            return parsed
-        if question_type == QuestionType.ORDERING and isinstance(parsed, list):
-            return parsed
-        return original_answer
 
     def _initial_accepted_indexes(self) -> set[int]:
         """Accept only questions that do not need manual confidence review."""

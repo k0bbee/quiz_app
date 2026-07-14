@@ -10,6 +10,7 @@ from models.course_project import CourseTopic
 from models.question import Question
 from core.language_manager import LanguageManager
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
+from ui.widgets.question_form_editor import QuestionFormEditor
 from utils.constants import Difficulty, QuestionType
 
 
@@ -38,6 +39,16 @@ def make_question(index: int) -> Question:
 
 
 class QuestionReviewDialogPaginationTests(unittest.TestCase):
+    def test_review_dialog_reuses_shared_question_form_editor(self):
+        dialog = QuestionReviewDialog([make_question(1)], page_size=10)
+        self.addCleanup(dialog.close)
+
+        self.assertIsInstance(dialog.form_editor, QuestionFormEditor)
+        self.assertIs(
+            dialog.form_editor,
+            dialog.review_tabs.widget(1).findChild(QuestionFormEditor),
+        )
+
     def test_review_dialog_separates_preview_edit_source_and_quality_tabs(self):
         question = make_question(1)
         question.metadata["source_ref_status"] = "invalid_model_ref"
@@ -233,7 +244,7 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.addCleanup(dialog.close)
 
         self.assertEqual(set(), dialog._accepted)
-        dialog.zh_explanation_editor.setPlainText("补充后的解析仍需用户显式接受。")
+        dialog.form_editor.zh_explanation_editor.setPlainText("补充后的解析仍需用户显式接受。")
         dialog.apply_edit_btn.click()
 
         self.assertEqual(set(), dialog._accepted)
@@ -245,7 +256,7 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         dialog = QuestionReviewDialog([first, second], page_size=10)
         self.addCleanup(dialog.close)
 
-        dialog.zh_stem_editor.setPlainText("切题前未点应用的修改")
+        dialog.form_editor.zh_stem_editor.setPlainText("切题前未点应用的修改")
         dialog.question_list.setCurrentRow(1)
 
         self.assertEqual("切题前未点应用的修改", first.get_stem("zh"))
@@ -256,13 +267,22 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         dialog = QuestionReviewDialog([question], page_size=10)
         self.addCleanup(dialog.close)
 
-        dialog.zh_stem_editor.setPlainText("修改后的中文题干")
-        dialog.en_stem_editor.setPlainText("Edited English stem")
-        dialog.zh_options_editor.setPlainText("A. 正确项\nB. 干扰项\nC. 新干扰项")
-        dialog.en_options_editor.setPlainText("A. Correct\nB. Distractor\nC. New distractor")
-        dialog.correct_answer_editor.setText("C")
-        dialog.zh_explanation_editor.setPlainText("修改后的中文解析")
-        dialog.en_explanation_editor.setPlainText("Edited English explanation")
+        editor = dialog.form_editor
+        editor.zh_stem_editor.setPlainText("修改后的中文题干")
+        editor.en_stem_editor.setPlainText("Edited English stem")
+        for row, (zh, en) in enumerate((
+            ("正确项", "Correct"),
+            ("干扰项", "Distractor"),
+            ("新干扰项", "New distractor"),
+            ("另一干扰项", "Another distractor"),
+        )):
+            editor.choice_table.item(row, 1).setText(zh)
+            editor.choice_table.item(row, 2).setText(en)
+        editor.choice_answer_combo.setCurrentIndex(
+            editor.choice_answer_combo.findData("C")
+        )
+        editor.zh_explanation_editor.setPlainText("修改后的中文解析")
+        editor.en_explanation_editor.setPlainText("Edited English explanation")
 
         dialog.apply_edit_btn.click()
 
@@ -271,12 +291,28 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         edited = accepted[0]
         self.assertEqual("修改后的中文题干", edited.get_stem("zh"))
         self.assertEqual("Edited English stem", edited.get_stem("en"))
-        self.assertEqual(["A. 正确项", "B. 干扰项", "C. 新干扰项"], edited.get_options("zh"))
-        self.assertEqual(["A. Correct", "B. Distractor", "C. New distractor"], edited.get_options("en"))
+        self.assertEqual(["A. 正确项", "B. 干扰项", "C. 新干扰项", "D. 另一干扰项"], edited.get_options("zh"))
+        self.assertEqual(["A. Correct", "B. Distractor", "C. New distractor", "D. Another distractor"], edited.get_options("en"))
         self.assertEqual("C", edited.correct_answer)
         self.assertEqual("修改后的中文解析", edited.get_explanation("zh"))
         self.assertEqual("Edited English explanation", edited.get_explanation("en"))
         self.assertIn("修改后的中文题干", dialog.question_list.item(0).text())
+
+    def test_review_dialog_shared_editor_can_convert_question_type(self):
+        question = make_question(1)
+        dialog = QuestionReviewDialog([question], page_size=10)
+        self.addCleanup(dialog.close)
+        editor = dialog.form_editor
+
+        editor.type_combo.setCurrentIndex(
+            editor.type_combo.findData(QuestionType.SHORT_ANSWER.value)
+        )
+        editor.short_answer_editor.setPlainText("按关键机制给分的参考答案")
+        dialog.apply_edit_btn.click()
+
+        self.assertEqual(QuestionType.SHORT_ANSWER, question.type)
+        self.assertEqual([], question.get_options("zh"))
+        self.assertEqual("按关键机制给分的参考答案", question.correct_answer)
 
     def test_review_dialog_flags_lightweight_quality_warnings(self):
         long_correct = make_question(1)
@@ -312,8 +348,9 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         dialog = QuestionReviewDialog([question], page_size=10)
         self.addCleanup(dialog.close)
 
-        dialog.topic_editor.setText("进程调度")
-        dialog.difficulty_editor.setCurrentText("hard")
+        editor = dialog.form_editor
+        editor.topic_combo.setItemText(editor.topic_combo.currentIndex(), "进程调度")
+        editor.difficulty_combo.setCurrentIndex(editor.difficulty_combo.findData("hard"))
 
         dialog.apply_edit_btn.click()
 
@@ -340,8 +377,8 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         dialog = QuestionReviewDialog([question], page_size=10)
         self.addCleanup(dialog.close)
 
-        self.assertEqual("Cache Mapping", dialog.topic_editor.text())
-        dialog.zh_explanation_editor.setPlainText("只修改解析，不应该改变答案结构。")
+        self.assertEqual("Cache Mapping", dialog.form_editor.topic_combo.currentText())
+        dialog.form_editor.zh_explanation_editor.setPlainText("只修改解析，不应该改变答案结构。")
         dialog.apply_edit_btn.click()
 
         edited = dialog.get_accepted_questions()[0]
@@ -378,7 +415,7 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         dialog = QuestionReviewDialog([question], page_size=10)
         self.addCleanup(dialog.close)
 
-        dialog.zh_stem_editor.setPlainText("配对 I/O 机制和含义。")
+        dialog.form_editor.zh_stem_editor.setPlainText("配对 I/O 机制和含义。")
         dialog.apply_edit_btn.click()
 
         edited = dialog.get_accepted_questions()[0]
