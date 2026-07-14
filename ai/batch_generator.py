@@ -55,7 +55,6 @@ class GenerationWorker(QThread):
         self._last_json_truncation_detail: str = ""
         self._cached_source_refs: list[dict] = []
         self._cached_source_refs_by_topic: dict[str, list[dict]] = {}
-        self._source_ref_registry: dict[str, dict] = {}
         self._source_resolver = GenerationSourceResolver()
         self._runtime_instruction = ""
         self._runtime_instruction_lock = threading.Lock()
@@ -376,10 +375,6 @@ class GenerationWorker(QThread):
                 )
                 for topic_key in topic_keys
             }
-            self._source_ref_registry = _source_ref_registry(
-                self._cached_source_refs,
-                self._cached_source_refs_by_topic,
-            )
             self._source_resolver = GenerationSourceResolver(
                 self._cached_source_refs,
                 self._cached_source_refs_by_topic,
@@ -390,7 +385,6 @@ class GenerationWorker(QThread):
                 max_chars=GENERATION_CONTEXT_MAX_CHARS,
             )
         self._cached_source_refs_by_topic = {}
-        self._source_ref_registry = {}
         self._source_resolver = GenerationSourceResolver()
         return self.course_content
 
@@ -410,48 +404,6 @@ class GenerationWorker(QThread):
             self._source_resolver = resolver
         plan_refs = quotas.evidence_refs_for_item(plan_item) if quotas is not None else []
         return resolver.resolve(qdata, plan_item=plan_item, plan_refs=plan_refs)
-
-    def _fallback_source_refs(
-        self,
-        plan_item: QuestionPlanItem | None,
-        quotas: GenerationQuotaTracker | None,
-    ) -> tuple[list[dict], str]:
-        if quotas is not None:
-            plan_refs = quotas.evidence_refs_for_item(plan_item)
-            if plan_refs:
-                return plan_refs[:1], "fallback_plan_evidence"
-        refs = [dict(ref) for ref in self._cached_source_refs[:1]]
-        if refs:
-            return refs, "fallback_global_evidence"
-        return [], ""
-
-    def _validated_model_source_refs(
-        self,
-        refs: list[dict],
-        plan_item: QuestionPlanItem | None,
-    ) -> tuple[list[dict], list[str]]:
-        if not self._source_ref_registry:
-            return refs, []
-        valid: list[dict] = []
-        invalid_ids: list[str] = []
-        allowed_chunk_ids = set(plan_item.evidence_chunk_ids if plan_item else [])
-        for ref in refs:
-            chunk_id = str(ref.get("chunk_id") or "").strip()
-            if not chunk_id:
-                invalid_ids.append("")
-                continue
-            registered = self._source_ref_registry.get(chunk_id)
-            if registered is None:
-                invalid_ids.append(chunk_id)
-                continue
-            if allowed_chunk_ids and chunk_id not in allowed_chunk_ids:
-                invalid_ids.append(chunk_id)
-                continue
-            if not _source_ref_matches_registered(ref, registered):
-                invalid_ids.append(chunk_id)
-                continue
-            valid.append(dict(registered))
-        return valid, invalid_ids
 
     def _course_metadata(self) -> dict:
         if self.course_project is None:
@@ -509,63 +461,3 @@ def _rejection_reason_key(reason: str) -> str:
 
 def _normalize_plan_id(value) -> str:
     return str(value or "").strip()
-
-
-def _source_ref_registry(refs: list[dict], refs_by_topic: dict[str, list[dict]]) -> dict[str, dict]:
-    registry: dict[str, dict] = {}
-    for ref in refs:
-        _register_source_ref(registry, ref)
-    for topic_refs in refs_by_topic.values():
-        for ref in topic_refs:
-            _register_source_ref(registry, ref)
-    return registry
-
-
-def _register_source_ref(registry: dict[str, dict], ref) -> None:
-    clean = _sanitize_source_ref(ref)
-    chunk_id = str(clean.get("chunk_id") or "").strip()
-    if chunk_id and chunk_id not in registry:
-        registry[chunk_id] = clean
-
-
-def _source_ref_matches_registered(ref: dict, registered: dict) -> bool:
-    expected_file = str(registered.get("source_file") or "").strip()
-    actual_file = str(ref.get("source_file") or "").strip()
-    if actual_file and expected_file and actual_file != expected_file:
-        return False
-    expected_page = registered.get("page_or_slide")
-    actual_page = ref.get("page_or_slide")
-    if actual_page is not None and expected_page is not None and actual_page != expected_page:
-        return False
-    return True
-
-
-def _sanitize_source_ref(ref) -> dict:
-    if not isinstance(ref, dict):
-        return {}
-    chunk_id = str(ref.get("chunk_id", "") or "").strip()
-    source_file = str(ref.get("source_file", "") or "").strip()
-    if not chunk_id and not source_file:
-        return {}
-    page_or_slide = ref.get("page_or_slide")
-    if page_or_slide is not None:
-        try:
-            page_or_slide = int(page_or_slide)
-        except (TypeError, ValueError):
-            page_or_slide = None
-    clean = {
-        "chunk_id": chunk_id,
-        "source_file": source_file,
-        "page_or_slide": page_or_slide,
-        "heading": str(ref.get("heading", "") or "").strip(),
-        "excerpt": _compact_source_excerpt(ref.get("excerpt", "")),
-        "content_hash": str(ref.get("content_hash", "") or "").strip(),
-    }
-    return {key: value for key, value in clean.items() if value not in ("", None)}
-
-
-def _compact_source_excerpt(value, limit: int = 320) -> str:
-    text = " ".join(str(value or "").split())
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "…"
