@@ -2459,19 +2459,23 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             cache_row = 0
             screen.topic_table.selectRow(cache_row)
-            screen.mark_mastered_btn.click()
+            screen.mark_mastered_action.trigger()
 
             self.assertTrue(mastery_overrides.is_topic_mastered("course-a", "cache"))
             self.assertEqual("已掌握", screen.topic_table.item(cache_row, 3).text())
             self.assertNotIn("Cache", screen.recommendation_label.text())
             self.assertIn("Process", screen.recommendation_label.text())
 
-            screen.mark_mastered_btn.click()
+            screen.mark_mastered_action.trigger()
 
             self.assertFalse(mastery_overrides.is_topic_mastered("course-a", "cache"))
             self.assertIn("Cache", screen.recommendation_label.text())
 
     def test_progress_dashboard_topic_action_buttons_emit_selected_topic(self):
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
             progress_manager = ProgressManager(str(Path(tmpdir) / "progress"))
@@ -2486,6 +2490,11 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 topic="cache",
             )
             question.metadata["course_id"] = "course-a"
+            question.metadata["source_refs"] = [{
+                "source_file": "Cache.pdf",
+                "page_or_slide": 8,
+                "heading": "Cache Address Breakdown",
+            }]
             question_bank.save(question)
             record = ProgressRecord.create_new("set-any")
             record.status = "completed"
@@ -2501,15 +2510,65 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             emitted: list[tuple[str, str]] = []
             screen.practice_topic_requested.connect(lambda topic: emitted.append(("practice", topic)))
             screen.review_topic_requested.connect(lambda topic: emitted.append(("review", topic)))
+            screen.generate_topic_requested.connect(lambda topic: emitted.append(("generate", topic)))
 
             screen.topic_table.selectRow(0)
             self.assertTrue(screen.practice_topic_btn.isEnabled())
             self.assertTrue(screen.review_topic_btn.isEnabled())
+            self.assertTrue(screen.generate_topic_action.isEnabled())
 
             screen.practice_topic_btn.click()
             screen.review_topic_btn.click()
+            screen.generate_topic_action.trigger()
+            screen.view_topic_source_action.trigger()
 
-            self.assertEqual([("practice", "cache"), ("review", "cache")], emitted)
+            self.assertEqual(
+                [("practice", "cache"), ("review", "cache"), ("generate", "cache")],
+                emitted,
+            )
+            self.assertFalse(screen.source_refs_panel.isHidden())
+            self.assertIn("Cache.pdf", screen.source_refs_panel.text())
+            self.assertIn("主题来源", screen.source_refs_panel.text())
+
+    def test_progress_topic_actions_use_three_text_only_top_level_entries(self):
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = ProgressDashboard(
+                ProgressManager(str(Path(tmpdir) / "progress")),
+                QuestionBank(str(Path(tmpdir) / "questions")),
+            )
+
+            top_level_widgets = [
+                screen.topic_action_layout.itemAt(index).widget()
+                for index in range(screen.topic_action_layout.count())
+                if screen.topic_action_layout.itemAt(index).widget() is not None
+            ]
+
+            self.assertEqual(
+                [screen.topic_action_hint, screen.practice_topic_btn, screen.review_topic_btn, screen.more_topic_actions_btn],
+                top_level_widgets,
+            )
+            self.assertTrue(screen.more_topic_actions_btn.icon().isNull())
+            self.assertEqual(
+                ["生成新题", "查看来源", "标记已掌握"],
+                [action.text() for action in screen.more_topic_actions_menu.actions()],
+            )
+
+    def test_progress_topic_generation_builds_single_topic_reviewable_plan(self):
+        from ui.main_window import MainWindow
+
+        calls = []
+        host = types.SimpleNamespace(_on_ai_generate=lambda **kwargs: calls.append(kwargs))
+
+        MainWindow._on_generate_progress_topic(host, "cache")
+
+        plan = calls[0]["initial_plan"]
+        self.assertEqual(10, plan.question_count)
+        self.assertEqual(("cache",), plan.selected_topics)
+        self.assertEqual({"cache": 100}, dict(plan.topic_weights))
 
     def test_progress_reset_clears_mastered_topic_overrides(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -31,6 +31,7 @@ from utils.constants import Difficulty, topic_value
 from ai.course_summary_factory import provider_requires_api_key
 from ai.provider_presets import detect_local_agents
 from ai.settings_validation import validate_ai_settings
+from ai.exam_plan import ExamGenerationPlan
 
 
 def _provider_requires_api_key(settings: dict) -> bool:
@@ -269,6 +270,7 @@ class MainWindow(QMainWindow):
         self.results_screen.review_topic_requested.connect(self._on_review_progress_topic)
         self.progress_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
         self.progress_screen.review_topic_requested.connect(self._on_review_progress_topic)
+        self.progress_screen.generate_topic_requested.connect(self._on_generate_progress_topic)
         # Language manager
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -814,6 +816,17 @@ class MainWindow(QMainWindow):
         fallback_title = questions[0].topic_title() if questions else ""
         topic = questions[0].topic if questions else topic_key
         return topic_display_name(topic, course_project, lang, fallback_title)
+
+    def _on_generate_progress_topic(self, topic_key: str):
+        """Open generation review prefilled for exactly one progress topic."""
+        topic_key = topic_value(topic_key)
+        if not topic_key:
+            return
+        self._on_ai_generate(initial_plan=ExamGenerationPlan(
+            question_count=10,
+            selected_topics=(topic_key,),
+            topic_weights={topic_key: 100},
+        ))
 
     def _start_progress_topic_quiz(self, questions: list, label: str):
         """Open QuizScreen for a progress-topic action."""
