@@ -298,14 +298,25 @@ class AIGenerationDialog(QDialog):
         self.scenario_slider = self._make_slider(question_type_defaults["scenario_choice"])
         self.true_false_slider = self._make_slider(question_type_defaults["true_false"])
         self.fill_blank_slider = self._make_slider(question_type_defaults["fill_in_blank"])
+        self.matching_slider = self._make_slider(question_type_defaults["matching"])
+        self.ordering_slider = self._make_slider(question_type_defaults["ordering"])
         self.mc_label = QLabel(self.lang_manager.get_text("选择题", "Multiple choice"))
         self.scenario_label = QLabel(self.lang_manager.get_text("情境选择题", "Scenario choice"))
         self.true_false_label = QLabel(self.lang_manager.get_text("判断题", "True / false"))
         self.fill_blank_label = QLabel(self.lang_manager.get_text("填空题", "Fill in the blank"))
+        self.advanced_question_type_heading = QLabel(
+            self.lang_manager.get_text("高级题型（默认关闭）", "Advanced types (off by default)")
+        )
+        self.advanced_question_type_heading.setObjectName("sectionLabel")
+        self.matching_label = QLabel(self.lang_manager.get_text("配对题", "Matching"))
+        self.ordering_label = QLabel(self.lang_manager.get_text("排序题", "Ordering"))
         structure_layout.addRow(self.mc_label, self._slider_row(self.mc_slider))
         structure_layout.addRow(self.scenario_label, self._slider_row(self.scenario_slider))
         structure_layout.addRow(self.true_false_label, self._slider_row(self.true_false_slider))
         structure_layout.addRow(self.fill_blank_label, self._slider_row(self.fill_blank_slider))
+        structure_layout.addRow(self.advanced_question_type_heading)
+        structure_layout.addRow(self.matching_label, self._slider_row(self.matching_slider))
+        structure_layout.addRow(self.ordering_label, self._slider_row(self.ordering_slider))
 
         self.difficulty_weight_heading = QLabel(
             self.lang_manager.get_text("难度权重", "Difficulty weights")
@@ -546,7 +557,14 @@ class AIGenerationDialog(QDialog):
             ], effective_only=True)
         question_sliders = [
             getattr(self, name, None)
-            for name in ("mc_slider", "scenario_slider", "true_false_slider", "fill_blank_slider")
+            for name in (
+                "mc_slider",
+                "scenario_slider",
+                "true_false_slider",
+                "fill_blank_slider",
+                "matching_slider",
+                "ordering_slider",
+            )
         ]
         difficulty_sliders = [
             getattr(self, name, None)
@@ -684,6 +702,11 @@ class AIGenerationDialog(QDialog):
         self.scenario_label.setText(self.lang_manager.get_text("情境选择题", "Scenario choice"))
         self.true_false_label.setText(self.lang_manager.get_text("判断题", "True / false"))
         self.fill_blank_label.setText(self.lang_manager.get_text("填空题", "Fill in the blank"))
+        self.advanced_question_type_heading.setText(self.lang_manager.get_text(
+            "高级题型（默认关闭）", "Advanced types (off by default)"
+        ))
+        self.matching_label.setText(self.lang_manager.get_text("配对题", "Matching"))
+        self.ordering_label.setText(self.lang_manager.get_text("排序题", "Ordering"))
         self.difficulty_weight_heading.setText(
             self.lang_manager.get_text("难度权重", "Difficulty weights")
         )
@@ -954,6 +977,8 @@ class AIGenerationDialog(QDialog):
                 "scenario_choice": self.scenario_slider.value(),
                 "true_false": self.true_false_slider.value(),
                 "fill_in_blank": self.fill_blank_slider.value(),
+                "matching": self.matching_slider.value(),
+                "ordering": self.ordering_slider.value(),
             },
             difficulty_weights={
                 "easy": self.easy_slider.value(),
@@ -998,6 +1023,8 @@ class AIGenerationDialog(QDialog):
             self.scenario_slider: plan.question_type_weights["scenario_choice"],
             self.true_false_slider: plan.question_type_weights["true_false"],
             self.fill_blank_slider: plan.question_type_weights["fill_in_blank"],
+            self.matching_slider: plan.question_type_weights["matching"],
+            self.ordering_slider: plan.question_type_weights["ordering"],
             self.easy_slider: plan.difficulty_weights["easy"],
             self.medium_slider: plan.difficulty_weights["medium"],
             self.hard_slider: plan.difficulty_weights["hard"],
@@ -1309,6 +1336,8 @@ class AIGenerationDialog(QDialog):
                 "scenario_choice": self.scenario_slider.value(),
                 "true_false": self.true_false_slider.value(),
                 "fill_in_blank": self.fill_blank_slider.value(),
+                "matching": self.matching_slider.value(),
+                "ordering": self.ordering_slider.value(),
             },
             difficulty_weights={
                 "easy": self.easy_slider.value(),

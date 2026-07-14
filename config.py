@@ -65,6 +65,8 @@ DEFAULT_QUESTION_TYPE_WEIGHTS = {
     "scenario_choice": 20,
     "true_false": 5,
     "fill_in_blank": 5,
+    "matching": 0,
+    "ordering": 0,
 }
 
 DEFAULT_DIFFICULTY_WEIGHTS = {
