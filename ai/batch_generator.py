@@ -9,7 +9,7 @@ from ai.llm_client import LLMClient
 from ai.generation_candidate_processor import GenerationCandidateProcessor
 from ai.generation_config import GenerationConfig, allocate_weighted_counts
 from ai.generation_quota_tracker import GenerationQuotaTracker
-from ai.generation_report import GenerationReport
+from ai.generation_result_accumulator import GenerationResultAccumulator
 from ai.generation_source_resolver import GenerationSourceResolver
 from ai.prompt_templates import PromptBuilder
 from ai.question_generation_service import QuestionGenerationService
@@ -64,26 +64,27 @@ class GenerationWorker(QThread):
         try:
             self.progress.emit("Building prompt...")
 
-            all_questions = []
-            total_rejected = 0
-            rejection_reasons: dict[str, int] = {}
-            attempts = 0
             # Cache context once — it doesn't change between batches
             course_context = self._build_course_context()
             max_attempts = max(3, (self.count // ACCEPT_TARGET_BATCH_SIZE + 1) * 3)
+            result_state = self._make_result_accumulator(max_attempts)
             quotas = self._make_quota_tracker()
             candidate_processor = self._make_candidate_processor(quotas)
 
-            while len(all_questions) < self.count and not self._cancelled.is_set() and attempts < max_attempts:
-                attempts += 1
-                remaining = self.count - len(all_questions)
+            while (
+                result_state.accepted_count < self.count
+                and not self._cancelled.is_set()
+                and result_state.attempts < max_attempts
+            ):
+                attempt = result_state.start_attempt()
+                remaining = self.count - result_state.accepted_count
                 batch_count = self._accept_target_count(remaining)
                 candidate_count = self._candidate_batch_count(batch_count)
                 plan_summary = quotas.pending_plan_summary(candidate_count)
                 self.progress.emit(
-                    f"Generating question {len(all_questions) + 1}/{self.count}... "
+                    f"Generating question {result_state.accepted_count + 1}/{self.count}... "
                     f"({self.count} questions total; "
-                    f"attempt {attempts}/{max_attempts}; "
+                    f"attempt {attempt}/{max_attempts}; "
                     f"requesting {candidate_count} candidate"
                     f"{'s' if candidate_count != 1 else ''})"
                 )
@@ -138,35 +139,26 @@ class GenerationWorker(QThread):
                         batch_questions.append(outcome.question)
                     else:
                         rejected += 1
-                        _record_rejection(rejection_reasons, outcome.rejection_reason)
+                        result_state.reject(outcome.rejection_reason)
                         detail = f" ({outcome.detail})" if outcome.detail else ""
                         debug(
                             "Skipping generated question: "
                             f"{outcome.rejection_reason}{detail}"
                         )
 
-                all_questions.extend(batch_questions)
+                result_state.accept(batch_questions)
                 if batch_questions:
                     self.question_ready.emit(batch_questions)
-                total_rejected += rejected
                 self.progress.emit(
                     f"Accepted {len(batch_questions)} question(s), rejected {rejected}. "
-                    f"Total accepted: {len(all_questions)}/{self.count}"
+                    f"Total accepted: {result_state.accepted_count}/{self.count}"
                 )
 
             if self._cancelled.is_set():
-                if all_questions:
-                    report = GenerationReport(
-                        requested_count=self.count,
-                        accepted_count=len(all_questions),
-                        rejected_count=total_rejected,
-                        attempts=attempts,
-                        max_attempts=max_attempts,
+                if result_state.questions:
+                    report = result_state.build_report(
                         status="cancelled",
-                        missing_quotas=quotas.missing_quotas(),
-                        failed_plan_items=quotas.missing_plan_items(),
-                        rejection_reasons=dict(rejection_reasons),
-                        template=self.generation_config.template,
+                        quotas=quotas,
                         error=AppError(
                             code="GEN-CANCEL-001",
                             severity="info",
@@ -179,34 +171,29 @@ class GenerationWorker(QThread):
                         ),
                     )
                     self.progress.emit(report.summary_text("en"))
-                    self.partial_done.emit(all_questions, report)
+                    self.partial_done.emit(result_state.questions, report)
                 return
 
-            if len(all_questions) != self.count:
+            if result_state.accepted_count != self.count:
                 if self._last_json_truncation_detail:
                     self.error.emit(self._json_truncation_error(self._last_json_truncation_detail))
                     return
-                shortfall = quotas.shortfall_error(len(all_questions), self.count)
-                if all_questions:
-                    report = GenerationReport(
-                        requested_count=self.count,
-                        accepted_count=len(all_questions),
-                        rejected_count=total_rejected,
-                        attempts=attempts,
-                        max_attempts=max_attempts,
+                shortfall = quotas.shortfall_error(
+                    result_state.accepted_count,
+                    self.count,
+                )
+                if result_state.questions:
+                    report = result_state.build_report(
                         status="partial",
-                        missing_quotas=quotas.missing_quotas(),
-                        failed_plan_items=quotas.missing_plan_items(),
-                        rejection_reasons=dict(rejection_reasons),
-                        template=self.generation_config.template,
+                        quotas=quotas,
                         error=shortfall,
                     )
                     self.progress.emit(report.summary_text("en"))
-                    self.partial_done.emit(all_questions, report)
+                    self.partial_done.emit(result_state.questions, report)
                 else:
                     self.error.emit(shortfall)
                 return
-            self.batch_done.emit(all_questions)
+            self.batch_done.emit(result_state.questions)
 
         except Exception as e:
             self.error.emit(f"Unexpected error: {str(e)}")
@@ -235,6 +222,16 @@ class GenerationWorker(QThread):
             self.count,
             self._cached_source_refs_by_topic,
             self.question_plan_items or None,
+        )
+
+    def _make_result_accumulator(
+        self,
+        max_attempts: int,
+    ) -> GenerationResultAccumulator:
+        return GenerationResultAccumulator(
+            self.count,
+            max_attempts=max_attempts,
+            template=self.generation_config.template,
         )
 
     def _make_candidate_processor(
@@ -392,26 +389,3 @@ class GenerationWorker(QThread):
     def _normalize_topic(self, raw_topic):
         """Map model topic output to one of the selected topics."""
         return self._generation_service.normalize_topic(raw_topic)
-
-
-def _record_rejection(reasons: dict[str, int], reason: str) -> None:
-    key = _rejection_reason_key(reason)
-    reasons[key] = reasons.get(key, 0) + 1
-
-
-def _rejection_reason_key(reason: str) -> str:
-    normalized = str(reason or "").strip()
-    lower = normalized.lower()
-    if lower.startswith("quota already filled"):
-        return "quota already filled"
-    if lower.startswith("no remaining plan slot"):
-        return "no remaining plan slot"
-    if "not selected" in lower:
-        return "topic not selected"
-    if "missing" in lower or "weak" in lower:
-        return "incomplete question content"
-    if "unknown question type" in lower:
-        return "unknown question type"
-    if not normalized:
-        return "unknown rejection"
-    return normalized

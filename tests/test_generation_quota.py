@@ -6,6 +6,7 @@ from ai.generation_candidate_processor import CandidateProcessingResult
 from ai.generation_config import GenerationConfig
 from ai.generation_quota_tracker import GenerationQuotaTracker
 from ai.generation_report import GenerationReport
+from ai.generation_result_accumulator import GenerationResultAccumulator
 from ai.question_plan import QuestionPlanItem
 from core.app_errors import AppError
 from models.course_project import CourseTopic
@@ -190,6 +191,23 @@ class GenerationQuotaTests(unittest.TestCase):
         )
 
         self.assertIsInstance(worker._make_quota_tracker(), GenerationQuotaTracker)
+
+    def test_worker_builds_result_accumulator_from_pure_business_module(self):
+        worker = GenerationWorker(
+            SequenceClient([]),
+            course_content="content",
+            topics=["cache"],
+            count=2,
+            difficulty="medium",
+            generation_config=GenerationConfig(template="final_exam"),
+        )
+
+        state = worker._make_result_accumulator(max_attempts=9)
+
+        self.assertIsInstance(state, GenerationResultAccumulator)
+        self.assertEqual(2, state.requested_count)
+        self.assertEqual(9, state.max_attempts)
+        self.assertEqual("final_exam", state.template)
 
     def test_worker_delegates_candidate_acceptance_to_pure_processor(self):
         candidate = raw_question("multiple_choice", "medium", "cache")
