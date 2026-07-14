@@ -10,9 +10,9 @@ from ai.generation_batch_scheduler import GenerationBatchScheduler
 from ai.generation_candidate_processor import GenerationCandidateProcessor
 from ai.generation_config import GenerationConfig, allocate_weighted_counts
 from ai.generation_quota_tracker import GenerationQuotaTracker
+from ai.generation_request_service import GenerationRequestService
 from ai.generation_result_accumulator import GenerationResultAccumulator
 from ai.generation_source_resolver import GenerationSourceResolver
-from ai.prompt_templates import PromptBuilder
 from ai.question_generation_service import QuestionGenerationService
 from ai.question_plan import QuestionPlanItem
 from core.app_errors import AppError
@@ -67,6 +67,7 @@ class GenerationWorker(QThread):
             result_state = self._make_result_accumulator(max_attempts)
             quotas = self._make_quota_tracker()
             candidate_processor = self._make_candidate_processor(quotas)
+            request_service = self._make_request_service(course_context)
 
             while (
                 result_state.accepted_count < self.count
@@ -88,21 +89,15 @@ class GenerationWorker(QThread):
                 if plan_summary:
                     self.progress.emit(f"Filling plan slots: {plan_summary}")
 
-                messages = PromptBuilder.build_messages(
-                    course_context,
-                    self.topics,
+                request_result = request_service.request(
                     candidate_count,
-                    self.difficulty,
                     quotas.remaining_config(),
-                    topic_keywords=self._topic_keywords(),
-                    question_plan_items=quotas.pending_plan_items(candidate_count),
-                    runtime_instruction=self.runtime_instruction(),
+                    quotas.pending_plan_items(candidate_count),
+                    self.runtime_instruction(),
                 )
 
-                data = self.client.generate_with_json(messages, max_retries=3)
-
-                if data is None:
-                    detail = getattr(self.client, "last_error", "") or "Check your API key, model, provider, and network connection."
+                if not request_result.succeeded:
+                    detail = request_result.error
                     if scheduler.recover_from_failure(detail, candidate_count):
                         self.progress.emit(
                             "AI response looked truncated. Retrying with a smaller batch..."
@@ -114,15 +109,7 @@ class GenerationWorker(QThread):
                     self.error.emit(detail)
                     return
                 scheduler.record_success()
-                if not isinstance(data, dict):
-                    self.error.emit("AI response JSON must be an object with a questions list.")
-                    return
-
-                # Parse questions from response
-                raw_questions = data.get("questions", [])
-                if not raw_questions:
-                    self.error.emit("No questions found in the API response.")
-                    return
+                raw_questions = request_result.questions
 
                 batch_questions = []
                 rejected = 0
@@ -233,6 +220,15 @@ class GenerationWorker(QThread):
 
     def _make_batch_scheduler(self) -> GenerationBatchScheduler:
         return GenerationBatchScheduler(self.count)
+
+    def _make_request_service(self, course_context: str) -> GenerationRequestService:
+        return GenerationRequestService(
+            self.client,
+            course_context=course_context,
+            topics=self.topics,
+            difficulty=self.difficulty,
+            topic_keywords=self._topic_keywords(),
+        )
 
     def _make_candidate_processor(
         self,

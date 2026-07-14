@@ -7,6 +7,7 @@ from ai.generation_candidate_processor import CandidateProcessingResult
 from ai.generation_config import GenerationConfig
 from ai.generation_quota_tracker import GenerationQuotaTracker
 from ai.generation_report import GenerationReport
+from ai.generation_request_service import GenerationRequestService
 from ai.generation_result_accumulator import GenerationResultAccumulator
 from ai.question_plan import QuestionPlanItem
 from core.app_errors import AppError
@@ -224,6 +225,24 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertIsInstance(scheduler, GenerationBatchScheduler)
         self.assertEqual(7, scheduler.requested_count)
         self.assertEqual(24, scheduler.max_attempts)
+
+    def test_worker_builds_request_service_from_pure_business_module(self):
+        client = SequenceClient([])
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="hard",
+        )
+
+        service = worker._make_request_service("retrieved course context")
+
+        self.assertIsInstance(service, GenerationRequestService)
+        self.assertIs(client, service.client)
+        self.assertEqual("retrieved course context", service.course_context)
+        self.assertEqual(["cache"], service.topics)
+        self.assertEqual("hard", service.difficulty)
 
     def test_worker_delegates_candidate_acceptance_to_pure_processor(self):
         candidate = raw_question("multiple_choice", "medium", "cache")
