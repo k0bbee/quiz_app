@@ -45,10 +45,11 @@ class PastExamPredictionTests(unittest.TestCase):
             self.assertEqual(25, prediction.plan.question_count)
             self.assertEqual({"io", "dma"}, set(prediction.plan.selected_topics))
             self.assertEqual({"io": 50, "dma": 50}, dict(prediction.plan.topic_weights))
-            self.assertEqual(86, prediction.plan.question_type_weights["multiple_choice"])
-            self.assertEqual(14, prediction.plan.question_type_weights["true_false"])
+            self.assertEqual(60, prediction.plan.question_type_weights["multiple_choice"])
+            self.assertEqual(10, prediction.plan.question_type_weights["true_false"])
+            self.assertEqual(30, prediction.plan.question_type_weights["short_answer"])
             self.assertEqual(0, prediction.plan.question_type_weights["scenario_choice"])
-            self.assertTrue(any("short_answer" in warning for warning in prediction.warnings))
+            self.assertFalse(any("short_answer" in warning for warning in prediction.warnings))
             self.assertEqual("final_exam", prediction.plan.template)
 
     def test_planner_requires_a_reliable_topic_profile(self):

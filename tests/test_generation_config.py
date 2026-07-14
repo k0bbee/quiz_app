@@ -1008,6 +1008,7 @@ class GenerationConfigTests(unittest.TestCase):
         dialog.fill_blank_slider.setValue(10)
         dialog.matching_slider.setValue(25)
         dialog.ordering_slider.setValue(15)
+        dialog.short_answer_slider.setValue(35)
         dialog.easy_slider.setValue(10)
         dialog.medium_slider.setValue(60)
         dialog.hard_slider.setValue(30)
@@ -1023,6 +1024,7 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(config.question_type_weights["scenario_choice"], 30)
         self.assertEqual(config.question_type_weights["matching"], 25)
         self.assertEqual(config.question_type_weights["ordering"], 15)
+        self.assertEqual(config.question_type_weights["short_answer"], 35)
         self.assertEqual(config.difficulty_weights["medium"], 60)
         self.assertEqual(config.topic_weights["cache"], 80)
         self.assertEqual(config.topic_weights["process"], 20)
@@ -2066,8 +2068,9 @@ class GenerationConfigTests(unittest.TestCase):
                 "scenario_choice": 20,
                 "true_false": 20,
                 "fill_in_blank": 10,
-                "matching": 20,
+                "matching": 10,
                 "ordering": 10,
+                "short_answer": 10,
             },
             difficulty_weights={"easy": 10, "medium": 50, "hard": 40},
             topic_weights={"process": 100},

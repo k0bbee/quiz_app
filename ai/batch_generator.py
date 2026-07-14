@@ -771,9 +771,6 @@ class GenerationWorker(QThread):
         except ValueError:
             return False, f"unknown question type: {qtype}"
 
-        if question_type == QuestionType.SHORT_ANSWER:
-            return False, "short_answer is not suitable for auto-graded quick practice"
-
         topic = self._normalize_topic(qdata.get("topic"))
         if topic is None:
             return False, f"topic {qdata.get('topic')} was not selected"
@@ -838,6 +835,10 @@ class GenerationWorker(QThread):
             answer = qdata.get("correct_answer")
             if not isinstance(answer, list) or not answer:
                 return False, "ordering answer must be a non-empty list of item ids"
+        elif question_type == QuestionType.SHORT_ANSWER:
+            answer = str(qdata.get("correct_answer", "") or "").strip()
+            if len(answer) < 10:
+                return False, "short_answer must include a meaningful reference answer"
 
         return True, ""
 

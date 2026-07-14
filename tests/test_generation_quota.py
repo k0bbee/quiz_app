@@ -820,6 +820,44 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual([], errors)
         self.assertEqual(["cache line"], batches[0][0].correct_answer)
 
+    def test_worker_accepts_explicit_short_answer_with_reference_answer(self):
+        config = GenerationConfig(
+            question_type_weights={
+                "multiple_choice": 0,
+                "scenario_choice": 0,
+                "true_false": 0,
+                "fill_in_blank": 0,
+                "matching": 0,
+                "ordering": 0,
+                "short_answer": 100,
+            },
+            difficulty_weights={"easy": 0, "medium": 100, "hard": 0},
+            topic_weights={"io": 100},
+        )
+        question = raw_question("short_answer", "medium", "io", 1)
+        question["correct_answer"] = "DMA allows a device to transfer data without per-word CPU intervention."
+        question["bilingual"]["zh"]["options"] = []
+        question["bilingual"]["en"]["options"] = []
+        client = SequenceClient([{"questions": [question]}])
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=["io"],
+            count=1,
+            difficulty="mixed",
+            generation_config=config,
+        )
+        batches = []
+        errors = []
+        worker.batch_done.connect(batches.append)
+        worker.error.connect(errors.append)
+
+        worker.run()
+
+        self.assertEqual([], errors)
+        self.assertEqual("short_answer", batches[0][0].type.value)
+        self.assertIn("DMA", batches[0][0].correct_answer)
+
     def test_worker_maps_snake_case_model_topic_to_selected_topic_label(self):
         config = GenerationConfig(
             question_type_weights={

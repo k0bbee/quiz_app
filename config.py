@@ -67,6 +67,7 @@ DEFAULT_QUESTION_TYPE_WEIGHTS = {
     "fill_in_blank": 5,
     "matching": 0,
     "ordering": 0,
+    "short_answer": 0,
 }
 
 DEFAULT_DIFFICULTY_WEIGHTS = {

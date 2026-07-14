@@ -19,7 +19,7 @@ class PromptBuilder:
    - multiple_choice (~70%)
    - scenario_choice (~20%)
    - true_false or fill_in_blank (~10%)
-   Do NOT generate short_answer unless explicitly requested.
+   Do NOT generate short_answer unless it has a positive requested weight.
 
 3. **NO Topic Labels**: Do NOT include topic/subject labels in the question stem. Write naturally without hinting at the answer. Example:
    - BAD: "【Cache Mapping】In a set-associative cache..."
@@ -127,6 +127,8 @@ class PromptBuilder:
 
 13. **Stable IDs for Matching/Ordering**: Matching and ordering questions MUST use stable IDs in options and correct_answer. The same conceptual item must reuse the same ID across zh/en text. Use IDs like left_1/right_1 for matching and item_1/item_2 for ordering. correct_answer must contain IDs, not display text.
 
+14. **Short-Answer Self-Assessment**: Generate short_answer only when its requested weight is positive. Provide a concrete, meaningful reference answer in correct_answer. The learner will compare their response with this reference and explicitly self-assess; never imply automatic semantic grading.
+
 14. **Source References**: If the course reference includes Evidence chunks such as "Evidence source-a1b2c3d4e5", each question SHOULD include a source_refs array using only those provided chunk_id values. Include a short excerpt/content_hash when available, but do not invent chunk IDs or source files.
 
 15. **Plan Slot Binding**: If question plan slots are provided, each returned question for a listed slot MUST include that exact plan_id value, such as "plan-001". Do not invent plan IDs.
@@ -226,7 +228,7 @@ Selected-topic boundary:
 
 - Generate EXACTLY {count} questions
 - Follow the requested topic coverage weights as closely as possible
-- Follow the requested question type distribution as closely as possible; avoid short_answer
+- Follow the requested question type distribution as closely as possible; include short_answer only when its requested weight is positive
 - Follow the requested difficulty distribution as closely as possible
 - If question plan slots are provided, generate questions matching those slots in order as closely as possible
 - Each returned question for a listed slot MUST include that exact plan_id. Example: {{"plan_id": "plan-001", "type": "multiple_choice", "difficulty": "medium", "topic": "cache"}}
@@ -237,6 +239,7 @@ Selected-topic boundary:
 - For matching and ordering, use stable IDs in options and correct_answer; never put translated display text inside correct_answer
   Example matching option: {{"id": "left_1", "text": "..."}} with "correct_answer": [["left_1", "right_1"]]
   Example ordering answer: "correct_answer": ["item_1", "item_2", "item_3"]
+- For short_answer, provide a meaningful reference answer string; it will be graded by explicit learner self-assessment, not automatic semantic matching
 - If source evidence chunks are shown (for example "Evidence source-a1b2c3d4e5"), include "source_refs": [{{"chunk_id": "source-a1b2c3d4e5", "source_file": "...", "page_or_slide": 1, "heading": "...", "excerpt": "...", "content_hash": "..."}}] using only provided chunk IDs
 - NO topic labels in question stems
 - Output valid JSON matching the schema exactly
