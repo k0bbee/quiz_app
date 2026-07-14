@@ -198,6 +198,8 @@ class CourseInitializer:
             generation_profile=generation_profile,
             generation_profile_source=profile_source,
             generation_profile_warning=profile_warning,
+            exam_scope_mode=project.exam_scope_mode,
+            exam_scope_topic_ids=list(project.exam_scope_topic_ids),
         )
         self._report(task, "index")
         updated = attach_index_to_project(updated)

@@ -65,6 +65,53 @@ class CourseProject:
     generation_profile: dict = field(default_factory=dict)
     generation_profile_source: str = "local"
     generation_profile_warning: str = ""
+    exam_scope_mode: str = "all"
+    exam_scope_topic_ids: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """Normalize persisted scope data without breaking legacy projects."""
+        if self.exam_scope_mode not in {"all", "selected"}:
+            self.exam_scope_mode = "all"
+        self.exam_scope_topic_ids = self._ordered_topic_ids(self.exam_scope_topic_ids)
+        if self.exam_scope_mode == "all":
+            self.exam_scope_topic_ids = []
+        elif self.topics and not self.exam_scope_topic_ids:
+            self.exam_scope_mode = "all"
+
+    def exam_topics(self) -> list[CourseTopic]:
+        """Return course topics currently included in the exam scope."""
+        if self.exam_scope_mode == "all":
+            return list(self.topics)
+        selected = set(self.exam_scope_topic_ids)
+        return [topic for topic in self.topics if topic.topic_id in selected]
+
+    def set_exam_scope(self, mode: str, topic_ids: list[str] | None = None) -> None:
+        """Apply a validated exam scope using stable topic identities."""
+        normalized_mode = str(mode or "").strip().lower()
+        if normalized_mode not in {"all", "selected"}:
+            raise ValueError("Exam scope mode must be 'all' or 'selected'")
+        if normalized_mode == "all":
+            self.exam_scope_mode = "all"
+            self.exam_scope_topic_ids = []
+            return
+
+        selected_ids = self._ordered_topic_ids(topic_ids or [])
+        if self.topics and not selected_ids:
+            raise ValueError("Selected exam scope requires at least one topic")
+        self.exam_scope_mode = "selected"
+        self.exam_scope_topic_ids = selected_ids
+
+    def _ordered_topic_ids(self, topic_ids) -> list[str]:
+        requested = {
+            str(topic_id or "").strip()
+            for topic_id in (topic_ids or [])
+            if str(topic_id or "").strip()
+        }
+        return [
+            topic.topic_id
+            for topic in self.topics
+            if topic.topic_id and topic.topic_id in requested
+        ]
 
     def to_dict(self) -> dict:
         return {
@@ -82,6 +129,8 @@ class CourseProject:
             "generation_profile": self.generation_profile,
             "generation_profile_source": self.generation_profile_source,
             "generation_profile_warning": self.generation_profile_warning,
+            "exam_scope_mode": self.exam_scope_mode,
+            "exam_scope_topic_ids": list(self.exam_scope_topic_ids),
         }
 
     @classmethod
@@ -101,6 +150,8 @@ class CourseProject:
             generation_profile=data.get("generation_profile", {}),
             generation_profile_source=data.get("generation_profile_source", "local"),
             generation_profile_warning=data.get("generation_profile_warning", ""),
+            exam_scope_mode=data.get("exam_scope_mode", "all"),
+            exam_scope_topic_ids=list(data.get("exam_scope_topic_ids", []) or []),
         )
 
 
