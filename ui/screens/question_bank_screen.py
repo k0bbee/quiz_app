@@ -14,6 +14,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 
 from core.language_manager import LanguageManager
 from core.question_bank_maintenance import backfill_source_refs_from_course, remove_question_from_sets
+from core.question_validation import validate_question_quality
 from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
@@ -704,17 +705,7 @@ class QuestionBankScreen(QWidget):
                 return True
         if metadata.get("invalid_source_ref_ids"):
             return True
-        if cls._source_ref_status(question) in {"invalid_model_ref", "missing", "fallback_global_evidence", "global_fallback"}:
-            return True
-        if cls._plan_match_status(question) == "matched_by_shape":
-            return True
-        zh_explanation = question.get_explanation("zh").strip()
-        en_explanation = question.get_explanation("en").strip()
-        if not zh_explanation and not en_explanation:
-            return True
-        if cls._has_imbalanced_explanations(zh_explanation, en_explanation):
-            return True
-        return cls._has_overlong_correct_option(question)
+        return bool(validate_question_quality(question))
 
     @classmethod
     def _has_missing_source(cls, question: Question) -> bool:
@@ -734,32 +725,6 @@ class QuestionBankScreen(QWidget):
     @staticmethod
     def _plan_match_status(question: Question) -> str:
         return str((question.metadata or {}).get("plan_match_status", "") or "").strip().lower()
-
-    @staticmethod
-    def _has_imbalanced_explanations(zh_explanation: str, en_explanation: str) -> bool:
-        zh_len = len(zh_explanation.strip())
-        en_len = len(en_explanation.strip())
-        if min(zh_len, en_len) == 0:
-            return False
-        return max(zh_len, en_len) >= max(60, min(zh_len, en_len) * 4)
-
-    @staticmethod
-    def _has_overlong_correct_option(question: Question) -> bool:
-        answer = str(question.correct_answer).strip().upper()
-        if len(answer) != 1:
-            return False
-        options = question.get_options("zh") or question.get_options("en")
-        option_lengths: dict[str, int] = {}
-        for option in options:
-            text = str(option or "").strip()
-            match = re.match(r"^([A-Ha-h])[\.\)、)]\s*(.*)$", text)
-            if match:
-                option_lengths[match.group(1).upper()] = len(match.group(2).strip())
-        correct_len = option_lengths.get(answer)
-        distractor_lengths = [length for key, length in option_lengths.items() if key != answer]
-        if correct_len is None or len(distractor_lengths) < 2:
-            return False
-        return correct_len >= max(40, max(distractor_lengths) * 2)
 
     def _question_list_title(self, question: Question) -> str:
         difficulty = self._compact_text(question.difficulty.value, 12)

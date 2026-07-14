@@ -708,6 +708,29 @@ class QuestionBankCleanupTests(unittest.TestCase):
             screen.quality_filter.setCurrentIndex(weak_plan_idx)
             self.assertEqual({"q-weak-plan"}, visible_ids())
 
+    def test_question_bank_quality_filter_uses_shared_option_bias_threshold(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            biased = self._question("q-biased", "cache")
+            biased.bilingual["zh"]["options"] = [
+                "A. " + "正确答案内容" * 6,
+                "B. 干扰项",
+                "C. 干扰项",
+                "D. 干扰项",
+            ]
+            biased.correct_answer = "A"
+            question_bank.save(biased)
+
+            screen = QuestionBankScreen(question_bank)
+            quality_idx = screen.quality_filter.findData("quality_warnings")
+            screen.quality_filter.setCurrentIndex(quality_idx)
+
+            visible_ids = {
+                screen.question_list.item(row).data(Qt.ItemDataRole.UserRole)
+                for row in range(screen.question_list.count())
+            }
+            self.assertEqual({"q-biased"}, visible_ids)
+
     def test_question_bank_screen_multi_selection_disables_ambiguous_editing(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
