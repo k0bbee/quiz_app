@@ -1,8 +1,9 @@
 import unittest
 import re
 
-from ai.batch_generator import GenerationQuotaTracker, GenerationWorker, allocate_weighted_counts
+from ai.batch_generator import GenerationWorker, allocate_weighted_counts
 from ai.generation_config import GenerationConfig
+from ai.generation_quota_tracker import GenerationQuotaTracker
 from ai.generation_report import GenerationReport
 from ai.question_plan import QuestionPlanItem
 from core.app_errors import AppError
