@@ -11,6 +11,7 @@ from PyQt6.QtCore import Qt
 
 from models.question import Question
 from core.language_manager import LanguageManager
+from core.question_validation import validate_question_quality
 from ui.widgets.source_refs import format_source_refs
 from ui.widgets.source_refs_panel import SourceRefsPanel
 from ui.widgets.question_form_editor import QuestionFormEditor
@@ -486,78 +487,13 @@ class QuestionReviewDialog(QDialog):
 
     def _review_warnings(self, question: Question) -> list[str]:
         """Return review warnings that should require explicit user acceptance."""
-        metadata = question.metadata or {}
-        warnings: list[str] = []
-        source_status = str(metadata.get("source_ref_status", "") or "").strip().lower()
-        if source_status in {"invalid_model_ref", "missing"}:
-            warnings.append(self.lang_manager.get_text("来源无效或缺失", "Source invalid or missing"))
-        elif source_status in {"fallback_global_evidence", "global_fallback"}:
-            warnings.append(self.lang_manager.get_text("来源来自全局兜底", "Source uses global fallback"))
-
-        plan_status = str(metadata.get("plan_match_status", "") or "").strip().lower()
-        if plan_status == "matched_by_shape":
-            warnings.append(self.lang_manager.get_text("仅按形状匹配生成计划", "Plan matched by shape only"))
-
-        zh_explanation = question.get_explanation("zh").strip()
-        en_explanation = question.get_explanation("en").strip()
-        if not zh_explanation and not en_explanation:
-            warnings.append(self.lang_manager.get_text("缺少解析", "Missing explanation"))
-        elif self._has_imbalanced_explanations(zh_explanation, en_explanation):
-            warnings.append(self.lang_manager.get_text("中英文解析长度差异过大", "Bilingual explanation lengths differ greatly"))
-        if self._has_overlong_correct_option(question):
-            warnings.append(self.lang_manager.get_text("正确选项明显长于干扰项", "Correct option is much longer than distractors"))
-        return warnings
+        language = self.lang_manager.current
+        return [issue.message(language) for issue in validate_question_quality(question)]
 
     def _review_warning_tags(self, question: Question) -> list[str]:
         """Return compact warning labels for the review list."""
-        metadata = question.metadata or {}
-        tags: list[str] = []
-        source_status = str(metadata.get("source_ref_status", "") or "").strip().lower()
-        if source_status in {"invalid_model_ref", "missing"}:
-            tags.append(self.lang_manager.get_text("[无来源]", "[No Source]"))
-        elif source_status in {"fallback_global_evidence", "global_fallback"}:
-            tags.append(self.lang_manager.get_text("[兜底来源]", "[Fallback]"))
-
-        plan_status = str(metadata.get("plan_match_status", "") or "").strip().lower()
-        if plan_status == "matched_by_shape":
-            tags.append(self.lang_manager.get_text("[计划匹配弱]", "[Weak Plan]"))
-
-        zh_explanation = question.get_explanation("zh").strip()
-        en_explanation = question.get_explanation("en").strip()
-        if not zh_explanation and not en_explanation:
-            tags.append(self.lang_manager.get_text("[缺解析]", "[No Explanation]"))
-        elif self._has_imbalanced_explanations(zh_explanation, en_explanation):
-            tags.append(self.lang_manager.get_text("[解析失衡]", "[Explanation Imbalance]"))
-        if self._has_overlong_correct_option(question):
-            tags.append(self.lang_manager.get_text("[答案过长]", "[Long Answer]"))
-        return tags
-
-    @staticmethod
-    def _has_imbalanced_explanations(zh_explanation: str, en_explanation: str) -> bool:
-        """Return whether bilingual explanations are suspiciously imbalanced."""
-        zh_len = len(zh_explanation.strip())
-        en_len = len(en_explanation.strip())
-        if min(zh_len, en_len) == 0:
-            return False
-        return max(zh_len, en_len) >= max(60, min(zh_len, en_len) * 4)
-
-    @staticmethod
-    def _has_overlong_correct_option(question: Question) -> bool:
-        """Return whether the correct option is much longer than all distractors."""
-        answer = str(question.correct_answer).strip().upper()
-        if len(answer) != 1 or not answer.isalpha():
-            return False
-        index = ord(answer) - ord("A")
-        for lang in ("zh", "en"):
-            options = question.get_options(lang)
-            if not options or index < 0 or index >= len(options):
-                continue
-            lengths = [len(str(option).strip()) for option in options]
-            correct_length = lengths[index]
-            distractor_lengths = [length for idx, length in enumerate(lengths) if idx != index]
-            if distractor_lengths and correct_length >= max(28, max(distractor_lengths) * 2):
-                return True
-        return False
+        language = self.lang_manager.current
+        return [issue.tag(language) for issue in validate_question_quality(question)]
 
 
 def _format_source_refs(source_refs, status: str | None = None) -> str:
