@@ -5,6 +5,7 @@ from ai.batch_generator import GenerationWorker, allocate_weighted_counts
 from ai.generation_batch_scheduler import GenerationBatchScheduler
 from ai.generation_candidate_processor import CandidateProcessingResult
 from ai.generation_config import GenerationConfig
+from ai.generation_events import CompletedEvent, ProgressEvent, QuestionsReadyEvent
 from ai.generation_quota_tracker import GenerationQuotaTracker
 from ai.generation_report import GenerationReport
 from ai.generation_request_service import GenerationRequestService
@@ -273,6 +274,44 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual([candidate], processor.payloads)
         self.assertEqual([[accepted_sentinel]], completed)
 
+    def test_worker_delegates_generation_loop_to_runner_events(self):
+        worker = GenerationWorker(
+            SequenceClient(
+                [{"questions": [raw_question("multiple_choice", "medium", "cache")]}]
+            ),
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="medium",
+        )
+        accepted_sentinel = object()
+
+        class RecordingRunner:
+            def __init__(self):
+                self.called = False
+
+            def events(self):
+                self.called = True
+                yield ProgressEvent("runner progress")
+                yield QuestionsReadyEvent((accepted_sentinel,))
+                yield CompletedEvent((accepted_sentinel,))
+
+        runner = RecordingRunner()
+        worker._make_runner = lambda _course_context: runner
+        progress = []
+        ready = []
+        completed = []
+        worker.progress.connect(progress.append)
+        worker.question_ready.connect(ready.append)
+        worker.batch_done.connect(completed.append)
+
+        worker.run()
+
+        self.assertTrue(runner.called)
+        self.assertEqual("runner progress", progress[-1])
+        self.assertEqual([[accepted_sentinel]], ready)
+        self.assertEqual([[accepted_sentinel]], completed)
+
     def test_worker_normalizes_matching_options_and_answers_to_stable_ids(self):
         worker = GenerationWorker(
             SequenceClient([]),
@@ -447,8 +486,10 @@ class GenerationQuotaTests(unittest.TestCase):
             message for message in progress_messages if "Filling plan slots" in message
         ]
         self.assertTrue(refill_messages)
+        self.assertIn("cache", refill_messages[-2])
+        self.assertIn("process", refill_messages[-2])
         self.assertIn("planned slot", refill_messages[-1])
-        self.assertIn("cache", refill_messages[-1])
+        self.assertNotIn("cache", refill_messages[-1])
         self.assertIn("process", refill_messages[-1])
         self.assertNotIn("cache/multiple_choice/easy", refill_messages[-1])
         self.assertNotIn("process/true_false/hard", refill_messages[-1])

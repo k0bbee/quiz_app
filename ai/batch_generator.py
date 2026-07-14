@@ -1,5 +1,4 @@
 """Batch question generator using QThread for non-blocking AI generation."""
-from utils.logger import debug, warning, error
 
 import threading
 
@@ -9,13 +8,20 @@ from ai.llm_client import LLMClient
 from ai.generation_batch_scheduler import GenerationBatchScheduler
 from ai.generation_candidate_processor import GenerationCandidateProcessor
 from ai.generation_config import GenerationConfig, allocate_weighted_counts
+from ai.generation_events import (
+    CompletedEvent,
+    FailedEvent,
+    PartialResultEvent,
+    ProgressEvent,
+    QuestionsReadyEvent,
+)
 from ai.generation_quota_tracker import GenerationQuotaTracker
 from ai.generation_request_service import GenerationRequestService
 from ai.generation_result_accumulator import GenerationResultAccumulator
+from ai.generation_runner import GenerationRunner
 from ai.generation_source_resolver import GenerationSourceResolver
 from ai.question_generation_service import QuestionGenerationService
 from ai.question_plan import QuestionPlanItem
-from core.app_errors import AppError
 from core.course_index import retrieve_course_context, retrieve_course_source_refs
 from utils.constants import topic_value
 
@@ -59,130 +65,28 @@ class GenerationWorker(QThread):
         """Execute generation in background thread."""
         try:
             self.progress.emit("Building prompt...")
-
-            # Cache context once — it doesn't change between batches
             course_context = self._build_course_context()
-            scheduler = self._make_batch_scheduler()
-            max_attempts = scheduler.max_attempts
-            result_state = self._make_result_accumulator(max_attempts)
-            quotas = self._make_quota_tracker()
-            candidate_processor = self._make_candidate_processor(quotas)
-            request_service = self._make_request_service(course_context)
-
-            while (
-                result_state.accepted_count < self.count
-                and not self._cancelled.is_set()
-                and result_state.attempts < max_attempts
-            ):
-                attempt = result_state.start_attempt()
-                remaining = self.count - result_state.accepted_count
-                batch_plan = scheduler.plan_next(remaining)
-                candidate_count = batch_plan.candidate_count
-                plan_summary = quotas.pending_plan_summary(candidate_count)
-                self.progress.emit(
-                    f"Generating question {result_state.accepted_count + 1}/{self.count}... "
-                    f"({self.count} questions total; "
-                    f"attempt {attempt}/{max_attempts}; "
-                    f"requesting {candidate_count} candidate"
-                    f"{'s' if candidate_count != 1 else ''})"
-                )
-                if plan_summary:
-                    self.progress.emit(f"Filling plan slots: {plan_summary}")
-
-                request_result = request_service.request(
-                    candidate_count,
-                    quotas.remaining_config(),
-                    quotas.pending_plan_items(candidate_count),
-                    self.runtime_instruction(),
-                )
-
-                if not request_result.succeeded:
-                    detail = request_result.error
-                    if scheduler.recover_from_failure(detail, candidate_count):
-                        self.progress.emit(
-                            "AI response looked truncated. Retrying with a smaller batch..."
-                        )
-                        continue
-                    if scheduler.looks_like_json_truncation(detail):
-                        self.error.emit(scheduler.truncation_error(detail))
-                        return
-                    self.error.emit(detail)
-                    return
-                scheduler.record_success()
-                raw_questions = request_result.questions
-
-                batch_questions = []
-                rejected = 0
-                for qdata in raw_questions:
-                    if self._cancelled.is_set():
-                        break
-                    outcome = candidate_processor.process(qdata)
-                    if outcome.accepted:
-                        batch_questions.append(outcome.question)
-                    else:
-                        rejected += 1
-                        result_state.reject(outcome.rejection_reason)
-                        detail = f" ({outcome.detail})" if outcome.detail else ""
-                        debug(
-                            "Skipping generated question: "
-                            f"{outcome.rejection_reason}{detail}"
-                        )
-
-                result_state.accept(batch_questions)
-                if batch_questions:
-                    self.question_ready.emit(batch_questions)
-                self.progress.emit(
-                    f"Accepted {len(batch_questions)} question(s), rejected {rejected}. "
-                    f"Total accepted: {result_state.accepted_count}/{self.count}"
-                )
-
-            if self._cancelled.is_set():
-                if result_state.questions:
-                    report = result_state.build_report(
-                        status="cancelled",
-                        quotas=quotas,
-                        error=AppError(
-                            code="GEN-CANCEL-001",
-                            severity="info",
-                            title_zh="生成已取消",
-                            title_en="Generation cancelled",
-                            message_zh="已保留取消前生成的题目。",
-                            message_en="Questions generated before cancellation were preserved.",
-                            action_zh="可先审核并保存已生成题目，之后再继续补齐。",
-                            action_en="Review and save the generated questions now, then continue later.",
-                        ),
-                    )
-                    self.progress.emit(report.summary_text("en"))
-                    self.partial_done.emit(result_state.questions, report)
-                return
-
-            if result_state.accepted_count != self.count:
-                if scheduler.last_truncation_detail:
-                    self.error.emit(
-                        scheduler.truncation_error(scheduler.last_truncation_detail)
-                    )
-                    return
-                shortfall = quotas.shortfall_error(
-                    result_state.accepted_count,
-                    self.count,
-                )
-                if result_state.questions:
-                    report = result_state.build_report(
-                        status="partial",
-                        quotas=quotas,
-                        error=shortfall,
-                    )
-                    self.progress.emit(report.summary_text("en"))
-                    self.partial_done.emit(result_state.questions, report)
-                else:
-                    self.error.emit(shortfall)
-                return
-            self.batch_done.emit(result_state.questions)
-
+            runner = self._make_runner(course_context)
+            for event in runner.events():
+                self._emit_generation_event(event)
         except Exception as e:
             self.error.emit(f"Unexpected error: {str(e)}")
         finally:
             self.finished.emit()
+
+    def _emit_generation_event(self, event) -> None:
+        if isinstance(event, ProgressEvent):
+            self.progress.emit(event.message)
+        elif isinstance(event, QuestionsReadyEvent):
+            self.question_ready.emit(list(event.questions))
+        elif isinstance(event, CompletedEvent):
+            self.batch_done.emit(list(event.questions))
+        elif isinstance(event, PartialResultEvent):
+            self.partial_done.emit(list(event.questions), event.report)
+        elif isinstance(event, FailedEvent):
+            self.error.emit(event.error)
+        else:
+            raise TypeError(f"Unsupported generation event: {type(event).__name__}")
 
     def cancel(self):
         """Signal the worker to stop."""
@@ -206,6 +110,20 @@ class GenerationWorker(QThread):
             self.count,
             self._cached_source_refs_by_topic,
             self.question_plan_items or None,
+        )
+
+    def _make_runner(self, course_context: str) -> GenerationRunner:
+        scheduler = self._make_batch_scheduler()
+        quotas = self._make_quota_tracker()
+        return GenerationRunner(
+            requested_count=self.count,
+            scheduler=scheduler,
+            result_state=self._make_result_accumulator(scheduler.max_attempts),
+            quotas=quotas,
+            candidate_processor=self._make_candidate_processor(quotas),
+            request_service=self._make_request_service(course_context),
+            is_cancelled=self._cancelled.is_set,
+            runtime_instruction=self.runtime_instruction,
         )
 
     def _make_result_accumulator(
