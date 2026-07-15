@@ -19,7 +19,7 @@ from models.course_project import CourseProjectManager
 from core.quiz_engine import QuizSession
 from models.question import QuestionBank
 from models.question_set import SetManager
-from utils.constants import QuestionType
+from utils.constants import Difficulty, QuestionType
 
 
 class SevenCourseTestDataTests(unittest.TestCase):
@@ -75,6 +75,10 @@ class SevenCourseTestDataTests(unittest.TestCase):
             for course_id, topic_ids in expected_topics.items():
                 self.assertEqual(topic_ids, {topic.topic_id for topic in projects[course_id].topics})
                 self.assertEqual(topic_ids, {q.topic_id() for q in questions_by_course[course_id]})
+                self.assertEqual(
+                    set(Difficulty),
+                    {question.difficulty for question in questions_by_course[course_id]},
+                )
                 profile = projects[course_id].generation_profile
                 self.assertEqual(topic_ids, set(profile.get("selected_topics", [])))
                 self.assertEqual(topic_ids, set(profile.get("topic_weights", {})))
@@ -88,6 +92,25 @@ class SevenCourseTestDataTests(unittest.TestCase):
                 session.start(question_set, questions, language="zh")
                 self.assertEqual(7, session.total_questions)
                 self.assertIsNotNone(session.current_question)
+                while session.current_question is not None:
+                    question = session.current_question
+                    if question.type == QuestionType.FILL_IN_BLANK:
+                        answer = question.correct_answer[0]
+                    elif question.type == QuestionType.SHORT_ANSWER:
+                        answer = "已依据参考要点完成自评。"
+                    else:
+                        answer = question.correct_answer
+                    session.submit_answer(
+                        answer,
+                        manual_is_correct=True if question.type == QuestionType.SHORT_ANSWER else None,
+                    )
+                    if not session.next_question():
+                        break
+                record = session.get_progress_record()
+                self.assertIsNotNone(record)
+                self.assertEqual("completed", record.status)
+                self.assertEqual(7, record.summary.answered)
+                self.assertEqual(7, record.summary.correct)
 
             repeated = seed_seven_course_data(root, source_root=source_root)
             repeated_audit = audit_seven_course_data(root)

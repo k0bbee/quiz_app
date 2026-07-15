@@ -409,10 +409,36 @@ _ADDITIONAL_COURSES: tuple[_CourseSeed, ...] = (
 )
 
 
+_DIFFICULTY_CYCLE = (
+    Difficulty.EASY,
+    Difficulty.MEDIUM,
+    Difficulty.HARD,
+    Difficulty.EASY,
+    Difficulty.MEDIUM,
+    Difficulty.HARD,
+    Difficulty.MEDIUM,
+)
+
+
+def _balance_question_difficulties(questions: tuple[_QuestionSeed, ...]) -> tuple[_QuestionSeed, ...]:
+    return tuple(
+        replace(question, difficulty=_DIFFICULTY_CYCLE[index % len(_DIFFICULTY_CYCLE)])
+        for index, question in enumerate(questions)
+    )
+
+
 _COURSES = tuple(
-    replace(course, questions=course.questions + _SUPPLEMENTAL_QUESTIONS[course.slug])
+    replace(
+        course,
+        questions=_balance_question_difficulties(
+            course.questions + _SUPPLEMENTAL_QUESTIONS[course.slug]
+        ),
+    )
     for course in _BASE_COURSES
-) + _ADDITIONAL_COURSES
+) + tuple(
+    replace(course, questions=_balance_question_difficulties(course.questions))
+    for course in _ADDITIONAL_COURSES
+)
 
 CROSS_DISCIPLINE_COURSE_IDS = tuple(f"test-course-{course.slug}" for course in _COURSES)
 
