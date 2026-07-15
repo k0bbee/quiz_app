@@ -9,15 +9,15 @@ from pathlib import Path
 
 import pytest
 
-from core.seven_course_test_data import (
+from core.cross_discipline_test_data import (
     CROSS_DISCIPLINE_COURSE_IDS,
     CROSS_DISCIPLINE_SOURCES,
     _CourseSeed,
     _COURSES,
     _QuestionSeed,
     _build_question,
-    audit_seven_course_data,
-    seed_seven_course_data,
+    audit_cross_discipline_data,
+    seed_cross_discipline_data,
 )
 from core.course_index import attach_index_to_project, build_source_index
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
@@ -27,7 +27,7 @@ from models.question_set import SetManager
 from utils.constants import Difficulty, QuestionType
 
 
-class SevenCourseTestDataTests(unittest.TestCase):
+class CrossDisciplineTestDataTests(unittest.TestCase):
     def test_source_grounding_does_not_succeed_from_distractor_text_alone(self):
         project = CourseProject(
             course_id="test-course-grounding",
@@ -69,14 +69,14 @@ class SevenCourseTestDataTests(unittest.TestCase):
             _build_question(project, course_seed, question_seed, 1)
 
     @pytest.mark.full
-    def test_seed_pack_builds_seven_runnable_cross_discipline_courses(self):
+    def test_seed_pack_builds_ten_runnable_cross_discipline_courses(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir) / "seven-course-data"
+            root = Path(tmpdir) / "cross-discipline-data"
             source_root = Path(tmpdir) / "original-sources"
             self._write_original_sources(source_root)
 
-            seeded = seed_seven_course_data(root, source_root=source_root)
-            audit = audit_seven_course_data(root)
+            seeded = seed_cross_discipline_data(root, source_root=source_root)
+            audit = audit_cross_discipline_data(root)
 
             self.assertEqual(10, seeded.course_count)
             self.assertEqual(set(CROSS_DISCIPLINE_COURSE_IDS), set(audit.course_ids))
@@ -158,8 +158,8 @@ class SevenCourseTestDataTests(unittest.TestCase):
                 self.assertEqual(7, record.summary.answered)
                 self.assertEqual(7, record.summary.correct)
 
-            repeated = seed_seven_course_data(root, source_root=source_root)
-            repeated_audit = audit_seven_course_data(root)
+            repeated = seed_cross_discipline_data(root, source_root=source_root)
+            repeated_audit = audit_cross_discipline_data(root)
             self.assertEqual(seeded, repeated)
             self.assertEqual(70, repeated_audit.question_count)
             self.assertEqual(10, repeated_audit.question_set_count)
@@ -167,13 +167,13 @@ class SevenCourseTestDataTests(unittest.TestCase):
     @pytest.mark.full
     def test_cli_clean_rebuild_prints_json_audit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir) / "seven-course-runtime"
+            root = Path(tmpdir) / "cross-discipline-runtime"
             source_root = Path(tmpdir) / "original-sources"
             self._write_original_sources(source_root)
             stale = root / "questions" / "stale.json"
             stale.parent.mkdir(parents=True)
             stale.write_text("{}", encoding="utf-8")
-            script = Path(__file__).parents[1] / "scripts" / "seed_seven_course_test_data.py"
+            script = Path(__file__).parents[1] / "scripts" / "seed_cross_discipline_test_data.py"
 
             completed = subprocess.run(
                 [
