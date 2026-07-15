@@ -1,4 +1,4 @@
-"""Materialize and audit the seven-course original-source acceptance pack."""
+"""Materialize and audit the cross-discipline original-source acceptance pack."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ _GENERATED_CHILDREN = ("courses", "questions", "question_sets", "source_material
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Import seven original course sources and create a runnable acceptance dataset."
+        description="Import cross-discipline course sources and create a runnable acceptance dataset."
     )
     parser.add_argument("--root", required=True, help="Isolated output data root.")
     parser.add_argument("--source-root", required=True, help="Folder containing the original course files.")
@@ -44,6 +44,10 @@ def main(argv: list[str] | None = None) -> int:
         "questions_per_course": audit.questions_per_course,
         "sets_per_course": audit.sets_per_course,
         "question_types": [question_type.value for question_type in audit.question_types],
+        "question_types_per_course": {
+            course_id: [question_type.value for question_type in question_types]
+            for course_id, question_types in audit.question_types_per_course.items()
+        },
         "documents_per_course": audit.documents_per_course,
         "source_chunks_per_course": audit.source_chunks_per_course,
         "stale_question_refs": list(audit.stale_question_refs),

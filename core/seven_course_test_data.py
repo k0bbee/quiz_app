@@ -1,9 +1,12 @@
-"""Deterministic cross-discipline data for local end-to-end acceptance tests."""
+"""Deterministic cross-discipline data for local end-to-end acceptance tests.
+
+The legacy module name is retained so existing local automation keeps working.
+"""
 
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 import shutil
 
@@ -56,6 +59,7 @@ class SevenCourseAuditReport:
     questions_per_course: dict[str, int]
     sets_per_course: dict[str, int]
     question_types: tuple[QuestionType, ...]
+    question_types_per_course: dict[str, tuple[QuestionType, ...]]
     stale_question_refs: tuple[str, ...]
     orphan_course_refs: tuple[str, ...]
     structurally_invalid_question_ids: tuple[str, ...]
@@ -98,7 +102,7 @@ def _text(
     )
 
 
-_COURSES: tuple[_CourseSeed, ...] = (
+_BASE_COURSES: tuple[_CourseSeed, ...] = (
     _CourseSeed(
         "computer-systems", "计算机系统", "system-level-io.md",
         (
@@ -315,9 +319,103 @@ _COURSES: tuple[_CourseSeed, ...] = (
 )
 
 
-SEVEN_COURSE_IDS = tuple(f"test-course-{course.slug}" for course in _COURSES)
+_SUPPLEMENTAL_QUESTIONS: dict[str, tuple[_QuestionSeed, ...]] = {
+    "computer-systems": (
+        _choice(QuestionType.TRUE_FALSE, 0, "轮询会让 CPU 主动反复读取设备状态。", "Polling makes the CPU repeatedly read device status.", ("正确", "错误"), ("True", "False"), "true", "轮询的等待工作由 CPU 主动完成。", "The CPU actively performs the waiting checks in polling."),
+        _choice(QuestionType.SCENARIO_CHOICE, 1, "高速设备要把大块数据写入内存且尽量减少 CPU 搬运，应优先考虑什么？", "A fast device must write a large block to memory with minimal CPU copying. What fits best?", ("DMA", "逐字节轮询", "空循环", "重复系统调用"), ("DMA", "Byte polling", "Empty loop", "Repeated system calls"), "A", "DMA 控制器可直接完成设备与内存之间的块传输。", "A DMA controller can transfer blocks directly between device and memory."),
+        _text(QuestionType.FILL_IN_BLANK, 0, "设备完成后主动通知 CPU 的硬件事件称为____。", "The hardware event by which a device notifies the CPU of completion is an ____.", ["中断", "interrupt"], "中断使 CPU 无需持续轮询设备。", "An interrupt removes the need for continuous device polling."),
+        _text(QuestionType.SHORT_ANSWER, 2, "说明为什么中断频率过高也会降低系统性能。", "Explain why an excessive interrupt rate can reduce system performance.", "频繁保存和恢复上下文、执行处理程序并扰乱缓存，会占用本可用于正常任务的 CPU 时间。", "中断避免忙等，但处理中断本身并非没有代价。", "Interrupts avoid busy waiting, but interrupt handling is not free."),
+    ),
+    "microeconomics": (
+        _choice(QuestionType.MULTIPLE_CHOICE, 0, "市场价格高于均衡价格时通常出现什么？", "What usually occurs when market price is above equilibrium?", ("短缺", "过剩", "需求曲线消失", "供给量为零"), ("Shortage", "Surplus", "Demand vanishes", "Supply becomes zero"), "B", "高价格下供给量超过需求量，形成过剩。", "At the higher price, quantity supplied exceeds quantity demanded, creating a surplus."),
+        _QuestionSeed(QuestionType.MATCHING, 1, "将弹性类型与数值范围配对。", "Match elasticity type to its numerical range.", {"left":[{"id":"elastic","text":"有弹性"},{"id":"inelastic","text":"缺乏弹性"}],"right":[{"id":"gt1","text":"绝对值大于 1"},{"id":"lt1","text":"绝对值小于 1"}]}, {"left":[{"id":"elastic","text":"Elastic"},{"id":"inelastic","text":"Inelastic"}],"right":[{"id":"gt1","text":"Absolute value above 1"},{"id":"lt1","text":"Absolute value below 1"}]}, [["elastic","gt1"],["inelastic","lt1"]], "弹性绝对值大于一表示数量反应更强。", "An absolute elasticity above one indicates a stronger quantity response."),
+        _QuestionSeed(QuestionType.ORDERING, 0, "按市场由短缺恢复均衡的典型过程排序。", "Order a typical adjustment from shortage toward equilibrium.", [{"id":"shortage","text":"需求量超过供给量"},{"id":"price","text":"价格上升"},{"id":"adjust","text":"需求量下降且供给量上升"}], [{"id":"shortage","text":"Quantity demanded exceeds supply"},{"id":"price","text":"Price rises"},{"id":"adjust","text":"Demand falls and supply rises"}], ["shortage","price","adjust"], "短缺给价格带来上行压力，随后买卖双方调整数量。", "A shortage puts upward pressure on price, after which buyers and sellers adjust quantities."),
+        _text(QuestionType.FILL_IN_BLANK, 2, "选择某方案时放弃的最佳替代方案价值称为____。", "The value of the best alternative forgone by a choice is its ____.", ["机会成本", "opportunity cost"], "机会成本只取最佳被放弃方案的价值。", "Opportunity cost is the value of the single best forgone alternative."),
+    ),
+    "linear-algebra": (
+        _choice(QuestionType.TRUE_FALSE, 1, "矩阵的秩不会超过其行数或列数中的较小者。", "Matrix rank cannot exceed the smaller of its row and column counts.", ("正确", "错误"), ("True", "False"), "true", "线性无关行和列的数量都受矩阵维数限制。", "Independent rows and columns are bounded by the matrix dimensions."),
+        _choice(QuestionType.SCENARIO_CHOICE, 0, "三个二维向量是否可能线性无关？", "Can three vectors in a two-dimensional vector space be linearly independent?", ("总是可以", "不可能", "仅当都非零", "仅当长度相等"), ("Always", "No", "Only if nonzero", "Only if equal length"), "B", "二维空间中线性无关组最多含两个向量。", "A linearly independent set in two dimensions contains at most two vectors."),
+        _QuestionSeed(QuestionType.MATCHING, 2, "将行变换与作用配对。", "Match each row operation to its action.", {"left":[{"id":"swap","text":"交换两行"},{"id":"scale","text":"一行乘非零常数"}],"right":[{"id":"reorder","text":"改变行的顺序"},{"id":"multiply","text":"缩放该行所有元素"}]}, {"left":[{"id":"swap","text":"Swap rows"},{"id":"scale","text":"Scale a row"}],"right":[{"id":"reorder","text":"Change row order"},{"id":"multiply","text":"Multiply every entry in the row"}]}, [["swap","reorder"],["scale","multiply"]], "两种操作都保持方程组解集不变。", "Both operations preserve the solution set of the system."),
+        _text(QuestionType.SHORT_ANSWER, 1, "解释主元列为什么能帮助确定列空间的一组基。", "Explain why pivot columns help identify a basis for the column space.", "原矩阵中对应主元位置的列线性无关，并张成与全部列相同的列空间。", "必须取原矩阵的主元列，而不是行化简后矩阵的列。", "Use pivot columns from the original matrix, not columns of the reduced matrix."),
+    ),
+    "genetics": (
+        _choice(QuestionType.MULTIPLE_CHOICE, 1, "DNA 复制时负责解开双链的酶是哪一种？", "Which enzyme unwinds the DNA double helix during replication?", ("解旋酶", "连接酶", "核糖体", "蛋白酶"), ("Helicase", "Ligase", "Ribosome", "Protease"), "A", "解旋酶破坏碱基间氢键并分开模板链。", "Helicase disrupts base-pair hydrogen bonds and separates the template strands."),
+        _choice(QuestionType.SCENARIO_CHOICE, 2, "同卵双胞胎基因型近似相同但身高略有差异，最能说明什么？", "Identical twins have nearly the same genotype but slightly different heights. What does this best show?", ("表型只由基因决定", "环境也会影响表型", "DNA 不携带信息", "等位基因不存在"), ("Only genes determine phenotype", "Environment also affects phenotype", "DNA carries no information", "Alleles do not exist"), "B", "表型通常由基因型与环境共同作用形成。", "Phenotype commonly results from interaction between genotype and environment."),
+        _QuestionSeed(QuestionType.ORDERING, 1, "按中心法则中的信息流顺序排列。", "Order the information flow in the central dogma.", [{"id":"dna","text":"DNA"},{"id":"rna","text":"RNA"},{"id":"protein","text":"蛋白质"}], [{"id":"dna","text":"DNA"},{"id":"rna","text":"RNA"},{"id":"protein","text":"Protein"}], ["dna","rna","protein"], "遗传信息通常先转录为 RNA，再翻译为蛋白质。", "Genetic information is generally transcribed to RNA and then translated to protein."),
+        _text(QuestionType.SHORT_ANSWER, 0, "说明孟德尔分离定律在配子形成时的含义。", "Explain the law of segregation during gamete formation.", "一对等位基因在形成配子时彼此分离，因此每个配子只获得其中一个等位基因。", "受精后来自两个亲本的等位基因重新成对。", "Alleles from two parents pair again after fertilization."),
+    ),
+    "emergency-medicine": (
+        _choice(QuestionType.MULTIPLE_CHOICE, 1, "分诊的核心目的是什么？", "What is the central purpose of triage?", ("按到达顺序处理", "按紧急程度分配优先级", "只记录姓名", "替代全部诊断"), ("Treat by arrival order", "Prioritize by urgency", "Record names only", "Replace all diagnosis"), "B", "分诊用于在资源有限时优先识别和处理最紧急患者。", "Triage identifies and prioritizes the most urgent patients when resources are limited."),
+        _choice(QuestionType.TRUE_FALSE, 2, "休克早期可能出现心率加快而血压仍暂时正常。", "Early shock may present with tachycardia while blood pressure remains temporarily normal.", ("正确", "错误"), ("True", "False"), "true", "代偿机制可暂时维持血压，因此不能只靠低血压识别休克。", "Compensation can temporarily preserve blood pressure, so hypotension alone cannot rule shock in or out."),
+        _QuestionSeed(QuestionType.MATCHING, 0, "将初步评估项目与观察内容配对。", "Match primary-assessment components to observations.", {"left":[{"id":"airway","text":"气道"},{"id":"breathing","text":"呼吸"}],"right":[{"id":"patency","text":"是否通畅及有无阻塞声"},{"id":"ventilation","text":"呼吸频率和胸廓起伏"}]}, {"left":[{"id":"airway","text":"Airway"},{"id":"breathing","text":"Breathing"}],"right":[{"id":"patency","text":"Patency and obstruction sounds"},{"id":"ventilation","text":"Rate and chest movement"}]}, [["airway","patency"],["breathing","ventilation"]], "气道关注通畅，呼吸关注通气表现。", "Airway assessment concerns patency; breathing assessment concerns ventilation."),
+        _text(QuestionType.FILL_IN_BLANK, 1, "根据病情紧急程度给患者确定救治优先级的过程称为____。", "The process of assigning treatment priority according to urgency is called ____.", ["分诊", "triage"], "分诊不是完整诊断，而是快速确定优先顺序。", "Triage is rapid prioritization, not a complete diagnosis."),
+    ),
+    "case-law": (
+        _choice(QuestionType.SCENARIO_CHOICE, 1, "一份案例摘要只复述事实却没有说明规则如何适用于事实，缺少哪个部分？", "A case brief states facts but never explains how the rule applies. Which part is missing?", ("争点", "适用分析", "案号", "当事人名单"), ("Issue", "Application analysis", "Docket number", "Party list"), "B", "适用分析负责把抽象规则与关键事实连接起来。", "Application analysis connects the abstract rule to the material facts."),
+        _QuestionSeed(QuestionType.ORDERING, 1, "按 IRAC 案例分析结构排序。", "Order the IRAC case-analysis structure.", [{"id":"issue","text":"争点"},{"id":"rule","text":"规则"},{"id":"application","text":"适用"},{"id":"conclusion","text":"结论"}], [{"id":"issue","text":"Issue"},{"id":"rule","text":"Rule"},{"id":"application","text":"Application"},{"id":"conclusion","text":"Conclusion"}], ["issue","rule","application","conclusion"], "IRAC 先界定问题，再陈述规则、分析适用并给出结论。", "IRAC identifies the issue, states the rule, applies it, and concludes."),
+        _text(QuestionType.FILL_IN_BLANK, 0, "下级法院通常应遵循有约束力的上级法院____。", "A lower court generally follows binding higher-court ____.", ["先例", "precedent"], "有约束力的先例促进相似案件适用法律的一致性。", "Binding precedent promotes consistent application of law in similar cases."),
+        _text(QuestionType.SHORT_ANSWER, 2, "说明为什么案例摘要应区分关键事实与无关背景。", "Explain why a case brief should distinguish material facts from irrelevant background.", "关键事实影响法律规则的适用和裁判结果；无关背景会稀释争点并干扰类案比较。", "判断事实是否关键，应看改变该事实是否可能改变法律分析。", "A fact is material when changing it could change the legal analysis."),
+    ),
+    "ethics": (
+        _choice(QuestionType.MULTIPLE_CHOICE, 1, "义务论最直接关注下列哪一项？", "Which concern is most direct for deontological reasoning?", ("行为是否符合义务或权利约束", "结果总量是否最大", "意见是否流行", "描述是否生动"), ("Whether conduct respects duties or rights", "Whether total outcome is maximal", "Whether an opinion is popular", "Whether a description is vivid"), "A", "义务论把某些义务和权利视为行为的规范约束。", "Deontology treats some duties and rights as normative constraints on action."),
+        _choice(QuestionType.TRUE_FALSE, 2, "一个论证的结论为真，就足以证明该论证有效。", "A true conclusion is sufficient to prove that an argument is valid.", ("正确", "错误"), ("True", "False"), "false", "有效性取决于前提与结论的逻辑关系，而不只取决于结论碰巧为真。", "Validity depends on the logical relation between premises and conclusion, not merely a true conclusion."),
+        _QuestionSeed(QuestionType.MATCHING, 0, "将伦理理论与主要判断标准配对。", "Match ethical theories to their main criterion.", {"left":[{"id":"utility","text":"功利主义"},{"id":"duty","text":"义务论"}],"right":[{"id":"welfare","text":"总体后果与福祉"},{"id":"constraint","text":"义务、规则与权利约束"}]}, {"left":[{"id":"utility","text":"Utilitarianism"},{"id":"duty","text":"Deontology"}],"right":[{"id":"welfare","text":"Aggregate consequences and welfare"},{"id":"constraint","text":"Duties, rules, and rights"}]}, [["utility","welfare"],["duty","constraint"]], "两种理论分别强调结果总量与行为约束。", "The theories emphasize aggregate outcomes and constraints on conduct, respectively."),
+        _QuestionSeed(QuestionType.ORDERING, 2, "按评价论证的基本步骤排序。", "Order the basic steps for evaluating an argument.", [{"id":"identify","text":"识别前提与结论"},{"id":"truth","text":"检查前提是否可信"},{"id":"inference","text":"检查推理是否支持结论"}], [{"id":"identify","text":"Identify premises and conclusion"},{"id":"truth","text":"Assess premise credibility"},{"id":"inference","text":"Assess whether inference supports the conclusion"}], ["identify","truth","inference"], "先识别结构，再分别检查前提和推理关系。", "First identify structure, then assess premises and the inferential link."),
+    ),
+}
 
-SEVEN_COURSE_SOURCES: dict[str, tuple[str, ...]] = {
+
+_ADDITIONAL_COURSES: tuple[_CourseSeed, ...] = (
+    _CourseSeed(
+        "biology", "生物学", "mit-biology-recitation-1.pdf",
+        (("cell_biology","细胞生物学",("cell","membrane","organelle")), ("biochemistry","生物化学",("enzyme","protein","metabolism")), ("gene_expression","基因表达",("dna","rna","protein"))),
+        (
+            _choice(QuestionType.MULTIPLE_CHOICE,0,"真核细胞与原核细胞相比通常具有哪一结构？","Which structure is generally present in eukaryotic but not prokaryotic cells?",("细胞核","核糖体","细胞膜","DNA"),("Nucleus","Ribosome","Cell membrane","DNA"),"A","真核细胞的遗传物质主要位于膜包围的细胞核中。","Eukaryotic genetic material is mainly enclosed within a membrane-bound nucleus."),
+            _choice(QuestionType.TRUE_FALSE,1,"酶会降低反应的活化能，但不改变反应物与产物之间的自由能差。","Enzymes lower activation energy but do not change the free-energy difference between reactants and products.",( "正确","错误"),("True","False"),"true","酶改变反应速率而不改变反应的热力学平衡。","Enzymes alter reaction rate without changing thermodynamic equilibrium."),
+            _QuestionSeed(QuestionType.MATCHING,2,"将过程与产物配对。","Match each process to its product.",{"left":[{"id":"transcription","text":"转录"},{"id":"translation","text":"翻译"}],"right":[{"id":"rna","text":"RNA"},{"id":"protein","text":"蛋白质"}]},{"left":[{"id":"transcription","text":"Transcription"},{"id":"translation","text":"Translation"}],"right":[{"id":"rna","text":"RNA"},{"id":"protein","text":"Protein"}]},[["transcription","rna"],["translation","protein"]],"转录以 DNA 为模板产生 RNA，翻译根据 RNA 合成蛋白质。","Transcription makes RNA from DNA; translation synthesizes protein from RNA."),
+            _QuestionSeed(QuestionType.ORDERING,2,"按基因表达的一般顺序排列。","Order the general gene-expression sequence.",[{"id":"dna","text":"DNA"},{"id":"mrna","text":"mRNA"},{"id":"protein","text":"蛋白质"}],[{"id":"dna","text":"DNA"},{"id":"mrna","text":"mRNA"},{"id":"protein","text":"Protein"}],["dna","mrna","protein"],"DNA 先转录为 mRNA，再由核糖体翻译为蛋白质。","DNA is transcribed into mRNA, which ribosomes then translate into protein."),
+            _choice(QuestionType.SCENARIO_CHOICE,1,"升高温度后某酶活性先增加再骤降，最可能的原因是什么？","An enzyme becomes faster as temperature rises and then loses activity sharply. What is most likely?",("酶发生变性","底物变成 DNA","自由能永久归零","细胞膜消失"),("The enzyme denatures","Substrate becomes DNA","Free energy becomes zero","The membrane disappears"),"A","过高温度会破坏维持酶活性构象的相互作用。","Excess heat disrupts interactions that maintain the enzyme's active conformation."),
+            _text(QuestionType.FILL_IN_BLANK,0,"细胞中合成蛋白质的核糖核蛋白复合体称为____。","The ribonucleoprotein complex that synthesizes proteins is the ____.",["核糖体","ribosome"],"核糖体读取 mRNA 并催化肽链形成。","The ribosome reads mRNA and catalyzes peptide-chain formation."),
+            _text(QuestionType.SHORT_ANSWER,0,"解释同一个体不同细胞为何拥有相同 DNA 却表现出不同功能。","Explain why cells in one organism can share DNA yet perform different functions.","不同细胞选择性表达不同基因，产生不同的 RNA 和蛋白质组合，从而形成不同结构与功能。","细胞差异主要来自基因表达调控，而不是每种细胞拥有完全不同的基因组。","Cell differences mainly arise from regulation of gene expression, not wholly different genomes."),
+        ),
+    ),
+    _CourseSeed(
+        "physics", "物理学", "mit-8-09-advanced-classical-mechanics.pdf",
+        (("newtonian_mechanics","牛顿力学",("force","mass","acceleration")), ("energy_momentum","能量与动量",("energy","momentum","conservation")), ("oscillations","振动与动力系统",("oscillation","phase","stability"))),
+        (
+            _choice(QuestionType.MULTIPLE_CHOICE,0,"质量不变的物体所受合外力等于什么？","For constant mass, net force equals what?",("质量乘加速度","质量除以速度","动量乘时间","位移除以能量"),("Mass times acceleration","Mass divided by velocity","Momentum times time","Displacement divided by energy"),"A","牛顿第二定律在质量不变时写作 F=ma。","Newton's second law for constant mass is F=ma."),
+            _choice(QuestionType.TRUE_FALSE,1,"只有保守力做功时，系统的机械能保持不变。","Mechanical energy remains constant when only conservative forces do work.",( "正确","错误"),("True","False"),"true","保守力在动能与势能之间转换而不耗散机械能。","Conservative forces exchange kinetic and potential energy without dissipating mechanical energy."),
+            _QuestionSeed(QuestionType.MATCHING,1,"将物理量与表达式配对。","Match each quantity to its expression.",{"left":[{"id":"momentum","text":"动量"},{"id":"kinetic","text":"平动动能"}],"right":[{"id":"mv","text":"mv"},{"id":"half","text":"½mv²"}]},{"left":[{"id":"momentum","text":"Momentum"},{"id":"kinetic","text":"Translational kinetic energy"}],"right":[{"id":"mv","text":"mv"},{"id":"half","text":"½mv²"}]},[["momentum","mv"],["kinetic","half"]],"动量与速度一次成正比，动能与速度平方成正比。","Momentum is linear in velocity, while kinetic energy is quadratic in velocity."),
+            _QuestionSeed(QuestionType.ORDERING,0,"按建立经典力学模型的一般过程排序。","Order a typical classical-mechanics modeling workflow.",[{"id":"system","text":"确定系统与坐标"},{"id":"forces","text":"列出相互作用和约束"},{"id":"equations","text":"写出运动方程"},{"id":"solve","text":"结合初始条件求解"}],[{"id":"system","text":"Define system and coordinates"},{"id":"forces","text":"List interactions and constraints"},{"id":"equations","text":"Write equations of motion"},{"id":"solve","text":"Solve with initial conditions"}],["system","forces","equations","solve"],"明确系统后才能正确列力和约束，再由方程及初始条件确定运动。","Defining the system precedes forces, equations, and solution with initial conditions."),
+            _choice(QuestionType.SCENARIO_CHOICE,2,"小振幅单摆近似满足哪类运动？","A small-angle pendulum approximately exhibits which motion?",("简谐运动","匀速直线运动","完全随机运动","静止"),("Simple harmonic motion","Uniform linear motion","Completely random motion","Rest"),"A","小角度下 sinθ≈θ，恢复力矩与角位移近似成正比。","For small angles sin theta is approximately theta, making restoring torque proportional to displacement."),
+            _text(QuestionType.FILL_IN_BLANK,1,"若系统不受外力冲量，总____保持不变。","With no external impulse, total ____ is conserved.",["动量","momentum"],"动量守恒来自系统所受外力冲量为零。","Momentum conservation follows when the system receives no external impulse."),
+            _text(QuestionType.SHORT_ANSWER,0,"说明惯性参考系在牛顿力学中的作用。","Explain the role of inertial reference frames in Newtonian mechanics.","惯性系中不受合力的物体保持匀速直线运动，牛顿定律可直接使用而无需引入惯性力。","在加速或旋转参考系中通常需要加入离心力、科里奥利力等惯性力。","Accelerating or rotating frames generally require fictitious forces such as centrifugal or Coriolis forces."),
+        ),
+    ),
+    _CourseSeed(
+        "philosophy", "哲学导论", "mit-philosophy-handout-1.pdf",
+        (("analytic_argument","分析哲学与论证",("argument","premise","validity")), ("mind_and_identity","心灵与人格同一性",("mind","identity","physicalism")), ("free_will_responsibility","自由意志与责任",("freedom","responsibility","compatibilism"))),
+        (
+            _choice(QuestionType.MULTIPLE_CHOICE,0,"在演绎论证中，‘有效’主要表示什么？","In a deductive argument, what does validity primarily mean?",("若前提为真则结论不可能为假","所有前提事实上都为真","结论广受欢迎","论证文字很长"),("If premises are true, the conclusion cannot be false","Every premise is actually true","The conclusion is popular","The argument is long"),"A","有效性描述前提与结论之间的必然支持关系。","Validity describes the necessary support relation between premises and conclusion."),
+            _choice(QuestionType.TRUE_FALSE,1,"人格同一性问题只是在询问两个人是否长得相似。","The problem of personal identity asks only whether two people look alike.",( "正确","错误"),("True","False"),"false","人格同一性研究一个人在时间中保持为同一主体的条件。","Personal identity studies conditions under which a person remains the same subject over time."),
+            _QuestionSeed(QuestionType.MATCHING,2,"将立场与主张配对。","Match each position to its claim.",{"left":[{"id":"compat","text":"相容论"},{"id":"incompat","text":"不相容论"}],"right":[{"id":"can","text":"决定论与自由意志可以共存"},{"id":"cannot","text":"决定论与自由意志不能共存"}]},{"left":[{"id":"compat","text":"Compatibilism"},{"id":"incompat","text":"Incompatibilism"}],"right":[{"id":"can","text":"Determinism and free will can coexist"},{"id":"cannot","text":"Determinism and free will cannot coexist"}]},[["compat","can"],["incompat","cannot"]],"两种立场分歧在于决定论是否排除自由意志。","The positions disagree over whether determinism rules out free will."),
+            _QuestionSeed(QuestionType.ORDERING,0,"按分析一个哲学论证的步骤排序。","Order the steps for analyzing a philosophical argument.",[{"id":"conclusion","text":"识别结论"},{"id":"premises","text":"列出前提"},{"id":"validity","text":"检查推理关系"},{"id":"soundness","text":"评价前提真实性"}],[{"id":"conclusion","text":"Identify conclusion"},{"id":"premises","text":"List premises"},{"id":"validity","text":"Check inference"},{"id":"soundness","text":"Assess premise truth"}],["conclusion","premises","validity","soundness"],"先重构论证，再分别评价推理形式与前提。","Reconstruct the argument before assessing inference and premises separately."),
+            _choice(QuestionType.SCENARIO_CHOICE,1,"某思想实验设想人的心理连续性被复制到另一身体，主要挑战什么问题？","A thought experiment copies a person's psychological continuity into another body. What issue does it target?",("人格同一性的标准","供求均衡","矩阵的秩","诉讼时效"),("Criterion of personal identity","Market equilibrium","Matrix rank","Limitation period"),"A","此类思想实验检验身体连续性与心理连续性哪一个构成同一性。","Such cases test whether bodily or psychological continuity constitutes identity."),
+            _text(QuestionType.FILL_IN_BLANK,0,"前提为真且推理有效的演绎论证称为____论证。","A deductive argument with true premises and valid inference is ____.",["可靠的","sound"],"可靠性要求有效性与全部前提为真。","Soundness requires validity and true premises."),
+            _text(QuestionType.SHORT_ANSWER,2,"解释相容论如何尝试调和决定论与道德责任。","Explain how compatibilism attempts to reconcile determinism with moral responsibility.","相容论通常把自由理解为行动出自行为者自身的理由和欲望且不受外在强迫，而非要求行为完全无因。","因此即使行为有因果来源，行为者仍可能对反映其意愿的行动负责。","Thus causally determined actions may still ground responsibility when they express the agent's will."),
+        ),
+    ),
+)
+
+
+_COURSES = tuple(
+    replace(course, questions=course.questions + _SUPPLEMENTAL_QUESTIONS[course.slug])
+    for course in _BASE_COURSES
+) + _ADDITIONAL_COURSES
+
+CROSS_DISCIPLINE_COURSE_IDS = tuple(f"test-course-{course.slug}" for course in _COURSES)
+
+CROSS_DISCIPLINE_SOURCES: dict[str, tuple[str, ...]] = {
     "computer-systems": (
         "cmu-15-213-system-level-io.pdf",
         "cmu-15-213-system-level-io.pptx",
@@ -329,7 +427,14 @@ SEVEN_COURSE_SOURCES: dict[str, tuple[str, ...]] = {
     "emergency-medicine": ("who-basic-emergency-care.pdf", "emergency-medicine.md"),
     "case-law": ("cornell-law-georgia-v-public-resource.pdf", "case-law.md"),
     "ethics": ("mit-24-00-ethics-handout.pdf", "ethics.md"),
+    "biology": ("mit-biology-*.pdf", "biology.md"),
+    "physics": ("mit-8-09-advanced-classical-mechanics.pdf", "physics.md"),
+    "philosophy": ("mit-philosophy-handout-*.pdf", "philosophy.md"),
 }
+
+# Compatibility for callers created while this acceptance pack still had seven courses.
+SEVEN_COURSE_IDS = CROSS_DISCIPLINE_COURSE_IDS
+SEVEN_COURSE_SOURCES = CROSS_DISCIPLINE_SOURCES
 
 
 def seed_seven_course_data(
@@ -337,7 +442,7 @@ def seed_seven_course_data(
     *,
     source_root: str | Path,
 ) -> SevenCourseSeedReport:
-    """Import seven original-source groups and bind deterministic test questions."""
+    """Import the cross-discipline original-source groups and bind test questions."""
     data_root = Path(root).resolve()
     original_root = Path(source_root).resolve()
     if not original_root.is_dir():
@@ -371,7 +476,7 @@ def seed_seven_course_data(
             difficulty=Difficulty.MEDIUM,
             estimated_minutes=10,
             questions=question_ids,
-            metadata={"course_id": project.course_id, "source": "seven_course_test_seed", "created_at": _STAMP},
+            metadata={"course_id": project.course_id, "source": "cross_discipline_test_seed", "created_at": _STAMP},
         )
         if not set_manager.save(question_set):
             raise OSError(f"Failed to save test set {question_set.set_id}")
@@ -415,6 +520,13 @@ def audit_seven_course_data(root: str | Path) -> SevenCourseAuditReport:
         questions_per_course=dict(questions_per_course),
         sets_per_course=dict(sets_per_course),
         question_types=tuple(sorted({question.type for question in questions}, key=lambda item: item.value)),
+        question_types_per_course={
+            course_id: tuple(sorted(
+                {question.type for question in questions if _course_id(question.metadata) == course_id},
+                key=lambda item: item.value,
+            ))
+            for course_id in sorted(course_ids)
+        },
         stale_question_refs=tuple(stale_refs),
         orphan_course_refs=tuple(orphan_refs),
         structurally_invalid_question_ids=invalid,
@@ -432,8 +544,13 @@ def audit_seven_course_data(root: str | Path) -> SevenCourseAuditReport:
 
 
 def _stage_original_sources(source_root: Path, data_root: Path, slug: str) -> Path:
-    candidates = SEVEN_COURSE_SOURCES[slug]
-    selected = [source_root / name for name in candidates if (source_root / name).is_file()]
+    candidates = CROSS_DISCIPLINE_SOURCES[slug]
+    selected = sorted({
+        path.resolve()
+        for pattern in candidates
+        for path in source_root.glob(pattern)
+        if path.is_file()
+    }, key=lambda path: path.name)
     fallback_name = f"{slug}.md"
     real_selected = [path for path in selected if path.name != fallback_name]
     if real_selected:
@@ -475,7 +592,7 @@ def _build_question(
         metadata={
             "course_id": project.course_id,
             "topic_title": topic.title,
-            "source": "seven_course_test_seed",
+            "source": "cross_discipline_test_seed",
             "source_ref_status": "verified",
             "created_at": _STAMP,
             "version": 1,

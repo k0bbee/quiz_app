@@ -8,8 +8,8 @@ import sys
 from pathlib import Path
 
 from core.seven_course_test_data import (
-    SEVEN_COURSE_IDS,
-    SEVEN_COURSE_SOURCES,
+    CROSS_DISCIPLINE_COURSE_IDS,
+    CROSS_DISCIPLINE_SOURCES,
     audit_seven_course_data,
     seed_seven_course_data,
 )
@@ -26,13 +26,16 @@ class SevenCourseTestDataTests(unittest.TestCase):
             seeded = seed_seven_course_data(root, source_root=source_root)
             audit = audit_seven_course_data(root)
 
-            self.assertEqual(7, seeded.course_count)
-            self.assertEqual(set(SEVEN_COURSE_IDS), set(audit.course_ids))
-            self.assertEqual(21, audit.question_count)
-            self.assertEqual(7, audit.question_set_count)
-            self.assertTrue(all(count == 3 for count in audit.questions_per_course.values()))
+            self.assertEqual(10, seeded.course_count)
+            self.assertEqual(set(CROSS_DISCIPLINE_COURSE_IDS), set(audit.course_ids))
+            self.assertEqual(70, audit.question_count)
+            self.assertEqual(10, audit.question_set_count)
+            self.assertTrue(all(count == 7 for count in audit.questions_per_course.values()))
             self.assertTrue(all(count == 1 for count in audit.sets_per_course.values()))
             self.assertEqual(set(QuestionType), set(audit.question_types))
+            self.assertTrue(
+                all(set(types) == set(QuestionType) for types in audit.question_types_per_course.values())
+            )
             self.assertEqual((), audit.stale_question_refs)
             self.assertEqual((), audit.orphan_course_refs)
             self.assertEqual((), audit.structurally_invalid_question_ids)
@@ -43,8 +46,8 @@ class SevenCourseTestDataTests(unittest.TestCase):
             repeated = seed_seven_course_data(root, source_root=source_root)
             repeated_audit = audit_seven_course_data(root)
             self.assertEqual(seeded, repeated)
-            self.assertEqual(21, repeated_audit.question_count)
-            self.assertEqual(7, repeated_audit.question_set_count)
+            self.assertEqual(70, repeated_audit.question_count)
+            self.assertEqual(10, repeated_audit.question_set_count)
 
     def test_cli_clean_rebuild_prints_json_audit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -72,16 +75,16 @@ class SevenCourseTestDataTests(unittest.TestCase):
 
             self.assertEqual(0, completed.returncode, completed.stderr)
             report = json.loads(completed.stdout)
-            self.assertEqual(7, report["course_count"])
-            self.assertEqual(21, report["question_count"])
-            self.assertEqual(7, report["question_set_count"])
+            self.assertEqual(10, report["course_count"])
+            self.assertEqual(70, report["question_count"])
+            self.assertEqual(10, report["question_set_count"])
             self.assertEqual([], report["stale_question_refs"])
             self.assertFalse(stale.exists())
 
     @staticmethod
     def _write_original_sources(source_root: Path) -> None:
         source_root.mkdir(parents=True)
-        for slug, filenames in SEVEN_COURSE_SOURCES.items():
+        for slug, filenames in CROSS_DISCIPLINE_SOURCES.items():
             filename = filenames[-1]
             topic = slug.replace("-", " ")
             sentences = [
