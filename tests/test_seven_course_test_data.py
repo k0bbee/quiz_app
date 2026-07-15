@@ -10,9 +10,12 @@ from pathlib import Path
 from core.seven_course_test_data import (
     CROSS_DISCIPLINE_COURSE_IDS,
     CROSS_DISCIPLINE_SOURCES,
+    _COURSES,
     audit_seven_course_data,
     seed_seven_course_data,
 )
+from core.course_index import build_source_index
+from models.course_project import CourseProjectManager
 from core.quiz_engine import QuizSession
 from models.question import QuestionBank
 from models.question_set import SetManager
@@ -47,6 +50,35 @@ class SevenCourseTestDataTests(unittest.TestCase):
             self.assertTrue(all(count >= 1 for count in audit.source_chunks_per_course.values()))
 
             question_bank = QuestionBank(str(root / "questions"))
+            projects = {
+                project.course_id: project
+                for project in CourseProjectManager(str(root / "courses")).load_all()
+            }
+            expected_topics = {
+                f"test-course-{course.slug}": {topic_id for topic_id, _title, _keywords in course.topics}
+                for course in _COURSES
+            }
+            questions_by_course = {}
+            for question in question_bank.load_all():
+                course_id = question.metadata["course_id"]
+                questions_by_course.setdefault(course_id, []).append(question)
+                self.assertIn(question.topic_id(), expected_topics[course_id])
+                self.assertEqual("verified", question.metadata.get("source_ref_status"))
+                source_refs = question.metadata.get("source_refs")
+                self.assertTrue(source_refs, question.question_id)
+                chunk_ids = {
+                    chunk["chunk_id"]
+                    for chunk in build_source_index(projects[course_id])
+                }
+                self.assertIn(source_refs[0]["chunk_id"], chunk_ids)
+
+            for course_id, topic_ids in expected_topics.items():
+                self.assertEqual(topic_ids, {topic.topic_id for topic in projects[course_id].topics})
+                self.assertEqual(topic_ids, {q.topic_id() for q in questions_by_course[course_id]})
+                profile = projects[course_id].generation_profile
+                self.assertEqual(topic_ids, set(profile.get("selected_topics", [])))
+                self.assertEqual(topic_ids, set(profile.get("topic_weights", {})))
+
             for question_set in SetManager(str(root / "question_sets")).load_all():
                 questions = question_bank.get_many(
                     question_set.questions,
@@ -98,11 +130,17 @@ class SevenCourseTestDataTests(unittest.TestCase):
     @staticmethod
     def _write_original_sources(source_root: Path) -> None:
         source_root.mkdir(parents=True)
+        course_by_slug = {course.slug: course for course in _COURSES}
         for slug, filenames in CROSS_DISCIPLINE_SOURCES.items():
             filename = filenames[-1]
             topic = slug.replace("-", " ")
+            keywords = " ".join(
+                keyword
+                for _topic_id, _title, topic_keywords in course_by_slug[slug].topics
+                for keyword in topic_keywords
+            )
             sentences = [
-                f"{topic} source section {index} explains a domain concept, its conditions, process, evidence, and limitations."
+                f"{topic} source section {index} explains {keywords}, their conditions, process, evidence, and limitations."
                 for index in range(1, 18)
             ]
             (source_root / filename).write_text("\n".join(sentences), encoding="utf-8")

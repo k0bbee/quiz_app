@@ -11,8 +11,9 @@ from pathlib import Path
 import shutil
 
 from core.course_initializer import CourseInitializer
+from core.course_index import attach_index_to_project, retrieve_course_source_refs
 from core.question_validation import validate_question_quality
-from models.course_project import CourseProject, CourseProjectManager
+from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
 from utils.constants import Difficulty, QuestionType
@@ -106,34 +107,34 @@ _BASE_COURSES: tuple[_CourseSeed, ...] = (
     _CourseSeed(
         "computer-systems", "计算机系统", "system-level-io.md",
         (
-            ("io_interrupts", "中断驱动 I/O", ("interrupt", "polling", "cpu")),
-            ("direct_memory_access", "直接存储器访问", ("dma", "memory", "device")),
-            ("io_request_lifecycle", "I/O 请求生命周期", ("request", "completion", "driver")),
+            ("unix_file_io", "Unix 文件 I/O", ("file", "descriptor", "open", "read")),
+            ("robust_io", "健壮 I/O", ("rio", "short count", "buffered", "unbuffered")),
+            ("io_metadata_and_sockets", "元数据与套接字 I/O", ("metadata", "stat", "socket", "stream")),
         ),
         (
             _choice(QuestionType.MULTIPLE_CHOICE, 0,
-                "设备完成操作后才通知 CPU，最符合哪种 I/O 机制？",
-                "Which I/O mechanism notifies the CPU only after the device completes?",
-                ("轮询", "中断驱动 I/O", "忙等待", "同步循环"),
-                ("Polling", "Interrupt-driven I/O", "Busy waiting", "Synchronous loop"), "B",
-                "中断驱动 I/O 允许 CPU 在设备工作期间执行其他任务。",
-                "Interrupt-driven I/O lets the CPU do other work while the device runs."),
+                "Unix 的 open 调用成功时返回什么？",
+                "What does a successful Unix open call return?",
+                ("文件描述符", "文件全部内容", "目录树", "缓冲区大小"),
+                ("A file descriptor", "The entire file", "A directory tree", "The buffer size"), "A",
+                "文件描述符是进程后续访问已打开文件所用的非负整数标识。",
+                "A file descriptor is the nonnegative integer handle used for later access."),
             _QuestionSeed(QuestionType.MATCHING, 1,
-                "将 I/O 机制与主要特征配对。", "Match each I/O mechanism to its main property.",
-                {"left": [{"id": "poll", "text": "轮询"}, {"id": "dma", "text": "DMA"}],
-                 "right": [{"id": "check", "text": "CPU 反复检查状态"}, {"id": "direct", "text": "控制器直接传输内存块"}]},
-                {"left": [{"id": "poll", "text": "Polling"}, {"id": "dma", "text": "DMA"}],
-                 "right": [{"id": "check", "text": "CPU repeatedly checks status"}, {"id": "direct", "text": "Controller transfers memory blocks directly"}]},
-                [["poll", "check"], ["dma", "direct"]],
-                "轮询占用 CPU 检查状态，DMA 则把块传输交给控制器。",
-                "Polling spends CPU cycles checking status, while DMA delegates block transfer."),
+                "将 RIO 接口与用途配对。", "Match each RIO interface to its purpose.",
+                {"left": [{"id": "rio_readn", "text": "rio_readn"}, {"id": "rio_readlineb", "text": "rio_readlineb"}],
+                 "right": [{"id": "bytes", "text": "读取指定字节数"}, {"id": "line", "text": "按行缓冲读取"}]},
+                {"left": [{"id": "rio_readn", "text": "rio_readn"}, {"id": "rio_readlineb", "text": "rio_readlineb"}],
+                 "right": [{"id": "bytes", "text": "Read a requested byte count"}, {"id": "line", "text": "Read a buffered text line"}]},
+                [["rio_readn", "bytes"], ["rio_readlineb", "line"]],
+                "RIO 分别提供无缓冲定长读取和缓冲按行读取接口。",
+                "RIO provides unbuffered fixed-count and buffered line-oriented interfaces."),
             _QuestionSeed(QuestionType.ORDERING, 2,
-                "按中断驱动 I/O 的处理顺序排列。", "Order the interrupt-driven I/O lifecycle.",
-                [{"id": "issue", "text": "CPU 发出命令"}, {"id": "work", "text": "设备执行操作"}, {"id": "interrupt", "text": "设备发出完成中断"}],
-                [{"id": "issue", "text": "CPU issues command"}, {"id": "work", "text": "Device performs operation"}, {"id": "interrupt", "text": "Device raises completion interrupt"}],
-                ["issue", "work", "interrupt"],
-                "命令先提交给设备，设备完成后才产生中断。",
-                "The command is submitted first; the device interrupts only after completion."),
+                "按一次普通 Unix 文件读取的顺序排列。", "Order a basic Unix file-read lifecycle.",
+                [{"id": "open", "text": "打开文件"}, {"id": "read", "text": "用描述符读取"}, {"id": "close", "text": "关闭描述符"}],
+                [{"id": "open", "text": "Open the file"}, {"id": "read", "text": "Read through the descriptor"}, {"id": "close", "text": "Close the descriptor"}],
+                ["open", "read", "close"],
+                "进程先获得文件描述符，再读取数据，最后释放描述符。",
+                "The process obtains a descriptor, reads data, and finally releases it."),
         ),
     ),
     _CourseSeed(
@@ -290,30 +291,30 @@ _BASE_COURSES: tuple[_CourseSeed, ...] = (
     _CourseSeed(
         "ethics", "伦理学", "ethics-handout.md",
         (
-            ("utilitarian_reasoning", "功利主义推理", ("utility", "consequence", "welfare")),
-            ("deontological_reasoning", "义务论推理", ("duty", "rule", "rights")),
-            ("argument_evaluation", "论证评价", ("premise", "conclusion", "objection")),
+            ("moral_objectivity", "道德客观性", ("objective", "moral", "facts", "relativism")),
+            ("practical_reason", "实践理性", ("practical reason", "freedom", "desires", "choice")),
+            ("ethical_methodology", "伦理学方法", ("methodology", "first order", "principles", "validity")),
         ),
         (
             _choice(QuestionType.SCENARIO_CHOICE, 0,
-                "某方案主要依据‘能使所有受影响者的总体福祉最大化’来辩护，这最接近哪种推理？",
-                "A policy is defended because it maximizes total welfare for everyone affected. Which reasoning is closest?",
-                ("功利主义", "纯粹诉诸传统", "词源分析", "描述性统计"),
-                ("Utilitarianism", "Appeal to tradition", "Etymology", "Descriptive statistics"), "A",
-                "功利主义根据行为或规则的后果及总体福祉评价其正当性。",
-                "Utilitarian reasoning evaluates justification through consequences and aggregate welfare."),
+                "有人主张‘不存在道德客观性’，Nagel 认为该主张最终必须与什么竞争？",
+                "Nagel says a denial of moral objectivity must ultimately compete with what?",
+                ("具体的一阶道德判断", "词源统计", "个人喜好清单", "自然科学公式"),
+                ("Specific first-order moral claims", "Etymological statistics", "Lists of preferences", "Natural-science formulas"), "A",
+                "否定客观性的理论必须面对诸如压迫是否错误等具体道德主张。",
+                "A denial of objectivity must confront specific claims such as whether oppression is wrong."),
             _text(QuestionType.SHORT_ANSWER, 1,
-                "说明义务论为何可能反对一个能增加总体利益但侵犯个人权利的行为。",
-                "Explain why deontological reasoning may reject an act that raises total benefit but violates a person's rights.",
-                "义务论认为某些义务或权利对行为构成约束，不能仅以结果总量抵消。",
-                "义务论关注行为是否遵守可辩护的规则与对人的尊重，而不只比较结果。",
-                "Deontology asks whether conduct respects defensible duties and persons, not only whether outcomes improve."),
+                "说明 Nagel 为什么认为实践理性使人无法简单逃避评价问题。",
+                "Explain why Nagel thinks practical reason prevents us from simply escaping evaluative questions.",
+                "当人能够反思自己的欲望和动机时，就必须判断是否按它们行动，因此不可避免地面对‘我应当做什么’。",
+                "反思能力把动机转化为需要评价的行动理由。",
+                "Reflection turns motives into reasons that must be evaluated when deciding what to do."),
             _text(QuestionType.FILL_IN_BLANK, 2,
-                "在论证中，用来支持结论的陈述称为____。",
-                "Statements offered in support of a conclusion are called ____.",
-                ["前提", "premises"],
-                "前提为结论提供理由，评价论证需分别检查前提真实性和推理关系。",
-                "Premises support a conclusion; evaluation checks both their truth and the inference."),
+                "Nagel 建议通过进行____道德理论研究，检验道德客观性是否可能。",
+                "Nagel proposes doing ____ moral theorizing to test whether moral objectivity is possible.",
+                ["一阶", "first-order", "first order"],
+                "方法论要求先实际进行道德推理，观察能否形成可靠的方法、理由与原则。",
+                "The method first practices moral reasoning to see whether reliable methods, reasons, and principles emerge."),
         ),
     ),
 )
@@ -321,10 +322,10 @@ _BASE_COURSES: tuple[_CourseSeed, ...] = (
 
 _SUPPLEMENTAL_QUESTIONS: dict[str, tuple[_QuestionSeed, ...]] = {
     "computer-systems": (
-        _choice(QuestionType.TRUE_FALSE, 0, "轮询会让 CPU 主动反复读取设备状态。", "Polling makes the CPU repeatedly read device status.", ("正确", "错误"), ("True", "False"), "true", "轮询的等待工作由 CPU 主动完成。", "The CPU actively performs the waiting checks in polling."),
-        _choice(QuestionType.SCENARIO_CHOICE, 1, "高速设备要把大块数据写入内存且尽量减少 CPU 搬运，应优先考虑什么？", "A fast device must write a large block to memory with minimal CPU copying. What fits best?", ("DMA", "逐字节轮询", "空循环", "重复系统调用"), ("DMA", "Byte polling", "Empty loop", "Repeated system calls"), "A", "DMA 控制器可直接完成设备与内存之间的块传输。", "A DMA controller can transfer blocks directly between device and memory."),
-        _text(QuestionType.FILL_IN_BLANK, 0, "设备完成后主动通知 CPU 的硬件事件称为____。", "The hardware event by which a device notifies the CPU of completion is an ____.", ["中断", "interrupt"], "中断使 CPU 无需持续轮询设备。", "An interrupt removes the need for continuous device polling."),
-        _text(QuestionType.SHORT_ANSWER, 2, "说明为什么中断频率过高也会降低系统性能。", "Explain why an excessive interrupt rate can reduce system performance.", "频繁保存和恢复上下文、执行处理程序并扰乱缓存，会占用本可用于正常任务的 CPU 时间。", "中断避免忙等，但处理中断本身并非没有代价。", "Interrupts avoid busy waiting, but interrupt handling is not free."),
+        _choice(QuestionType.TRUE_FALSE, 1, "Unix read 即使没有报错，也可能返回少于请求数量的字节。", "A Unix read may return fewer bytes than requested without reporting an error.", ("正确", "错误"), ("True", "False"), "true", "网络、终端和文件尾等场景都可能产生不足值。", "Networks, terminals, and end-of-file conditions can produce short counts."),
+        _choice(QuestionType.SCENARIO_CHOICE, 1, "程序需要从网络套接字逐行读取文本，哪种接口最合适？", "A program needs to read text lines from a network socket. Which interface fits best?", ("rio_readlineb", "stat", "lseek", "close"), ("rio_readlineb", "stat", "lseek", "close"), "A", "缓冲 RIO 按行接口适合网络文本输入。", "The buffered RIO line interface is suitable for textual network input."),
+        _text(QuestionType.FILL_IN_BLANK, 0, "进程用来标识已打开文件的非负整数称为文件____。", "The nonnegative integer used to identify an open file is a file ____.", ["描述符", "descriptor"], "Unix I/O 调用通过文件描述符引用已打开文件。", "Unix I/O calls refer to open files through file descriptors."),
+        _text(QuestionType.SHORT_ANSWER, 2, "说明健壮 I/O 包为什么必须处理不足值。", "Explain why a robust I/O package must handle short counts.", "一次 read 或 write 可能只传输请求数据的一部分，健壮封装需要继续操作或正确处理结束与错误。", "不足值并不必然表示失败，忽略它会造成数据截断。", "A short count is not necessarily a failure; ignoring it can truncate data."),
     ),
     "microeconomics": (
         _choice(QuestionType.MULTIPLE_CHOICE, 0, "市场价格高于均衡价格时通常出现什么？", "What usually occurs when market price is above equilibrium?", ("短缺", "过剩", "需求曲线消失", "供给量为零"), ("Shortage", "Surplus", "Demand vanishes", "Supply becomes zero"), "B", "高价格下供给量超过需求量，形成过剩。", "At the higher price, quantity supplied exceeds quantity demanded, creating a surplus."),
@@ -357,10 +358,10 @@ _SUPPLEMENTAL_QUESTIONS: dict[str, tuple[_QuestionSeed, ...]] = {
         _text(QuestionType.SHORT_ANSWER, 2, "说明为什么案例摘要应区分关键事实与无关背景。", "Explain why a case brief should distinguish material facts from irrelevant background.", "关键事实影响法律规则的适用和裁判结果；无关背景会稀释争点并干扰类案比较。", "判断事实是否关键，应看改变该事实是否可能改变法律分析。", "A fact is material when changing it could change the legal analysis."),
     ),
     "ethics": (
-        _choice(QuestionType.MULTIPLE_CHOICE, 1, "义务论最直接关注下列哪一项？", "Which concern is most direct for deontological reasoning?", ("行为是否符合义务或权利约束", "结果总量是否最大", "意见是否流行", "描述是否生动"), ("Whether conduct respects duties or rights", "Whether total outcome is maximal", "Whether an opinion is popular", "Whether a description is vivid"), "A", "义务论把某些义务和权利视为行为的规范约束。", "Deontology treats some duties and rights as normative constraints on action."),
-        _choice(QuestionType.TRUE_FALSE, 2, "一个论证的结论为真，就足以证明该论证有效。", "A true conclusion is sufficient to prove that an argument is valid.", ("正确", "错误"), ("True", "False"), "false", "有效性取决于前提与结论的逻辑关系，而不只取决于结论碰巧为真。", "Validity depends on the logical relation between premises and conclusion, not merely a true conclusion."),
-        _QuestionSeed(QuestionType.MATCHING, 0, "将伦理理论与主要判断标准配对。", "Match ethical theories to their main criterion.", {"left":[{"id":"utility","text":"功利主义"},{"id":"duty","text":"义务论"}],"right":[{"id":"welfare","text":"总体后果与福祉"},{"id":"constraint","text":"义务、规则与权利约束"}]}, {"left":[{"id":"utility","text":"Utilitarianism"},{"id":"duty","text":"Deontology"}],"right":[{"id":"welfare","text":"Aggregate consequences and welfare"},{"id":"constraint","text":"Duties, rules, and rights"}]}, [["utility","welfare"],["duty","constraint"]], "两种理论分别强调结果总量与行为约束。", "The theories emphasize aggregate outcomes and constraints on conduct, respectively."),
-        _QuestionSeed(QuestionType.ORDERING, 2, "按评价论证的基本步骤排序。", "Order the basic steps for evaluating an argument.", [{"id":"identify","text":"识别前提与结论"},{"id":"truth","text":"检查前提是否可信"},{"id":"inference","text":"检查推理是否支持结论"}], [{"id":"identify","text":"Identify premises and conclusion"},{"id":"truth","text":"Assess premise credibility"},{"id":"inference","text":"Assess whether inference supports the conclusion"}], ["identify","truth","inference"], "先识别结构，再分别检查前提和推理关系。", "First identify structure, then assess premises and the inferential link."),
+        _choice(QuestionType.MULTIPLE_CHOICE, 0, "Nagel 认为判断道德客观性的合适起点是什么？", "What does Nagel treat as the appropriate starting point for assessing moral objectivity?", ("实际进行道德推理", "只研究抽象形而上学", "统计多数偏好", "暂停所有判断"), ("Engage in moral reasoning", "Study abstract metaphysics alone", "Count majority preferences", "Suspend every judgment"), "A", "他主张先进行一阶道德理论研究，再看可靠的方法和原则能否形成。", "He proposes first-order moral theorizing to see whether reliable methods and principles emerge."),
+        _choice(QuestionType.TRUE_FALSE, 0, "Nagel 认为道德客观性必须依赖会因果作用于人的独立道德事实宇宙。", "Nagel says moral objectivity must depend on a separate universe of moral facts that causally affects us.", ("正确", "错误"), ("True", "False"), "false", "他明确认为客观性不依赖这种因果作用的道德事实图景。", "He explicitly denies that objectivity depends on moral facts causally impinging on us."),
+        _QuestionSeed(QuestionType.MATCHING, 1, "将实践理性的环节与含义配对。", "Match stages of practical reason to their meaning.", {"left":[{"id":"recognize","text":"识别欲望与动机"},{"id":"evaluate","text":"提出评价问题"}],"right":[{"id":"reflect","text":"反思行动倾向"},{"id":"decide","text":"判断应当做什么"}]}, {"left":[{"id":"recognize","text":"Recognize desires and motives"},{"id":"evaluate","text":"Raise the evaluative question"}],"right":[{"id":"reflect","text":"Reflect on inclinations"},{"id":"decide","text":"Judge what one should do"}]}, [["recognize","reflect"],["evaluate","decide"]], "识别动机使行动倾向进入反思，并引出应当如何行动的问题。", "Recognizing motives makes inclinations objects of reflection and raises what one should do."),
+        _QuestionSeed(QuestionType.ORDERING, 2, "按 Nagel 的方法排列。", "Order the stages of Nagel's method.", [{"id":"reason","text":"进行一阶道德推理"},{"id":"methods","text":"检验方法、理由与原则"},{"id":"objectivity","text":"评价客观性主张"}], [{"id":"reason","text":"Do first-order moral reasoning"},{"id":"methods","text":"Test methods, reasons, and principles"},{"id":"objectivity","text":"Assess the claim to objectivity"}], ["reason","methods","objectivity"], "先实践道德推理，再根据其可靠性评价客观性。", "Practice moral reasoning first, then assess objectivity through its reliability."),
     ),
 }
 
@@ -461,6 +462,9 @@ def seed_seven_course_data(
             make_current=False,
             course_id=f"test-course-{course_seed.slug}",
         )
+        project = _apply_seed_topics(project, course_seed)
+        if not course_manager.save(project, make_current=False):
+            raise OSError(f"Failed to save semantic topics for {project.course_id}")
         question_ids: list[str] = []
         for index, question_seed in enumerate(course_seed.questions, start=1):
             question = _build_question(project, course_seed, question_seed, index)
@@ -577,7 +581,26 @@ def _build_question(
 ) -> Question:
     if not project.topics:
         raise ValueError(f"Imported course {project.course_id} has no topics")
-    topic = project.topics[min(seed.topic_index, len(project.topics) - 1)]
+    intended_topic_id = course_seed.topics[seed.topic_index][0]
+    topic = next(
+        (candidate for candidate in project.topics if candidate.topic_id == intended_topic_id),
+        None,
+    )
+    if topic is None:
+        raise ValueError(
+            f"Imported course {project.course_id} is missing semantic topic {intended_topic_id}"
+        )
+    source_queries = [
+        topic.topic_id,
+        seed.stem_en,
+        seed.explanation_en,
+        *_flatten_option_text(seed.options_en),
+    ]
+    source_refs = retrieve_course_source_refs(project, source_queries, limit=1)
+    if not source_refs:
+        raise ValueError(
+            f"Imported course {project.course_id} has no source evidence for {topic.topic_id}"
+        )
     return Question(
         question_id=f"test-question-{course_seed.slug}-{index}",
         type=seed.type,
@@ -594,10 +617,54 @@ def _build_question(
             "topic_title": topic.title,
             "source": "cross_discipline_test_seed",
             "source_ref_status": "verified",
+            "source_refs": source_refs,
             "created_at": _STAMP,
             "version": 1,
         },
     )
+
+
+def _apply_seed_topics(project: CourseProject, course_seed: _CourseSeed) -> CourseProject:
+    """Install stable semantic topics and rebuild source attribution for the fixture."""
+    project.topics = [
+        CourseTopic(topic_id=topic_id, title=title, keywords=list(keywords))
+        for topic_id, title, keywords in course_seed.topics
+    ]
+    for document in project.documents:
+        document.pop("_source_index", None)
+    attach_index_to_project(project)
+
+    topic_ids = [topic.topic_id for topic in project.topics]
+    profile = dict(project.generation_profile or {})
+    profile["selected_topics"] = topic_ids
+    profile["topic_weights"] = _equal_topic_weights(topic_ids)
+    project.generation_profile = profile
+    return project
+
+
+def _equal_topic_weights(topic_ids: list[str]) -> dict[str, int]:
+    if not topic_ids:
+        return {}
+    share, remainder = divmod(100, len(topic_ids))
+    return {
+        topic_id: share + (1 if index < remainder else 0)
+        for index, topic_id in enumerate(topic_ids)
+    }
+
+
+def _flatten_option_text(options: object) -> list[str]:
+    if isinstance(options, dict):
+        return [
+            str(option.get("text", "") if isinstance(option, dict) else option)
+            for side in ("left", "right", "items")
+            for option in (options.get(side, []) or [])
+        ]
+    if isinstance(options, (list, tuple)):
+        return [
+            str(option.get("text", "") if isinstance(option, dict) else option)
+            for option in options
+        ]
+    return []
 
 
 def _summary(seed: _CourseSeed) -> str:
