@@ -92,6 +92,7 @@ class CourseInitializer:
         title: str = "",
         make_current: bool = True,
         task: TaskControl | None = None,
+        course_id: str = "",
     ) -> CourseProject:
         """Parse a folder and save a course project."""
         self._report(task, "parsing", detail=str(folder))
@@ -124,7 +125,7 @@ class CourseInitializer:
         self._check(task)
         now = datetime.now(timezone.utc).isoformat()
         project = CourseProject(
-            course_id=CourseProjectManager.new_id(),
+            course_id=course_id.strip() or CourseProjectManager.new_id(),
             title=course_title,
             source_folder=str(Path(folder).resolve()),
             summary_markdown=summary,

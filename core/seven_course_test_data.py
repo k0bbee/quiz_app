@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+import shutil
 
-from ai.course_generation_profile import build_local_course_profile
-from core.course_index import attach_index_to_project
-from models.course_project import CourseProject, CourseProjectManager, CourseTopic
+from core.course_initializer import CourseInitializer
+from models.course_project import CourseProject, CourseProjectManager
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
 from utils.constants import Difficulty, QuestionType
@@ -58,6 +58,8 @@ class SevenCourseAuditReport:
     stale_question_refs: tuple[str, ...]
     orphan_course_refs: tuple[str, ...]
     structurally_invalid_question_ids: tuple[str, ...]
+    documents_per_course: dict[str, int]
+    source_chunks_per_course: dict[str, int]
 
 
 def _choice(
@@ -313,19 +315,45 @@ _COURSES: tuple[_CourseSeed, ...] = (
 
 SEVEN_COURSE_IDS = tuple(f"test-course-{course.slug}" for course in _COURSES)
 
+SEVEN_COURSE_SOURCES: dict[str, tuple[str, ...]] = {
+    "computer-systems": (
+        "cmu-15-213-system-level-io.pdf",
+        "cmu-15-213-system-level-io.pptx",
+        "computer-systems.md",
+    ),
+    "microeconomics": ("mit-14-01-microeconomics-summaries.pdf", "microeconomics.md"),
+    "linear-algebra": ("mit-18-06-linear-algebra-zoomnotes.pdf", "linear-algebra.md"),
+    "genetics": ("mit-7-03-genetics-lecture-1.pdf", "genetics.md"),
+    "emergency-medicine": ("who-basic-emergency-care.pdf", "emergency-medicine.md"),
+    "case-law": ("cornell-law-georgia-v-public-resource.pdf", "case-law.md"),
+    "ethics": ("mit-24-00-ethics-handout.pdf", "ethics.md"),
+}
 
-def seed_seven_course_data(root: str | Path) -> SevenCourseSeedReport:
-    """Create or replace the deterministic pack below an explicit data root."""
+
+def seed_seven_course_data(
+    root: str | Path,
+    *,
+    source_root: str | Path,
+) -> SevenCourseSeedReport:
+    """Import seven original-source groups and bind deterministic test questions."""
     data_root = Path(root).resolve()
+    original_root = Path(source_root).resolve()
+    if not original_root.is_dir():
+        raise FileNotFoundError(f"Original source root does not exist: {original_root}")
     course_manager = CourseProjectManager(str(data_root / "courses"))
     question_bank = QuestionBank(str(data_root / "questions"))
     set_manager = SetManager(str(data_root / "question_sets"))
+    initializer = CourseInitializer(manager=course_manager)
 
     question_count = 0
     for course_seed in _COURSES:
-        project = _build_project(course_seed, data_root)
-        if not course_manager.save(project, make_current=False):
-            raise OSError(f"Failed to save test course {project.course_id}")
+        staged_folder = _stage_original_sources(original_root, data_root, course_seed.slug)
+        project = initializer.initialize(
+            str(staged_folder),
+            title=course_seed.title,
+            make_current=False,
+            course_id=f"test-course-{course_seed.slug}",
+        )
         question_ids: list[str] = []
         for index, question_seed in enumerate(course_seed.questions, start=1):
             question = _build_question(project, course_seed, question_seed, index)
@@ -385,39 +413,37 @@ def audit_seven_course_data(root: str | Path) -> SevenCourseAuditReport:
         stale_question_refs=tuple(stale_refs),
         orphan_course_refs=tuple(orphan_refs),
         structurally_invalid_question_ids=invalid,
+        documents_per_course={course.course_id: len(course.documents) for course in courses},
+        source_chunks_per_course={
+            course.course_id: sum(
+                len(document.get("_source_index", []) or [])
+                for document in course.documents
+                if isinstance(document, dict)
+            )
+            for course in courses
+        },
     )
 
 
-def _build_project(seed: _CourseSeed, root: Path) -> CourseProject:
-    course_id = f"test-course-{seed.slug}"
-    topics = [CourseTopic(topic_id, title, list(keywords), [seed.source_name]) for topic_id, title, keywords in seed.topics]
-    summary = _summary(seed)
-    source_text = "\n\n".join(
-        f"{title}: {', '.join(keywords)}" for _topic_id, title, keywords in seed.topics
-    )
-    project = CourseProject(
-        course_id=course_id,
-        title=seed.title,
-        source_folder=str(root / "source_materials" / seed.slug),
-        summary_markdown=summary,
-        summary_path="",
-        topics=topics,
-        documents=[{
-            "path": str(root / "source_materials" / seed.slug / seed.source_name),
-            "title": Path(seed.source_name).stem,
-            "extension": ".md",
-            "word_count": len(source_text.split()),
-            "page_count": 1,
-            "pages": [source_text],
-            "warnings": [],
-        }],
-        created_at=_STAMP,
-        updated_at=_STAMP,
-        summary_source="test_seed",
-        generation_profile_source="local",
-    )
-    project.generation_profile = build_local_course_profile(topics, summary).to_dict()
-    return attach_index_to_project(project)
+def _stage_original_sources(source_root: Path, data_root: Path, slug: str) -> Path:
+    candidates = SEVEN_COURSE_SOURCES[slug]
+    selected = [source_root / name for name in candidates if (source_root / name).is_file()]
+    fallback_name = f"{slug}.md"
+    real_selected = [path for path in selected if path.name != fallback_name]
+    if real_selected:
+        selected = real_selected
+    if not selected:
+        expected = ", ".join(candidates)
+        raise FileNotFoundError(f"No original source for {slug}; expected one of: {expected}")
+    staged = data_root / "source_materials" / slug
+    staged.mkdir(parents=True, exist_ok=True)
+    selected_names = {path.name for path in selected}
+    for existing in staged.iterdir():
+        if existing.is_file() and existing.name not in selected_names:
+            existing.unlink()
+    for source in selected:
+        shutil.copy2(source, staged / source.name)
+    return staged
 
 
 def _build_question(
@@ -426,7 +452,9 @@ def _build_question(
     seed: _QuestionSeed,
     index: int,
 ) -> Question:
-    topic = project.topics[seed.topic_index]
+    if not project.topics:
+        raise ValueError(f"Imported course {project.course_id} has no topics")
+    topic = project.topics[min(seed.topic_index, len(project.topics) - 1)]
     return Question(
         question_id=f"test-question-{course_seed.slug}-{index}",
         type=seed.type,
