@@ -9,8 +9,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
+from core.question_index import QuestionIndex
 from utils.constants import QuestionType, Difficulty, coerce_topic, topic_label, topic_matches, topic_value
+from utils.constants import topic_alias_values
 from utils.json_io import read_json, write_json, sanitize_filename_part, list_json_files
+from utils.logger import warning
 
 
 def _coerce_question_type(value) -> QuestionType:
@@ -203,6 +206,7 @@ class QuestionBank:
 
     def __init__(self, questions_dir: str):
         self._dir = questions_dir
+        self._index = QuestionIndex(questions_dir)
         self._cache: dict[str, Question] = {}
         self._load_cache: list[Question] | None = None
         self._load_cache_signature: tuple[tuple[str, int, int], ...] | None = None
@@ -258,10 +262,15 @@ class QuestionBank:
         """Save a question to its JSON file."""
         safe_id = sanitize_filename_part(question.question_id)
         filepath = f"{self._dir}/{safe_id}.json"
+        self._try_ensure_index_current()
         ok = write_json(filepath, question.to_dict())
         if ok:
             self._cache[question.question_id] = question
             self._invalidate_load_cache()
+            try:
+                self._sync_index_file(safe_id, question.to_dict())
+            except Exception as exc:
+                warning(f"Question index update skipped after saving {safe_id}: {exc}")
         return ok
 
     def save_many(self, questions: list[Question]) -> int:
@@ -276,30 +285,27 @@ class QuestionBank:
         """Delete a question by ID."""
         from utils.json_io import delete_json
 
+        safe_id = sanitize_filename_part(question_id)
+        self._try_ensure_index_current()
         self._cache.pop(question_id, None)
-        ok = delete_json(f"{self._dir}/{sanitize_filename_part(question_id)}.json")
+        ok = delete_json(f"{self._dir}/{safe_id}.json")
         if ok:
             self._invalidate_load_cache()
+            try:
+                self._index.delete(f"{safe_id}.json")
+            except Exception as exc:
+                warning(f"Question index update skipped after deleting {safe_id}: {exc}")
         return ok
 
     def filter_by_topic(self, topic: object, course_id: str | None = None) -> list[Question]:
         """Get all questions for a specific topic, optionally scoped to a course."""
-        all_qs = self.load_all()
-        return [
-            q
-            for q in all_qs
-            if topic_matches(q.topic, topic) and self._matches_course(q, course_id)
-        ]
+        return self._filter_by_topics_indexed([topic], course_id)
 
     def filter_by_topics(self, topics: list, course_id: str | None = None) -> list[Question]:
         """Get all questions matching any topic, optionally scoped to a course."""
-        all_qs = self.load_all()
-        return [
-            q
-            for q in all_qs
-            if self._matches_course(q, course_id)
-            and any(topic_matches(q.topic, selected_topic) for selected_topic in topics)
-        ]
+        if not topics:
+            return []
+        return self._filter_by_topics_indexed(topics, course_id)
 
     def search(
         self,
@@ -317,8 +323,36 @@ class QuestionBank:
         difficulty_filter = difficulty.value if isinstance(difficulty, Difficulty) else difficulty
         course_filter = (course_id or "").strip()
 
+        try:
+            self._ensure_index_current()
+            topic_values = topic_alias_values(topic) if topic is not None else set()
+            indexed_offset = offset if metadata_filter is None else 0
+            indexed_limit = limit if metadata_filter is None else None
+            candidate_ids, indexed_total = self._index.query_ids(
+                query=query,
+                topic_values=topic_values,
+                difficulty=str(difficulty_filter or ""),
+                course_id=course_filter,
+                offset=indexed_offset,
+                limit=indexed_limit,
+            )
+        except Exception as exc:
+            warning(f"Question index search unavailable; using JSON fallback: {exc}")
+            return self._search_json(
+                query=query,
+                topic=topic,
+                difficulty_filter=difficulty_filter,
+                course_filter=course_filter,
+                offset=offset,
+                limit=limit,
+                metadata_filter=metadata_filter,
+            )
+        candidates = self.get_many(candidate_ids)
+        if metadata_filter is None:
+            return candidates, indexed_total
+
         matches: list[Question] = []
-        for q in self.load_all():
+        for q in candidates:
             if topic_filter is not None and not topic_matches(q.topic, topic):
                 continue
             if difficulty_filter and q.difficulty.value != difficulty_filter:
@@ -348,40 +382,35 @@ class QuestionBank:
 
     def question_ids(self, course_id: str | None = None) -> list[str]:
         """Return matching question IDs without constructing Question objects."""
-        ids: list[str] = []
-        for filename in list_json_files(self._dir):
-            data = read_json(f"{self._dir}/{filename}")
-            if not isinstance(data, dict):
-                continue
-            if not self._matches_course_data(data, course_id):
-                continue
-            question_id = str(data.get("question_id", "") or "").strip()
-            if question_id:
-                ids.append(question_id)
-        return ids
+        try:
+            self._ensure_index_current()
+            ids, _total = self._index.query_ids(course_id=(course_id or "").strip())
+            return ids
+        except Exception as exc:
+            warning(f"Question index IDs unavailable; using JSON fallback: {exc}")
+            ids: list[str] = []
+            for filename in list_json_files(self._dir):
+                data = read_json(f"{self._dir}/{filename}")
+                if not isinstance(data, dict) or not self._matches_course_data(data, course_id):
+                    continue
+                question_id = str(data.get("question_id", "") or "").strip()
+                if question_id:
+                    ids.append(question_id)
+            return ids
 
     def topic_index(self, course_id: str | None = None) -> dict[str, tuple[str, str]]:
         """Return lightweight question-to-topic labels without constructing models."""
-        index: dict[str, tuple[str, str]] = {}
-        for filename in list_json_files(self._dir):
-            data = read_json(f"{self._dir}/{filename}")
-            if not isinstance(data, dict) or not self._matches_course_data(data, course_id):
-                continue
-            question_id = str(data.get("question_id", "") or "").strip()
-            topic_id = str(data.get("topic_id") or data.get("topic") or "").strip()
-            if not question_id or not topic_id:
-                continue
-            metadata = data.get("metadata", {}) or {}
-            metadata_title = (
-                metadata.get("topic_title", "")
-                if isinstance(metadata, dict)
-                else ""
-            )
-            topic_title = str(
-                data.get("topic_title") or metadata_title or topic_id
-            ).strip() or topic_id
-            index[question_id] = (topic_id, topic_title)
-        return index
+        try:
+            self._ensure_index_current()
+            return {
+                question_id: (topic_id, topic_title)
+                for question_id, topic_id, topic_title in self._index.topic_rows(
+                    (course_id or "").strip()
+                )
+            }
+        except Exception as exc:
+            warning(f"Question topic index unavailable; using JSON fallback: {exc}")
+            return self._topic_index_from_json(course_id)
 
     def count(self, course_id: str | None = None) -> int:
         """Return a lightweight count of matching question records."""
@@ -424,6 +453,99 @@ class QuestionBank:
     def _invalidate_load_cache(self) -> None:
         self._load_cache = None
         self._load_cache_signature = None
+
+    def _ensure_index_current(self) -> None:
+        self._index.ensure_current(
+            lambda filename: read_json(f"{self._dir}/{filename}"),
+        )
+
+    def _try_ensure_index_current(self) -> bool:
+        try:
+            self._ensure_index_current()
+            return True
+        except Exception as exc:
+            warning(f"Question index unavailable; continuing with JSON store: {exc}")
+            return False
+
+    def _sync_index_file(self, safe_id: str, data: dict) -> None:
+        path = Path(self._dir) / f"{safe_id}.json"
+        stat = path.stat()
+        self._index.upsert(path.name, data, stat.st_mtime_ns, stat.st_size)
+
+    def _search_json(
+        self,
+        *,
+        query: str,
+        topic: object,
+        difficulty_filter: str | None,
+        course_filter: str,
+        offset: int,
+        limit: int,
+        metadata_filter: Callable[[Question], bool] | None,
+    ) -> tuple[list[Question], int]:
+        matches: list[Question] = []
+        for question in self.load_all():
+            if topic is not None and not topic_matches(question.topic, topic):
+                continue
+            if difficulty_filter and question.difficulty.value != difficulty_filter:
+                continue
+            if course_filter and not self._matches_course(question, course_filter):
+                continue
+            if metadata_filter is not None and not metadata_filter(question):
+                continue
+            if query:
+                haystack = " ".join([
+                    question.get_stem("zh"),
+                    question.get_stem("en"),
+                    question.get_explanation("zh"),
+                    question.get_explanation("en"),
+                    question.subtopic,
+                    topic_value(question.topic),
+                    str((question.metadata or {}).get("topic_title", "")),
+                    str((question.metadata or {}).get("legacy_topic", "")),
+                ]).lower()
+                if query not in haystack:
+                    continue
+            matches.append(question)
+        return matches[offset:offset + limit], len(matches)
+
+    def _topic_index_from_json(self, course_id: str | None) -> dict[str, tuple[str, str]]:
+        index: dict[str, tuple[str, str]] = {}
+        for filename in list_json_files(self._dir):
+            data = read_json(f"{self._dir}/{filename}")
+            if not isinstance(data, dict) or not self._matches_course_data(data, course_id):
+                continue
+            question_id = str(data.get("question_id", "") or "").strip()
+            topic_id = str(data.get("topic_id") or data.get("topic") or "").strip()
+            if not question_id or not topic_id:
+                continue
+            metadata = data.get("metadata", {}) or {}
+            metadata_title = metadata.get("topic_title", "") if isinstance(metadata, dict) else ""
+            topic_title = str(data.get("topic_title") or metadata_title or topic_id).strip() or topic_id
+            index[question_id] = (topic_id, topic_title)
+        return index
+
+    def _filter_by_topics_indexed(
+        self, topics: list[object], course_id: str | None
+    ) -> list[Question]:
+        try:
+            self._ensure_index_current()
+            aliases: set[str] = set()
+            for topic in topics:
+                aliases.update(topic_alias_values(topic))
+            question_ids, _total = self._index.query_ids(
+                topic_values=aliases,
+                course_id=(course_id or "").strip(),
+            )
+            return self.get_many(question_ids, course_id=course_id)
+        except Exception as exc:
+            warning(f"Question topic filtering unavailable; using JSON fallback: {exc}")
+            return [
+                question
+                for question in self.load_all()
+                if self._matches_course(question, course_id)
+                and any(topic_matches(question.topic, selected) for selected in topics)
+            ]
 
     @staticmethod
     def _matches_course(question: Question, course_id: str | None) -> bool:

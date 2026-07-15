@@ -129,7 +129,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 _page, updated_total = question_bank.search(query="cache", limit=5)
 
                 self.assertEqual(3, updated_total)
-                self.assertGreater(read.call_count, reads_after_first_search)
+                self.assertEqual(reads_after_first_search, read.call_count)
 
     def test_question_bank_count_existing_skips_unsafe_question_ids(self):
         with tempfile.TemporaryDirectory() as tmpdir:

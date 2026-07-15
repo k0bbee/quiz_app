@@ -16,6 +16,7 @@ import tempfile
 import zipfile
 
 from core.background_task import TaskControl
+from core.question_index import INDEX_FILENAME
 
 
 BUNDLE_FORMAT = "quiz_app_data_bundle"
@@ -31,6 +32,11 @@ DATA_DIRECTORIES = (
 DATA_FILES = ("current_course.json", "settings.json", "mastery_overrides.json")
 SECRET_FILENAMES = {".api_key.dpapi"}
 SECRET_SETTING_KEYS = {"ai_api_key"}
+DERIVED_FILENAMES = {
+    INDEX_FILENAME,
+    f"{INDEX_FILENAME}-wal",
+    f"{INDEX_FILENAME}-shm",
+}
 
 
 @dataclass(frozen=True)
@@ -61,7 +67,7 @@ def export_app_data_bundle(
         files.extend(
             (path, path.relative_to(source_dir).as_posix())
             for path in sorted(p for p in directory.rglob("*") if p.is_file())
-            if path.name not in SECRET_FILENAMES
+            if path.name not in SECRET_FILENAMES | DERIVED_FILENAMES
         )
     for filename in DATA_FILES:
         path = source_dir / filename
@@ -311,7 +317,7 @@ def _validate_manifest(archive: zipfile.ZipFile) -> None:
 def _is_allowed_bundle_member(name: str) -> bool:
     if "\\" in name or name.startswith("/") or ".." in Path(name).parts:
         return False
-    if Path(name).name in SECRET_FILENAMES:
+    if Path(name).name in SECRET_FILENAMES | DERIVED_FILENAMES:
         return False
     if name in DATA_FILES:
         return True

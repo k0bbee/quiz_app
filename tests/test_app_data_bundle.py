@@ -71,6 +71,9 @@ class AppDataBundleTests(unittest.TestCase):
             (data_dir / "past_exams" / "past-exam-a").mkdir(parents=True)
             (data_dir / "courses" / "course-a" / "summary.md").write_text("# 课程总结", encoding="utf-8")
             (data_dir / "questions" / "q1.json").write_text('{"question_id": "q1"}', encoding="utf-8")
+            (data_dir / "questions" / ".question_index.sqlite3").write_bytes(b"derived index")
+            (data_dir / "questions" / ".question_index.sqlite3-wal").write_bytes(b"derived wal")
+            (data_dir / "questions" / ".question_index.sqlite3-shm").write_bytes(b"derived shm")
             (data_dir / "question_sets" / "set1.json").write_text('{"set_id": "set1"}', encoding="utf-8")
             (data_dir / "progress" / "p1.json").write_text('{"progress_id": "p1"}', encoding="utf-8")
             (data_dir / "quiz_snapshots" / "snapshot1.json").write_text(
@@ -107,6 +110,9 @@ class AppDataBundleTests(unittest.TestCase):
                 self.assertIn("mastery_overrides.json", names)
                 self.assertIn("settings.json", names)
                 self.assertNotIn(".api_key.dpapi", names)
+                self.assertNotIn("questions/.question_index.sqlite3", names)
+                self.assertNotIn("questions/.question_index.sqlite3-wal", names)
+                self.assertNotIn("questions/.question_index.sqlite3-shm", names)
 
                 settings = json.loads(archive.read("settings.json").decode("utf-8"))
                 self.assertEqual("zh", settings["language"])
@@ -122,6 +128,7 @@ class AppDataBundleTests(unittest.TestCase):
                 archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
                 archive.writestr("courses/course-a/summary.md", "# 课程总结")
                 archive.writestr("questions/q1.json", '{"question_id": "q1"}')
+                archive.writestr("questions/.question_index.sqlite3", "stale derived index")
                 archive.writestr("quiz_snapshots/snapshot1.json", '{"snapshot_id": "snapshot1"}')
                 archive.writestr("mastery_overrides.json", '{"courses": {"course-a": ["cache"]}}')
                 archive.writestr("settings.json", '{"language": "en", "ai_api_key": "must-not-import"}')
@@ -138,6 +145,8 @@ class AppDataBundleTests(unittest.TestCase):
             self.assertEqual({"language": "en"}, imported_settings)
             self.assertFalse((Path(tmpdir) / "escape.txt").exists())
             self.assertIn("../escape.txt", result.skipped_files)
+            self.assertIn("questions/.question_index.sqlite3", result.skipped_files)
+            self.assertFalse((target_dir / "questions" / ".question_index.sqlite3").exists())
 
     def test_import_rejects_invalid_json_without_changing_target_data(self):
         with tempfile.TemporaryDirectory() as tmpdir:
