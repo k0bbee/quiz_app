@@ -44,6 +44,7 @@ python scripts/check_environment.py --json
 | Course management | Multi-file course import, safe cancellation, summaries, stable topics, course renaming, exam-scope configuration, and source navigation |
 | Past exams | Import TXT/Markdown/PDF/DOCX/PPTX exams, apply OCR to scanned PDFs, assign a course, and build explainable exam profiles |
 | Question generation | Stream accepted questions one at a time, validate plan slots and source references, accept additional instructions while generation is running, and safely preserve partial results on cancellation |
+| Q&A review | Ask follow-up questions inside the selected course workspace using only the current exam scope, course summary, and original source evidence; requests remain cancellable and non-blocking |
 | Question types | Multiple choice, true/false, scenario choice, matching, ordering, fill-in-the-blank, and short answer |
 | Question bank | Search and filter by set, topic, difficulty, and quality; create or edit every question type; multi-select and batch-delete questions |
 | Question sets | Rename sets, select multiple topics, create random practice sets, regenerate questions, and export one or more mock exams as UTF-8 Markdown |
@@ -67,6 +68,12 @@ Short answers do not pretend to have reliable automatic semantic grading. Practi
 Each course can use all inferred topics or a selected subset. The selection is stored with stable topic IDs, so renaming a topic does not lose the scope. Topics removed by a later summary regeneration are safely removed from the effective scope.
 
 The scope constrains AI generation, past-exam prediction, home-page recommendations, and incorrect-question review. It does not delete or hide historical questions, sets, progress, or drafts.
+
+## Q&A review
+
+Select a course and switch the right-hand workspace directly between the course summary and Q&A review. This does not open a separate mode dialog or add another top-level navigation item. Answers reuse the current exam scope, stable topic IDs, and page-level source index. Questions that explicitly target an out-of-scope topic are rejected with an actionable scope message instead of silently introducing outside material.
+
+The conversation keeps only recent context during the current application session. A failed question returns to the input field, stopping a request discards any late response, and the UI remains responsive while the provider is working. `Enter` sends; `Shift+Enter` inserts a new line. Remote providers receive the necessary in-scope summary, source excerpts, and recent turns only after the user sends a question.
 
 ## Quiz behavior
 

@@ -1033,6 +1033,26 @@ QTextEdit#dialogPromptPreview {
     font-size: 12px;
 }
 
+QTextBrowser#courseQATranscript {
+    color: #cccccc;
+    background-color: #1f1f1f;
+    border: 1px solid #3c3c3c;
+    border-radius: 10px;
+    padding: 10px;
+}
+
+QPlainTextEdit#courseQAInput {
+    font-size: 13px;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+QLabel#courseQAStatus {
+    color: #9d9d9d;
+    font-size: 12px;
+    padding: 2px 0;
+}
+
 QPushButton#homeStartBtn {
     min-height: 34px;
     font-size: 15px;

@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
     QSplitter, QGroupBox, QProgressBar, QInputDialog, QTextBrowser,
-    QDialog, QRadioButton, QMenu,
+    QDialog, QRadioButton, QMenu, QStackedWidget,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
@@ -29,6 +29,7 @@ from models.course_project import CourseProjectManager
 from core.language_manager import LanguageManager
 from config import SETTINGS_FILE
 from ui.dialogs.course_exam_scope_dialog import CourseExamScopeDialog
+from ui.widgets.course_qa_panel import CourseQAPanel
 from utils.json_io import read_json
 
 
@@ -53,6 +54,7 @@ class CourseScreen(QWidget):
         snapshot_manager=None,
         parent=None,
         task_center=None,
+        qa_service_factory=None,
     ):
         super().__init__(parent)
         self.manager = manager
@@ -61,6 +63,7 @@ class CourseScreen(QWidget):
         self.progress_manager = progress_manager
         self.snapshot_manager = snapshot_manager
         self.task_center = task_center
+        self.qa_service_factory = qa_service_factory or self._create_qa_service
         self.initializer = CourseInitializer(manager)
         self.lang_manager = LanguageManager.instance()
         self._init_worker = None
@@ -97,6 +100,11 @@ class CourseScreen(QWidget):
         self.refresh_action.setText(self.lang_manager.get_text("刷新", "Refresh"))
         self.delete_action.setText(self.lang_manager.get_text("删除课程", "Delete Course"))
         self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
+        self.qa_mode_btn.setText(self.lang_manager.get_text(
+            "返回课程总结" if self._qa_mode_active() else "问答巩固",
+            "Back to Summary" if self._qa_mode_active() else "Q&A Review",
+        ))
+        self.qa_panel.retranslate()
         self._update_summary_mode_button_text()
         self.refresh()
 
@@ -216,17 +224,26 @@ class CourseScreen(QWidget):
         self.summary_label = QLabel(self.lang_manager.get_text("摘要预览", "Summary preview"))
         self.summary_label.setObjectName("courseSummaryLabel")
         summary_header.addWidget(self.summary_label, 1)
+        self.qa_mode_btn = QPushButton(self.lang_manager.get_text("问答巩固", "Q&A Review"))
+        self.qa_mode_btn.setObjectName("secondaryButton")
+        self.qa_mode_btn.setEnabled(False)
+        self.qa_mode_btn.clicked.connect(self._toggle_qa_mode)
+        summary_header.addWidget(self.qa_mode_btn)
         self.summary_mode_btn = QPushButton()
         self.summary_mode_btn.setObjectName("secondaryButton")
         self.summary_mode_btn.clicked.connect(self._toggle_summary_mode)
         self._update_summary_mode_button_text()
         summary_header.addWidget(self.summary_mode_btn)
         right_layout.addLayout(summary_header)
+        self.content_stack = QStackedWidget()
         self.summary_preview = QTextBrowser()
         self.summary_preview.setObjectName("courseSummaryPreview")
         self.summary_preview.setReadOnly(True)
         self.summary_preview.setOpenExternalLinks(False)
-        right_layout.addWidget(self.summary_preview, 1)
+        self.content_stack.addWidget(self.summary_preview)
+        self.qa_panel = CourseQAPanel(self.qa_service_factory)
+        self.content_stack.addWidget(self.qa_panel)
+        right_layout.addWidget(self.content_stack, 1)
         splitter.addWidget(right)
         splitter.setSizes([280, 620])
 
@@ -256,6 +273,7 @@ class CourseScreen(QWidget):
         self.project_list.setVisible(not is_empty)
         self.set_current_btn.setEnabled(False)
         self.scope_btn.setEnabled(False)
+        self.qa_mode_btn.setEnabled(False)
         self.rename_action.setEnabled(False)
         self.regenerate_action.setEnabled(False)
         self.delete_action.setEnabled(False)
@@ -263,9 +281,13 @@ class CourseScreen(QWidget):
             current_label = self.lang_manager.get_text("当前:", "Current:")
             self.summary_label.setText(f"{current_label} {current.title}")
             self._show_summary(current.summary_markdown)
+            self.qa_panel.set_course(current)
+            self.qa_mode_btn.setEnabled(True)
+            self._update_content_header(current)
         else:
             self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
             self._clear_summary()
+            self.qa_panel.set_course(None)
 
     def _browse_folder(self):
         folder = QFileDialog.getExistingDirectory(
@@ -329,6 +351,9 @@ class CourseScreen(QWidget):
 
     def _set_course_task_active(self, active: bool) -> None:
         """Keep all course actions consistent while one background task owns state."""
+        if active:
+            self.qa_panel.stop_request(show_status=False)
+        self.qa_panel.setEnabled(not active)
         self.progress_bar.setVisible(active)
         self.task_status_label.setVisible(active)
         self.cancel_task_btn.setVisible(active)
@@ -342,7 +367,7 @@ class CourseScreen(QWidget):
         if active:
             self.progress_bar.setRange(0, 0)
             self.task_status_label.setText(self.lang_manager.get_text("正在准备…", "Preparing…"))
-            for button in (self.set_current_btn, self.scope_btn, self.more_actions_btn):
+            for button in (self.set_current_btn, self.scope_btn, self.more_actions_btn, self.qa_mode_btn):
                 button.setEnabled(False)
             for action in self.more_actions_menu.actions():
                 action.setEnabled(False)
@@ -564,6 +589,7 @@ class CourseScreen(QWidget):
         if current is None:
             self.set_current_btn.setEnabled(False)
             self.scope_btn.setEnabled(False)
+            self.qa_mode_btn.setEnabled(False)
             self.rename_action.setEnabled(False)
             self.regenerate_action.setEnabled(False)
             self.delete_action.setEnabled(False)
@@ -574,10 +600,12 @@ class CourseScreen(QWidget):
             return
         self.set_current_btn.setEnabled(True)
         self.scope_btn.setEnabled(True)
+        self.qa_mode_btn.setEnabled(True)
         self.rename_action.setEnabled(True)
         self.regenerate_action.setEnabled(True)
         self.delete_action.setEnabled(True)
-        self.summary_label.setText(project.title)
+        self.qa_panel.set_course(project)
+        self._update_content_header(project)
         self._show_summary(project.summary_markdown)
 
     def _edit_exam_scope(self):
@@ -977,6 +1005,75 @@ class CourseScreen(QWidget):
         self._summary_raw_mode = not self._summary_raw_mode
         self._render_summary_preview()
 
+    def _toggle_qa_mode(self):
+        """Switch the selected course workspace between summary and grounded Q&A."""
+        if self.qa_panel.course is None:
+            return
+        target = self.summary_preview if self._qa_mode_active() else self.qa_panel
+        self.content_stack.setCurrentWidget(target)
+        self.summary_mode_btn.setVisible(target is self.summary_preview)
+        self.qa_mode_btn.setText(self.lang_manager.get_text(
+            "返回课程总结" if target is self.qa_panel else "问答巩固",
+            "Back to Summary" if target is self.qa_panel else "Q&A Review",
+        ))
+        self._update_content_header(self.qa_panel.course)
+
+    def _qa_mode_active(self) -> bool:
+        return (
+            hasattr(self, "content_stack")
+            and hasattr(self, "qa_panel")
+            and self.content_stack.currentWidget() is self.qa_panel
+        )
+
+    def _update_content_header(self, project) -> None:
+        if project is None:
+            self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
+            return
+        if self._qa_mode_active():
+            self.summary_label.setText(self.lang_manager.get_text(
+                f"问答巩固 · {project.title}",
+                f"Q&A Review · {project.title}",
+            ))
+        else:
+            self.summary_label.setText(project.title)
+
+    def _create_qa_service(self, project):
+        """Build a validated course Q&A service from persisted AI settings."""
+        from ai.course_qa import CourseQAError, CourseQAService
+        from ai.course_summary_factory import provider_requires_api_key
+        from ai.llm_client import LLMClient
+        from ai.provider_presets import detect_local_agents
+        from ai.settings_validation import validate_ai_settings
+        from core.app_errors import AppError
+        from core.secrets_manager import SecretsManager
+
+        settings = read_json(SETTINGS_FILE) or {}
+        api_key = SecretsManager.instance().get_key() if provider_requires_api_key(settings) else ""
+        validation = validate_ai_settings(
+            settings,
+            api_key=api_key,
+            detected_agents=detect_local_agents(),
+        )
+        if not validation.ok:
+            raise CourseQAError(AppError(
+                code="QA-SETTINGS-001",
+                severity="warning",
+                title_zh="AI 设置需要处理",
+                title_en="AI Settings Need Attention",
+                message_zh=validation.message,
+                message_en=validation.message,
+                action_zh="请到设置页检查服务商、地址、模型和 API Key。",
+                action_en="Check the provider, endpoint, model, and API key in Settings.",
+                technical_detail=validation.message,
+            ))
+        client = LLMClient(
+            api_key=api_key,
+            base_url=settings.get("ai_base_url", "https://api.anthropic.com/v1"),
+            model=settings.get("ai_model", "claude-sonnet-4-6"),
+            provider=settings.get("ai_provider", ""),
+        )
+        return CourseQAService(client, project)
+
     def _show_summary(self, markdown: str):
         """Display course summary as rendered Markdown by default."""
         self._summary_markdown = str(markdown or "")[:20000]
@@ -986,6 +1083,11 @@ class CourseScreen(QWidget):
         self._summary_markdown = ""
         self.summary_preview.clear()
         self.summary_mode_btn.setEnabled(False)
+        if hasattr(self, "content_stack"):
+            self.content_stack.setCurrentWidget(self.summary_preview)
+            self.summary_mode_btn.setVisible(True)
+        if hasattr(self, "qa_mode_btn"):
+            self.qa_mode_btn.setText(self.lang_manager.get_text("问答巩固", "Q&A Review"))
         self._update_summary_mode_button_text()
 
     def _render_summary_preview(self):
