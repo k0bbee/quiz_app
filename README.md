@@ -1,5 +1,7 @@
 # Course Quiz Studio
 
+[简体中文](README.md) | [English](README.en.md)
+
 基于 **PyQt6** 的通用课件导入与刷题桌面应用。支持从 PPTX/PDF/DOCX/Markdown 课件中提取主题、AI 生成双语题目、自然语言配置试卷、7 种题型自动判分、进度追踪和中英文切换。
 
 ## 环境要求
@@ -207,3 +209,14 @@ python -m pytest tests/ -q
 ```
 
 `tests/conftest.py` 会自动识别导入 `PyQt6` 的测试文件并标记为 `qt`；未安装 PyQt6 时，这些文件会在收集阶段跳过，避免核心测试被桌面依赖阻塞。
+
+## 安全与隐私
+
+- 不要提交 API Key、私人课件、运行时数据或导出的学习数据包。
+- 应用数据导出不会包含 API Key。
+- 只有用户主动运行已配置为远程提供商的 AI 操作时，相关课程上下文才会发送到该提供商。
+- 漏洞私密报告方式、支持版本和敏感测试材料要求见 [SECURITY.md](SECURITY.md)。
+
+## 许可证
+
+本项目采用 [GNU General Public License v3.0 only](LICENSE)。
