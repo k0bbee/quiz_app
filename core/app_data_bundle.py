@@ -28,6 +28,7 @@ DATA_DIRECTORIES = (
     "quiz_snapshots",
     "progress",
     "past_exams",
+    "current_event_materials",
 )
 DATA_FILES = ("current_course.json", "settings.json", "mastery_overrides.json")
 SECRET_FILENAMES = {".api_key.dpapi"}

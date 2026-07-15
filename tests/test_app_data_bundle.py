@@ -69,6 +69,7 @@ class AppDataBundleTests(unittest.TestCase):
             (data_dir / "progress").mkdir()
             (data_dir / "quiz_snapshots").mkdir()
             (data_dir / "past_exams" / "past-exam-a").mkdir(parents=True)
+            (data_dir / "current_event_materials").mkdir()
             (data_dir / "courses" / "course-a" / "summary.md").write_text("# 课程总结", encoding="utf-8")
             (data_dir / "questions" / "q1.json").write_text('{"question_id": "q1"}', encoding="utf-8")
             (data_dir / "questions" / ".question_index.sqlite3").write_bytes(b"derived index")
@@ -82,6 +83,10 @@ class AppDataBundleTests(unittest.TestCase):
             )
             (data_dir / "past_exams" / "past-exam-a" / "record.json").write_text(
                 '{"exam_id": "past-exam-a"}',
+                encoding="utf-8",
+            )
+            (data_dir / "current_event_materials" / "material-a.json").write_text(
+                '{"pack_id": "material-a"}',
                 encoding="utf-8",
             )
             (data_dir / "current_course.json").write_text('{"course_id": "course-a"}', encoding="utf-8")
@@ -106,6 +111,7 @@ class AppDataBundleTests(unittest.TestCase):
                 self.assertIn("progress/p1.json", names)
                 self.assertIn("quiz_snapshots/snapshot1.json", names)
                 self.assertIn("past_exams/past-exam-a/record.json", names)
+                self.assertIn("current_event_materials/material-a.json", names)
                 self.assertIn("current_course.json", names)
                 self.assertIn("mastery_overrides.json", names)
                 self.assertIn("settings.json", names)
