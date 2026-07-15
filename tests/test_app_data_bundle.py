@@ -9,9 +9,57 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from core.app_data_bundle import export_app_data_bundle, import_app_data_bundle
+from core.background_task import BackgroundTaskCancelled, TaskControl
 
 
 class AppDataBundleTests(unittest.TestCase):
+    def test_cancelled_export_preserves_existing_bundle_and_removes_staging_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            data_dir = root / "data"
+            questions = data_dir / "questions"
+            questions.mkdir(parents=True)
+            (questions / "q1.json").write_text('{"question_id": "q1"}', encoding="utf-8")
+            output = root / "backup.quizdata"
+            output.write_bytes(b"previous backup")
+
+            task = TaskControl(
+                lambda progress: task.cancel()
+                if progress.stage == "exporting" and progress.current == 1
+                else None
+            )
+
+            with self.assertRaises(BackgroundTaskCancelled):
+                export_app_data_bundle(data_dir, output, task=task)
+
+            self.assertEqual(b"previous backup", output.read_bytes())
+            self.assertEqual([], list(root.glob(".backup.quizdata.*.tmp")))
+
+    def test_cancelled_import_rolls_back_files_already_committed(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            target = root / "data"
+            (target / "questions").mkdir(parents=True)
+            existing = target / "questions" / "q1.json"
+            existing.write_text('{"value": "old"}', encoding="utf-8")
+            bundle = root / "backup.quizdata"
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
+                archive.writestr("questions/q1.json", '{"value": "new"}')
+                archive.writestr("questions/q2.json", '{"value": "new"}')
+
+            task = TaskControl(
+                lambda progress: task.cancel()
+                if progress.stage == "committing" and progress.current == 2
+                else None
+            )
+
+            with self.assertRaises(BackgroundTaskCancelled):
+                import_app_data_bundle(bundle, target, task=task)
+
+            self.assertEqual({"value": "old"}, json.loads(existing.read_text(encoding="utf-8")))
+            self.assertFalse((target / "questions" / "q2.json").exists())
+
     def test_export_bundle_includes_runtime_data_without_api_secrets(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             data_dir = Path(tmpdir) / "data"

@@ -15,6 +15,8 @@ import shutil
 import tempfile
 import zipfile
 
+from core.background_task import TaskControl
+
 
 BUNDLE_FORMAT = "quiz_app_data_bundle"
 BUNDLE_VERSION = 1
@@ -39,11 +41,32 @@ class AppDataImportResult:
     skipped_files: list[str] = field(default_factory=list)
 
 
-def export_app_data_bundle(data_dir: str | Path, output_path: str | Path) -> Path:
+def export_app_data_bundle(
+    data_dir: str | Path,
+    output_path: str | Path,
+    *,
+    task: TaskControl | None = None,
+) -> Path:
     """Write a UTF-8 zip bundle containing portable runtime data."""
     source_dir = Path(data_dir)
     bundle_path = Path(output_path)
     bundle_path.parent.mkdir(parents=True, exist_ok=True)
+
+    _report(task, "scanning", detail=str(source_dir))
+    files: list[tuple[Path, str]] = []
+    for directory_name in DATA_DIRECTORIES:
+        directory = source_dir / directory_name
+        if not directory.exists():
+            continue
+        files.extend(
+            (path, path.relative_to(source_dir).as_posix())
+            for path in sorted(p for p in directory.rglob("*") if p.is_file())
+            if path.name not in SECRET_FILENAMES
+        )
+    for filename in DATA_FILES:
+        path = source_dir / filename
+        if path.exists() and path.is_file():
+            files.append((path, filename))
 
     manifest = {
         "format": BUNDLE_FORMAT,
@@ -53,30 +76,46 @@ def export_app_data_bundle(data_dir: str | Path, output_path: str | Path) -> Pat
         "excludes": sorted([*SECRET_FILENAMES, *SECRET_SETTING_KEYS]),
     }
 
-    with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        for directory_name in DATA_DIRECTORIES:
-            directory = source_dir / directory_name
-            if not directory.exists():
-                continue
-            for path in sorted(p for p in directory.rglob("*") if p.is_file()):
-                if path.name in SECRET_FILENAMES:
-                    continue
-                archive.write(path, path.relative_to(source_dir).as_posix())
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix=f".{bundle_path.name}.",
+            suffix=".tmp",
+            dir=bundle_path.parent,
+            delete=False,
+        ) as temporary_file:
+            temporary_path = Path(temporary_file.name)
 
-        for filename in DATA_FILES:
-            path = source_dir / filename
-            if not path.exists() or not path.is_file():
-                continue
-            if filename == "settings.json":
-                archive.writestr(filename, json.dumps(_portable_settings(path), ensure_ascii=False, indent=2))
-            else:
-                archive.write(path, filename)
+        with zipfile.ZipFile(temporary_path, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+            total = len(files)
+            for index, (path, archive_name) in enumerate(files, start=1):
+                _report(task, "exporting", index, total, archive_name)
+                if archive_name == "settings.json":
+                    archive.writestr(
+                        archive_name,
+                        json.dumps(_portable_settings(path), ensure_ascii=False, indent=2),
+                    )
+                else:
+                    archive.write(path, archive_name)
 
+        _report(task, "committing", total, total, bundle_path.name)
+        os.replace(temporary_path, bundle_path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+    _complete(task, "saved", str(bundle_path))
     return bundle_path
 
 
-def import_app_data_bundle(bundle_path: str | Path, data_dir: str | Path) -> AppDataImportResult:
+def import_app_data_bundle(
+    bundle_path: str | Path,
+    data_dir: str | Path,
+    *,
+    task: TaskControl | None = None,
+) -> AppDataImportResult:
     """Atomically import whitelisted runtime data from a bundle into data_dir."""
     target_dir = Path(data_dir)
     target_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -89,28 +128,42 @@ def import_app_data_bundle(bundle_path: str | Path, data_dir: str | Path) -> App
         staging_dir = transaction_dir / "staging"
         backup_dir = transaction_dir / "backup"
 
+        _report(task, "validating", detail=str(bundle_path))
         with zipfile.ZipFile(bundle_path) as archive:
             _validate_manifest(archive)
-            staged_files, skipped = _prepare_bundle(archive, staging_dir)
+            staged_files, skipped = _prepare_bundle(archive, staging_dir, task=task)
 
-        imported = _commit_staged_files(staged_files, target_dir, backup_dir)
+        imported = _commit_staged_files(
+            staged_files,
+            target_dir,
+            backup_dir,
+            task=task,
+        )
 
+    _complete(task, "saved", str(target_dir))
     return AppDataImportResult(imported_files=imported, skipped_files=skipped)
 
 
 def _prepare_bundle(
     archive: zipfile.ZipFile,
     staging_dir: Path,
+    *,
+    task: TaskControl | None = None,
 ) -> tuple[list[tuple[Path, Path]], list[str]]:
     """Validate every import candidate and write it only to staging."""
     staged_files: list[tuple[Path, Path]] = []
     skipped: list[str] = []
     seen: set[str] = set()
 
-    for info in archive.infolist():
+    members = archive.infolist()
+    total = sum(not info.is_dir() and info.filename != "manifest.json" for info in members)
+    current = 0
+    for info in members:
         name = info.filename
         if info.is_dir() or name == "manifest.json":
             continue
+        current += 1
+        _report(task, "staging", current, total, name)
         if not _is_allowed_bundle_member(name):
             skipped.append(name)
             continue
@@ -155,13 +208,17 @@ def _commit_staged_files(
     staged_files: list[tuple[Path, Path]],
     target_dir: Path,
     backup_dir: Path,
+    *,
+    task: TaskControl | None = None,
 ) -> int:
     """Commit staged files, restoring the original target state on failure."""
     backups: list[tuple[Path, Path]] = []
     created_paths: list[Path] = []
 
     try:
-        for relative_path, staged_path in staged_files:
+        total = len(staged_files)
+        for index, (relative_path, staged_path) in enumerate(staged_files, start=1):
+            _report(task, "committing", index, total, relative_path.as_posix())
             destination = target_dir / relative_path
             if not _is_within_directory(target_dir, destination):
                 raise ValueError(f"Unsafe staged data path: {relative_path.as_posix()}")
@@ -186,6 +243,22 @@ def _commit_staged_files(
         raise
 
     return len(staged_files)
+
+
+def _report(
+    task: TaskControl | None,
+    stage: str,
+    current: int = 0,
+    total: int = 0,
+    detail: str = "",
+) -> None:
+    if task is not None:
+        task.report(stage, current, total, detail)
+
+
+def _complete(task: TaskControl | None, stage: str, detail: str = "") -> None:
+    if task is not None:
+        task.complete(stage, detail)
 
 
 def _restore_import_target(
