@@ -307,12 +307,13 @@ def infer_topics(docs: list[ExtractedDocument]) -> list[CourseTopic]:
         file_topics[key]["files"].append(doc.path)
         file_topics[key]["total_words"] += doc.word_count
         # Collect keywords from headings + key terms
-        for h in _extract_heading_candidates(doc.text):
+        term_text = _without_repeated_page_boilerplate(doc.text)
+        for h in _extract_heading_candidates(term_text):
             for t in re.findall(r"[A-Za-z][A-Za-z0-9_+-]{2,}|[一-鿿]{2,8}", _clean_title(h)):
                 keyword = t.lower()
                 file_topics[key]["keywords"].add(keyword)
                 file_topics[key]["keyword_counts"][keyword] += 2
-        for term, count in _extract_key_terms(doc.text).items():
+        for term, count in _extract_key_terms(term_text).items():
             keyword = term.lower()
             file_topics[key]["keywords"].add(keyword)
             file_topics[key]["keyword_counts"][keyword] += count
@@ -649,7 +650,37 @@ def _extract_heading_candidates(text: str) -> list[str]:
 
 def _extract_key_terms(text: str) -> Counter:
     """Extract frequent technical terms with shared course-term filtering."""
-    return extract_course_terms(text, limit=40)
+    return extract_course_terms(_without_repeated_page_boilerplate(text), limit=40)
+
+
+def _without_repeated_page_boilerplate(text: str) -> str:
+    """Exclude exact short lines repeated across many pages from term counts."""
+    lines = text.splitlines()
+    section = 0
+    line_sections: dict[str, set[int]] = defaultdict(set)
+    for raw in lines:
+        if re.match(r"^\[(?:Page|Slide)\s+\d+\]$", raw.strip(), flags=re.I):
+            section += 1
+            continue
+        clean = re.sub(r"\s+", " ", raw).strip().lower()
+        if section and 1 <= len(clean) <= 160:
+            line_sections[clean].add(section)
+
+    if section < 3:
+        return text
+    threshold = max(3, int(section * 0.2 + 0.999))
+    boilerplate = {
+        line
+        for line, sections in line_sections.items()
+        if len(sections) >= threshold
+    }
+    if not boilerplate:
+        return text
+    return "\n".join(
+        raw
+        for raw in lines
+        if re.sub(r"\s+", " ", raw).strip().lower() not in boilerplate
+    )
 
 
 def _clean_title(title: str) -> str:

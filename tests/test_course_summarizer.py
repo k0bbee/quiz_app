@@ -624,6 +624,27 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
         for noise in ("may", "know", "our", "first", "but"):
             self.assertNotIn(noise, topics[0].keywords)
 
+    def test_inferred_topic_keywords_ignore_repeated_pdf_header_lines(self):
+        text = "\n".join(
+            f"[Page {page}]\n"
+            "Example University\nDepartment of Medicine\nCopyright Notice\n"
+            f"Case {page} uses airway assessment for breathing circulation shock trauma patient injury."
+            for page in range(1, 21)
+        )
+        doc = ExtractedDocument(
+            path="emergency-care.pdf",
+            title="Emergency Care",
+            extension=".pdf",
+            text=text,
+            pages=[text],
+        )
+
+        topics = infer_topics([doc])
+
+        self.assertIn("airway", topics[0].keywords)
+        for noise in ("example", "university", "department", "copyright"):
+            self.assertNotIn(noise, topics[0].keywords)
+
     def test_inferred_topics_ignore_source_manifest_titles(self):
         text = (
             "Source provenance bibliography download URL license author publisher "
