@@ -5,10 +5,10 @@ from core.background_task_center import TaskSnapshot, TaskStatus
 from core.background_task_presenter import build_task_center_view, task_toolbar_text
 
 
-def snapshot(task_id, status, *, current=0, total=0, detail="", error=""):
+def snapshot(task_id, status, *, current=0, total=0, detail="", error="", kind="question_generation"):
     return TaskSnapshot(
         task_id=task_id,
-        kind="question_generation",
+        kind=kind,
         title=f"Task {task_id}",
         status=status,
         created_at=f"2026-07-15T08:00:0{task_id[-1]}+00:00",
@@ -68,6 +68,21 @@ class BackgroundTaskPresenterTests(unittest.TestCase):
         self.assertEqual("任务 4", task_toolbar_text(4, "zh"))
         self.assertEqual("Tasks", task_toolbar_text(0, "en"))
         self.assertEqual("Tasks 4", task_toolbar_text(4, "en"))
+
+    def test_question_bank_validation_has_localized_task_kind(self):
+        zh = build_task_center_view(
+            [snapshot("task-1", TaskStatus.RUNNING, kind="question_bank_validation")],
+            language="zh",
+            attention_only=False,
+        )
+        en = build_task_center_view(
+            [snapshot("task-1", TaskStatus.RUNNING, kind="question_bank_validation")],
+            language="en",
+            attention_only=False,
+        )
+
+        self.assertEqual("题库检查", zh.items[0].kind_text)
+        self.assertEqual("Question bank check", en.items[0].kind_text)
 
 
 if __name__ == "__main__":

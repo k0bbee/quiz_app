@@ -10,10 +10,13 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QTextEdit, QMessageBox, QSplitter,
     QAbstractItemView, QStackedWidget,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QThread
 
+from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
+from core.background_task_bridge import BackgroundTaskBridge
 from core.language_manager import LanguageManager
 from core.question_bank_maintenance import backfill_source_refs_from_course, remove_question_from_sets
+from core.question_quality_scan import scan_question_bank_quality
 from core.question_validation import validate_question_quality
 from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
@@ -22,6 +25,70 @@ from ui.widgets.source_refs_panel import SourceRefsPanel
 from ui.widgets.question_form_editor import QuestionFormEditor
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 from utils.constants import Difficulty, QuestionType, topic_value
+
+
+class QuestionQualityScanWorker(QThread):
+    """Validate a question bank outside the UI thread."""
+
+    progressed = pyqtSignal(object)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+
+    def __init__(
+        self,
+        question_bank,
+        *,
+        course_id: str = "",
+        task_center=None,
+        task_id: str = "",
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.question_bank = question_bank
+        self.course_id = str(course_id or "")
+        self.task_id = str(task_id or "")
+        self._bridge = (
+            BackgroundTaskBridge(task_center, self.task_id)
+            if task_center is not None and self.task_id
+            else None
+        )
+        self._control = TaskControl(self._report_progress)
+
+    def cancel(self):
+        self._control.cancel()
+
+    def _report_progress(self, progress: TaskProgress):
+        self.progressed.emit(progress)
+        if self._bridge is not None:
+            self._bridge.report(progress)
+
+    def run(self):
+        if self._bridge is not None and not self._bridge.start(self.cancel):
+            self.cancelled.emit()
+            return
+        try:
+            report = scan_question_bank_quality(
+                self.question_bank,
+                course_id=self.course_id,
+                task=self._control,
+            )
+            if self._bridge is not None:
+                self._bridge.complete(
+                    result_summary=(
+                        f"{report.issue_question_count}/{report.scanned_count} questions need review"
+                    ),
+                    result_count=report.scanned_count,
+                )
+            self.completed.emit(report)
+        except BackgroundTaskCancelled:
+            if self._bridge is not None:
+                self._bridge.cancelled()
+            self.cancelled.emit()
+        except Exception as exc:
+            if self._bridge is not None:
+                self._bridge.fail(exc)
+            self.failed.emit(str(exc))
 
 
 class QuestionBankScreen(QWidget):
@@ -35,11 +102,13 @@ class QuestionBankScreen(QWidget):
         set_manager: SetManager | None = None,
         course_manager: CourseProjectManager | None = None,
         parent=None,
+        task_center=None,
     ):
         super().__init__(parent)
         self.question_bank = question_bank
         self.set_manager = set_manager
         self.course_manager = course_manager or CourseProjectManager()
+        self.task_center = task_center
         self.lang_manager = LanguageManager.instance()
         self.page_size = 25
         self.page = 0
@@ -48,6 +117,9 @@ class QuestionBankScreen(QWidget):
         self._current_course_id = ""
         self._list_title_limit = 96
         self._refreshing_set_filter = False
+        self._quality_scan_worker = None
+        self._quality_scan_task_id = ""
+        self._quality_scan_results = {}
         self.search_debounce_timer = QTimer(self)
         self.search_debounce_timer.setSingleShot(True)
         self.search_debounce_timer.setInterval(250)
@@ -101,6 +173,27 @@ class QuestionBankScreen(QWidget):
         self.backfill_source_refs_btn.clicked.connect(self._backfill_source_refs)
         filter_row.addWidget(self.backfill_source_refs_btn)
         layout.addLayout(filter_row)
+
+        quality_scan_row = QHBoxLayout()
+        self.quality_scan_status_label = QLabel("")
+        self.quality_scan_status_label.setObjectName("secondaryText")
+        self.quality_scan_status_label.setWordWrap(True)
+        self.quality_scan_status_label.hide()
+        quality_scan_row.addWidget(self.quality_scan_status_label, 1)
+        self.scan_quality_btn = QPushButton(
+            self.lang_manager.get_text("检查全部题目", "Check All Questions")
+        )
+        self.scan_quality_btn.setObjectName("secondaryButton")
+        self.scan_quality_btn.clicked.connect(self._start_quality_scan)
+        quality_scan_row.addWidget(self.scan_quality_btn)
+        self.cancel_quality_scan_btn = QPushButton(
+            self.lang_manager.get_text("停止", "Stop")
+        )
+        self.cancel_quality_scan_btn.setObjectName("secondaryButton")
+        self.cancel_quality_scan_btn.clicked.connect(self._cancel_quality_scan)
+        self.cancel_quality_scan_btn.hide()
+        quality_scan_row.addWidget(self.cancel_quality_scan_btn)
+        layout.addLayout(quality_scan_row)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
@@ -213,6 +306,12 @@ class QuestionBankScreen(QWidget):
                 "Enrich question source snippets from the current course",
             )
         )
+        self.scan_quality_btn.setText(
+            self.lang_manager.get_text("检查全部题目", "Check All Questions")
+        )
+        self.cancel_quality_scan_btn.setText(
+            self.lang_manager.get_text("停止", "Stop")
+        )
         self._update_editor_mode_button()
 
     def refresh(self):
@@ -276,6 +375,7 @@ class QuestionBankScreen(QWidget):
         if course_id == self._current_course_id:
             return
         self._current_course_id = course_id
+        self._invalidate_quality_scan()
         self.form_editor.set_topics(self._current_course_topics())
         self.page = 0
         self.current_question_id = ""
@@ -432,6 +532,7 @@ class QuestionBankScreen(QWidget):
             )
             return
         self.question_bank.save(q)
+        self._invalidate_quality_scan()
         self.current_question_id = q.question_id
         self.question_bank_changed.emit()
         self.refresh()
@@ -504,6 +605,7 @@ class QuestionBankScreen(QWidget):
             self.question_bank.delete(deleted_question_id)
             if self.set_manager is not None:
                 remove_question_from_sets(self.set_manager, deleted_question_id, delete_empty=True)
+        self._invalidate_quality_scan()
         self.current_question_id = ""
         self._set_source_refs_summary(None)
         self.editor.setReadOnly(False)
@@ -526,6 +628,7 @@ class QuestionBankScreen(QWidget):
             return
         changed = backfill_source_refs_from_course(self.question_bank, course)
         if changed:
+            self._invalidate_quality_scan()
             self.question_bank_changed.emit()
             self.refresh()
         QMessageBox.information(
@@ -676,26 +779,27 @@ class QuestionBankScreen(QWidget):
             return None
         return lambda question: self._matches_quality_filter(question, filter_key)
 
-    @classmethod
-    def _matches_quality_filter(cls, question: Question, filter_key: str | None) -> bool:
+    def _matches_quality_filter(self, question: Question, filter_key: str | None) -> bool:
         if not filter_key:
             return True
         if filter_key == "quality_warnings":
-            return cls._has_quality_warning(question)
+            return self._has_quality_warning(question)
         if filter_key == "missing_source":
-            return cls._has_missing_source(question)
+            return self._has_missing_source(question)
         if filter_key == "fallback_source":
-            return cls._source_ref_status(question) in {
+            return self._source_ref_status(question) in {
                 "fallback_plan_evidence",
                 "fallback_global_evidence",
                 "global_fallback",
             }
         if filter_key == "weak_plan":
-            return cls._plan_match_status(question) == "matched_by_shape"
+            return self._plan_match_status(question) == "matched_by_shape"
         return True
 
-    @classmethod
-    def _has_quality_warning(cls, question: Question) -> bool:
+    def _has_quality_warning(self, question: Question) -> bool:
+        scanned = self._quality_scan_results.get(question.question_id)
+        if scanned is not None:
+            return scanned.has_issues
         metadata = question.metadata or {}
         for key in ("quality_warnings", "quality_issues", "validation_issues", "warnings"):
             value = metadata.get(key)
@@ -706,6 +810,129 @@ class QuestionBankScreen(QWidget):
         if metadata.get("invalid_source_ref_ids"):
             return True
         return bool(validate_question_quality(question))
+
+    def _start_quality_scan(self):
+        if self._quality_scan_worker is not None:
+            return
+        task_id = ""
+        if self.task_center is not None:
+            snapshot = self.task_center.create(
+                kind="question_bank_validation",
+                title=self.lang_manager.get_text("题库质量检查", "Question Bank Quality Check"),
+                metadata={"course_id": self._current_course_id},
+            )
+            task_id = snapshot.task_id
+        self._quality_scan_task_id = task_id
+        worker = QuestionQualityScanWorker(
+            self.question_bank,
+            course_id=self._current_course_id,
+            task_center=self.task_center,
+            task_id=task_id,
+            parent=self,
+        )
+        self._quality_scan_worker = worker
+        worker.progressed.connect(self._on_quality_scan_progress)
+        worker.completed.connect(self._on_quality_scan_completed)
+        worker.failed.connect(self._on_quality_scan_failed)
+        worker.cancelled.connect(self._on_quality_scan_cancelled)
+        self._set_quality_scan_busy(True)
+        worker.start()
+
+    def _set_quality_scan_busy(self, busy: bool):
+        for widget in (
+            self.search_input,
+            self.set_filter,
+            self.difficulty_filter,
+            self.quality_filter,
+            self.backfill_source_refs_btn,
+            self.question_list,
+            self.prev_btn,
+            self.next_btn,
+            self.new_btn,
+            self.save_btn,
+            self.delete_btn,
+        ):
+            widget.setEnabled(not busy)
+        self.scan_quality_btn.setEnabled(not busy)
+        self.cancel_quality_scan_btn.setVisible(busy)
+        self.cancel_quality_scan_btn.setEnabled(busy)
+        self.quality_scan_status_label.setVisible(True)
+        if busy:
+            self.quality_scan_status_label.setText(
+                self.lang_manager.get_text("正在准备题库检查…", "Preparing quality check…")
+            )
+
+    def _on_quality_scan_progress(self, progress: TaskProgress):
+        labels = {
+            "discovering_questions": self.lang_manager.get_text("读取题库", "Reading question bank"),
+            "validating_question": self.lang_manager.get_text("检查题目", "Checking questions"),
+            "validated": self.lang_manager.get_text("正在完成", "Finishing"),
+        }
+        label = labels.get(progress.stage, progress.stage)
+        count = f" {progress.current}/{progress.total}" if progress.total else ""
+        detail = f" · {progress.detail}" if progress.detail else ""
+        self.quality_scan_status_label.setText(f"{label}{count}{detail}")
+
+    def _on_quality_scan_completed(self, report):
+        self._quality_scan_results = {
+            result.question_id: result
+            for result in report.results
+        }
+        self._finish_quality_scan()
+        self.quality_scan_status_label.setText(self.lang_manager.get_text(
+            f"检查完成：{report.issue_question_count}/{report.scanned_count} 道题需要处理。",
+            f"Check complete: {report.issue_question_count}/{report.scanned_count} questions need review.",
+        ))
+        self.refresh()
+
+    def _cancel_quality_scan(self):
+        worker = self._quality_scan_worker
+        if worker is None:
+            return
+        self.cancel_quality_scan_btn.setEnabled(False)
+        self.quality_scan_status_label.setText(
+            self.lang_manager.get_text("正在安全停止…", "Stopping safely…")
+        )
+        if self.task_center is not None and self._quality_scan_task_id:
+            try:
+                self.task_center.request_cancel(self._quality_scan_task_id)
+            except (KeyError, ValueError):
+                pass
+        cancel = getattr(worker, "cancel", None)
+        if callable(cancel):
+            cancel()
+
+    def _on_quality_scan_cancelled(self):
+        self._finish_quality_scan()
+        self.quality_scan_status_label.setText(
+            self.lang_manager.get_text("检查已停止。", "Check stopped.")
+        )
+        self.refresh()
+
+    def _on_quality_scan_failed(self, message: str):
+        self._finish_quality_scan()
+        self.quality_scan_status_label.setText(
+            self.lang_manager.get_text("检查失败。", "Check failed.")
+        )
+        self.refresh()
+        QMessageBox.critical(
+            self,
+            self.lang_manager.get_text("题库检查失败", "Question Bank Check Failed"),
+            message,
+        )
+
+    def _finish_quality_scan(self):
+        self._set_quality_scan_busy(False)
+        self.cancel_quality_scan_btn.hide()
+        self._quality_scan_worker = None
+        self._quality_scan_task_id = ""
+
+    def _invalidate_quality_scan(self):
+        self._quality_scan_results = {}
+        if getattr(self, "_quality_scan_worker", None) is None and hasattr(
+            self, "quality_scan_status_label"
+        ):
+            self.quality_scan_status_label.hide()
 
     @classmethod
     def _has_missing_source(cls, question: Question) -> bool:

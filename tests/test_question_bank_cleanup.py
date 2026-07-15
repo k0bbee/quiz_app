@@ -12,7 +12,10 @@ from PyQt6.QtWidgets import QApplication, QMessageBox, QAbstractItemView
 
 from core import course_index
 from core.language_manager import LanguageManager
+from core.background_task import TaskProgress
+from core.background_task_center import BackgroundTaskCenter, TaskStatus
 from core.progress_tracker import ProgressManager
+from core.question_quality_scan import QuestionQualityResult, QuestionQualityScanReport
 from core.question_bank_maintenance import (
     backfill_source_refs_from_course,
     delete_unreferenced_ai_questions,
@@ -22,12 +25,40 @@ from models.course_project import CourseProject, CourseProjectManager, CourseTop
 from models.progress import AnswerRecord, ProgressRecord
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
-from ui.screens.question_bank_screen import QuestionBankScreen
+from ui.screens.question_bank_screen import QuestionBankScreen, QuestionQualityScanWorker
 from utils.json_io import read_json, write_json
 from utils.constants import Difficulty, QuestionType
 
 
 _APP = QApplication.instance() or QApplication([])
+
+
+class ManualSignal:
+    def __init__(self):
+        self.callbacks = []
+
+    def connect(self, callback):
+        self.callbacks.append(callback)
+
+    def emit(self, *args):
+        for callback in list(self.callbacks):
+            callback(*args)
+
+
+class ManualQualityScanWorker:
+    def __init__(self):
+        self.progressed = ManualSignal()
+        self.completed = ManualSignal()
+        self.failed = ManualSignal()
+        self.cancelled = ManualSignal()
+        self.started = False
+        self.cancel_called = False
+
+    def start(self):
+        self.started = True
+
+    def cancel(self):
+        self.cancel_called = True
 
 
 class QuestionBankCleanupTests(unittest.TestCase):
@@ -707,6 +738,94 @@ class QuestionBankCleanupTests(unittest.TestCase):
             weak_plan_idx = screen.quality_filter.findData("weak_plan")
             screen.quality_filter.setCurrentIndex(weak_plan_idx)
             self.assertEqual({"q-weak-plan"}, visible_ids())
+
+    def test_question_bank_quality_scan_tracks_progress_and_safe_cancel(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bank = QuestionBank(str(root / "questions"))
+            bank.save_many([self._question("q1"), self._question("q2")])
+            center = BackgroundTaskCenter(root / "tasks.json")
+            screen = QuestionBankScreen(bank, task_center=center)
+            worker = ManualQualityScanWorker()
+
+            with patch(
+                "ui.screens.question_bank_screen.QuestionQualityScanWorker",
+                return_value=worker,
+            ):
+                screen.scan_quality_btn.click()
+
+                snapshot = center.snapshots()[0]
+                self.assertEqual("question_bank_validation", snapshot.kind)
+                self.assertTrue(worker.started)
+                self.assertFalse(screen.quality_scan_status_label.isHidden())
+                self.assertFalse(screen.cancel_quality_scan_btn.isHidden())
+                self.assertFalse(screen.question_list.isEnabled())
+                self.assertFalse(screen.save_btn.isEnabled())
+
+                worker.progressed.emit(TaskProgress("validating_question", 2, 8, "q2"))
+                self.assertIn("2/8", screen.quality_scan_status_label.text())
+                self.assertIn("q2", screen.quality_scan_status_label.text())
+
+                screen.cancel_quality_scan_btn.click()
+
+            self.assertEqual(TaskStatus.CANCELLED, center.get(snapshot.task_id).status)
+            self.assertTrue(worker.cancel_called)
+            self.assertFalse(screen.cancel_quality_scan_btn.isEnabled())
+
+    def test_question_bank_quality_scan_result_drives_warning_filter(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            bank.save_many([self._question("clean"), self._question("broken")])
+            screen = QuestionBankScreen(bank)
+            worker = ManualQualityScanWorker()
+            report = QuestionQualityScanReport(
+                scanned_count=2,
+                results=(
+                    QuestionQualityResult("clean"),
+                    QuestionQualityResult("broken", structural_errors=("invalid",)),
+                ),
+            )
+
+            with patch(
+                "ui.screens.question_bank_screen.QuestionQualityScanWorker",
+                return_value=worker,
+            ):
+                screen.scan_quality_btn.click()
+                worker.completed.emit(report)
+
+            warning_index = screen.quality_filter.findData("quality_warnings")
+            screen.quality_filter.setCurrentIndex(warning_index)
+            visible_ids = {
+                screen.question_list.item(row).data(Qt.ItemDataRole.UserRole)
+                for row in range(screen.question_list.count())
+            }
+            self.assertEqual({"broken"}, visible_ids)
+            self.assertIn("1/2", screen.quality_scan_status_label.text())
+
+    def test_question_quality_worker_completes_persistent_task(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bank = QuestionBank(str(root / "questions"))
+            bank.save_many([self._question("q1"), self._question("q2")])
+            center = BackgroundTaskCenter(root / "tasks.json")
+            snapshot = center.create(
+                kind="question_bank_validation",
+                title="Validate question bank",
+            )
+            worker = QuestionQualityScanWorker(
+                bank,
+                task_center=center,
+                task_id=snapshot.task_id,
+            )
+            reports = []
+            worker.completed.connect(reports.append)
+
+            worker.run()
+
+            completed = center.get(snapshot.task_id)
+            self.assertEqual(TaskStatus.COMPLETED, completed.status)
+            self.assertEqual(2, completed.result_count)
+            self.assertEqual(2, reports[0].scanned_count)
 
     def test_question_bank_quality_filter_uses_shared_option_bias_threshold(self):
         with tempfile.TemporaryDirectory() as tmpdir:

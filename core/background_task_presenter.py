@@ -136,6 +136,7 @@ def _kind_text(kind: str, language: str) -> str:
         "past_exam_analysis": ("真题分析", "Exam analysis"),
         "app_data_import": ("数据导入", "Data import"),
         "app_data_export": ("数据导出", "Data export"),
+        "question_bank_validation": ("题库检查", "Question bank check"),
     }
     zh, en = labels.get(kind, ("后台任务", "Background task"))
     return zh if language == "zh" else en

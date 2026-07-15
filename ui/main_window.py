@@ -169,6 +169,7 @@ class MainWindow(QMainWindow):
                 self.question_bank,
                 set_manager=self.set_manager,
                 course_manager=self.course_manager,
+                task_center=self.task_center,
             )
             self._sync_question_bank_screen_course()
             self.stack.insertWidget(self.SCREEN_QUESTION_BANK, self._question_bank_screen)
