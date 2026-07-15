@@ -36,6 +36,7 @@ class SevenCourseTestDataTests(unittest.TestCase):
             self.assertEqual((), audit.stale_question_refs)
             self.assertEqual((), audit.orphan_course_refs)
             self.assertEqual((), audit.structurally_invalid_question_ids)
+            self.assertEqual((), audit.quality_issue_question_ids)
             self.assertTrue(all(count >= 1 for count in audit.documents_per_course.values()))
             self.assertTrue(all(count >= 1 for count in audit.source_chunks_per_course.values()))
 

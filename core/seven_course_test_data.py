@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 
 from core.course_initializer import CourseInitializer
+from core.question_validation import validate_question_quality
 from models.course_project import CourseProject, CourseProjectManager
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
@@ -58,6 +59,7 @@ class SevenCourseAuditReport:
     stale_question_refs: tuple[str, ...]
     orphan_course_refs: tuple[str, ...]
     structurally_invalid_question_ids: tuple[str, ...]
+    quality_issue_question_ids: tuple[str, ...]
     documents_per_course: dict[str, int]
     source_chunks_per_course: dict[str, int]
 
@@ -204,7 +206,7 @@ _COURSES: tuple[_CourseSeed, ...] = (
                 {"left": [{"id": "geno", "text": "Genotype"}, {"id": "pheno", "text": "Phenotype"}],
                  "right": [{"id": "alleles", "text": "An individual's allele composition"}, {"id": "traits", "text": "Observable traits"}]},
                 [["geno", "alleles"], ["pheno", "traits"]],
-                "基因型描述遗传组成，表型描述可观察结果。",
+                "基因型描述个体拥有的等位基因组合；表型描述这些遗传信息与环境共同作用后表现出的可观察性状。",
                 "Genotype describes genetic composition; phenotype describes observable outcomes."),
             _choice(QuestionType.TRUE_FALSE, 1,
                 "DNA 聚合酶沿新生链的 5′ 到 3′ 方向合成 DNA。",
@@ -403,6 +405,9 @@ def audit_seven_course_data(root: str | Path) -> SevenCourseAuditReport:
         if _course_id(question_set.metadata) not in course_ids
     )
     invalid = tuple(sorted(question.question_id for question in questions if question.validate()))
+    quality_issues = tuple(sorted(
+        question.question_id for question in questions if validate_question_quality(question)
+    ))
     return SevenCourseAuditReport(
         course_ids=tuple(sorted(course_ids)),
         question_count=len(questions),
@@ -413,6 +418,7 @@ def audit_seven_course_data(root: str | Path) -> SevenCourseAuditReport:
         stale_question_refs=tuple(stale_refs),
         orphan_course_refs=tuple(orphan_refs),
         structurally_invalid_question_ids=invalid,
+        quality_issue_question_ids=quality_issues,
         documents_per_course={course.course_id: len(course.documents) for course in courses},
         source_chunks_per_course={
             course.course_id: sum(

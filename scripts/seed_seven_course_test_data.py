@@ -49,6 +49,7 @@ def main(argv: list[str] | None = None) -> int:
         "stale_question_refs": list(audit.stale_question_refs),
         "orphan_course_refs": list(audit.orphan_course_refs),
         "structurally_invalid_question_ids": list(audit.structurally_invalid_question_ids),
+        "quality_issue_question_ids": list(audit.quality_issue_question_ids),
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
