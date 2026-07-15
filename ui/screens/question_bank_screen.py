@@ -865,6 +865,7 @@ class QuestionBankScreen(QWidget):
     def _on_quality_scan_progress(self, progress: TaskProgress):
         labels = {
             "discovering_questions": self.lang_manager.get_text("读取题库", "Reading question bank"),
+            "loading_question": self.lang_manager.get_text("读取题目", "Loading questions"),
             "validating_question": self.lang_manager.get_text("检查题目", "Checking questions"),
             "validated": self.lang_manager.get_text("正在完成", "Finishing"),
         }

@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 from core.background_task import BackgroundTaskCancelled, TaskControl
 from core.question_quality_scan import scan_question_bank_quality
@@ -63,7 +64,9 @@ class QuestionQualityScanTests(unittest.TestCase):
         self.assertTrue(report.result_for("invalid").structural_errors)
         self.assertFalse(report.result_for("clean").has_issues)
         self.assertEqual("validated", progress[-1].stage)
-        self.assertEqual((4, 4), (progress[-2].current, progress[-2].total))
+        self.assertEqual((4, 0), (progress[-2].current, progress[-2].total))
+        loading = [item for item in progress if item.stage == "loading_question"]
+        self.assertEqual((4, 4), (loading[-1].current, loading[-1].total))
 
     def test_scan_respects_course_scope_and_cancels_between_questions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -87,8 +90,22 @@ class QuestionQualityScanTests(unittest.TestCase):
                 scan_question_bank_quality(bank, course_id="course-a", task=task)
 
         validating = [item for item in progress if item.stage == "validating_question"]
-        self.assertEqual(2, validating[-1].total)
+        self.assertEqual(2, validating[-1].current)
+        self.assertEqual(0, validating[-1].total)
         self.assertNotIn("b-1", [item.detail for item in validating])
+
+    def test_scan_streams_question_files_without_double_bank_lookup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            bank.save_many([question("q1"), question("q2")])
+            bank.question_ids = Mock(side_effect=AssertionError("must not pre-read every JSON"))
+            bank.get = Mock(side_effect=AssertionError("must not read each JSON twice"))
+
+            report = scan_question_bank_quality(bank, course_id="course-a")
+
+        self.assertEqual(2, report.scanned_count)
+        bank.question_ids.assert_not_called()
+        bank.get.assert_not_called()
 
 
 if __name__ == "__main__":

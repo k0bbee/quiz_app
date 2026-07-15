@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from pathlib import Path
 
 from core.background_task import TaskControl
 from core.question_validation import validate_question_quality
+from models.question import Question
+from utils.json_io import list_json_files, read_json
 
 
 @dataclass(frozen=True)
@@ -48,16 +51,40 @@ def scan_question_bank_quality(
     task: TaskControl | None = None,
 ) -> QuestionQualityScanReport:
     """Validate one course scope in deterministic, cancellable question units."""
-    _report(task, "discovering_questions", detail=course_id)
-    question_ids = question_bank.question_ids(course_id=course_id or None)
-    total = len(question_ids)
+    directory = str(question_bank.directory)
+    filenames = list_json_files(directory)
+    total = len(filenames)
+    _report(task, "discovering_questions", total=total, detail=course_id)
     results: list[QuestionQualityResult] = []
     counts: Counter[str] = Counter()
+    matched_count = 0
 
-    for index, question_id in enumerate(question_ids, start=1):
-        _report(task, "validating_question", index, total, question_id)
-        question = question_bank.get(question_id)
-        if question is None:
+    for index, filename in enumerate(filenames, start=1):
+        _report(task, "loading_question", index, total, filename)
+        data = read_json(str(Path(directory) / filename))
+        if not isinstance(data, dict):
+            if course_id:
+                continue
+            question_id = Path(filename).stem
+            counts["unreadable_question"] += 1
+            results.append(QuestionQualityResult(
+                question_id=question_id,
+                structural_errors=("Question record could not be loaded",),
+                issue_codes=("unreadable_question",),
+            ))
+            continue
+        metadata = data.get("metadata", {}) or {}
+        record_course_id = (
+            str(metadata.get("course_id", "") or "").strip()
+            if isinstance(metadata, dict)
+            else ""
+        )
+        if course_id and record_course_id != course_id:
+            continue
+        try:
+            question = Question.from_dict(data)
+        except (TypeError, ValueError):
+            question_id = str(data.get("question_id") or Path(filename).stem)
             counts["unreadable_question"] += 1
             results.append(QuestionQualityResult(
                 question_id=question_id,
@@ -66,13 +93,16 @@ def scan_question_bank_quality(
             ))
             continue
 
+        matched_count += 1
+        question_id = question.question_id or Path(filename).stem
+        _report(task, "validating_question", matched_count, 0, question_id)
         structural_errors = tuple(question.validate())
         issue_codes = _question_issue_codes(question)
         if structural_errors:
             counts["structural_error"] += 1
         counts.update(issue_codes)
         results.append(QuestionQualityResult(
-            question_id=question.question_id,
+            question_id=question_id,
             structural_errors=structural_errors,
             issue_codes=issue_codes,
         ))
