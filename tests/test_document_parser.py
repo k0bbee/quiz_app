@@ -8,6 +8,19 @@ from core.document_parser import DocumentParser
 
 
 class DocumentParserQualityTests(unittest.TestCase):
+    def test_explicit_data_folder_root_is_not_skipped_as_its_own_ancestor(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir) / "data"
+            root.mkdir()
+            (root / "source.md").write_text("Original course material", encoding="utf-8")
+            generated = root / "generated"
+            generated.mkdir()
+            (generated / "ignored.md").write_text("Generated output", encoding="utf-8")
+
+            documents = DocumentParser().parse_folder(str(root))
+
+            self.assertEqual(["source"], [document.title for document in documents])
+
     def test_parse_text_recovers_gb18030_content_and_reports_encoding_fallback(self):
         content = "微观经济学：需求、供给、价格弹性与消费者选择。"
         with tempfile.TemporaryDirectory() as tmp:

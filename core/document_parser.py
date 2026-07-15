@@ -77,7 +77,7 @@ class DocumentParser:
             for path in sorted(root.rglob("*"), key=_source_sort_key)
             if path.is_file()
             and not path.name.startswith("~$")
-            and not self._should_skip_path(path)
+            and not self._should_skip_path(path, root=root)
             and path.suffix.lower() in SUPPORTED_EXTENSIONS
         ]
         if task is not None:
@@ -105,9 +105,15 @@ class DocumentParser:
             docs.append(doc)
         return docs
 
-    def _should_skip_path(self, path: Path) -> bool:
+    def _should_skip_path(self, path: Path, root: Path | None = None) -> bool:
         """Return True if a path is clearly generated output or app metadata."""
-        if any(p.name in self._SKIP_DIRS for p in path.parents):
+        parents = path.parents
+        if root is not None:
+            try:
+                parents = path.relative_to(root).parents
+            except ValueError:
+                pass
+        if any(p.name in self._SKIP_DIRS for p in parents):
             return True
         name = path.name.lower()
         return any(re.match(pattern, name, flags=re.IGNORECASE) for pattern in self._SKIP_FILE_PATTERNS)
