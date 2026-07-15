@@ -64,9 +64,7 @@ class QuestionQualityScanTests(unittest.TestCase):
         self.assertTrue(report.result_for("invalid").structural_errors)
         self.assertFalse(report.result_for("clean").has_issues)
         self.assertEqual("validated", progress[-1].stage)
-        self.assertEqual((4, 0), (progress[-2].current, progress[-2].total))
-        loading = [item for item in progress if item.stage == "loading_question"]
-        self.assertEqual((4, 4), (loading[-1].current, loading[-1].total))
+        self.assertEqual((4, 4), (progress[-2].current, progress[-2].total))
 
     def test_scan_respects_course_scope_and_cancels_between_questions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -81,7 +79,7 @@ class QuestionQualityScanTests(unittest.TestCase):
                 lambda item: (
                     progress.append(item),
                     task.cancel()
-                    if item.stage == "validating_question" and item.current == 2
+                    if item.stage == "validating_question" and item.current == 1
                     else None,
                 )
             )
@@ -90,8 +88,8 @@ class QuestionQualityScanTests(unittest.TestCase):
                 scan_question_bank_quality(bank, course_id="course-a", task=task)
 
         validating = [item for item in progress if item.stage == "validating_question"]
-        self.assertEqual(2, validating[-1].current)
-        self.assertEqual(0, validating[-1].total)
+        self.assertEqual(1, validating[-1].current)
+        self.assertEqual(3, validating[-1].total)
         self.assertNotIn("b-1", [item.detail for item in validating])
 
     def test_scan_streams_question_files_without_double_bank_lookup(self):
@@ -106,6 +104,19 @@ class QuestionQualityScanTests(unittest.TestCase):
         self.assertEqual(2, report.scanned_count)
         bank.question_ids.assert_not_called()
         bank.get.assert_not_called()
+
+    def test_scan_batches_progress_events_but_keeps_final_count(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            bank.save_many([question(f"q-{index:03d}") for index in range(100)])
+            progress = []
+
+            report = scan_question_bank_quality(bank, task=TaskControl(progress.append))
+
+        validating = [item for item in progress if item.stage == "validating_question"]
+        self.assertEqual(100, report.scanned_count)
+        self.assertLessEqual(len(validating), 6)
+        self.assertEqual((100, 100), (validating[-1].current, validating[-1].total))
 
 
 if __name__ == "__main__":

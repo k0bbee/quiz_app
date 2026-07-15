@@ -12,6 +12,9 @@ from models.question import Question
 from utils.json_io import list_json_files, read_json
 
 
+_PROGRESS_BATCH_SIZE = 25
+
+
 @dataclass(frozen=True)
 class QuestionQualityResult:
     question_id: str
@@ -60,10 +63,13 @@ def scan_question_bank_quality(
     matched_count = 0
 
     for index, filename in enumerate(filenames, start=1):
-        _report(task, "loading_question", index, total, filename)
+        if task is not None:
+            task.check_cancelled()
         data = read_json(str(Path(directory) / filename))
+        progress_detail = filename
         if not isinstance(data, dict):
             if course_id:
+                _report_progress_if_due(task, index, total, progress_detail)
                 continue
             question_id = Path(filename).stem
             counts["unreadable_question"] += 1
@@ -72,6 +78,7 @@ def scan_question_bank_quality(
                 structural_errors=("Question record could not be loaded",),
                 issue_codes=("unreadable_question",),
             ))
+            _report_progress_if_due(task, index, total, question_id)
             continue
         metadata = data.get("metadata", {}) or {}
         record_course_id = (
@@ -80,6 +87,7 @@ def scan_question_bank_quality(
             else ""
         )
         if course_id and record_course_id != course_id:
+            _report_progress_if_due(task, index, total, progress_detail)
             continue
         try:
             question = Question.from_dict(data)
@@ -91,11 +99,12 @@ def scan_question_bank_quality(
                 structural_errors=("Question record could not be loaded",),
                 issue_codes=("unreadable_question",),
             ))
+            _report_progress_if_due(task, index, total, question_id)
             continue
 
         matched_count += 1
         question_id = question.question_id or Path(filename).stem
-        _report(task, "validating_question", matched_count, 0, question_id)
+        progress_detail = question_id
         structural_errors = tuple(question.validate())
         issue_codes = _question_issue_codes(question)
         if structural_errors:
@@ -106,6 +115,7 @@ def scan_question_bank_quality(
             structural_errors=structural_errors,
             issue_codes=issue_codes,
         ))
+        _report_progress_if_due(task, index, total, progress_detail)
 
     report = QuestionQualityScanReport(
         scanned_count=len(results),
@@ -139,6 +149,20 @@ def _has_stored_warning(value) -> bool:
     if isinstance(value, (list, tuple, set, dict)):
         return bool(value)
     return isinstance(value, str) and bool(value.strip())
+
+
+def _should_report_progress(current: int, total: int) -> bool:
+    return current == 1 or current == total or current % _PROGRESS_BATCH_SIZE == 0
+
+
+def _report_progress_if_due(
+    task: TaskControl | None,
+    current: int,
+    total: int,
+    detail: str,
+) -> None:
+    if _should_report_progress(current, total):
+        _report(task, "validating_question", current, total, detail)
 
 
 def _report(
