@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from core.seven_course_test_data import (
     CROSS_DISCIPLINE_COURSE_IDS,
     CROSS_DISCIPLINE_SOURCES,
@@ -66,6 +68,7 @@ class SevenCourseTestDataTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no source evidence"):
             _build_question(project, course_seed, question_seed, 1)
 
+    @pytest.mark.full
     def test_seed_pack_builds_seven_runnable_cross_discipline_courses(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "seven-course-data"
@@ -161,6 +164,7 @@ class SevenCourseTestDataTests(unittest.TestCase):
             self.assertEqual(70, repeated_audit.question_count)
             self.assertEqual(10, repeated_audit.question_set_count)
 
+    @pytest.mark.full
     def test_cli_clean_rebuild_prints_json_audit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "seven-course-runtime"
@@ -179,6 +183,7 @@ class SevenCourseTestDataTests(unittest.TestCase):
                     "--clean",
                 ],
                 cwd=script.parents[1],
+                stdin=subprocess.DEVNULL,
                 text=True,
                 encoding="utf-8",
                 capture_output=True,

@@ -211,11 +211,14 @@ python -m pytest -m "not qt" -q
 # Qt/UI 测试：需要 PyQt6 和可用桌面环境
 python -m pytest -m qt -q
 
-# 完整测试
+# 默认回归：跳过十门课程重建和完整 UI 作答闭环
 python -m pytest tests/ -q
+
+# 发布前全量验收：包含标记为 full 的完整闭环
+python -m pytest tests/ -q --run-full
 ```
 
-`tests/conftest.py` 会自动识别导入 `PyQt6` 的测试文件并标记为 `qt`；未安装 PyQt6 时，这些文件会在收集阶段跳过，避免核心测试被桌面依赖阻塞。
+`tests/conftest.py` 会自动识别导入 `PyQt6` 的测试文件并标记为 `qt`；未安装 PyQt6 时，这些文件会在收集阶段跳过，避免核心测试被桌面依赖阻塞。耗时较长的跨学科课程重建、CLI 审计和完整 UI 作答闭环标记为 `full`，默认显示为跳过，只有显式传入 `--run-full` 才执行。
 
 ## 安全与隐私
 

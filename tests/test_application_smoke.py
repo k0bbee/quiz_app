@@ -5,6 +5,8 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
@@ -24,6 +26,7 @@ from utils.constants import Difficulty, QuestionType
 _APP = QApplication.instance() or QApplication([])
 
 
+@pytest.mark.full
 class ApplicationSmokeTests(unittest.TestCase):
     def test_main_window_navigation_and_one_question_practice_close_the_loop(self):
         with tempfile.TemporaryDirectory() as tmpdir:

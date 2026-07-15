@@ -182,11 +182,14 @@ python -m pytest -m "not qt" -q
 # Qt/UI tests
 python -m pytest -m qt -q
 
-# Complete suite
+# Default regression suite (skips large fixture rebuilds and complete UI workflows)
 python -m pytest tests/ -q
+
+# Release validation, including tests marked as full
+python -m pytest tests/ -q --run-full
 ```
 
-`tests/conftest.py` identifies tests that import PyQt6 and marks them as `qt`. If PyQt6 is unavailable, those modules are skipped during collection so core tests can still run.
+`tests/conftest.py` identifies tests that import PyQt6 and marks them as `qt`. If PyQt6 is unavailable, those modules are skipped during collection so core tests can still run. Cross-discipline fixture rebuilds, CLI audits, and complete UI quiz workflows are marked as `full`; they are skipped by default and run only when `--run-full` is supplied.
 
 ## Security and privacy
 
