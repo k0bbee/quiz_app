@@ -545,6 +545,88 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
         self.assertEqual("Operating Systems (2024)", year_topics[0].title)
         self.assertEqual("Cache Mapping", copy_topics[0].title)
 
+    def test_inferred_topic_titles_remove_repository_course_prefixes_and_export_suffixes(self):
+        fixtures = [
+            (
+                "mit-14-01-microeconomics-summaries",
+                "Microeconomics",
+                "Demand supply price market consumer utility marginal cost elasticity " * 16,
+            ),
+            (
+                "mit-18-06-linear-algebra-zoomnotes",
+                "Linear Algebra",
+                "Matrix vector column row eigenvalue determinant basis orthogonal linear " * 16,
+            ),
+            (
+                "mit-7-03-genetics-lecture-1",
+                "Genetics",
+                "Gene DNA mutation chromosome protein allele phenotype genotype inheritance " * 16,
+            ),
+            (
+                "mit-24-00-ethics-handout",
+                "Ethics",
+                "Moral objectivity obligation reason value action ethical judgment philosophy " * 16,
+            ),
+            (
+                "cmu-15-213-system-level-io-slides",
+                "System Level Io",
+                "File descriptor read write process stream input output buffer device kernel " * 16,
+            ),
+        ]
+        docs = [
+            ExtractedDocument(
+                path=f"{raw_title}.pdf",
+                title=raw_title,
+                extension=".pdf",
+                text=text,
+                pages=[text],
+            )
+            for raw_title, _expected, text in fixtures
+        ]
+
+        topics = infer_topics(docs)
+
+        self.assertEqual(
+            {expected for _raw_title, expected, _text in fixtures},
+            {topic.title for topic in topics},
+        )
+
+    def test_inferred_topic_keywords_drop_general_english_function_words_across_disciplines(self):
+        text = (
+            "The patient may may may know know our our first first concern, but airway breathing shock trauma "
+            "assessment treatment emergency circulation fluid injury. "
+        ) * 30
+        doc = ExtractedDocument(
+            path="basic-emergency-care.pdf",
+            title="Basic Emergency Care",
+            extension=".pdf",
+            text=text,
+            pages=[text],
+        )
+
+        topics = infer_topics([doc])
+
+        self.assertIn("airway", topics[0].keywords)
+        for noise in ("may", "know", "our", "first", "but"):
+            self.assertNotIn(noise, topics[0].keywords)
+
+    def test_inferred_topics_ignore_source_manifest_titles(self):
+        text = (
+            "Source provenance bibliography download URL license author publisher "
+            "course material citation reference attribution archive. "
+        ) * 20
+        doc = ExtractedDocument(
+            path="SOURCES.md",
+            title="SOURCES",
+            extension=".md",
+            text=text,
+            pages=[text],
+        )
+
+        topics = infer_topics([doc])
+
+        self.assertEqual("General Course Review", topics[0].title)
+
     def test_course_screen_local_agent_initializer_does_not_read_persisted_api_key(self):
         class ForbiddenSecrets:
             def get_key(self):

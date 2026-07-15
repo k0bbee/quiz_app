@@ -34,14 +34,10 @@ def _is_generic_title(title: str) -> bool:
         return True
     if is_low_value_keyword(t):
         return True
-    # Allowlist: technical terms/acronyms that are short but legitimate
-    _TECH_TERMS = {"cache", "dma", "gpu", "cpu", "raid", "tlb", "pcb", "simd",
-                   "simt", "warp", "mutex", "fcfs", "sjf", "srt", "mmu", "gpgpu"}
-    # Single short English word (≤7 chars) → reject, unless it's a known tech term
-    m = re.match(r"^[a-z]{2,7}$", t)
-    if m and not any('一' <= c <= '鿿' for c in t):
-        if t not in _TECH_TERMS:
-            return True
+    # Do not reject short single-word subjects. Legitimate course topics such
+    # as Ethics, Law, Logic, Algebra, Genetics, and Cache cannot be separated
+    # from metadata by length or by a discipline-specific allowlist. The
+    # structural patterns below handle actual labels such as notes and slides.
     # Two short English words: reject only if BOTH words are short (≤4 chars each).
     # "Cache Mapping" (5+7) → keep; "Diff Summary" (4+7) → reject
     m2 = re.match(r"^([a-z]{2,7})\s+([a-z]{2,7})$", t)
@@ -52,7 +48,7 @@ def _is_generic_title(title: str) -> bool:
     # Pattern-based detection (covers both EN and ZH)
     patterns = [
         # Administrative
-        r"^(handout|notes|slides|lecture|readme|feedback|standard|untitled|unknown)s?$",
+        r"^(handout|notes|slides|lecture|readme|feedback|standard|untitled|unknown|sources?|bibliography)s?$",
         r"^(page|slide|sheet)\s*\d+$",
         r"^\d{1,3}\s*(page|slide|sheet)$",
         # Assessment
@@ -67,7 +63,7 @@ def _is_generic_title(title: str) -> bool:
         # "Introduction to X" / "Overview of X" — only reject if X is also generic
         r"^(introduction|overview|conclusion)(\s+(to|of))?$",
         # Chinese
-        r"^(参考|标准|答案|笔记|总结|复习|作业|考试|测试|试卷|模拟|模拟卷|选择题|反馈)$",
+        r"^(参考|参考资料|资料来源|书目|标准|答案|笔记|总结|复习|作业|考试|测试|试卷|模拟|模拟卷|选择题|反馈)$",
         r"^[Ā-ɏ]+",  # Garbled Latin-ext chars → likely mojibake
         r"^第[一二三四五六七八九十\d]+[页章节]",
         r"^课程(内容|介绍|说明)$",
@@ -657,6 +653,14 @@ def _clean_title(title: str) -> str:
         title = re.sub(r"\.(pptx|pdf|docx|txt|md)$", "", title, flags=re.I)
     # Remove high-unicode garbage
     title = re.sub(r"[^\x20-\x7E一-鿿぀-ヿ가-힯]", " ", title)
+    # Strip repository/course-catalog prefixes such as "MIT-14-01-" or
+    # "CMU-15-213-" without maintaining institution-specific allowlists.
+    title = re.sub(
+        r"^(?:[A-Za-z][A-Za-z0-9]{1,12}[\s_-]+)?"
+        r"\d{1,3}(?:[._-]\d{1,3}){1,2}[\s_-]+",
+        "",
+        title,
+    )
     # Strip common lecture numbering prefixes: "2.", "L15_2_", "Week 03 -".
     title = re.sub(
         r"^(?:l|lecture|week)?\s*\d{1,3}(?:[\._-]\d{1,3})?[\.\)\s_-]+",
@@ -669,6 +673,13 @@ def _clean_title(title: str) -> str:
     # or version labels such as "Operating Systems (2024)".
     title = re.sub(r"\s*\([1-9]\d{0,2}\)$", "", title)
     title = re.sub(r"\bL\d+\b|\bLecture\s*\d+\b|\bWeek\s*\d+\b|\bDI\d+\b|\bCS\d+\b", "", title, flags=re.I)
+    # Export/container labels describe the file rather than its subject.
+    title = re.sub(
+        r"\s+(?:handouts?|slides?|summar(?:y|ies)|zoom\s*notes?|zoomnotes)$",
+        "",
+        title,
+        flags=re.I,
+    )
     title = re.sub(r"\s+", " ", title).strip(" -.")
     # Truncate at the first run of non-ASCII, non-CJK characters (garbled suffix)
     match = re.match(r"^([\x20-\x7E一-鿿\s]+)", title)

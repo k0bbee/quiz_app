@@ -22,6 +22,13 @@ STOP_WORDS = {
     "core", "concept", "concepts", "reasoning", "flow", "example", "examples",
     "exam", "direction", "directions", "answer", "answers", "point", "points",
     "overview",
+    # General English function/discourse words. These occur frequently in
+    # lecture prose across every discipline but do not identify its subject.
+    "also", "been", "being", "but", "could", "did", "does", "doing",
+    "first", "had", "here", "him", "his", "its", "know", "may", "more",
+    "most", "much", "must", "now", "only", "other", "our", "over", "she",
+    "should", "some", "such", "than", "their", "them", "then", "there",
+    "these", "they", "those", "through", "under", "very", "would",
 }
 
 
