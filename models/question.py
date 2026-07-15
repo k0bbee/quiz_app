@@ -274,11 +274,35 @@ class QuestionBank:
         return ok
 
     def save_many(self, questions: list[Question]) -> int:
-        """Save multiple questions. Returns count of successful saves."""
+        """Save multiple JSON records and update the derived index once."""
+        if not questions:
+            return 0
+
+        index_current = self._try_ensure_index_current()
+        indexed_records: list[tuple[str, dict, int, int]] = []
         count = 0
-        for q in questions:
-            if self.save(q):
-                count += 1
+        for question in questions:
+            safe_id = sanitize_filename_part(question.question_id)
+            filepath = Path(self._dir) / f"{safe_id}.json"
+            data = question.to_dict()
+            if not write_json(str(filepath), data):
+                continue
+            self._cache[question.question_id] = question
+            count += 1
+            if index_current:
+                try:
+                    stat = filepath.stat()
+                    indexed_records.append((filepath.name, data, stat.st_mtime_ns, stat.st_size))
+                except OSError as exc:
+                    warning(f"Question index metadata unavailable after saving {safe_id}: {exc}")
+
+        if count:
+            self._invalidate_load_cache()
+        if indexed_records:
+            try:
+                self._index.upsert_many(indexed_records)
+            except Exception as exc:
+                warning(f"Question index batch update skipped after saving {count} questions: {exc}")
         return count
 
     def delete(self, question_id: str) -> bool:

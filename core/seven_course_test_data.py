@@ -479,7 +479,8 @@ def seed_seven_course_data(
     set_manager = SetManager(str(data_root / "question_sets"))
     initializer = CourseInitializer(manager=course_manager)
 
-    question_count = 0
+    pending_questions: list[Question] = []
+    pending_sets: list[QuestionSet] = []
     for course_seed in _COURSES:
         staged_folder = _stage_original_sources(original_root, data_root, course_seed.slug)
         project = initializer.initialize(
@@ -494,11 +495,9 @@ def seed_seven_course_data(
         question_ids: list[str] = []
         for index, question_seed in enumerate(course_seed.questions, start=1):
             question = _build_question(project, course_seed, question_seed, index)
-            if not question_bank.save(question):
-                raise OSError(f"Failed to save test question {question.question_id}")
+            pending_questions.append(question)
             question_ids.append(question.question_id)
-            question_count += 1
-        question_set = QuestionSet(
+        pending_sets.append(QuestionSet(
             set_id=f"test-set-{course_seed.slug}",
             title={"zh": f"{course_seed.title}综合练习", "en": f"{course_seed.slug.replace('-', ' ').title()} Practice"},
             description={"zh": "跨学科端到端测试题集", "en": "Cross-discipline end-to-end test set"},
@@ -507,7 +506,14 @@ def seed_seven_course_data(
             estimated_minutes=10,
             questions=question_ids,
             metadata={"course_id": project.course_id, "source": "cross_discipline_test_seed", "created_at": _STAMP},
+        ))
+
+    question_count = question_bank.save_many(pending_questions)
+    if question_count != len(pending_questions):
+        raise OSError(
+            f"Failed to save all test questions ({question_count}/{len(pending_questions)})"
         )
+    for question_set in pending_sets:
         if not set_manager.save(question_set):
             raise OSError(f"Failed to save test set {question_set.set_id}")
 

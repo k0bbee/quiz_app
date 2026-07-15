@@ -165,6 +165,34 @@ class QuestionIndexTests(unittest.TestCase):
             self.assertEqual(["q1"], [item.question_id for item in items])
             self.assertEqual("q1", read_json(str(questions_dir / "q1.json"))["question_id"])
 
+    def test_save_many_updates_index_in_one_batch(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            questions_dir = Path(tmpdir) / "questions"
+            bank = QuestionBank(str(questions_dir))
+            questions = [
+                self._question(f"q{index}", course_id="course-a", topic="ethics")
+                for index in range(1, 4)
+            ]
+
+            with patch.object(
+                bank,
+                "_try_ensure_index_current",
+                wraps=bank._try_ensure_index_current,
+            ) as ensure_current, patch.object(
+                bank._index,
+                "upsert_many",
+                wraps=bank._index.upsert_many,
+            ) as upsert_many:
+                saved = bank.save_many(questions)
+
+            self.assertEqual(3, saved)
+            ensure_current.assert_called_once_with()
+            upsert_many.assert_called_once()
+            self.assertEqual(3, len(upsert_many.call_args.args[0]))
+
+            reloaded = QuestionBank(str(questions_dir))
+            self.assertEqual(["q1", "q2", "q3"], reloaded.question_ids(course_id="course-a"))
+
 
 if __name__ == "__main__":
     unittest.main()

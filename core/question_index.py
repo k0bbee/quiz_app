@@ -76,6 +76,30 @@ class QuestionIndex:
 
         self._execute_with_recovery(operation)
 
+    def upsert_many(self, records: Iterable[tuple[str, dict, int, int]]) -> None:
+        """Update multiple JSON-backed records in one SQLite transaction."""
+        pending = list(records)
+        if not pending:
+            return
+
+        def operation(connection: sqlite3.Connection) -> None:
+            with connection:
+                for file_name, data, mtime_ns, file_size in pending:
+                    connection.execute(
+                        """
+                        INSERT INTO files(file_name, mtime_ns, file_size) VALUES (?, ?, ?)
+                        ON CONFLICT(file_name) DO UPDATE SET
+                            mtime_ns=excluded.mtime_ns,
+                            file_size=excluded.file_size
+                        """,
+                        (file_name, mtime_ns, file_size),
+                    )
+                    connection.execute("DELETE FROM questions WHERE file_name = ?", (file_name,))
+                    self._insert_question(connection, file_name, data, mtime_ns, file_size)
+                self._set_directory_marker(connection, self._directory_marker())
+
+        self._execute_with_recovery(operation)
+
     def delete(self, file_name: str) -> None:
         def operation(connection: sqlite3.Connection) -> None:
             with connection:
