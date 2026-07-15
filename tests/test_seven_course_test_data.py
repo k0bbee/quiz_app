@@ -13,6 +13,9 @@ from core.seven_course_test_data import (
     audit_seven_course_data,
     seed_seven_course_data,
 )
+from core.quiz_engine import QuizSession
+from models.question import QuestionBank
+from models.question_set import SetManager
 from utils.constants import QuestionType
 
 
@@ -42,6 +45,17 @@ class SevenCourseTestDataTests(unittest.TestCase):
             self.assertEqual((), audit.quality_issue_question_ids)
             self.assertTrue(all(count >= 1 for count in audit.documents_per_course.values()))
             self.assertTrue(all(count >= 1 for count in audit.source_chunks_per_course.values()))
+
+            question_bank = QuestionBank(str(root / "questions"))
+            for question_set in SetManager(str(root / "question_sets")).load_all():
+                questions = question_bank.get_many(
+                    question_set.questions,
+                    course_id=question_set.metadata["course_id"],
+                )
+                session = QuizSession()
+                session.start(question_set, questions, language="zh")
+                self.assertEqual(7, session.total_questions)
+                self.assertIsNotNone(session.current_question)
 
             repeated = seed_seven_course_data(root, source_root=source_root)
             repeated_audit = audit_seven_course_data(root)
