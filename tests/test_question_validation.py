@@ -58,6 +58,18 @@ class QuestionValidationTests(unittest.TestCase):
             [issue.code for issue in issues],
         )
 
+    def test_validator_accounts_for_information_density_of_cjk_explanations(self):
+        question = _question()
+        question.bilingual["zh"]["explanation"] = "高价格使供给量超过需求量，市场出现过剩。"
+        question.bilingual["en"]["explanation"] = (
+            "At a higher price, quantity supplied exceeds quantity demanded, "
+            "so the market develops a surplus."
+        )
+
+        issues = validate_question_quality(question)
+
+        self.assertNotIn("bilingual_explanation_imbalance", [issue.code for issue in issues])
+
 
 if __name__ == "__main__":
     unittest.main()

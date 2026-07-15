@@ -73,11 +73,16 @@ def validate_question_quality(question: Question) -> tuple[ValidationIssue, ...]
 
 
 def _has_imbalanced_explanations(zh_explanation: str, en_explanation: str) -> bool:
-    zh_len = len(zh_explanation.strip())
-    en_len = len(en_explanation.strip())
+    zh_len = _information_length(zh_explanation)
+    en_len = _information_length(en_explanation)
     if min(zh_len, en_len) == 0:
         return False
     return max(zh_len, en_len) >= max(60, min(zh_len, en_len) * 4)
+
+
+def _information_length(text: str) -> int:
+    """Approximate comparable bilingual content length without tokenization."""
+    return sum(2 if "\u3400" <= char <= "\u9fff" else 1 for char in text.strip())
 
 
 def _has_overlong_correct_option(question: Question) -> bool:
