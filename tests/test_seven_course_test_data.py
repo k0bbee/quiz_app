@@ -10,12 +10,15 @@ from pathlib import Path
 from core.seven_course_test_data import (
     CROSS_DISCIPLINE_COURSE_IDS,
     CROSS_DISCIPLINE_SOURCES,
+    _CourseSeed,
     _COURSES,
+    _QuestionSeed,
+    _build_question,
     audit_seven_course_data,
     seed_seven_course_data,
 )
-from core.course_index import build_source_index
-from models.course_project import CourseProjectManager
+from core.course_index import attach_index_to_project, build_source_index
+from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from core.quiz_engine import QuizSession
 from models.question import QuestionBank
 from models.question_set import SetManager
@@ -23,6 +26,46 @@ from utils.constants import Difficulty, QuestionType
 
 
 class SevenCourseTestDataTests(unittest.TestCase):
+    def test_source_grounding_does_not_succeed_from_distractor_text_alone(self):
+        project = CourseProject(
+            course_id="test-course-grounding",
+            title="Grounding",
+            source_folder="",
+            summary_markdown="",
+            summary_path="",
+            topics=[CourseTopic("supported_topic", "Supported Topic", ["absent concept"])],
+            documents=[{
+                "path": "grounding.md",
+                "title": "grounding",
+                "extension": ".md",
+                "pages": ["Only distractor evidence appears in this source."],
+            }],
+            created_at="",
+            updated_at="",
+        )
+        attach_index_to_project(project)
+        question_seed = _QuestionSeed(
+            type=QuestionType.MULTIPLE_CHOICE,
+            topic_index=0,
+            stem_zh="选择正确概念。",
+            stem_en="Choose the correct concept.",
+            options_zh=("正确概念", "干扰证据"),
+            options_en=("Correct concept", "Distractor evidence"),
+            answer="A",
+            explanation_zh="正确概念与资料中的干扰词无关。",
+            explanation_en="A separate principle justifies the correct concept.",
+        )
+        course_seed = _CourseSeed(
+            slug="grounding",
+            title="Grounding",
+            source_name="grounding.md",
+            topics=(("supported_topic", "Supported Topic", ("absent concept",)),),
+            questions=(question_seed,),
+        )
+
+        with self.assertRaisesRegex(ValueError, "no source evidence"):
+            _build_question(project, course_seed, question_seed, 1)
+
     def test_seed_pack_builds_seven_runnable_cross_discipline_courses(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "seven-course-data"

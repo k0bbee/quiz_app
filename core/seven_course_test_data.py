@@ -620,7 +620,7 @@ def _build_question(
         topic.topic_id,
         seed.stem_en,
         seed.explanation_en,
-        *_flatten_option_text(seed.options_en),
+        *_correct_answer_queries(seed),
     ]
     source_refs = retrieve_course_source_refs(project, source_queries, limit=1)
     if not source_refs:
@@ -678,18 +678,18 @@ def _equal_topic_weights(topic_ids: list[str]) -> dict[str, int]:
     }
 
 
-def _flatten_option_text(options: object) -> list[str]:
-    if isinstance(options, dict):
-        return [
-            str(option.get("text", "") if isinstance(option, dict) else option)
-            for side in ("left", "right", "items")
-            for option in (options.get(side, []) or [])
-        ]
-    if isinstance(options, (list, tuple)):
-        return [
-            str(option.get("text", "") if isinstance(option, dict) else option)
-            for option in options
-        ]
+def _correct_answer_queries(seed: _QuestionSeed) -> list[str]:
+    if seed.type in {QuestionType.MULTIPLE_CHOICE, QuestionType.SCENARIO_CHOICE}:
+        options = seed.options_en if isinstance(seed.options_en, (list, tuple)) else ()
+        answer = str(seed.answer or "").strip().upper()
+        index = ord(answer) - ord("A") if len(answer) == 1 and answer.isalpha() else -1
+        if 0 <= index < len(options):
+            option = options[index]
+            return [str(option.get("text", "") if isinstance(option, dict) else option)]
+        return []
+    if seed.type == QuestionType.FILL_IN_BLANK:
+        answers = seed.answer if isinstance(seed.answer, list) else [seed.answer]
+        return [str(answer) for answer in answers if str(answer or "").strip()]
     return []
 
 
