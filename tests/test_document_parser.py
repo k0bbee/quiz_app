@@ -8,6 +8,17 @@ from core.document_parser import DocumentParser
 
 
 class DocumentParserQualityTests(unittest.TestCase):
+    def test_parse_text_recovers_gb18030_content_and_reports_encoding_fallback(self):
+        content = "微观经济学：需求、供给、价格弹性与消费者选择。"
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "economics-notes.txt"
+            path.write_bytes(content.encode("gb18030"))
+
+            document = DocumentParser().parse_file(path)
+
+        self.assertEqual(content, document.text)
+        self.assertIn("GB18030", "\n".join(document.warnings))
+
     def test_parse_file_caches_unchanged_files_without_returning_shared_document(self):
         class CountingParser(DocumentParser):
             calls = 0

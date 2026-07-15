@@ -70,6 +70,20 @@ class FakeProfileGenerator:
 
 
 class CourseSummaryGeneratorTests(unittest.TestCase):
+    def test_initialize_rejects_folders_with_only_unreadable_documents(self):
+        manager = Mock()
+        initializer = CourseInitializer(manager=manager)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            Path(tmpdir, "failed-download.pdf").write_text(
+                "not a real PDF container",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "No readable course content"):
+                initializer.initialize(tmpdir, title="Broken import")
+
+        manager.save.assert_not_called()
+
     def test_initializer_reports_save_failure_instead_of_returning_unsaved_course(self):
         manager = Mock()
         manager.save.return_value = False

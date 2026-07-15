@@ -140,9 +140,20 @@ class DocumentParser:
         return doc
 
     def _parse_text(self, path: Path) -> ExtractedDocument:
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        raw = path.read_bytes()
+        text, encoding = _decode_text_bytes(raw)
         text = _normalize_text(text)
-        return ExtractedDocument(str(path), path.stem, path.suffix.lower(), text=text, pages=[text])
+        warnings = []
+        if encoding != "UTF-8":
+            warnings.append(f"Text encoding fallback used: {encoding}")
+        return ExtractedDocument(
+            str(path),
+            path.stem,
+            path.suffix.lower(),
+            text=text,
+            pages=[text] if text else [],
+            warnings=warnings,
+        )
 
     def _parse_pptx(self, path: Path, task: TaskControl | None = None) -> ExtractedDocument:
         pages: list[str] = []
@@ -245,6 +256,20 @@ def _normalize_text(text: str) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+def _decode_text_bytes(raw: bytes) -> tuple[str, str]:
+    """Decode common course-note encodings without silently dropping bytes."""
+    for codec, label in (
+        ("utf-8-sig", "UTF-8"),
+        ("gb18030", "GB18030"),
+        ("cp1252", "Windows-1252"),
+    ):
+        try:
+            return raw.decode(codec), label
+        except UnicodeDecodeError:
+            continue
+    return raw.decode("utf-8", errors="replace"), "UTF-8 with replacement characters"
 
 
 def _source_sort_key(path: Path) -> tuple[int, str, str]:

@@ -99,6 +99,10 @@ class CourseInitializer:
         self._check(task)
         if not docs:
             raise ValueError("No supported course files found. Supported: docx, pptx, pdf, txt, md.")
+        if not any(doc.text.strip() for doc in docs):
+            raise ValueError(
+                "No readable course content was extracted. Check damaged files, OCR, or text encoding."
+            )
 
         course_title = title.strip() or Path(folder).name
         self._report(task, "topics")
@@ -160,6 +164,10 @@ class CourseInitializer:
         self._check(task)
         if not docs:
             raise ValueError("No supported course files found. Supported: docx, pptx, pdf, txt, md.")
+        if not any(doc.text.strip() for doc in docs):
+            raise ValueError(
+                "No readable course content was extracted. Check damaged files, OCR, or text encoding."
+            )
 
         self._report(task, "topics")
         topics = reconcile_topic_identities(project.topics, infer_topics(docs))
