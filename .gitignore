@@ -47,6 +47,7 @@ AIPlan.md
 bugs.md
 docs/superpowers/plans/*.md
 docs/superpowers/specs/*.md
+docs/**/*.png
 
 # OS files
 .DS_Store
