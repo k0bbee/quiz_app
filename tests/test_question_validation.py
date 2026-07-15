@@ -27,6 +27,27 @@ def _question() -> Question:
 
 
 class QuestionValidationTests(unittest.TestCase):
+    def test_validator_rejects_trusted_source_status_without_source_refs(self):
+        for source_status in ("verified", "valid_model_ref", "fallback_plan_evidence"):
+            with self.subTest(source_status=source_status):
+                question = _question()
+                question.metadata["source_ref_status"] = source_status
+
+                issues = validate_question_quality(question)
+
+                self.assertIn(
+                    "source_status_without_refs",
+                    [issue.code for issue in issues],
+                )
+
+    def test_validator_does_not_require_sources_for_unlabelled_manual_question(self):
+        issues = validate_question_quality(_question())
+
+        self.assertNotIn(
+            "source_status_without_refs",
+            [issue.code for issue in issues],
+        )
+
     def test_validator_returns_stable_codes_bilingual_text_and_repairs(self):
         question = _question()
         question.metadata["source_ref_status"] = "invalid_model_ref"

@@ -176,6 +176,7 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
     def test_review_dialog_requires_manual_acceptance_for_low_confidence_questions(self):
         good = make_question(1)
         good.metadata["source_ref_status"] = "valid_model_ref"
+        good.metadata["source_refs"] = [{"chunk_id": "source-good"}]
         good.metadata["plan_match_status"] = "matched_by_plan_id"
         invalid_source = make_question(2)
         invalid_source.metadata["source_ref_status"] = "invalid_model_ref"
@@ -226,6 +227,7 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         shape_match.metadata["plan_match_status"] = "matched_by_shape"
         fallback_source = make_question(3)
         fallback_source.metadata["source_ref_status"] = "global_fallback"
+        fallback_source.metadata["source_refs"] = [{"chunk_id": "source-fallback"}]
 
         dialog = QuestionReviewDialog(
             [invalid_source, shape_match, fallback_source],

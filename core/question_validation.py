@@ -29,11 +29,21 @@ def validate_question_quality(question: Question) -> tuple[ValidationIssue, ...]
     issues: list[ValidationIssue] = []
     metadata = question.metadata or {}
     source_status = str(metadata.get("source_ref_status", "") or "").strip().lower()
+    source_refs = metadata.get("source_refs")
+    has_source_refs = isinstance(source_refs, list) and any(
+        isinstance(ref, dict) and bool(ref) for ref in source_refs
+    )
     if source_status in {"invalid_model_ref", "missing"}:
         issues.append(ValidationIssue(
             "source_invalid", "warning",
             "来源无效或缺失", "Source invalid or missing",
             "[无来源]", "[No Source]", "replace_source",
+        ))
+    elif source_status and not has_source_refs:
+        issues.append(ValidationIssue(
+            "source_status_without_refs", "error",
+            "来源状态与证据不一致", "Source status has no supporting evidence",
+            "[来源异常]", "[Source Mismatch]", "replace_source",
         ))
     elif source_status in {"fallback_global_evidence", "global_fallback"}:
         issues.append(ValidationIssue(
