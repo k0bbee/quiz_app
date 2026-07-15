@@ -41,6 +41,8 @@ from ai.course_summary_factory import provider_requires_api_key
 from ui.font_scale import apply_font_scale
 from ai.settings_validation import validate_ai_settings
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox, WheelSafeSpinBox
+from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
+from core.background_task_bridge import BackgroundTaskBridge
 
 
 def _normalize_weight_shares(weights: dict[str, int]) -> dict[str, int]:
@@ -92,40 +94,95 @@ class AppDataBundleWorker(QThread):
     exported = pyqtSignal(object)
     imported = pyqtSignal(object)
     failed = pyqtSignal(str)
+    progressed = pyqtSignal(object)
+    cancelled = pyqtSignal()
 
-    def __init__(self, operation: str, filepath: str, data_dir: str, parent=None):
+    def __init__(
+        self,
+        operation: str,
+        filepath: str,
+        data_dir: str,
+        parent=None,
+        *,
+        task_center=None,
+        task_id: str = "",
+    ):
         super().__init__(parent)
         self.operation = operation
         self.filepath = filepath
         self.data_dir = data_dir
+        self.task_id = str(task_id or "")
+        self._bridge = (
+            BackgroundTaskBridge(task_center, self.task_id)
+            if task_center is not None and self.task_id
+            else None
+        )
+        self._control = TaskControl(self._report_progress)
+
+    def cancel(self):
+        self._control.cancel()
+
+    def _report_progress(self, progress: TaskProgress):
+        self.progressed.emit(progress)
+        if self._bridge is not None:
+            self._bridge.report(progress)
 
     def run(self):
+        if self._bridge is not None and not self._bridge.start(self.cancel):
+            self.cancelled.emit()
+            return
         try:
             if self.operation == "export":
                 from core.app_data_bundle import export_app_data_bundle
 
-                self.exported.emit(export_app_data_bundle(self.data_dir, self.filepath))
+                written = export_app_data_bundle(
+                    self.data_dir,
+                    self.filepath,
+                    task=self._control,
+                )
+                if self._bridge is not None:
+                    self._bridge.complete(result_summary=str(written), result_count=1)
+                self.exported.emit(written)
             elif self.operation == "import":
                 from core.app_data_bundle import import_app_data_bundle
 
-                self.imported.emit(import_app_data_bundle(self.filepath, self.data_dir))
+                result = import_app_data_bundle(
+                    self.filepath,
+                    self.data_dir,
+                    task=self._control,
+                )
+                if self._bridge is not None:
+                    self._bridge.complete(
+                        result_summary=str(self.filepath),
+                        result_count=result.imported_files,
+                    )
+                self.imported.emit(result)
             else:
                 raise ValueError(f"Unsupported app data operation: {self.operation}")
-        except (OSError, ValueError) as exc:
+        except BackgroundTaskCancelled:
+            if self._bridge is not None:
+                self._bridge.cancelled()
+            self.cancelled.emit()
+        except Exception as exc:
+            if self._bridge is not None:
+                self._bridge.fail(exc)
             self.failed.emit(str(exc))
 
 
 class SettingsScreen(QWidget):
     """Application settings with explicit save, crash-safe initialization."""
 
-    def __init__(self, parent=None, connection_probe_factory=None):
+    def __init__(self, parent=None, connection_probe_factory=None, task_center=None):
         super().__init__(parent)
         self.lang_manager = LanguageManager.instance()
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self._settings = self._load_settings()
         self._connection_probe_factory = connection_probe_factory or AIConnectionProbe
+        self.task_center = task_center
         self._connection_test_worker = None
         self._app_data_worker = None
+        self._app_data_task_id = ""
+        self._app_data_operation = ""
         self._initializing = True
         self.settings_dirty = False
         self._setup_ui()
@@ -565,6 +622,22 @@ class SettingsScreen(QWidget):
         self.data_action_layout.addWidget(self.reset_progress_btn)
         data_layout.addLayout(self.data_action_layout)
 
+        self.app_data_status_layout = QHBoxLayout()
+        self.app_data_status_layout.setSpacing(8)
+        self.app_data_status_label = QLabel("")
+        self.app_data_status_label.setObjectName("secondaryText")
+        self.app_data_status_label.setWordWrap(True)
+        self.app_data_status_label.hide()
+        self.app_data_status_layout.addWidget(self.app_data_status_label, 1)
+        self.cancel_app_data_btn = QPushButton(
+            self.lang_manager.get_text("停止", "Stop")
+        )
+        self.cancel_app_data_btn.setObjectName("secondaryButton")
+        self.cancel_app_data_btn.clicked.connect(self._cancel_app_data)
+        self.cancel_app_data_btn.hide()
+        self.app_data_status_layout.addWidget(self.cancel_app_data_btn)
+        data_layout.addLayout(self.app_data_status_layout)
+
         layout.addWidget(self.data_group)
         layout.addStretch()
 
@@ -682,6 +755,7 @@ class SettingsScreen(QWidget):
         self.export_app_data_btn.setText(self.lang_manager.get_text("导出应用数据", "Export App Data"))
         self.import_app_data_btn.setText(self.lang_manager.get_text("导入应用数据", "Import App Data"))
         self.reset_progress_btn.setText(self.lang_manager.get_text("重置全部进度", "Reset All Progress"))
+        self.cancel_app_data_btn.setText(self.lang_manager.get_text("停止", "Stop"))
         self.test_ai_btn.setText(self.lang_manager.get_text("测试 AI 设置", "Test AI Settings"))
         self.save_btn.setText(self.lang_manager.get_text("保存设置", "Save Settings"))
         self.clear_api_key_btn.setText(self.lang_manager.get_text("清除", "Clear"))
@@ -1366,30 +1440,114 @@ class SettingsScreen(QWidget):
         self._start_app_data_worker(self._create_app_data_worker("export", filepath), "export")
 
     def _create_app_data_worker(self, operation: str, filepath: str):
-        return AppDataBundleWorker(operation, filepath, DATA_DIR, self)
+        task_id = ""
+        if self.task_center is not None:
+            title = self.lang_manager.get_text(
+                "导出应用数据" if operation == "export" else "导入应用数据",
+                "Export App Data" if operation == "export" else "Import App Data",
+            )
+            snapshot = self.task_center.create(
+                kind=f"app_data_{operation}",
+                title=title,
+                metadata={"operation": operation, "path": filepath},
+            )
+            task_id = snapshot.task_id
+        self._app_data_task_id = task_id
+        return AppDataBundleWorker(
+            operation,
+            filepath,
+            DATA_DIR,
+            self,
+            task_center=self.task_center,
+            task_id=task_id,
+        )
 
     def _start_app_data_worker(self, worker, operation: str):
         self._app_data_worker = worker
+        self._app_data_operation = operation
+        self._app_data_task_id = self._app_data_task_id or str(
+            getattr(worker, "task_id", "") or ""
+        )
         self._set_app_data_busy(True, operation)
         worker.exported.connect(self._on_app_data_exported)
         worker.imported.connect(self._on_app_data_imported)
         worker.failed.connect(lambda message: self._on_app_data_failed(message, operation))
+        if hasattr(worker, "progressed"):
+            worker.progressed.connect(self._on_app_data_progress)
+        if hasattr(worker, "cancelled"):
+            worker.cancelled.connect(self._on_app_data_cancelled)
         worker.start()
 
     def _set_app_data_busy(self, busy: bool, operation: str = ""):
-        self.export_app_data_btn.setEnabled(not busy)
-        self.import_app_data_btn.setEnabled(not busy)
+        for button in (
+            self.export_btn,
+            self.import_btn,
+            self.export_app_data_btn,
+            self.import_app_data_btn,
+            self.reset_progress_btn,
+        ):
+            button.setEnabled(not busy)
+        self.app_data_status_label.setVisible(busy)
+        self.cancel_app_data_btn.setVisible(busy)
+        self.cancel_app_data_btn.setEnabled(busy)
         if busy and operation == "export":
             self.export_app_data_btn.setText(self.lang_manager.get_text("导出中…", "Exporting…"))
+            self.app_data_status_label.setText(
+                self.lang_manager.get_text("正在准备导出…", "Preparing export…")
+            )
         elif busy and operation == "import":
             self.import_app_data_btn.setText(self.lang_manager.get_text("导入中…", "Importing…"))
+            self.app_data_status_label.setText(
+                self.lang_manager.get_text("正在验证导入包…", "Validating import bundle…")
+            )
         else:
             self.export_app_data_btn.setText(self.lang_manager.get_text("导出应用数据", "Export App Data"))
             self.import_app_data_btn.setText(self.lang_manager.get_text("导入应用数据", "Import App Data"))
+            self.app_data_status_label.clear()
 
-    def _on_app_data_exported(self, written):
+    def _on_app_data_progress(self, progress: TaskProgress):
+        stage_labels = {
+            "scanning": self.lang_manager.get_text("扫描数据", "Scanning data"),
+            "exporting": self.lang_manager.get_text("写入导出包", "Writing bundle"),
+            "validating": self.lang_manager.get_text("验证导入包", "Validating bundle"),
+            "staging": self.lang_manager.get_text("暂存数据", "Staging data"),
+            "committing": self.lang_manager.get_text("提交数据", "Committing data"),
+            "saved": self.lang_manager.get_text("正在完成", "Finishing"),
+        }
+        label = stage_labels.get(progress.stage, progress.stage)
+        count = (
+            f" {progress.current}/{progress.total}"
+            if progress.total > 0
+            else ""
+        )
+        detail = f" · {progress.detail}" if progress.detail else ""
+        self.app_data_status_label.setText(f"{label}{count}{detail}")
+
+    def _cancel_app_data(self):
+        worker = self._app_data_worker
+        if worker is None:
+            return
+        self.cancel_app_data_btn.setEnabled(False)
+        self.app_data_status_label.setText(
+            self.lang_manager.get_text("正在安全停止…", "Stopping safely…")
+        )
+        if self.task_center is not None and self._app_data_task_id:
+            try:
+                self.task_center.request_cancel(self._app_data_task_id)
+            except (KeyError, ValueError):
+                pass
+        cancel = getattr(worker, "cancel", None)
+        if callable(cancel):
+            cancel()
+
+    def _finish_app_data_worker(self):
         self._set_app_data_busy(False)
         self._app_data_worker = None
+        self._app_data_task_id = ""
+        self._app_data_operation = ""
+
+    def _on_app_data_exported(self, written):
+        self._finish_app_data_worker()
         QMessageBox.information(
             self,
             self.lang_manager.get_text("已导出", "Exported"),
@@ -1400,8 +1558,7 @@ class SettingsScreen(QWidget):
         )
 
     def _on_app_data_failed(self, message: str, operation: str):
-        self._set_app_data_busy(False)
-        self._app_data_worker = None
+        self._finish_app_data_worker()
         QMessageBox.critical(
             self,
             self.lang_manager.get_text(
@@ -1409,6 +1566,17 @@ class SettingsScreen(QWidget):
                 "Export Failed" if operation == "export" else "Import Failed",
             ),
             message,
+        )
+
+    def _on_app_data_cancelled(self):
+        self._finish_app_data_worker()
+        QMessageBox.information(
+            self,
+            self.lang_manager.get_text("已停止", "Stopped"),
+            self.lang_manager.get_text(
+                "数据操作已安全停止，未提交的更改已撤销。",
+                "The data operation stopped safely; uncommitted changes were rolled back.",
+            ),
         )
 
     def _import_app_data(self):
@@ -1437,8 +1605,7 @@ class SettingsScreen(QWidget):
         self._start_app_data_worker(self._create_app_data_worker("import", filepath), "import")
 
     def _on_app_data_imported(self, result):
-        self._set_app_data_busy(False)
-        self._app_data_worker = None
+        self._finish_app_data_worker()
         skipped_hint = ""
         if result.skipped_files:
             skipped_hint = self.lang_manager.get_text(

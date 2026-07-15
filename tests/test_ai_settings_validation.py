@@ -15,7 +15,9 @@ from ai.settings_validation import validate_ai_settings
 from core.environment_check import CheckResult, EnvironmentReport
 from core.language_manager import LanguageManager
 from core.ocr_runtime import OCR_REMEDIATION
-from ui.screens.settings_screen import SettingsScreen
+from core.background_task import TaskProgress
+from core.background_task_center import BackgroundTaskCenter, TaskStatus
+from ui.screens.settings_screen import AppDataBundleWorker, SettingsScreen
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -47,10 +49,16 @@ class ManualAppDataWorker:
         self.exported = ManualSignal()
         self.imported = ManualSignal()
         self.failed = ManualSignal()
+        self.progressed = ManualSignal()
+        self.cancelled = ManualSignal()
         self.start_called = False
+        self.cancel_called = False
 
     def start(self):
         self.start_called = True
+
+    def cancel(self):
+        self.cancel_called = True
 
 
 class AISettingsValidationTests(unittest.TestCase):
@@ -485,6 +493,78 @@ class AISettingsValidationTests(unittest.TestCase):
         self.assertTrue(info.called)
         self.assertIn("12", info.call_args.args[2])
         self.assertTrue("Skipped" in info.call_args.args[2] or "跳过" in info.call_args.args[2])
+
+    def test_app_data_transfer_registers_progress_and_cancel_with_task_center(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            center = BackgroundTaskCenter(Path(tmpdir) / "tasks.json")
+            screen = SettingsScreen(task_center=center)
+            worker = ManualAppDataWorker()
+
+            with patch(
+                "ui.screens.settings_screen.QFileDialog.getSaveFileName",
+                return_value=("backup.quizdata", ""),
+            ), patch(
+                "ui.screens.settings_screen.AppDataBundleWorker",
+                return_value=worker,
+            ):
+                screen.export_app_data_btn.click()
+
+                snapshot = center.snapshots()[0]
+                self.assertEqual("app_data_export", snapshot.kind)
+                self.assertEqual("backup.quizdata", snapshot.metadata["path"])
+                self.assertFalse(screen.app_data_status_label.isHidden())
+                self.assertFalse(screen.cancel_app_data_btn.isHidden())
+                for button in (
+                    screen.export_btn,
+                    screen.import_btn,
+                    screen.export_app_data_btn,
+                    screen.import_app_data_btn,
+                    screen.reset_progress_btn,
+                ):
+                    self.assertFalse(button.isEnabled())
+
+                worker.progressed.emit(TaskProgress("exporting", 3, 8, "questions/q3.json"))
+                self.assertIn("3/8", screen.app_data_status_label.text())
+                self.assertIn("questions/q3.json", screen.app_data_status_label.text())
+
+                screen.cancel_app_data_btn.click()
+
+            self.assertEqual(TaskStatus.CANCELLED, center.get(snapshot.task_id).status)
+            self.assertTrue(worker.cancel_called)
+            self.assertFalse(screen.cancel_app_data_btn.isEnabled())
+
+    def test_app_data_worker_completes_persistent_export_task(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            data_dir = root / "data"
+            (data_dir / "questions").mkdir(parents=True)
+            (data_dir / "questions" / "q1.json").write_text(
+                '{"question_id": "q1"}',
+                encoding="utf-8",
+            )
+            output = root / "backup.quizdata"
+            center = BackgroundTaskCenter(root / "tasks.json")
+            snapshot = center.create(
+                kind="app_data_export",
+                title="Export app data",
+                metadata={"path": str(output)},
+            )
+            worker = AppDataBundleWorker(
+                "export",
+                str(output),
+                str(data_dir),
+                task_center=center,
+                task_id=snapshot.task_id,
+            )
+            exported = []
+            worker.exported.connect(exported.append)
+
+            worker.run()
+
+            completed = center.get(snapshot.task_id)
+            self.assertEqual(TaskStatus.COMPLETED, completed.status)
+            self.assertEqual(1, completed.result_count)
+            self.assertEqual([output], exported)
 
 
 if __name__ == "__main__":

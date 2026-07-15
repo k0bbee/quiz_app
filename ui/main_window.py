@@ -109,7 +109,7 @@ class MainWindow(QMainWindow):
             mastery_overrides=self.mastery_overrides,
             course_manager=self.course_manager,
         )
-        self.settings_screen = SettingsScreen()
+        self.settings_screen = SettingsScreen(task_center=self.task_center)
         self._course_screen = None
         self._question_bank_screen = None
         self._past_exam_screen = None
