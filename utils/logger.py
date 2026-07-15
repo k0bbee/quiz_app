@@ -17,6 +17,24 @@ _LOG_BACKUP_COUNT = 3
 _logger = None
 
 
+class ResilientRotatingFileHandler(RotatingFileHandler):
+    """Rotate normally, but tolerate another Windows process holding the file."""
+
+    def doRollover(self) -> None:  # noqa: N802 - logging API name
+        try:
+            super().doRollover()
+        except PermissionError:
+            if self.stream:
+                self.stream.close()
+                self.stream = None
+            current = Path(self.baseFilename)
+            self.baseFilename = str(
+                current.with_name(f"{current.name}.{os.getpid()}")
+            )
+            if not self.delay:
+                self.stream = self._open()
+
+
 def _get_logger() -> logging.Logger:
     global _logger
     if _logger is None:
@@ -35,11 +53,11 @@ def build_file_handler(
     *,
     max_bytes: int = _MAX_LOG_BYTES,
     backup_count: int = _LOG_BACKUP_COUNT,
-) -> RotatingFileHandler:
+) -> ResilientRotatingFileHandler:
     """Create the bounded UTF-8 handler used by the application logger."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    handler = RotatingFileHandler(
+    handler = ResilientRotatingFileHandler(
         path,
         maxBytes=max(1, int(max_bytes)),
         backupCount=max(1, int(backup_count)),

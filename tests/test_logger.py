@@ -1,7 +1,9 @@
 import logging.handlers
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from utils.logger import build_file_handler, sanitize_for_log
 
@@ -29,6 +31,29 @@ class LoggerTests(unittest.TestCase):
 
         self.assertNotIn(key, sanitized)
         self.assertIn("[API_KEY_REDACTED]", sanitized)
+
+    def test_rotation_lock_conflict_falls_back_to_process_log(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            handler = build_file_handler(
+                Path(tmpdir) / "app.log",
+                max_bytes=1024,
+                backup_count=2,
+            )
+            try:
+                with patch.object(
+                    logging.handlers.RotatingFileHandler,
+                    "doRollover",
+                    side_effect=PermissionError("locked"),
+                ):
+                    handler.doRollover()
+
+                self.assertEqual(
+                    f"app.log.{os.getpid()}",
+                    Path(handler.baseFilename).name,
+                )
+                self.assertIsNotNone(handler.stream)
+            finally:
+                handler.close()
 
 
 if __name__ == "__main__":
