@@ -4,7 +4,8 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow, QStackedWidget, QDialog,
-    QToolBar, QMessageBox, QWidget, QVBoxLayout, QPushButton, QFileDialog
+    QMessageBox, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog,
+    QFrame, QLabel, QButtonGroup, QSizePolicy,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
@@ -124,14 +125,10 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.progress_screen)    # 4
         self.stack.addWidget(self.settings_screen)    # 5
 
-        self.setCentralWidget(self.stack)
+        self._create_application_shell()
 
-        # Keep the shell free of duplicate menu navigation; all app navigation
-        # lives in the semantic top toolbar.
+        # Keep the shell free of duplicate menu navigation.
         self.menuBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
-
-        # Toolbar
-        self._create_toolbar()
 
         # Connect screen navigation signals
         self._connect_signals()
@@ -190,64 +187,110 @@ class MainWindow(QMainWindow):
             self.stack.insertWidget(self.SCREEN_PAST_EXAMS, self._past_exam_screen)
         return self._past_exam_screen
 
-    def _create_toolbar(self):
-        self.toolbar = QToolBar("")
-        self.toolbar.setMovable(False)
-        self.toolbar.setOrientation(Qt.Orientation.Horizontal)
-        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
+    def _create_application_shell(self):
+        shell = QWidget()
+        shell.setObjectName("applicationShell")
+        shell_layout = QHBoxLayout(shell)
+        shell_layout.setContentsMargins(0, 0, 0, 0)
+        shell_layout.setSpacing(0)
 
-        self.nav_back_btn = self._create_toolbar_button("navigation")
-        self.nav_back_btn.clicked.connect(self.navigate_back)
-        self.nav_home_btn = self._create_toolbar_button("navigation")
-        self.nav_home_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_HOME))
+        self.navigation_sidebar = QFrame()
+        self.navigation_sidebar.setObjectName("applicationSidebar")
+        self.navigation_sidebar.setMinimumWidth(168)
+        self.navigation_sidebar.setMaximumWidth(168)
+        sidebar_layout = QVBoxLayout(self.navigation_sidebar)
+        sidebar_layout.setContentsMargins(14, 20, 14, 20)
+        sidebar_layout.setSpacing(6)
 
-        self.topics_btn = self._create_toolbar_button("practice")
-        self.topics_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_TOPIC_SELECTION))
-        self.progress_btn = self._create_toolbar_button("practice")
-        self.progress_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
-        self.courses_btn = self._create_toolbar_button("management")
-        self.courses_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
-        self.past_exams_btn = self._create_toolbar_button("management")
-        self.past_exams_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_PAST_EXAMS))
-        self.bank_btn = self._create_toolbar_button("management")
-        self.bank_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_QUESTION_BANK))
-        self.settings_btn = self._create_toolbar_button("management")
-        self.settings_btn.clicked.connect(lambda: self.navigate_to(self.SCREEN_SETTINGS))
-        self.about_btn = self._create_toolbar_button("support")
-        self.about_btn.clicked.connect(self._show_about)
+        self.sidebar_title = QLabel("")
+        self.sidebar_title.setObjectName("sidebarTitle")
+        sidebar_layout.addWidget(self.sidebar_title)
+        sidebar_layout.addSpacing(20)
 
-        self.toolbar.addWidget(self.nav_back_btn)
-        self.toolbar.addWidget(self.nav_home_btn)
-        self.toolbar.addSeparator()
-        self.toolbar.addWidget(self.topics_btn)
-        self.toolbar.addWidget(self.progress_btn)
-        self.toolbar.addSeparator()
-        self.toolbar.addWidget(self.courses_btn)
-        self.toolbar.addWidget(self.past_exams_btn)
-        self.toolbar.addWidget(self.bank_btn)
-        self.toolbar.addWidget(self.settings_btn)
-        self.toolbar.addSeparator()
-        self.toolbar.addWidget(self.about_btn)
+        self._workspace_group = QButtonGroup(self)
+        self._workspace_group.setExclusive(True)
+        self.home_nav_btn = self._create_sidebar_button("home", self.SCREEN_HOME)
+        self.learning_nav_btn = self._create_sidebar_button("learning", self.SCREEN_TOPIC_SELECTION)
+        self.courses_nav_btn = self._create_sidebar_button("courses", self.SCREEN_COURSES)
+        self.library_nav_btn = self._create_sidebar_button("library", self.SCREEN_QUESTION_BANK)
+        self.settings_nav_btn = self._create_sidebar_button("settings", self.SCREEN_SETTINGS)
+        for button in self.navigation_buttons():
+            sidebar_layout.addWidget(button)
+        sidebar_layout.addStretch(1)
 
-    def _create_toolbar_button(self, group: str) -> QPushButton:
+        content = QWidget()
+        content.setObjectName("applicationContent")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
+
+        self.context_header = QFrame()
+        self.context_header.setObjectName("contextHeader")
+        header_layout = QHBoxLayout(self.context_header)
+        header_layout.setContentsMargins(24, 12, 24, 12)
+        header_layout.setSpacing(8)
+
+        self.context_back_btn = QPushButton("")
+        self.context_back_btn.setObjectName("contextBackButton")
+        self.context_back_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.context_back_btn.clicked.connect(self.navigate_back)
+        header_layout.addWidget(self.context_back_btn)
+
+        self.context_title = QLabel("")
+        self.context_title.setObjectName("contextTitle")
+        self.context_title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        header_layout.addWidget(self.context_title)
+
+        self.topics_tab_btn = self._create_context_tab(self.SCREEN_TOPIC_SELECTION)
+        self.progress_tab_btn = self._create_context_tab(self.SCREEN_PROGRESS)
+        self.bank_tab_btn = self._create_context_tab(self.SCREEN_QUESTION_BANK)
+        self.past_exams_tab_btn = self._create_context_tab(self.SCREEN_PAST_EXAMS)
+        for button in self._all_context_tabs():
+            header_layout.addWidget(button)
+
+        content_layout.addWidget(self.context_header)
+        content_layout.addWidget(self.stack, 1)
+        shell_layout.addWidget(self.navigation_sidebar)
+        shell_layout.addWidget(content, 1)
+        self.setCentralWidget(shell)
+
+    def _create_sidebar_button(self, workspace: str, screen_index: int) -> QPushButton:
         button = QPushButton("")
-        button.setObjectName("toolbarButton")
-        button.setProperty("navGroup", group)
+        button.setObjectName("sidebarNavButton")
+        button.setProperty("workspace", workspace)
+        button.setCheckable(True)
         button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        button.clicked.connect(lambda _checked=False, index=screen_index: self.navigate_to(index))
+        self._workspace_group.addButton(button)
+        return button
+
+    def _create_context_tab(self, screen_index: int) -> QPushButton:
+        button = QPushButton("")
+        button.setObjectName("contextTabButton")
+        button.setCheckable(True)
+        button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        button.clicked.connect(lambda _checked=False, index=screen_index: self.navigate_to(index))
         return button
 
     def navigation_buttons(self) -> tuple[QPushButton, ...]:
         return (
-            self.nav_back_btn,
-            self.nav_home_btn,
-            self.topics_btn,
-            self.progress_btn,
-            self.courses_btn,
-            self.past_exams_btn,
-            self.bank_btn,
-            self.settings_btn,
-            self.about_btn,
+            self.home_nav_btn,
+            self.learning_nav_btn,
+            self.courses_nav_btn,
+            self.library_nav_btn,
+            self.settings_nav_btn,
         )
+
+    def _all_context_tabs(self) -> tuple[QPushButton, ...]:
+        return (
+            self.topics_tab_btn,
+            self.progress_tab_btn,
+            self.bank_tab_btn,
+            self.past_exams_tab_btn,
+        )
+
+    def context_tabs(self) -> tuple[QPushButton, ...]:
+        return tuple(button for button in self._all_context_tabs() if not button.isHidden())
 
     def _connect_signals(self):
         # Home screen
@@ -291,19 +334,18 @@ class MainWindow(QMainWindow):
         lang = lang or self.lang_manager.current
         gm = self.lang_manager.get_text
 
-        # Update toolbar title
-        self.toolbar.setWindowTitle(gm("快捷导航", "Quick Nav"))
-
-        # Update semantic toolbar button texts.
-        self.nav_back_btn.setText(gm("返回", "Back"))
-        self.nav_home_btn.setText(gm("首页", "Home"))
-        self.topics_btn.setText(gm("题目集", "Question Sets"))
-        self.progress_btn.setText(gm("进度", "Progress"))
-        self.courses_btn.setText(gm("课程", "Courses"))
-        self.past_exams_btn.setText(gm("真题", "Historical Exams"))
-        self.bank_btn.setText(gm("题库", "Question Bank"))
-        self.settings_btn.setText(gm("设置", "Settings"))
-        self.about_btn.setText(gm("关于", "About"))
+        self.context_back_btn.setText(gm("返回", "Back"))
+        self.sidebar_title.setText(gm("刷题平台", "Quiz Studio"))
+        self.home_nav_btn.setText(gm("首页", "Home"))
+        self.learning_nav_btn.setText(gm("学习", "Study"))
+        self.courses_nav_btn.setText(gm("课程", "Courses"))
+        self.library_nav_btn.setText(gm("资料库", "Library"))
+        self.settings_nav_btn.setText(gm("设置", "Settings"))
+        self.topics_tab_btn.setText(gm("题目集", "Question Sets"))
+        self.progress_tab_btn.setText(gm("进度", "Progress"))
+        self.bank_tab_btn.setText(gm("题库", "Question Bank"))
+        self.past_exams_tab_btn.setText(gm("历史真题", "Historical Exams"))
+        self._update_navigation_actions()
 
     def navigate_to(self, screen_index: int, remember: bool = True, confirm_current: bool = True) -> bool:
         """Switch to a screen by index."""
@@ -359,10 +401,55 @@ class MainWindow(QMainWindow):
 
     def _update_navigation_actions(self):
         """Keep shell navigation buttons in sync with current location."""
-        if not hasattr(self, "nav_back_btn"):
+        if not hasattr(self, "context_back_btn"):
             return
-        self.nav_back_btn.setEnabled(bool(self._navigation_history))
-        self.nav_home_btn.setEnabled(self.stack.currentIndex() != self.SCREEN_HOME)
+        current = self.stack.currentIndex()
+        workspace_button = {
+            self.SCREEN_HOME: self.home_nav_btn,
+            self.SCREEN_TOPIC_SELECTION: self.learning_nav_btn,
+            self.SCREEN_QUIZ: self.learning_nav_btn,
+            self.SCREEN_RESULTS: self.learning_nav_btn,
+            self.SCREEN_PROGRESS: self.learning_nav_btn,
+            self.SCREEN_COURSES: self.courses_nav_btn,
+            self.SCREEN_QUESTION_BANK: self.library_nav_btn,
+            self.SCREEN_PAST_EXAMS: self.library_nav_btn,
+            self.SCREEN_SETTINGS: self.settings_nav_btn,
+        }.get(current)
+        if workspace_button is not None:
+            workspace_button.setChecked(True)
+
+        learning = current in {
+            self.SCREEN_TOPIC_SELECTION,
+            self.SCREEN_PROGRESS,
+            self.SCREEN_QUIZ,
+            self.SCREEN_RESULTS,
+        }
+        library = current in {self.SCREEN_QUESTION_BANK, self.SCREEN_PAST_EXAMS}
+        for button in (self.topics_tab_btn, self.progress_tab_btn):
+            button.setVisible(learning and current not in {self.SCREEN_QUIZ, self.SCREEN_RESULTS})
+        for button in (self.bank_tab_btn, self.past_exams_tab_btn):
+            button.setVisible(library)
+        self.topics_tab_btn.setChecked(current == self.SCREEN_TOPIC_SELECTION)
+        self.progress_tab_btn.setChecked(current == self.SCREEN_PROGRESS)
+        self.bank_tab_btn.setChecked(current == self.SCREEN_QUESTION_BANK)
+        self.past_exams_tab_btn.setChecked(current == self.SCREEN_PAST_EXAMS)
+
+        page_titles = {
+            self.SCREEN_HOME: ("首页", "Home"),
+            self.SCREEN_TOPIC_SELECTION: ("学习", "Study"),
+            self.SCREEN_QUIZ: ("答题", "Quiz"),
+            self.SCREEN_RESULTS: ("练习结果", "Results"),
+            self.SCREEN_PROGRESS: ("学习", "Study"),
+            self.SCREEN_SETTINGS: ("设置", "Settings"),
+            self.SCREEN_COURSES: ("课程", "Courses"),
+            self.SCREEN_QUESTION_BANK: ("资料库", "Library"),
+            self.SCREEN_PAST_EXAMS: ("资料库", "Library"),
+        }
+        zh, en = page_titles.get(current, ("", ""))
+        self.context_title.setText(self.lang_manager.get_text(zh, en))
+        is_focus_flow = current in {self.SCREEN_QUIZ, self.SCREEN_RESULTS}
+        self.context_back_btn.setVisible(is_focus_flow and bool(self._navigation_history))
+        self.context_back_btn.setEnabled(bool(self._navigation_history))
 
     # --- Slot handlers ---
 

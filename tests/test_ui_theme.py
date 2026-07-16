@@ -214,7 +214,7 @@ class UiThemeTests(unittest.TestCase):
         ):
             self.assertIn(selector, qss)
 
-    def test_menus_avoid_sticky_focus_chrome_and_toolbar_has_keyboard_focus_ring(self):
+    def test_menus_avoid_sticky_focus_chrome_and_sidebar_has_keyboard_focus_ring(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
 
         menu_active_rule = re.search(
@@ -231,14 +231,14 @@ class UiThemeTests(unittest.TestCase):
         self.assertIsNotNone(menu_selected_rule)
         self.assertNotIn("#094771", menu_active_rule.group("body"))
         self.assertNotIn("#007fd4", menu_selected_rule.group("body"))
-        toolbar_focus_rule = re.search(
-            r"qtoolbar qpushbutton:focus\s*\{(?P<body>[^}]*)\}",
+        sidebar_focus_rule = re.search(
+            r"qpushbutton#sidebarnavbutton:focus\s*\{(?P<body>[^}]*)\}",
             qss,
             flags=re.DOTALL,
         )
-        self.assertIsNotNone(toolbar_focus_rule)
-        self.assertIn("#007fd4", toolbar_focus_rule.group("body"))
-        self.assertNotIn("border-color: transparent", toolbar_focus_rule.group("body"))
+        self.assertIsNotNone(sidebar_focus_rule)
+        self.assertIn("#007fd4", sidebar_focus_rule.group("body"))
+        self.assertNotIn("border-color: transparent", sidebar_focus_rule.group("body"))
 
         main_window = MainWindow()
         self.addCleanup(main_window.close)
@@ -247,16 +247,16 @@ class UiThemeTests(unittest.TestCase):
         for button in main_window.navigation_buttons():
             self.assertEqual(Qt.FocusPolicy.TabFocus, button.focusPolicy())
 
-    def test_main_navigation_uses_top_text_toolbar_with_semantic_groups_and_no_exit_entry(self):
+    def test_main_navigation_uses_left_workspaces_and_context_tabs(self):
         main_window = MainWindow()
         self.addCleanup(main_window.close)
         self.addCleanup(main_window.lang_manager.set_language, "zh")
         main_window.lang_manager.set_language("en")
 
-        self.assertEqual(
-            Qt.ToolBarArea.TopToolBarArea,
-            main_window.toolBarArea(main_window.toolbar),
-        )
+        self.assertFalse(hasattr(main_window, "toolbar"))
+        self.assertEqual("applicationSidebar", main_window.navigation_sidebar.objectName())
+        self.assertGreaterEqual(main_window.navigation_sidebar.minimumWidth(), 156)
+        self.assertLessEqual(main_window.navigation_sidebar.maximumWidth(), 220)
         self.assertFalse(hasattr(main_window, "exit_action"))
         self.assertEqual([], main_window.menuBar().actions())
         for legacy_attr in (
@@ -273,34 +273,34 @@ class UiThemeTests(unittest.TestCase):
 
         buttons = main_window.navigation_buttons()
         self.assertEqual(
-            ["Back", "Home", "Question Sets", "Progress", "Courses", "Historical Exams", "Question Bank", "Settings", "About"],
+            ["Home", "Study", "Courses", "Library", "Settings"],
             [button.text() for button in buttons],
         )
         self.assertEqual(
-            ["navigation", "navigation", "practice", "practice", "management", "management", "management", "management", "support"],
-            [button.property("navGroup") for button in buttons],
-        )
-        self.assertGreaterEqual(
-            sum(1 for action in main_window.toolbar.actions() if action.isSeparator()),
-            2,
+            ["home", "learning", "courses", "library", "settings"],
+            [button.property("workspace") for button in buttons],
         )
         for button in buttons:
             self.assertNotRegex(button.text(), r"[^\w\s]")
+            self.assertTrue(button.isCheckable())
 
-        self.assertFalse(main_window.nav_back_btn.isEnabled())
+        self.assertTrue(main_window.home_nav_btn.isChecked())
+        self.assertFalse(main_window.context_back_btn.isVisible())
 
         main_window.navigate_to(main_window.SCREEN_PROGRESS)
-        self.assertTrue(main_window.nav_back_btn.isEnabled())
-
-        main_window.nav_back_btn.click()
-        self.assertEqual(main_window.SCREEN_HOME, main_window.stack.currentIndex())
-        self.assertFalse(main_window.nav_back_btn.isEnabled())
+        self.assertTrue(main_window.learning_nav_btn.isChecked())
+        self.assertEqual(["Question Sets", "Progress"], [button.text() for button in main_window.context_tabs()])
+        self.assertTrue(main_window.progress_tab_btn.isChecked())
+        self.assertFalse(main_window.context_back_btn.isVisible())
 
         main_window.navigate_to(main_window.SCREEN_SETTINGS)
-        main_window.nav_home_btn.click()
+        main_window.home_nav_btn.click()
         self.assertEqual(main_window.SCREEN_HOME, main_window.stack.currentIndex())
 
-        main_window.past_exams_btn.click()
+        main_window.library_nav_btn.click()
+        self.assertEqual(main_window.SCREEN_QUESTION_BANK, main_window.stack.currentIndex())
+        self.assertEqual(["Question Bank", "Historical Exams"], [button.text() for button in main_window.context_tabs()])
+        main_window.past_exams_tab_btn.click()
         self.assertEqual(main_window.SCREEN_PAST_EXAMS, main_window.stack.currentIndex())
         self.assertIs(main_window.past_exam_manager, main_window._past_exam_screen.manager)
         self.assertIs(main_window.course_manager, main_window._past_exam_screen.course_manager)
@@ -1035,13 +1035,8 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("qlistwidget#sourcepanellist", qss)
         self.assertIn("qlabel#generationpartialrecoverylabel", qss)
 
-        for button in (
-            main_window.topics_btn,
-            main_window.progress_btn,
-            main_window.courses_btn,
-            main_window.past_exams_btn,
-        ):
-            self.assertEqual("toolbarButton", button.objectName())
+        for button in main_window.navigation_buttons():
+            self.assertEqual("sidebarNavButton", button.objectName())
 
     def test_review_dialog_and_ordering_controls_use_theme_roles(self):
         source = Path("ui/dialogs/question_review_dialog.py").read_text(encoding="utf-8")

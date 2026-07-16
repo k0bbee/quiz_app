@@ -637,6 +637,86 @@ QToolBar QPushButton:focus {
     border-color: #007fd4;
 }
 
+/* Application shell */
+QWidget#applicationShell,
+QWidget#applicationContent {
+    background-color: #1f1f1f;
+}
+
+QFrame#applicationSidebar {
+    background-color: #181818;
+    border: none;
+    border-right: 1px solid #2b2b2b;
+}
+
+QLabel#sidebarTitle {
+    color: #f2f2f2;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 2px 8px;
+}
+
+QPushButton#sidebarNavButton {
+    color: #bdbdbd;
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 9px 12px;
+    text-align: left;
+    font-size: 13px;
+}
+
+QPushButton#sidebarNavButton:hover {
+    color: #ffffff;
+    background-color: #252526;
+    border-color: #383838;
+}
+
+QPushButton#sidebarNavButton:checked {
+    color: #ffffff;
+    background-color: #2a2d2e;
+    border-color: #454545;
+}
+
+QPushButton#sidebarNavButton:focus {
+    background-color: #252526;
+    border-color: #007fd4;
+}
+
+QFrame#contextHeader {
+    background-color: #1f1f1f;
+    border: none;
+    border-bottom: 1px solid #303030;
+}
+
+QLabel#contextTitle {
+    color: #f2f2f2;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+QPushButton#contextBackButton,
+QPushButton#contextTabButton {
+    color: #bdbdbd;
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    padding: 5px 9px;
+}
+
+QPushButton#contextBackButton:hover,
+QPushButton#contextTabButton:hover,
+QPushButton#contextTabButton:checked {
+    color: #ffffff;
+    background-color: #2a2d2e;
+    border-color: #454545;
+}
+
+QPushButton#contextBackButton:focus,
+QPushButton#contextTabButton:focus {
+    border-color: #007fd4;
+}
+
 QMenu {
     color: #cccccc;
     background-color: #252526;
