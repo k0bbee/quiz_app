@@ -1,7 +1,7 @@
 """Home screen — welcome view with quick actions."""
 
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 
@@ -44,15 +44,12 @@ class HomeScreen(QWidget):
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(24, 24, 24, 24)
+        main_layout.setContentsMargins(36, 28, 36, 28)
         main_layout.setSpacing(16)
-
-        # ── Top stretch: pushes content to center ──
-        main_layout.addStretch()
 
         # Title
         self.title = QLabel(self.lang_manager.get_text("课程刷题工具", "Course Quiz Studio"))
-        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.title.setObjectName("screenTitle")
         main_layout.addWidget(self.title)
 
@@ -62,33 +59,19 @@ class HomeScreen(QWidget):
             "Generate summaries, question banks and self-tests from courseware"
         ))
         self.subtitle.setObjectName("homeSubtitle")
-        self.subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.subtitle.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         main_layout.addWidget(self.subtitle)
 
-        self.course_context_label = QLabel()
-        self.course_context_label.setObjectName("homeCourseContextLabel")
-        self.course_context_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.course_context_label.setWordWrap(True)
-        main_layout.addWidget(self.course_context_label)
-        self._update_course_context_label()
-
-        main_layout.addSpacing(20)
-
-        # Action area: one recommendation card, one primary action, then 2x2 alternatives.
-        self.action_frame = QWidget()
-        self.action_frame.setMaximumWidth(640)
-        self.action_layout = QGridLayout(self.action_frame)
-        self.action_layout.setContentsMargins(0, 0, 0, 0)
-        self.action_layout.setHorizontalSpacing(12)
-        self.action_layout.setVerticalSpacing(12)
-        self.action_layout.setColumnStretch(0, 1)
-        self.action_layout.setColumnStretch(1, 1)
-
+        # The visual center is a recommendation plus its course context, not a
+        # grid of competing navigation actions.
+        self.hero_layout = QHBoxLayout()
+        self.hero_layout.setContentsMargins(0, 8, 0, 0)
+        self.hero_layout.setSpacing(16)
         self.today_plan_frame = QWidget()
-        self.today_plan_frame.setObjectName("homeTodayPlan")
+        self.today_plan_frame.setObjectName("homeFocusPanel")
         today_layout = QVBoxLayout(self.today_plan_frame)
-        today_layout.setContentsMargins(16, 14, 16, 14)
-        today_layout.setSpacing(6)
+        today_layout.setContentsMargins(22, 20, 22, 20)
+        today_layout.setSpacing(10)
         self.today_plan_title = QLabel(self.lang_manager.get_text("今日建议", "Today's Plan"))
         self.today_plan_title.setObjectName("homeTodayPlanTitle")
         today_layout.addWidget(self.today_plan_title)
@@ -96,54 +79,105 @@ class HomeScreen(QWidget):
         self.today_plan_detail.setObjectName("homeTodayPlanDetail")
         self.today_plan_detail.setWordWrap(True)
         today_layout.addWidget(self.today_plan_detail)
-        self.action_layout.addWidget(self.today_plan_frame, 0, 0, 1, 2)
+        today_layout.addStretch(1)
 
         self.start_btn = QPushButton()
         self.start_btn.setObjectName("primaryButton")
         self.start_btn.setProperty("homeAction", "primary")
         self.start_btn.setMinimumHeight(44)
         self.start_btn.clicked.connect(self._activate_today_plan)
-        self.action_layout.addWidget(self.start_btn, 1, 0, 1, 2)
+        today_layout.addWidget(self.start_btn)
 
-        # Kept as a hidden compatibility mirror for older callers/tests. Drafts
-        # now surface through the single primary action instead of another row.
-        self.resume_btn = QPushButton(self.action_frame)
+        self.context_frame = QWidget()
+        self.context_frame.setObjectName("homeContextPanel")
+        context_layout = QVBoxLayout(self.context_frame)
+        context_layout.setContentsMargins(20, 20, 20, 20)
+        context_layout.setSpacing(10)
+        self.context_title = QLabel(self.lang_manager.get_text("当前学习范围", "Current Scope"))
+        self.context_title.setObjectName("homeContextTitle")
+        context_layout.addWidget(self.context_title)
+
+        self.course_context_label = QLabel()
+        self.course_context_label.setObjectName("homeCourseContextLabel")
+        self.course_context_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self.course_context_label.setWordWrap(True)
+        context_layout.addWidget(self.course_context_label)
+        self.scope_context_label = QLabel()
+        self.scope_context_label.setObjectName("homeScopeContextLabel")
+        self.scope_context_label.setWordWrap(True)
+        context_layout.addWidget(self.scope_context_label)
+        self.question_context_label = QLabel()
+        self.question_context_label.setObjectName("homeQuestionContextLabel")
+        self.question_context_label.setText(self.lang_manager.get_text("题目：0 题", "Questions: 0"))
+        context_layout.addWidget(self.question_context_label)
+        context_layout.addStretch(1)
+        self._update_course_context_label()
+
+        self.hero_layout.addWidget(self.today_plan_frame, 13)
+        self.hero_layout.addWidget(self.context_frame, 7)
+        main_layout.addLayout(self.hero_layout)
+
+        self.overview_frame = QWidget()
+        self.overview_frame.setObjectName("homeOverviewPanel")
+        overview_layout = QVBoxLayout(self.overview_frame)
+        overview_layout.setContentsMargins(20, 16, 20, 16)
+        overview_layout.setSpacing(8)
+        self.overview_title = QLabel(self.lang_manager.get_text("学习概览", "Learning Overview"))
+        self.overview_title.setObjectName("homeOverviewTitle")
+        overview_layout.addWidget(self.overview_title)
+
+        self.stats_label = QLabel()
+        self.stats_label.setObjectName("homeStatsLabel")
+        self.stats_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self.stats_label.setWordWrap(True)
+        self.stats_label.setText(self.lang_manager.get_text(
+            "完成练习后，这里会显示正确率和错题情况。",
+            "Accuracy and incorrect-question trends will appear after practice.",
+        ))
+        overview_layout.addWidget(self.stats_label)
+        main_layout.addWidget(self.overview_frame)
+        main_layout.addStretch(1)
+
+        # Compatibility signal targets remain hidden; navigation now lives in
+        # the application shell and the recommendation is the sole home action.
+        self.resume_btn = QPushButton(self)
         self.resume_btn.setObjectName("secondaryButton")
         self.resume_btn.setProperty("homeAction", "secondary")
         self.resume_btn.hide()
 
         self.free_practice_btn = QPushButton(
-            self.lang_manager.get_text("自由练习", "Free Practice")
+            self.lang_manager.get_text("自由练习", "Free Practice"),
+            self,
         )
         self.free_practice_btn.setObjectName("secondaryButton")
         self.free_practice_btn.setProperty("homeAction", "secondary")
         self.free_practice_btn.setMinimumHeight(40)
         self.free_practice_btn.clicked.connect(self.start_practice.emit)
-        self.action_layout.addWidget(self.free_practice_btn, 2, 0)
+        self.free_practice_btn.hide()
 
-        self.incorrect_btn = QPushButton(self.lang_manager.get_text("练习历史错题", "Practice Incorrect"))
+        self.incorrect_btn = QPushButton(self.lang_manager.get_text("练习历史错题", "Practice Incorrect"), self)
         self.incorrect_btn.setObjectName("secondaryButton")
         self.incorrect_btn.setProperty("homeAction", "secondary")
         self.incorrect_btn.setMinimumHeight(40)
         self.incorrect_btn.clicked.connect(self.practice_incorrect.emit)
-        self.action_layout.addWidget(self.incorrect_btn, 2, 1)
+        self.incorrect_btn.hide()
 
-        self.ai_btn = QPushButton(self.lang_manager.get_text("AI 生成题目", "Generate Questions"))
+        self.ai_btn = QPushButton(self.lang_manager.get_text("AI 生成题目", "Generate Questions"), self)
         self.ai_btn.setObjectName("secondaryButton")
         self.ai_btn.setProperty("homeAction", "secondary")
         self.ai_btn.setMinimumHeight(40)
         self.ai_btn.clicked.connect(self.ai_generate.emit)
-        self.action_layout.addWidget(self.ai_btn, 3, 0)
+        self.ai_btn.hide()
 
-        self.progress_btn = QPushButton(self.lang_manager.get_text("查看进度", "View Progress"))
+        self.progress_btn = QPushButton(self.lang_manager.get_text("查看进度", "View Progress"), self)
         self.progress_btn.setObjectName("secondaryButton")
         self.progress_btn.setProperty("homeAction", "secondary")
         self.progress_btn.setMinimumHeight(40)
         self.progress_btn.clicked.connect(self.view_progress.emit)
-        self.action_layout.addWidget(self.progress_btn, 3, 1)
+        self.progress_btn.hide()
 
         # Settings already has a persistent top-level navigation entry.
-        self.settings_btn = QPushButton(self.lang_manager.get_text("设置", "Settings"), self.action_frame)
+        self.settings_btn = QPushButton(self.lang_manager.get_text("设置", "Settings"), self)
         self.settings_btn.setObjectName("secondaryButton")
         self.settings_btn.setProperty("homeAction", "secondary")
         self.settings_btn.clicked.connect(self.open_settings.emit)
@@ -151,30 +185,10 @@ class HomeScreen(QWidget):
 
         self.first_use_label = QLabel()
         self.first_use_label.setObjectName("homeFirstUseGuide")
-        self.first_use_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.first_use_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.first_use_label.setWordWrap(True)
         self.first_use_label.hide()
 
-        # Center the button frame horizontally
-        btn_row = QHBoxLayout()
-        btn_row.addStretch()
-        btn_row.addWidget(self.action_frame)
-        btn_row.addStretch()
-        main_layout.addLayout(btn_row)
-
-        main_layout.addSpacing(20)
-        main_layout.addWidget(self.first_use_label)
-
-        # Stats summary (hidden until refresh() populates it)
-        self.stats_label = QLabel()
-        self.stats_label.setObjectName("homeStatsLabel")
-        self.stats_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.stats_label.setWordWrap(True)
-        self.stats_label.hide()  # hidden until data is available
-        main_layout.addWidget(self.stats_label)
-
-        # ── Bottom stretch: balances top, content stays centered ──
-        main_layout.addStretch()
         self._render_today_plan()
 
     def _on_language_changed(self, lang):
@@ -186,6 +200,8 @@ class HomeScreen(QWidget):
         ))
         self._update_course_context_label()
         self.today_plan_title.setText(self.lang_manager.get_text("今日建议", "Today's Plan"))
+        self.context_title.setText(self.lang_manager.get_text("当前学习范围", "Current Scope"))
+        self.overview_title.setText(self.lang_manager.get_text("学习概览", "Learning Overview"))
         self._update_resume_text()
         self.free_practice_btn.setText(self.lang_manager.get_text("自由练习", "Free Practice"))
         self.incorrect_btn.setText(self.lang_manager.get_text("练习历史错题", "Practice Incorrect"))
@@ -199,7 +215,12 @@ class HomeScreen(QWidget):
     def refresh(self):
         """Called when navigating back to home. Update stats."""
         if self.progress_manager is None or self.question_bank is None:
-            self.stats_label.hide()
+            self.stats_label.show()
+            self.stats_label.setText(self.lang_manager.get_text(
+                "暂无可用的学习数据。",
+                "No learning data is available yet.",
+            ))
+            self.question_context_label.setText(self.lang_manager.get_text("题目：0 题", "Questions: 0"))
             self.incorrect_btn.setEnabled(False)
             self._set_incorrect_empty_state(True)
             self._refresh_today_plan()
@@ -210,6 +231,10 @@ class HomeScreen(QWidget):
         )
         visible_question_ids = self._visible_question_ids()
         total_questions = self.question_bank.count(course_id=self._current_course_id)
+        self.question_context_label.setText(self.lang_manager.get_text(
+            f"题目：{len(visible_question_ids)} 题",
+            f"Questions: {len(visible_question_ids)}",
+        ))
         stats_filter = all_course_question_ids if self._current_course_id else None
         stats = self.progress_manager.get_aggregated_stats(stats_filter)
         incorrect_ids = self.progress_manager.get_incorrect_question_ids()
@@ -233,7 +258,11 @@ class HomeScreen(QWidget):
 
         if stats["total_sessions"] == 0:
             self.first_use_label.hide()
-            self.stats_label.hide()
+            self.stats_label.show()
+            self.stats_label.setText(self.lang_manager.get_text(
+                "尚无练习记录。完成第一次练习后，这里会显示正确率和错题情况。",
+                "No practice history yet. Accuracy and incorrect-question trends will appear after your first session.",
+            ))
             return
 
         self.first_use_label.hide()
@@ -362,6 +391,18 @@ class HomeScreen(QWidget):
             self.course_context_label.setText(
                 self.lang_manager.get_text("当前课程：全部课程", "Current course: All courses")
             )
+        if hasattr(self, "scope_context_label"):
+            if self._exam_topic_ids is None:
+                self.scope_context_label.setText(self.lang_manager.get_text(
+                    "考试范围：全部知识点",
+                    "Exam scope: All topics",
+                ))
+            else:
+                count = len(self._exam_topic_ids)
+                self.scope_context_label.setText(self.lang_manager.get_text(
+                    f"考试范围：{count} 个知识点",
+                    f"Exam scope: {count} topics",
+                ))
 
     def _set_incorrect_empty_state(self, empty: bool):
         self.incorrect_btn.setProperty("emptyState", "true" if empty else "false")
@@ -414,6 +455,10 @@ class HomeScreen(QWidget):
 
         if total_questions is None:
             total_questions = len(self._visible_question_ids())
+        self.question_context_label.setText(self.lang_manager.get_text(
+            f"题目：{total_questions} 题",
+            f"Questions: {total_questions}",
+        ))
         if incorrect_ids is None:
             incorrect_ids = []
             if self.progress_manager is not None and self.question_bank is not None:

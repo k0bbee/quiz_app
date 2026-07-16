@@ -11,7 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QCloseEvent, QPalette
 from PyQt6.QtCore import QEvent, Qt
-from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QGridLayout, QLabel, QListWidget, QPushButton, QSplitter, QTextEdit
+from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QSplitter, QTextEdit
 
 from core.language_manager import LanguageManager
 from core.progress_tracker import ProgressManager
@@ -144,7 +144,9 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn('qlabel#settingssavestatus[savestate="dirty"]', qss)
         self.assertIn('qlabel#settingssavestatus[savestate="saved"]', qss)
         self.assertIn("qlabel#settingsweightpreview", qss)
-        self.assertIn("qwidget#hometodayplan", qss)
+        self.assertIn("qwidget#homefocuspanel", qss)
+        self.assertIn("qwidget#homecontextpanel", qss)
+        self.assertIn("qwidget#homeoverviewpanel", qss)
         self.assertIn("qlabel#hometodayplantitle", qss)
         self.assertIn("qlabel#hometodayplandetail", qss)
         self.assertIn("qlabel#pastexamassignmentstatus", qss)
@@ -286,6 +288,7 @@ class UiThemeTests(unittest.TestCase):
 
         self.assertTrue(main_window.home_nav_btn.isChecked())
         self.assertFalse(main_window.context_back_btn.isVisible())
+        self.assertTrue(main_window.home_screen.question_context_label.text())
 
         main_window.navigate_to(main_window.SCREEN_PROGRESS)
         self.assertTrue(main_window.learning_nav_btn.isChecked())
@@ -473,7 +476,8 @@ class UiThemeTests(unittest.TestCase):
             self.assertTrue(home.first_use_label.isHidden())
             self.assertIn("导入", home.start_btn.text())
             self.assertIn("导入课件", home.today_plan_detail.text())
-            self.assertTrue(home.stats_label.isHidden())
+            self.assertFalse(home.stats_label.isHidden())
+            self.assertIn("尚无练习记录", home.stats_label.text())
 
     def test_home_actions_have_dedicated_hover_pressed_and_focus_feedback(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
@@ -581,27 +585,39 @@ class UiThemeTests(unittest.TestCase):
             ):
                 self.assertEqual("secondaryButton", button.objectName())
 
-    def test_home_actions_use_a_balanced_two_column_grid(self):
+    def test_home_visual_center_uses_recommendation_and_context_columns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = HomeScreen(
                 ProgressManager(str(Path(tmpdir) / "progress")),
                 QuestionBank(str(Path(tmpdir) / "questions")),
             )
 
-            self.assertIsInstance(home.action_layout, QGridLayout)
-            self.assertLessEqual(home.action_frame.maximumWidth(), 640)
+            self.assertIsInstance(home.hero_layout, QHBoxLayout)
+            self.assertEqual(13, home.hero_layout.stretch(0))
+            self.assertEqual(7, home.hero_layout.stretch(1))
+            self.assertEqual("homeFocusPanel", home.today_plan_frame.objectName())
+            self.assertEqual("homeContextPanel", home.context_frame.objectName())
+            self.assertEqual("homeOverviewPanel", home.overview_frame.objectName())
+            self.assertTrue(home.title.alignment() & Qt.AlignmentFlag.AlignLeft)
+            self.assertTrue(home.course_context_label.alignment() & Qt.AlignmentFlag.AlignLeft)
+            self.assertTrue(home.question_context_label.text())
+            self.assertTrue(home.stats_label.text())
 
-            def position(button):
-                return home.action_layout.getItemPosition(home.action_layout.indexOf(button))
-
-            self.assertEqual((0, 0, 1, 2), position(home.today_plan_frame))
-            self.assertEqual((1, 0, 1, 2), position(home.start_btn))
-            self.assertEqual((2, 0, 1, 1), position(home.free_practice_btn))
-            self.assertEqual((2, 1, 1, 1), position(home.incorrect_btn))
-            self.assertEqual((3, 0, 1, 1), position(home.ai_btn))
-            self.assertEqual((3, 1, 1, 1), position(home.progress_btn))
-            self.assertEqual(-1, home.action_layout.indexOf(home.resume_btn))
-            self.assertEqual(-1, home.action_layout.indexOf(home.settings_btn))
+            visible_actions = [
+                button
+                for button in home.findChildren(QPushButton)
+                if not button.isHidden()
+            ]
+            self.assertEqual([home.start_btn], visible_actions)
+            for button in (
+                home.free_practice_btn,
+                home.incorrect_btn,
+                home.ai_btn,
+                home.progress_btn,
+                home.resume_btn,
+                home.settings_btn,
+            ):
+                self.assertTrue(button.isHidden())
 
     def test_home_screen_shows_current_course_context(self):
         with tempfile.TemporaryDirectory() as tmpdir:

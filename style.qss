@@ -846,21 +846,34 @@ QLabel#resultsStatsLabel {
     font-size: 13px;
 }
 
-QWidget#homeTodayPlan {
+QWidget#homeFocusPanel,
+QWidget#homeContextPanel,
+QWidget#homeOverviewPanel {
     background-color: #252526;
     border: 1px solid #3c3c3c;
     border-radius: 14px;
 }
 
-QLabel#homeTodayPlanTitle {
+QLabel#homeTodayPlanTitle,
+QLabel#homeContextTitle,
+QLabel#homeOverviewTitle {
     color: #f0f0f0;
     font-size: 14px;
     font-weight: 600;
 }
 
-QLabel#homeTodayPlanDetail {
+QLabel#homeTodayPlanDetail,
+QLabel#homeCourseContextLabel,
+QLabel#homeScopeContextLabel,
+QLabel#homeQuestionContextLabel {
     color: #b8b8b8;
     font-size: 13px;
+}
+
+QWidget#homeOverviewPanel QLabel#homeStatsLabel {
+    background-color: transparent;
+    border: none;
+    padding: 0;
 }
 
 QLabel#pastExamAssignmentStatus {
