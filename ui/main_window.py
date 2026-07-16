@@ -457,6 +457,7 @@ class MainWindow(QMainWindow):
         zh, en = page_titles.get(current, ("", ""))
         self.context_title.setText(self.lang_manager.get_text(zh, en))
         is_focus_flow = current in {self.SCREEN_QUIZ, self.SCREEN_RESULTS}
+        self.navigation_sidebar.setVisible(not is_focus_flow)
         self.context_back_btn.setVisible(is_focus_flow and bool(self._navigation_history))
         self.context_back_btn.setEnabled(bool(self._navigation_history))
 

@@ -329,6 +329,24 @@ class UiThemeTests(unittest.TestCase):
         main_window.quiz_screen.confirm_exit.assert_called_once()
         self.assertEqual(main_window.SCREEN_SETTINGS, main_window.stack.currentIndex())
 
+    def test_quiz_and_results_use_focus_mode_without_global_sidebar(self):
+        main_window = MainWindow()
+        self.addCleanup(main_window.close)
+        main_window.quiz_screen.confirm_exit = Mock(return_value=True)
+
+        main_window.navigate_to(main_window.SCREEN_QUIZ)
+
+        self.assertTrue(main_window.navigation_sidebar.isHidden())
+        self.assertFalse(main_window.context_header.isHidden())
+        self.assertFalse(main_window.context_back_btn.isHidden())
+
+        main_window.navigate_to(main_window.SCREEN_RESULTS, confirm_current=False)
+        self.assertTrue(main_window.navigation_sidebar.isHidden())
+
+        main_window.navigate_to(main_window.SCREEN_HOME, confirm_current=False)
+        self.assertFalse(main_window.navigation_sidebar.isHidden())
+        self.assertTrue(main_window.context_back_btn.isHidden())
+
     def test_historical_exam_prediction_is_routed_to_main_generation_flow(self):
         main_window = MainWindow()
         self.addCleanup(main_window.close)
