@@ -74,7 +74,7 @@ class GenerationWorker(QThread):
         """Execute generation in background thread."""
         try:
             if self._task_bridge is not None:
-                if not self._task_bridge.start(self._cancelled.set):
+                if not self._task_bridge.start(self._request_cancel):
                     return
             self._emit_generation_event(ProgressEvent("Building prompt..."))
             course_context = self._build_course_context()
@@ -112,12 +112,18 @@ class GenerationWorker(QThread):
     def cancel(self):
         """Signal the worker to stop."""
         if self._task_bridge is None:
-            self._cancelled.set()
+            self._request_cancel()
             return
         try:
             self._task_bridge.task_center.request_cancel(self._task_bridge.task_id)
         except (KeyError, ValueError):
-            self._cancelled.set()
+            self._request_cancel()
+
+    def _request_cancel(self) -> None:
+        self._cancelled.set()
+        cancel_client = getattr(self.client, "cancel", None)
+        if callable(cancel_client):
+            cancel_client()
 
     def set_runtime_instruction(self, instruction: str) -> None:
         """Apply a user adjustment to future LLM requests."""

@@ -5,7 +5,7 @@ import json
 import re
 import shutil
 import subprocess
-import time
+import threading
 from typing import Optional
 
 import requests
@@ -29,6 +29,7 @@ class LLMClient:
         self.model = model
         self.provider = normalized_provider or self._infer_provider_from_base_url(self.base_url)
         self.last_error = ""
+        self._cancelled = threading.Event()
 
     def __repr__(self) -> str:
         return (
@@ -44,6 +45,9 @@ class LLMClient:
     ) -> Optional[str]:
         """Send chat completion request. Returns response text or None on failure."""
         self.last_error = ""
+        if self._cancelled.is_set():
+            self.last_error = "LLM request cancelled by user."
+            return None
         if self.base_url.startswith("local-agent://"):
             return self._generate_local_agent(messages, max_tokens)
         from ai.settings_validation import validate_remote_endpoint
@@ -56,6 +60,36 @@ class LLMClient:
         if self.provider == "anthropic":
             return self._generate_anthropic(messages, temperature, max_tokens)
         return self._generate_openai_compatible(messages, temperature, max_tokens)
+
+    def cancel(self) -> None:
+        """Stop waiting for an in-flight transport request."""
+        self._cancelled.set()
+
+    def _post_interruptibly(self, *args, **kwargs):
+        """Run requests.post off-thread so cancellation never waits on socket timeout."""
+        completed = threading.Event()
+        outcome: dict[str, object] = {}
+
+        def send() -> None:
+            try:
+                outcome["response"] = requests.post(*args, **kwargs)
+            except BaseException as exc:  # re-raised on the calling generation thread
+                outcome["error"] = exc
+            finally:
+                completed.set()
+
+        threading.Thread(target=send, daemon=True, name="llm-http-request").start()
+        while not completed.wait(0.05):
+            if self._cancelled.is_set():
+                self.last_error = "LLM request cancelled by user."
+                return None
+        if self._cancelled.is_set():
+            self.last_error = "LLM request cancelled by user."
+            return None
+        error_value = outcome.get("error")
+        if error_value is not None:
+            raise error_value
+        return outcome.get("response")
 
     @staticmethod
     def _infer_provider_from_base_url(base_url: str) -> str:
@@ -138,7 +172,11 @@ class LLMClient:
             payload["system"] = system_prompt
 
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=120)
+            resp = self._post_interruptibly(
+                url, headers=headers, json=payload, timeout=120
+            )
+            if resp is None:
+                return None
             if resp.status_code == 200:
                 try:
                     data = resp.json()
@@ -257,16 +295,22 @@ class LLMClient:
         }
 
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=120)
+            resp = self._post_interruptibly(
+                url, headers=headers, json=payload, timeout=120
+            )
+            if resp is None:
+                return None
             if resp.status_code == 400 and self._response_format_rejected(resp.text):
                 fallback_payload = dict(payload)
                 fallback_payload.pop("response_format", None)
-                resp = requests.post(
+                resp = self._post_interruptibly(
                     url,
                     headers=headers,
                     json=fallback_payload,
                     timeout=120,
                 )
+                if resp is None:
+                    return None
             if resp.status_code == 200:
                 try:
                     data = resp.json()
@@ -341,8 +385,13 @@ class LLMClient:
     ) -> Optional[dict]:
         """Generate response and parse as JSON with retry on parse failure."""
         for attempt in range(max_retries):
+            if self._cancelled.is_set():
+                self.last_error = "LLM request cancelled by user."
+                return None
             text = self.generate(messages, temperature, max_tokens)
             if text is None:
+                if self._cancelled.is_set():
+                    return None
                 continue
             if not isinstance(text, str):
                 self.last_error = (
@@ -373,7 +422,9 @@ class LLMClient:
                 self.last_error = f"JSON parse error (attempt {attempt + 1}/{max_retries}): {e}"
                 debug(self.last_error)
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)  # Exponential backoff
+                    if self._cancelled.wait(2 ** attempt):
+                        self.last_error = "LLM request cancelled by user."
+                        return None
 
         return None
 

@@ -1,4 +1,5 @@
 import os
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -16,6 +17,49 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class LLMErrorMessageTests(unittest.TestCase):
+    def test_remote_request_returns_promptly_after_client_cancel(self):
+        entered = threading.Event()
+        release = threading.Event()
+
+        class Response:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {"choices": [{"message": {"content": "{}"}}]}
+
+        def blocking_post(*_args, **_kwargs):
+            entered.set()
+            release.wait(2)
+            return Response()
+
+        client = LLMClient(
+            api_key="test",
+            base_url="https://api.openai.com/v1",
+            model="test-model",
+            provider="openai",
+        )
+        result = []
+        request_thread = threading.Thread(
+            target=lambda: result.append(
+                client.generate([{"role": "user", "content": "Return JSON."}])
+            )
+        )
+
+        with patch("ai.llm_client.requests.post", side_effect=blocking_post):
+            request_thread.start()
+            self.assertTrue(entered.wait(1))
+            cancel = getattr(client, "cancel", lambda: None)
+            cancel()
+            request_thread.join(0.5)
+            returned_before_transport = not request_thread.is_alive()
+            release.set()
+            request_thread.join(2)
+
+        self.assertTrue(returned_before_transport)
+        self.assertEqual([None], result)
+        self.assertIn("cancel", client.last_error.lower())
+
     def test_local_agent_records_actionable_error_when_no_cli_is_available(self):
         client = LLMClient(api_key="", base_url="local-agent://auto", model="auto")
 

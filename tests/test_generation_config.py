@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -32,6 +32,20 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class GenerationConfigTests(unittest.TestCase):
+    def test_generation_worker_cancel_interrupts_active_client_request(self):
+        client = SimpleNamespace(model="test-model", cancel=Mock())
+        worker = GenerationWorker(
+            client,
+            course_content="content",
+            topics=["cache"],
+            count=1,
+            difficulty="medium",
+        )
+
+        worker.cancel()
+
+        client.cancel.assert_called_once_with()
+
     def test_allocate_zero_weight_counts_evenly_instead_of_first_key(self):
         allocated = allocate_weighted_counts(
             {"multiple_choice": 0, "true_false": 0, "fill_in_blank": 0},
