@@ -42,6 +42,7 @@ class ProgressSummaryBar(QWidget):
 
         total = self._correct + self._incorrect + self._unanswered
         if total == 0:
+            painter.end()
             return
 
         w = self.width()

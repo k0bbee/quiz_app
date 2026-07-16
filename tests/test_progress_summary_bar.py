@@ -55,6 +55,15 @@ class RecordingPainter:
 
 
 class ProgressSummaryBarTests(unittest.TestCase):
+    def test_empty_bar_ends_painter_before_returning(self):
+        bar = ProgressSummaryBar()
+        bar.set_values(0, 0, 0)
+
+        with patch("ui.widgets.progress_summary_bar.QPainter", RecordingPainter):
+            bar.paintEvent(None)
+
+        self.assertEqual("end", RecordingPainter.last.records[-1][0])
+
     def test_labels_are_clipped_to_their_own_segments(self):
         bar = ProgressSummaryBar()
         bar.resize(120, 32)
