@@ -720,6 +720,18 @@ QPushButton#contextActionButton:focus {
     border-color: #007fd4;
 }
 
+QPushButton#contextActionButton[needsAttention="true"] {
+    color: #f0c674;
+    background-color: #332b1d;
+    border-color: #6b5526;
+}
+
+QPushButton#contextActionButton[needsAttention="true"]:hover {
+    color: #fff3c4;
+    background-color: #443821;
+    border-color: #9a7834;
+}
+
 QMenu {
     color: #cccccc;
     background-color: #252526;

@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog,
     QFrame, QLabel, QButtonGroup, QSizePolicy,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import QTimer, Qt, pyqtSignal
 
 from core.language_manager import LanguageManager
 from models.question import QuestionBank
@@ -18,9 +18,11 @@ from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.mastery_overrides import MasteryOverrideStore
 from core.background_task_center import BackgroundTaskCenter
+from core.background_task_presenter import build_task_center_view, task_toolbar_text
 from core.topic_display import topic_display_name
 from models.course_project import CourseProjectManager
 from models.past_exam import PastExamManager
+from ui.dialogs.background_task_dialog import BackgroundTaskDialog
 from config import (
     APP_NAME,
     BACKGROUND_TASKS_FILE,
@@ -142,6 +144,10 @@ class MainWindow(QMainWindow):
         # Start on home screen
         self.stack.setCurrentIndex(self.SCREEN_HOME)
         self._update_navigation_actions()
+        self._task_center_timer = QTimer(self)
+        self._task_center_timer.setInterval(1000)
+        self._task_center_timer.timeout.connect(self._refresh_task_center_action)
+        self._task_center_timer.start()
 
     def _get_course_screen(self):
         """Lazy-init the course screen on first access."""
@@ -252,6 +258,11 @@ class MainWindow(QMainWindow):
         self.incorrect_review_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.incorrect_review_btn.clicked.connect(self._on_practice_incorrect)
         header_layout.addWidget(self.incorrect_review_btn)
+        self.task_center_btn = QPushButton("")
+        self.task_center_btn.setObjectName("contextActionButton")
+        self.task_center_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.task_center_btn.clicked.connect(self._open_task_center)
+        header_layout.addWidget(self.task_center_btn)
 
         content_layout.addWidget(self.context_header)
         content_layout.addWidget(self.stack, 1)
@@ -355,6 +366,7 @@ class MainWindow(QMainWindow):
         self.bank_tab_btn.setText(gm("题库", "Question Bank"))
         self.past_exams_tab_btn.setText(gm("历史真题", "Historical Exams"))
         self.incorrect_review_btn.setText(gm("错题复习", "Review Incorrect"))
+        self._refresh_task_center_action()
         self._update_navigation_actions()
 
     def navigate_to(self, screen_index: int, remember: bool = True, confirm_current: bool = True) -> bool:
@@ -464,6 +476,32 @@ class MainWindow(QMainWindow):
         self.navigation_sidebar.setVisible(not is_focus_flow)
         self.context_back_btn.setVisible(is_focus_flow and bool(self._navigation_history))
         self.context_back_btn.setEnabled(bool(self._navigation_history))
+        self._refresh_task_center_action()
+
+    def _refresh_task_center_action(self) -> None:
+        """Keep the global task entry visible and surface tasks needing attention."""
+        if not hasattr(self, "task_center_btn"):
+            return
+        view = build_task_center_view(
+            self.task_center.snapshots(),
+            language=self.lang_manager.current,
+            attention_only=True,
+        )
+        self.task_center_btn.setText(
+            task_toolbar_text(view.attention_count, self.lang_manager.current)
+        )
+        self.task_center_btn.setProperty("needsAttention", bool(view.attention_count))
+        self.task_center_btn.style().unpolish(self.task_center_btn)
+        self.task_center_btn.style().polish(self.task_center_btn)
+
+    def _open_task_center(self) -> None:
+        dialog = BackgroundTaskDialog(
+            self.task_center,
+            language=self.lang_manager.current,
+            parent=self,
+        )
+        dialog.exec()
+        self._refresh_task_center_action()
 
     # --- Slot handlers ---
 

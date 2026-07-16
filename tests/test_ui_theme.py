@@ -14,6 +14,7 @@ from PyQt6.QtCore import QEvent, Qt
 from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QSplitter, QTextEdit
 
 from core.language_manager import LanguageManager
+from core.background_task_center import BackgroundTaskCenter
 from core.progress_tracker import ProgressManager
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from models.question import Question, QuestionBank
@@ -309,6 +310,30 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual(main_window.SCREEN_PAST_EXAMS, main_window.stack.currentIndex())
         self.assertIs(main_window.past_exam_manager, main_window._past_exam_screen.manager)
         self.assertIs(main_window.course_manager, main_window._past_exam_screen.course_manager)
+
+    def test_context_header_keeps_background_tasks_reachable(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            center = BackgroundTaskCenter(Path(tmpdir) / "tasks.json")
+            task = center.create(kind="question_generation", title="Generate questions")
+            center.fail(task.task_id, "provider timeout")
+            main_window = MainWindow()
+            self.addCleanup(main_window.close)
+            self.addCleanup(main_window.lang_manager.set_language, "zh")
+            main_window.task_center = center
+            main_window.lang_manager.set_language("en")
+
+            main_window._refresh_task_center_action()
+
+            self.assertFalse(main_window.task_center_btn.isHidden())
+            self.assertEqual("Tasks 1", main_window.task_center_btn.text())
+            with patch("ui.main_window.BackgroundTaskDialog") as dialog_type:
+                main_window.task_center_btn.click()
+            dialog_type.assert_called_once_with(
+                center,
+                language="en",
+                parent=main_window,
+            )
+            dialog_type.return_value.exec.assert_called_once_with()
 
     def test_top_navigation_confirms_before_leaving_active_quiz(self):
         main_window = MainWindow()
