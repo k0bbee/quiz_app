@@ -10,6 +10,7 @@ from core.current_events import (
     material_pack_prompt,
     material_pack_source_refs,
     rank_course_events,
+    review_course_events,
 )
 from models.course_project import CourseProject, CourseTopic
 
@@ -187,6 +188,39 @@ class CurrentEventsTests(unittest.TestCase):
         self.assertEqual(("administrative_law",), matches[0].topic_ids)
         self.assertIn("judicial review", matches[0].matched_terms)
         self.assertGreater(matches[0].score, 0)
+
+    def test_review_keeps_low_relevance_candidates_for_user_decision(self):
+        project = law_project()
+        query = build_course_event_query(project)
+        relevant = CurrentEventCandidate.create(
+            url="https://law.example/rule",
+            title="Agency rule faces judicial review",
+            context="The regulation was adopted through agency rulemaking.",
+            seen_at="2026-07-15T05:00:00+00:00",
+            domain="law.example",
+            language="ENGLISH",
+            query=query,
+            retrieved_at="2026-07-15T06:00:00+00:00",
+        )
+        low_relevance = CurrentEventCandidate.create(
+            url="https://weather.example/storm",
+            title="Coastal storm update",
+            context="Emergency crews issued a new weather advisory for residents.",
+            seen_at="2026-07-15T04:00:00+00:00",
+            domain="weather.example",
+            language="ENGLISH",
+            query=query,
+            retrieved_at="2026-07-15T06:00:00+00:00",
+        )
+
+        review = review_course_events(project, [low_relevance, relevant])
+
+        self.assertEqual([relevant.candidate_id, low_relevance.candidate_id], [
+            item.candidate.candidate_id for item in review
+        ])
+        self.assertGreater(review[0].score, 0)
+        self.assertEqual(0, review[1].score)
+        self.assertEqual((), review[1].topic_ids)
 
     def test_material_pack_round_trips_selected_reviewed_candidates(self):
         candidate = CurrentEventCandidate.create(

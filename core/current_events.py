@@ -361,6 +361,23 @@ def rank_course_events(
     return matches
 
 
+def review_course_events(
+    project: CourseProject,
+    candidates: list[CurrentEventCandidate],
+) -> list[CourseEventMatch]:
+    """Return every safe candidate, keeping low-relevance items visible for review."""
+    unique = _deduplicate_candidates(candidates)
+    ranked = rank_course_events(project, unique)
+    ranked_ids = {match.candidate.candidate_id for match in ranked}
+    low_relevance = [
+        CourseEventMatch(candidate, (), (), 0)
+        for candidate in unique
+        if candidate.candidate_id not in ranked_ids
+    ]
+    low_relevance.sort(key=lambda match: match.candidate.seen_at, reverse=True)
+    return [*ranked, *low_relevance]
+
+
 def material_pack_prompt(pack: CurrentEventMaterialPack, max_chars: int = 8000) -> str:
     """Format reviewed Web materials as explicitly untrusted prompt data."""
     selected = pack.selected_candidates()
@@ -378,6 +395,7 @@ def material_pack_prompt(pack: CurrentEventMaterialPack, max_chars: int = 8000) 
     for index, candidate in enumerate(selected, start=1):
         block = (
             f"[热点材料 {index}]\n"
+            f"候选ID：{candidate.candidate_id}\n"
             f"标题：{candidate.title}\n"
             f"来源：{candidate.domain}\n"
             f"报道时间：{candidate.seen_at}\n"
