@@ -306,7 +306,11 @@ class MainWindow(QMainWindow):
         self.home_screen.view_progress.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
         self.home_screen.open_settings.connect(lambda: self.navigate_to(self.SCREEN_SETTINGS))
         self.home_screen.manage_courses.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
-        self._get_course_screen().current_course_changed.connect(self._on_course_changed)
+        course_screen = self._get_course_screen()
+        course_screen.current_course_changed.connect(self._on_course_changed)
+        course_screen.generate_questions_requested.connect(
+            lambda _course_id: self._on_ai_generate()
+        )
         self._get_question_bank_screen().question_bank_changed.connect(self._on_question_bank_changed)
 
         # Topic selection

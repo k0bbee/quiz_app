@@ -44,6 +44,7 @@ class CourseScreen(QWidget):
     """Import folders of course files and choose the active course project."""
 
     current_course_changed = pyqtSignal()
+    generate_questions_requested = pyqtSignal(str)
 
     def __init__(
         self,
@@ -72,6 +73,7 @@ class CourseScreen(QWidget):
         self._summary_raw_mode = False
         self._last_task_progress = None
         self._task_bridge = None
+        self._import_expanded = False
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self.refresh()
@@ -91,6 +93,8 @@ class CourseScreen(QWidget):
             self.lang_manager.get_text("课程名称（可选）", "Course title (optional)")
         )
         self.init_btn.setText(self.lang_manager.get_text("解析并生成总结", "Parse and generate summary"))
+        self.generate_questions_btn.setText(self.lang_manager.get_text("生成题目", "Generate Questions"))
+        self._update_import_toggle_text()
         self.list_label.setText(self.lang_manager.get_text("已导入的课程:", "Imported courses:"))
         self.set_current_btn.setText(self.lang_manager.get_text("设为当前", "Set Current"))
         self.scope_btn.setText(self.lang_manager.get_text("考试范围", "Exam Scope"))
@@ -113,9 +117,16 @@ class CourseScreen(QWidget):
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(12)
 
+        title_layout = QHBoxLayout()
         self.title = QLabel(self.lang_manager.get_text("课程资料", "Course Materials"))
         self.title.setObjectName("screenTitle")
-        layout.addWidget(self.title)
+        title_layout.addWidget(self.title)
+        title_layout.addStretch(1)
+        self.import_toggle_btn = QPushButton()
+        self.import_toggle_btn.setObjectName("secondaryButton")
+        self.import_toggle_btn.clicked.connect(self._toggle_import_panel)
+        title_layout.addWidget(self.import_toggle_btn)
+        layout.addLayout(title_layout)
 
         self.import_group = QGroupBox(self.lang_manager.get_text("从文件夹导入", "Initialize from folder"))
         import_layout = QVBoxLayout(self.import_group)
@@ -148,6 +159,8 @@ class CourseScreen(QWidget):
         import_layout.addLayout(title_row)
 
         layout.addWidget(self.import_group)
+        self.import_group.setVisible(self._import_expanded)
+        self._update_import_toggle_text()
 
         # Progress bar for import
         progress_row = QHBoxLayout()
@@ -168,18 +181,27 @@ class CourseScreen(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         left = QWidget()
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 0, 0)
+        self.left_layout = QVBoxLayout(left)
+        self.left_layout.setContentsMargins(0, 0, 0, 0)
         self.list_label = QLabel(self.lang_manager.get_text("已导入的课程:", "Imported courses:"))
-        left_layout.addWidget(self.list_label)
+        self.left_layout.addWidget(self.list_label)
         self.empty_state_label = QLabel()
         self.empty_state_label.setObjectName("courseEmptyStateLabel")
         self.empty_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty_state_label.setWordWrap(True)
         self.empty_state_label.setVisible(False)
-        left_layout.addWidget(self.empty_state_label, 1)
+        self.left_layout.addWidget(self.empty_state_label, 1)
         self.project_list = QListWidget()
         self.project_list.currentItemChanged.connect(self._on_project_selected)
+        self.left_layout.addWidget(self.project_list, 1)
+
+        self.generate_questions_btn = QPushButton(
+            self.lang_manager.get_text("生成题目", "Generate Questions")
+        )
+        self.generate_questions_btn.setObjectName("primaryButton")
+        self.generate_questions_btn.setEnabled(False)
+        self.generate_questions_btn.clicked.connect(self._generate_for_selected_course)
+        self.left_layout.addWidget(self.generate_questions_btn)
 
         self.course_action_layout = QHBoxLayout()
         self.set_current_btn = QPushButton(self.lang_manager.get_text("设为当前", "Set Current"))
@@ -213,8 +235,7 @@ class CourseScreen(QWidget):
         self.more_actions_btn.setObjectName("secondaryButton")
         self.more_actions_btn.clicked.connect(self._show_more_actions_menu)
         self.course_action_layout.addWidget(self.more_actions_btn)
-        left_layout.addLayout(self.course_action_layout)
-        left_layout.addWidget(self.project_list, 1)
+        self.left_layout.addLayout(self.course_action_layout)
         splitter.addWidget(left)
 
         right = QWidget()
@@ -265,6 +286,16 @@ class CourseScreen(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, project.course_id)
             self.project_list.addItem(item)
         is_empty = not projects
+        if is_empty:
+            self._import_expanded = True
+        self.import_group.setVisible(self._import_expanded)
+        self.generate_questions_btn.setVisible(not is_empty)
+        import_role = "primaryButton" if is_empty else "secondaryButton"
+        if self.init_btn.objectName() != import_role:
+            self.init_btn.setObjectName(import_role)
+            self.init_btn.style().unpolish(self.init_btn)
+            self.init_btn.style().polish(self.init_btn)
+        self._update_import_toggle_text()
         self.empty_state_label.setText(self.lang_manager.get_text(
             "还没有课程。请在上方选择课程资料文件夹并导入第一个课程。",
             "No courses yet. Choose a course-material folder above and import your first course.",
@@ -273,21 +304,36 @@ class CourseScreen(QWidget):
         self.project_list.setVisible(not is_empty)
         self.set_current_btn.setEnabled(False)
         self.scope_btn.setEnabled(False)
+        self.generate_questions_btn.setEnabled(False)
         self.qa_mode_btn.setEnabled(False)
         self.rename_action.setEnabled(False)
         self.regenerate_action.setEnabled(False)
         self.delete_action.setEnabled(False)
-        if current:
-            current_label = self.lang_manager.get_text("当前:", "Current:")
-            self.summary_label.setText(f"{current_label} {current.title}")
-            self._show_summary(current.summary_markdown)
-            self.qa_panel.set_course(current)
-            self.qa_mode_btn.setEnabled(True)
-            self._update_content_header(current)
+        if projects:
+            selected_row = 0
+            if current:
+                for row in range(self.project_list.count()):
+                    if self.project_list.item(row).data(Qt.ItemDataRole.UserRole) == current.course_id:
+                        selected_row = row
+                        break
+            self.project_list.setCurrentRow(selected_row)
         else:
             self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
             self._clear_summary()
             self.qa_panel.set_course(None)
+
+    def _toggle_import_panel(self):
+        self._import_expanded = not self._import_expanded
+        self.import_group.setVisible(self._import_expanded)
+        self._update_import_toggle_text()
+
+    def _update_import_toggle_text(self):
+        if not hasattr(self, "import_toggle_btn"):
+            return
+        self.import_toggle_btn.setText(self.lang_manager.get_text(
+            "收起导入" if self._import_expanded else "导入课程",
+            "Hide Import" if self._import_expanded else "Import Course",
+        ))
 
     def _browse_folder(self):
         folder = QFileDialog.getExistingDirectory(
@@ -363,11 +409,18 @@ class CourseScreen(QWidget):
         self.title_input.setEnabled(not active)
         self.browse_btn.setEnabled(not active)
         self.init_btn.setEnabled(not active)
+        self.import_toggle_btn.setEnabled(not active)
         self.project_list.setEnabled(not active)
         if active:
             self.progress_bar.setRange(0, 0)
             self.task_status_label.setText(self.lang_manager.get_text("正在准备…", "Preparing…"))
-            for button in (self.set_current_btn, self.scope_btn, self.more_actions_btn, self.qa_mode_btn):
+            for button in (
+                self.generate_questions_btn,
+                self.set_current_btn,
+                self.scope_btn,
+                self.more_actions_btn,
+                self.qa_mode_btn,
+            ):
                 button.setEnabled(False)
             for action in self.more_actions_menu.actions():
                 action.setEnabled(False)
@@ -509,6 +562,7 @@ class CourseScreen(QWidget):
             self.lang_manager.get_text("课程就绪", "Course Ready"),
             msg,
         )
+        self._import_expanded = False
         self.refresh()
         self.current_course_changed.emit()
 
@@ -587,6 +641,7 @@ class CourseScreen(QWidget):
 
     def _on_project_selected(self, current, previous):
         if current is None:
+            self.generate_questions_btn.setEnabled(False)
             self.set_current_btn.setEnabled(False)
             self.scope_btn.setEnabled(False)
             self.qa_mode_btn.setEnabled(False)
@@ -598,7 +653,9 @@ class CourseScreen(QWidget):
         project = self.manager.get(course_id)
         if not project:
             return
-        self.set_current_btn.setEnabled(True)
+        active = self.manager.current()
+        self.set_current_btn.setEnabled(not active or active.course_id != course_id)
+        self.generate_questions_btn.setEnabled(True)
         self.scope_btn.setEnabled(True)
         self.qa_mode_btn.setEnabled(True)
         self.rename_action.setEnabled(True)
@@ -607,6 +664,30 @@ class CourseScreen(QWidget):
         self.qa_panel.set_course(project)
         self._update_content_header(project)
         self._show_summary(project.summary_markdown)
+
+    def _generate_for_selected_course(self):
+        current_item = self.project_list.currentItem()
+        if current_item is None:
+            return
+        course_id = str(current_item.data(Qt.ItemDataRole.UserRole) or "")
+        project = self.manager.get(course_id)
+        if project is None:
+            return
+        active = self.manager.current()
+        if active is None or active.course_id != course_id:
+            if not self.manager.set_current(course_id):
+                QMessageBox.warning(
+                    self,
+                    self.lang_manager.get_text("切换失败", "Course Switch Failed"),
+                    self.lang_manager.get_text(
+                        "无法将所选课程设为当前课程，请检查数据目录后重试。",
+                        "Could not activate the selected course. Check the data directory and try again.",
+                    ),
+                )
+                return
+            self.current_course_changed.emit()
+            self.refresh()
+        self.generate_questions_requested.emit(course_id)
 
     def _edit_exam_scope(self):
         current = self.project_list.currentItem()
@@ -1081,7 +1162,10 @@ class CourseScreen(QWidget):
 
     def _clear_summary(self):
         self._summary_markdown = ""
-        self.summary_preview.clear()
+        self.summary_preview.setPlainText(self.lang_manager.get_text(
+            "选择左侧课程查看摘要；如果还没有课程，请先导入课程资料。",
+            "Select a course on the left to view its summary. If none exist, import course materials first.",
+        ))
         self.summary_mode_btn.setEnabled(False)
         if hasattr(self, "content_stack"):
             self.content_stack.setCurrentWidget(self.summary_preview)

@@ -964,7 +964,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertEqual({}, legacy.generation_profile)
             self.assertEqual("local", legacy.generation_profile_source)
 
-    def test_course_screen_enables_regenerate_action_for_selected_project(self):
+    def test_course_screen_selects_first_project_and_enables_course_actions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source"
             source.mkdir()
@@ -976,9 +976,9 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             screen = CourseScreen(manager)
             screen.refresh()
 
-            self.assertFalse(screen.regenerate_action.isEnabled())
-            screen.project_list.setCurrentRow(0)
+            self.assertEqual(0, screen.project_list.currentRow())
             self.assertTrue(screen.regenerate_action.isEnabled())
+            self.assertTrue(screen.generate_questions_btn.isEnabled())
 
     def test_course_screen_reports_llm_fallback_after_initialization(self):
         with tempfile.TemporaryDirectory() as tmpdir:
