@@ -18,6 +18,8 @@ class ProgressManager:
     def __init__(self, progress_dir: str):
         self._dir = progress_dir
         os.makedirs(self._dir, exist_ok=True)
+        self._set_index_path = os.path.join(self._dir, ".index", "sets.json")
+        self._record_sets = self._load_set_index()
 
     @property
     def directory(self) -> str:
@@ -45,7 +47,20 @@ class ProgressManager:
 
     def load_for_set(self, set_id: str) -> list[ProgressRecord]:
         """Load all attempts for a specific question set."""
-        return [r for r in self.load_all() if r.set_id == set_id]
+        self._reconcile_set_index()
+        records = []
+        for progress_id, indexed_set_id in self._record_sets.items():
+            if indexed_set_id != set_id:
+                continue
+            try:
+                record = self.get(progress_id)
+            except (TypeError, ValueError) as exc:
+                warning(f"Skipped invalid progress record {progress_id}.json: {exc}")
+                continue
+            if record is not None:
+                records.append(record)
+        records.sort(key=lambda record: record.started_at, reverse=True)
+        return records
 
     def get(self, progress_id: str) -> Optional[ProgressRecord]:
         """Get a specific progress record by ID."""
@@ -80,21 +95,90 @@ class ProgressManager:
         """Save a progress record to JSON."""
         safe_id = sanitize_filename_part(record.progress_id)
         filepath = f"{self._dir}/{safe_id}.json"
-        return write_json(filepath, record.to_dict())
+        if not write_json(filepath, record.to_dict()):
+            return False
+        self._record_sets[safe_id] = str(record.set_id or "")
+        self._persist_set_index()
+        return True
 
     def delete(self, progress_id: str) -> bool:
         """Delete a progress record."""
-        return delete_json(f"{self._dir}/{sanitize_filename_part(progress_id)}.json")
+        safe_id = sanitize_filename_part(progress_id)
+        if not delete_json(f"{self._dir}/{safe_id}.json"):
+            return False
+        if self._record_sets.pop(safe_id, None) is not None:
+            self._persist_set_index()
+        return True
 
     def delete_for_set(self, set_id: str):
         """Delete all progress records for a set."""
-        for r in self.load_for_set(set_id):
-            self.delete(r.progress_id)
+        self._reconcile_set_index()
+        progress_ids = [
+            progress_id
+            for progress_id, indexed_set_id in self._record_sets.items()
+            if indexed_set_id == set_id
+        ]
+        changed = False
+        for progress_id in progress_ids:
+            if delete_json(f"{self._dir}/{progress_id}.json"):
+                self._record_sets.pop(progress_id, None)
+                changed = True
+        if changed:
+            self._persist_set_index()
 
     def reset_all(self):
         """Delete all progress records."""
         for filename in list_json_files(self._dir):
             delete_json(f"{self._dir}/{filename}")
+        self._record_sets = {}
+        self._persist_set_index()
+
+    def _load_set_index(self) -> dict[str, str]:
+        payload = read_json(self._set_index_path)
+        if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+            return {}
+        records = payload.get("records")
+        if not isinstance(records, dict):
+            return {}
+        return {
+            str(progress_id): str(set_id)
+            for progress_id, set_id in records.items()
+            if isinstance(progress_id, str) and isinstance(set_id, str)
+        }
+
+    def _persist_set_index(self) -> None:
+        if not write_json(
+            self._set_index_path,
+            {"schema_version": 1, "records": dict(self._record_sets)},
+        ):
+            warning("Failed to persist progress set index; it will be rebuilt later.")
+
+    def _reconcile_set_index(self) -> None:
+        """Discover new/deleted files without deserializing already indexed records."""
+        file_ids = {
+            os.path.splitext(filename)[0]
+            for filename in list_json_files(self._dir)
+        }
+        changed = False
+        for missing_id in set(self._record_sets) - file_ids:
+            self._record_sets.pop(missing_id, None)
+            changed = True
+        for progress_id in sorted(file_ids - set(self._record_sets)):
+            filepath = os.path.join(self._dir, f"{progress_id}.json")
+            data = read_json(filepath)
+            if data is None:
+                continue
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError(f"expected object, got {type(data).__name__}")
+                record = ProgressRecord.from_dict(data)
+            except Exception as exc:
+                warning(f"Skipped invalid progress record {progress_id}.json: {exc}")
+                continue
+            self._record_sets[progress_id] = str(record.set_id or "")
+            changed = True
+        if changed:
+            self._persist_set_index()
 
     # --- Aggregation ---
 

@@ -5,10 +5,52 @@ from unittest.mock import patch
 
 from core.progress_tracker import ProgressManager
 from models.progress import AnswerRecord, ProgressRecord, SessionSummary
-from utils.json_io import write_json
+from utils.json_io import read_json, write_json
 
 
 class ProgressTrackerTests(unittest.TestCase):
+    def test_load_for_set_uses_persisted_index_to_skip_unrelated_record_bodies(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            progress_dir = Path(tmpdir) / "progress"
+            manager = ProgressManager(str(progress_dir))
+            target = ProgressRecord.create_new("set-target")
+            target.progress_id = "progress-target"
+            unrelated = ProgressRecord.create_new("set-other")
+            unrelated.progress_id = "progress-other"
+            manager.save(target)
+            manager.save(unrelated)
+
+            reopened = ProgressManager(str(progress_dir))
+            with patch("core.progress_tracker.read_json", wraps=read_json) as reader:
+                records = reopened.load_for_set("set-target")
+
+            loaded_paths = [str(call.args[0]) for call in reader.call_args_list]
+            self.assertEqual(["progress-target"], [record.progress_id for record in records])
+            self.assertTrue(any("progress-target.json" in path for path in loaded_paths))
+            self.assertFalse(any("progress-other.json" in path for path in loaded_paths))
+
+    def test_delete_for_set_uses_index_without_loading_unrelated_records(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            progress_dir = Path(tmpdir) / "progress"
+            manager = ProgressManager(str(progress_dir))
+            target = ProgressRecord.create_new("set-target")
+            target.progress_id = "progress-target"
+            unrelated = ProgressRecord.create_new("set-other")
+            unrelated.progress_id = "progress-other"
+            manager.save(target)
+            manager.save(unrelated)
+            reopened = ProgressManager(str(progress_dir))
+
+            with patch.object(
+                reopened,
+                "load_all",
+                side_effect=AssertionError("delete_for_set must not load all records"),
+            ):
+                reopened.delete_for_set("set-target")
+
+            self.assertIsNone(reopened.get("progress-target"))
+            self.assertIsNotNone(reopened.get("progress-other"))
+
     def test_session_summary_distinguishes_skipped_from_incorrect_answers(self):
         answers = [
             AnswerRecord("q-right", 0, "A", True),
