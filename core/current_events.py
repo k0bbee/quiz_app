@@ -275,6 +275,8 @@ class GDELTContextProvider:
             raise CurrentEventsError(_rate_limit_error(response.text))
         if response.status_code != 200:
             raise CurrentEventsError(_http_error(response.status_code, response.text))
+        if "one or more of your keywords were" in response.text.casefold():
+            raise CurrentEventsError(_search_input_error(response.text))
         try:
             payload = response.json()
         except (ValueError, json.JSONDecodeError) as exc:
@@ -486,7 +488,7 @@ def _parse_gdelt_date(value: str) -> str:
     return parsed.isoformat()
 
 
-def _search_input_error() -> AppError:
+def _search_input_error(detail: str = "") -> AppError:
     return AppError(
         code="WEB-SEARCH-001", severity="warning",
         title_zh="热点检索条件无效", title_en="Invalid Current-Events Search",
@@ -494,6 +496,7 @@ def _search_input_error() -> AppError:
         message_en="The query, time range, or result limit is invalid.",
         action_zh="请输入至少两个字符，并使用 1–24 小时、1–25 条结果。",
         action_en="Use at least two characters, 1–24 hours, and 1–25 results.",
+        technical_detail=_clean_text(detail, 500),
     )
 
 

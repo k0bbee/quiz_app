@@ -139,6 +139,18 @@ class CurrentEventsTests(unittest.TestCase):
         self.assertEqual("WEB-SEARCH-429", raised.exception.error.code)
         self.assertIn("稍后", raised.exception.error.action("zh"))
 
+    def test_provider_maps_gdelt_keyword_rejection_to_query_error(self):
+        provider = GDELTContextProvider(session=FakeSession(FakeResponse(
+            status_code=200,
+            text="One or more of your keywords were too short, too long or too common: (law)",
+        )))
+
+        with self.assertRaises(CurrentEventsError) as raised:
+            provider.search("administrative law judicial review")
+
+        self.assertEqual("WEB-SEARCH-001", raised.exception.error.code)
+        self.assertIn("law", raised.exception.error.technical_detail)
+
     def test_course_query_and_ranking_respect_selected_exam_scope(self):
         project = law_project()
         query = build_course_event_query(project)
