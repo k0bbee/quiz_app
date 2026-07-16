@@ -42,6 +42,15 @@ class SecretsManagerTests(unittest.TestCase):
         SecretsManager._instance = self.previous_instance
         os.environ.pop("QUIZ_APP_API_KEY", None)
 
+    def test_subclass_initialization_does_not_replace_base_singleton(self):
+        class SpecializedSecretsManager(SecretsManager):
+            _instance = None
+
+        specialized = SpecializedSecretsManager()
+
+        self.assertIs(specialized, SpecializedSecretsManager._instance)
+        self.assertIsNone(SecretsManager._instance)
+
     def test_without_keyring_new_key_is_session_only_and_not_plaintext(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             settings_file = str(Path(tmpdir) / "settings.json")

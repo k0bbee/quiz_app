@@ -44,9 +44,10 @@ class SecretsManager:
     _lock = threading.Lock()
 
     def __init__(self):
-        if SecretsManager._instance is not None:
+        manager_type = type(self)
+        if manager_type._instance is not None:
             raise RuntimeError("Use SecretsManager.instance() instead of direct construction")
-        SecretsManager._instance = self
+        manager_type._instance = self
         self._last_storage_location = ""
         self._storage_warning = ""
         self._storage_lock = threading.RLock()
