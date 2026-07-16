@@ -1654,6 +1654,61 @@ class GenerationConfigTests(unittest.TestCase):
             self.assertEqual(15, task.metadata["requested_count"])
             self.assertEqual(["cache"], task.metadata["topic_ids"])
 
+    def test_generation_dialog_ignores_queued_signals_from_replaced_worker(self):
+        class FakeSignal:
+            def __init__(self):
+                self.callbacks = []
+
+            def connect(self, callback):
+                self.callbacks.append(callback)
+
+            def emit(self, *args):
+                for callback in list(self.callbacks):
+                    callback(*args)
+
+        class FakeWorker:
+            instances = []
+
+            def __init__(self, *args, **kwargs):
+                self.progress = FakeSignal()
+                self.question_ready = FakeSignal()
+                self.batch_done = FakeSignal()
+                self.partial_done = FakeSignal()
+                self.error = FakeSignal()
+                self.finished = FakeSignal()
+                self.running = False
+                self.__class__.instances.append(self)
+
+            def start(self):
+                self.running = True
+
+            def isRunning(self):
+                return self.running
+
+            def set_runtime_instruction(self, _instruction):
+                pass
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+
+        with patch("ui.dialogs.ai_generation_dialog.GenerationWorker", FakeWorker), \
+             patch("ui.dialogs.ai_generation_dialog.QMessageBox.critical") as critical:
+            dialog._start_generation()
+            old_worker = FakeWorker.instances[-1]
+            old_worker.running = False
+            dialog._start_generation()
+
+            old_worker.error.emit("late error from old run")
+            old_worker.finished.emit()
+
+        self.assertFalse(dialog._generation_failed)
+        self.assertFalse(dialog.generate_btn.isEnabled())
+        critical.assert_not_called()
+
     def test_generation_retry_task_links_back_to_partial_attempt(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             ids = iter(["task-1", "task-2"])

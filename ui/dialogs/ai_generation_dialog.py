@@ -1303,12 +1303,7 @@ class AIGenerationDialog(QDialog):
                 task_center=self.task_center,
                 task_id=task_id,
             )
-            self.worker.progress.connect(self._on_progress)
-            self.worker.question_ready.connect(self._on_question_ready)
-            self.worker.batch_done.connect(self._on_batch_done)
-            self.worker.partial_done.connect(self._on_partial_done)
-            self.worker.error.connect(self._on_error)
-            self.worker.finished.connect(self._on_finished)
+            self._connect_generation_worker(self.worker)
             self._apply_runtime_instruction_to_worker(announce=False)
             self.worker.start()
         except Exception as exc:
@@ -1324,6 +1319,43 @@ class AIGenerationDialog(QDialog):
                     f"Generation worker failed to start: {exc}",
                 )
             )
+
+    def _connect_generation_worker(self, worker) -> None:
+        """Route signals only while ``worker`` is the active generation run."""
+        worker.progress.connect(
+            lambda message, source=worker: self._deliver_worker_signal(
+                source, self._on_progress, message
+            )
+        )
+        worker.question_ready.connect(
+            lambda questions, source=worker: self._deliver_worker_signal(
+                source, self._on_question_ready, questions
+            )
+        )
+        worker.batch_done.connect(
+            lambda questions, source=worker: self._deliver_worker_signal(
+                source, self._on_batch_done, questions
+            )
+        )
+        worker.partial_done.connect(
+            lambda questions, report, source=worker: self._deliver_worker_signal(
+                source, self._on_partial_done, questions, report
+            )
+        )
+        worker.error.connect(
+            lambda error, source=worker: self._deliver_worker_signal(
+                source, self._on_error, error
+            )
+        )
+        worker.finished.connect(
+            lambda source=worker: self._deliver_worker_signal(
+                source, self._on_finished
+            )
+        )
+
+    def _deliver_worker_signal(self, source, handler, *args) -> None:
+        if source is self.worker:
+            handler(*args)
 
     def _register_generation_task(
         self,

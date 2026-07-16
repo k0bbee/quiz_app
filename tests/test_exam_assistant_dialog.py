@@ -192,6 +192,61 @@ class ExamAssistantDialogTests(unittest.TestCase):
         self.assertEqual(5000, worker.wait_timeout)
         self.assertEqual([], rejected)
 
+    def test_replaced_worker_cannot_apply_late_interpretation(self):
+        class FakeSignal:
+            def __init__(self):
+                self.callbacks = []
+
+            def connect(self, callback):
+                self.callbacks.append(callback)
+
+            def emit(self, *args):
+                for callback in list(self.callbacks):
+                    callback(*args)
+
+        class FakeWorker:
+            instances = []
+
+            def __init__(self, *_args):
+                self.succeeded = FakeSignal()
+                self.failed = FakeSignal()
+                self.finished = FakeSignal()
+                self.running = False
+                self.__class__.instances.append(self)
+
+            def start(self):
+                self.running = True
+
+            def isRunning(self):
+                return self.running
+
+        stale_plan = ExamGenerationPlan(
+            question_count=30,
+            selected_topics=("cache",),
+            topic_weights={"cache": 100},
+        )
+        stale_result = InterpretationResult(
+            plan=stale_plan,
+            assistant_message="stale result",
+            changes=(),
+            source="local_rules",
+        )
+
+        with patch("ui.dialogs.exam_assistant_dialog.ExamInterpretWorker", FakeWorker):
+            self.dialog.request_input.setPlainText("first")
+            self.dialog._submit_request()
+            old_worker = FakeWorker.instances[-1]
+            old_worker.running = False
+            self.dialog.request_input.setPlainText("second")
+            self.dialog._submit_request()
+
+            old_worker.succeeded.emit(stale_result)
+            old_worker.finished.emit()
+
+        self.assertEqual(self.initial, self.dialog.draft_plan)
+        self.assertNotIn("stale result", self.dialog.transcript.toPlainText())
+        self.assertFalse(self.dialog.request_input.isEnabled())
+
 
 if __name__ == "__main__":
     unittest.main()

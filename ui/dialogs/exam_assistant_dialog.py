@@ -223,10 +223,30 @@ class ExamAssistantDialog(QDialog):
             self.lang_manager.get_text("正在理解要求…", "Interpreting request…")
         )
         self.worker = ExamInterpretWorker(self.interpreter, request, self.draft_plan, self)
-        self.worker.succeeded.connect(self._on_interpreted)
-        self.worker.failed.connect(self._on_interpretation_error)
-        self.worker.finished.connect(self._on_worker_finished)
+        self._connect_interpret_worker(self.worker)
         self.worker.start()
+
+    def _connect_interpret_worker(self, worker) -> None:
+        """Ignore queued results from an interpreter run that has been replaced."""
+        worker.succeeded.connect(
+            lambda result, source=worker: self._deliver_worker_signal(
+                source, self._on_interpreted, result
+            )
+        )
+        worker.failed.connect(
+            lambda message, source=worker: self._deliver_worker_signal(
+                source, self._on_interpretation_error, message
+            )
+        )
+        worker.finished.connect(
+            lambda source=worker: self._deliver_worker_signal(
+                source, self._on_worker_finished
+            )
+        )
+
+    def _deliver_worker_signal(self, source, handler, *args) -> None:
+        if source is self.worker:
+            handler(*args)
 
     def _on_interpreted(self, result: InterpretationResult):
         if self._cancelled:
