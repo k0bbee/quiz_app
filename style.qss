@@ -807,7 +807,7 @@ QLabel#pastExamAnalysisSummary {
 }
 
 QTextEdit#pastExamContentPreview {
-    font-family: consolas, "Cascadia Mono", "Microsoft YaHei UI", monospace;
+    font-family: Consolas, "Cascadia Mono", "Courier New", "Microsoft YaHei UI";
     font-size: 12px;
 }
 
@@ -1024,7 +1024,7 @@ QLabel#dialogHeader {
 QTextEdit#courseSummaryPreview,
 QTextEdit#questionBankEditor,
 QTextEdit#dialogDetailEditor {
-    font-family: Consolas, "Cascadia Mono", "Microsoft YaHei UI", monospace;
+    font-family: Consolas, "Cascadia Mono", "Courier New", "Microsoft YaHei UI";
     font-size: 12px;
 }
 

@@ -11,7 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QCloseEvent, QPalette
 from PyQt6.QtCore import QEvent, Qt
-from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QGridLayout, QLabel, QListWidget, QPushButton, QSplitter
+from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QGridLayout, QLabel, QListWidget, QPushButton, QSplitter, QTextEdit
 
 from core.language_manager import LanguageManager
 from core.progress_tracker import ProgressManager
@@ -118,6 +118,23 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("qpushbutton#primarybutton", qss)
         self.assertIn('qpushbutton#secondarybutton[marked="true"]', qss)
         self.assertIn("qlabel#settingsconnectionstatus", qss)
+
+    def test_editor_fonts_do_not_fall_back_to_legacy_windows_fixedsys(self):
+        qss = Path("style.qss").read_text(encoding="utf-8").lower()
+
+        self.assertNotIn("monospace", qss)
+        self.assertIn('"courier new"', qss)
+
+        load_stylesheet(_APP)
+        for object_name in (
+            "pastExamContentPreview",
+            "courseSummaryPreview",
+            "dialogDetailEditor",
+        ):
+            editor = QTextEdit()
+            editor.setObjectName(object_name)
+            editor.ensurePolished()
+            self.assertNotEqual("fixedsys", editor.font().family().casefold())
         self.assertIn("qlabel#settingsconnectionstatusok", qss)
         self.assertIn("qlabel#settingsconnectionstatuserror", qss)
         self.assertIn("qlabel#settingsenvironmentstatus", qss)
