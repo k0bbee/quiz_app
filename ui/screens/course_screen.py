@@ -103,7 +103,7 @@ class CourseScreen(QWidget):
         self.list_label.setText(self.lang_manager.get_text("已导入的课程:", "Imported courses:"))
         self.set_current_btn.setText(self.lang_manager.get_text("设为当前", "Set Current"))
         self.scope_btn.setText(self.lang_manager.get_text("考试范围", "Exam Scope"))
-        self.current_events_btn.setText(self.lang_manager.get_text("热点材料", "Current Events"))
+        self.current_events_action.setText(self.lang_manager.get_text("热点材料", "Current Events"))
         self.more_actions_btn.setText(self.lang_manager.get_text("更多操作", "More Actions"))
         self.rename_action.setText(self.lang_manager.get_text("重命名", "Rename"))
         self.regenerate_action.setText(self.lang_manager.get_text("重新生成总结", "Regenerate Summary"))
@@ -218,13 +218,6 @@ class CourseScreen(QWidget):
         self.scope_btn.setObjectName("secondaryButton")
         self.scope_btn.clicked.connect(self._edit_exam_scope)
         self.course_action_layout.addWidget(self.scope_btn)
-        self.current_events_btn = QPushButton(
-            self.lang_manager.get_text("热点材料", "Current Events")
-        )
-        self.current_events_btn.setObjectName("secondaryButton")
-        self.current_events_btn.clicked.connect(self._review_current_events)
-        self.course_action_layout.addWidget(self.current_events_btn)
-
         self.more_actions_menu = QMenu(self)
         self.rename_action = QAction(self.lang_manager.get_text("重命名", "Rename"), self)
         self.rename_action.triggered.connect(self._rename_selected_project)
@@ -234,6 +227,11 @@ class CourseScreen(QWidget):
         )
         self.regenerate_action.triggered.connect(self._regenerate_selected_project)
         self.more_actions_menu.addAction(self.regenerate_action)
+        self.current_events_action = QAction(
+            self.lang_manager.get_text("热点材料", "Current Events"), self
+        )
+        self.current_events_action.triggered.connect(self._review_current_events)
+        self.more_actions_menu.addAction(self.current_events_action)
         self.refresh_action = QAction(self.lang_manager.get_text("刷新", "Refresh"), self)
         self.refresh_action.triggered.connect(self.refresh)
         self.more_actions_menu.addAction(self.refresh_action)
@@ -333,7 +331,7 @@ class CourseScreen(QWidget):
         self.project_list.setVisible(not is_empty)
         self.set_current_btn.setEnabled(False)
         self.scope_btn.setEnabled(False)
-        self.current_events_btn.setEnabled(False)
+        self.current_events_action.setEnabled(False)
         self.generate_questions_btn.setEnabled(False)
         self.qa_mode_btn.setEnabled(False)
         self.rename_action.setEnabled(False)
@@ -448,7 +446,6 @@ class CourseScreen(QWidget):
                 self.generate_questions_btn,
                 self.set_current_btn,
                 self.scope_btn,
-                self.current_events_btn,
                 self.more_actions_btn,
                 self.qa_mode_btn,
             ):
@@ -675,7 +672,7 @@ class CourseScreen(QWidget):
             self.generate_questions_btn.setEnabled(False)
             self.set_current_btn.setEnabled(False)
             self.scope_btn.setEnabled(False)
-            self.current_events_btn.setEnabled(False)
+            self.current_events_action.setEnabled(False)
             self.qa_mode_btn.setEnabled(False)
             self.rename_action.setEnabled(False)
             self.regenerate_action.setEnabled(False)
@@ -689,7 +686,7 @@ class CourseScreen(QWidget):
         self.set_current_btn.setEnabled(not active or active.course_id != course_id)
         self.generate_questions_btn.setEnabled(True)
         self.scope_btn.setEnabled(True)
-        self.current_events_btn.setEnabled(True)
+        self.current_events_action.setEnabled(True)
         self.qa_mode_btn.setEnabled(True)
         self.rename_action.setEnabled(True)
         self.regenerate_action.setEnabled(True)

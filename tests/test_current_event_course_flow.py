@@ -63,8 +63,8 @@ class CurrentEventCourseFlowTests(unittest.TestCase):
             lambda course_id, pack: requests.append((course_id, pack))
         )
 
-        self.assertTrue(screen.current_events_btn.isEnabled())
-        screen.current_events_btn.click()
+        self.assertTrue(screen.current_events_action.isEnabled())
+        screen.current_events_action.trigger()
 
         self.assertEqual(project, created[0].project)
         self.assertEqual(
@@ -89,7 +89,7 @@ class CurrentEventCourseFlowTests(unittest.TestCase):
             lambda course_id, pack: requests.append((course_id, pack))
         )
 
-        screen.current_events_btn.click()
+        screen.current_events_action.trigger()
 
         self.assertEqual([], requests)
 
