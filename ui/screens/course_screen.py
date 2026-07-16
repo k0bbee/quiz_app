@@ -261,6 +261,23 @@ class CourseScreen(QWidget):
         self.summary_preview.setObjectName("courseSummaryPreview")
         self.summary_preview.setReadOnly(True)
         self.summary_preview.setOpenExternalLinks(False)
+        self.summary_preview.document().setDefaultStyleSheet("""
+            body {
+                font-family: "Segoe UI", "Microsoft YaHei UI", sans-serif;
+                font-size: 13px;
+                line-height: 1.45;
+            }
+            h1 { font-size: 20px; margin: 4px 0 10px 0; }
+            h2 { font-size: 17px; margin: 14px 0 7px 0; }
+            h3 { font-size: 14px; margin: 12px 0 6px 0; }
+            p { margin: 4px 0 8px 0; }
+            ul, ol { margin: 4px 0 8px 18px; }
+            li { margin: 2px 0; }
+            code, pre {
+                font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+                font-size: 12px;
+            }
+        """)
         self.content_stack.addWidget(self.summary_preview)
         self.qa_panel = CourseQAPanel(self.qa_service_factory)
         self.content_stack.addWidget(self.qa_panel)

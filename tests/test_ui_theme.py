@@ -713,6 +713,16 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual("primaryButton", screen.init_btn.objectName())
         self.assertTrue(screen.summary_preview.toPlainText().strip())
 
+    def test_course_summary_preview_uses_readable_document_typography(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = CourseScreen(CourseProjectManager(str(Path(tmpdir) / "courses")))
+
+        document_css = screen.summary_preview.document().defaultStyleSheet().lower()
+        self.assertIn("font-family", document_css)
+        self.assertIn("line-height", document_css)
+        self.assertRegex(document_css, r"h1\s*\{[^}]*font-size:\s*20px")
+        self.assertRegex(document_css, r"h2\s*\{[^}]*font-size:\s*17px")
+
     def test_home_visual_center_uses_recommendation_and_context_columns(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = HomeScreen(

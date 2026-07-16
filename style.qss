@@ -1117,11 +1117,15 @@ QLabel#dialogHeader {
 }
 
 /* Domain-specific editors */
-QTextEdit#courseSummaryPreview,
 QTextEdit#questionBankEditor,
 QTextEdit#dialogDetailEditor {
     font-family: Consolas, "Cascadia Mono", "Courier New", "Microsoft YaHei UI";
     font-size: 12px;
+}
+
+QTextBrowser#courseSummaryPreview {
+    font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+    font-size: 13px;
 }
 
 QTextEdit#dialogPromptPreview {
