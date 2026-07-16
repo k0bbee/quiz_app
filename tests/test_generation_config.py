@@ -2528,7 +2528,7 @@ class GenerationConfigTests(unittest.TestCase):
         course = SimpleNamespace(generation_profile={"question_count": 20})
         task_center = object()
         shell = SimpleNamespace(
-            settings_screen=SimpleNamespace(_settings=settings),
+            settings_screen=SimpleNamespace(settings_snapshot=lambda: dict(settings)),
             lang_manager=LanguageManager.instance(),
             _load_generation_context=lambda: ("summary", ["cache"], course),
             task_center=task_center,
@@ -2569,7 +2569,7 @@ class GenerationConfigTests(unittest.TestCase):
         )
         prediction = SimpleNamespace(plan=plan, source_count=2, warnings=("short_answer",))
         shell = SimpleNamespace(
-            settings_screen=SimpleNamespace(_settings=settings),
+            settings_screen=SimpleNamespace(settings_snapshot=lambda: dict(settings)),
             lang_manager=LanguageManager.instance(),
         )
 
@@ -2646,7 +2646,7 @@ class GenerationConfigTests(unittest.TestCase):
                     return "AI 事务测试"
 
             shell = SimpleNamespace(
-                settings_screen=SimpleNamespace(_settings=settings),
+                settings_screen=SimpleNamespace(settings_snapshot=lambda: dict(settings)),
                 lang_manager=LanguageManager.instance(),
                 question_bank=question_bank,
                 set_manager=set_manager,

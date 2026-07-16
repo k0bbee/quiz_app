@@ -62,6 +62,20 @@ class ManualAppDataWorker:
 
 
 class AISettingsValidationTests(unittest.TestCase):
+    def test_settings_snapshot_is_public_and_cannot_mutate_screen_state(self):
+        screen = SettingsScreen()
+        screen._settings["default_question_type_weights"] = {"multiple_choice": 70}
+
+        snapshot = screen.settings_snapshot()
+        snapshot["ai_model"] = "changed-outside"
+        snapshot["default_question_type_weights"]["multiple_choice"] = 5
+
+        self.assertNotEqual("changed-outside", screen.get_setting("ai_model"))
+        self.assertEqual(
+            70,
+            screen.get_setting("default_question_type_weights")["multiple_choice"],
+        )
+
     def test_local_agent_settings_are_valid_when_agent_is_detected(self):
         result = validate_ai_settings(
             {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},

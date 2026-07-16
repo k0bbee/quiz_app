@@ -7,6 +7,7 @@ Changes from previous version:
 - Save shows confirmation; errors are caught and displayed
 """
 
+import copy
 import json
 import os
 
@@ -1406,6 +1407,10 @@ class SettingsScreen(QWidget):
 
     def get_setting(self, key: str, default=None):
         return self._settings.get(key, default)
+
+    def settings_snapshot(self) -> dict:
+        """Return an isolated copy for consumers that need provider configuration."""
+        return copy.deepcopy(self._settings)
 
     # ── Data management ──────────────────────────────────────
 

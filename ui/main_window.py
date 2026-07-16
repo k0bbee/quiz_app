@@ -1001,7 +1001,7 @@ class MainWindow(QMainWindow):
         gm = self.lang_manager.get_text
 
         # Read settings directly — don't trigger save dialog
-        settings = self.settings_screen._settings
+        settings = self.settings_screen.settings_snapshot()
 
         # Check course content first
         if course_override is None:
@@ -1163,7 +1163,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, gm("错误", "Error"), gm("未找到题目集。", "Question set not found."))
             return
 
-        settings = self.settings_screen._settings
+        settings = self.settings_screen.settings_snapshot()
         course_content, available_topics, course_project = self._load_generation_context()
         if not course_content:
             QMessageBox.warning(
@@ -1272,7 +1272,7 @@ class MainWindow(QMainWindow):
                 self.navigate_to(self.SCREEN_QUIZ)
 
     def _show_timer_setting(self) -> bool:
-        return bool(self.settings_screen._settings.get("show_timer", False))
+        return bool(self.settings_screen.get_setting("show_timer", False))
 
     def _on_course_changed(self):
         """Refresh app state after switching/importing course projects."""

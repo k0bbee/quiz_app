@@ -194,7 +194,7 @@ class CourseExamScopeConsumerTests(unittest.TestCase):
         )
         window = SimpleNamespace(
             lang_manager=SimpleNamespace(get_text=lambda zh, _en: zh),
-            settings_screen=SimpleNamespace(_settings={}),
+            settings_screen=SimpleNamespace(settings_snapshot=lambda: {}),
             _load_generation_context=lambda: ("# Systems", [], project),
         )
 
