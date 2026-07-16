@@ -37,6 +37,10 @@ class CourseIndexCacheTests(unittest.TestCase):
             updated_at=updated_at,
         )
 
+    def test_summary_index_builder_rejects_unused_document_argument(self):
+        with self.assertRaises(TypeError):
+            course_index.build_course_index("## Summary\nContent", [])
+
     def test_repeated_retrieval_reuses_serialized_project_payload(self):
         project = self._project()
 

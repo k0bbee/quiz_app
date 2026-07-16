@@ -99,7 +99,7 @@ class SourceChunk:
         )
 
 
-def build_course_index(summary_markdown: str, documents: list[dict] | None = None) -> list[dict]:
+def build_course_index(summary_markdown: str) -> list[dict]:
     """Build serialized chunk index from summary Markdown.
 
     The index is intentionally simple and portable: chunk text plus top terms.
@@ -462,7 +462,7 @@ def _trim_payload_cache() -> None:
 
 def attach_index_to_project(project: CourseProject) -> CourseProject:
     """Attach/rebuild retrieval index inside project metadata."""
-    index = build_course_index(project.summary_markdown, project.documents)
+    index = build_course_index(project.summary_markdown)
     source_index = build_source_index(project)
     if not project.documents:
         project.documents = [{"path": "", "title": "summary", "extension": ".md"}]
