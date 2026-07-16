@@ -45,6 +45,7 @@ class CourseScreen(QWidget):
 
     current_course_changed = pyqtSignal()
     generate_questions_requested = pyqtSignal(str)
+    current_event_generation_requested = pyqtSignal(str, object)
 
     def __init__(
         self,
@@ -56,6 +57,7 @@ class CourseScreen(QWidget):
         parent=None,
         task_center=None,
         qa_service_factory=None,
+        current_event_dialog_factory=None,
     ):
         super().__init__(parent)
         self.manager = manager
@@ -65,6 +67,9 @@ class CourseScreen(QWidget):
         self.snapshot_manager = snapshot_manager
         self.task_center = task_center
         self.qa_service_factory = qa_service_factory or self._create_qa_service
+        self.current_event_dialog_factory = (
+            current_event_dialog_factory or self._create_current_event_dialog
+        )
         self.initializer = CourseInitializer(manager)
         self.lang_manager = LanguageManager.instance()
         self._init_worker = None
@@ -98,6 +103,7 @@ class CourseScreen(QWidget):
         self.list_label.setText(self.lang_manager.get_text("已导入的课程:", "Imported courses:"))
         self.set_current_btn.setText(self.lang_manager.get_text("设为当前", "Set Current"))
         self.scope_btn.setText(self.lang_manager.get_text("考试范围", "Exam Scope"))
+        self.current_events_btn.setText(self.lang_manager.get_text("热点材料", "Current Events"))
         self.more_actions_btn.setText(self.lang_manager.get_text("更多操作", "More Actions"))
         self.rename_action.setText(self.lang_manager.get_text("重命名", "Rename"))
         self.regenerate_action.setText(self.lang_manager.get_text("重新生成总结", "Regenerate Summary"))
@@ -212,6 +218,12 @@ class CourseScreen(QWidget):
         self.scope_btn.setObjectName("secondaryButton")
         self.scope_btn.clicked.connect(self._edit_exam_scope)
         self.course_action_layout.addWidget(self.scope_btn)
+        self.current_events_btn = QPushButton(
+            self.lang_manager.get_text("热点材料", "Current Events")
+        )
+        self.current_events_btn.setObjectName("secondaryButton")
+        self.current_events_btn.clicked.connect(self._review_current_events)
+        self.course_action_layout.addWidget(self.current_events_btn)
 
         self.more_actions_menu = QMenu(self)
         self.rename_action = QAction(self.lang_manager.get_text("重命名", "Rename"), self)
@@ -321,6 +333,7 @@ class CourseScreen(QWidget):
         self.project_list.setVisible(not is_empty)
         self.set_current_btn.setEnabled(False)
         self.scope_btn.setEnabled(False)
+        self.current_events_btn.setEnabled(False)
         self.generate_questions_btn.setEnabled(False)
         self.qa_mode_btn.setEnabled(False)
         self.rename_action.setEnabled(False)
@@ -435,6 +448,7 @@ class CourseScreen(QWidget):
                 self.generate_questions_btn,
                 self.set_current_btn,
                 self.scope_btn,
+                self.current_events_btn,
                 self.more_actions_btn,
                 self.qa_mode_btn,
             ):
@@ -661,6 +675,7 @@ class CourseScreen(QWidget):
             self.generate_questions_btn.setEnabled(False)
             self.set_current_btn.setEnabled(False)
             self.scope_btn.setEnabled(False)
+            self.current_events_btn.setEnabled(False)
             self.qa_mode_btn.setEnabled(False)
             self.rename_action.setEnabled(False)
             self.regenerate_action.setEnabled(False)
@@ -674,6 +689,7 @@ class CourseScreen(QWidget):
         self.set_current_btn.setEnabled(not active or active.course_id != course_id)
         self.generate_questions_btn.setEnabled(True)
         self.scope_btn.setEnabled(True)
+        self.current_events_btn.setEnabled(True)
         self.qa_mode_btn.setEnabled(True)
         self.rename_action.setEnabled(True)
         self.regenerate_action.setEnabled(True)
@@ -705,6 +721,27 @@ class CourseScreen(QWidget):
             self.current_course_changed.emit()
             self.refresh()
         self.generate_questions_requested.emit(course_id)
+
+    @staticmethod
+    def _create_current_event_dialog(project, parent=None):
+        from ui.dialogs.current_event_review_dialog import CurrentEventReviewDialog
+
+        return CurrentEventReviewDialog(project, parent=parent)
+
+    def _review_current_events(self):
+        current_item = self.project_list.currentItem()
+        if current_item is None:
+            return
+        course_id = str(current_item.data(Qt.ItemDataRole.UserRole) or "")
+        project = self.manager.get(course_id)
+        if project is None:
+            return
+        dialog = self.current_event_dialog_factory(project, parent=self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        pack = getattr(dialog, "saved_pack", None)
+        if pack is not None and getattr(dialog, "generate_after_save", False):
+            self.current_event_generation_requested.emit(course_id, pack)
 
     def _edit_exam_scope(self):
         current = self.project_list.currentItem()

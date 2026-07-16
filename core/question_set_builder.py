@@ -17,6 +17,7 @@ def build_ai_question_set(
     lang: str = "en",
     course_project=None,
     custom_title: str = "",
+    material_pack=None,
 ) -> QuestionSet:
     """Create a question set that preserves the user's AI generation choices."""
     topic_labels_by_id = {
@@ -50,6 +51,10 @@ def build_ai_question_set(
     )
     qset.metadata.update(_generation_metadata(selected_difficulty, generation_config))
     qset.metadata.update(_course_metadata(course_project))
+    if material_pack is not None:
+        qset.metadata["material_pack_id"] = str(
+            getattr(material_pack, "pack_id", "") or ""
+        )
     qset.metadata["topic_titles"] = {
         topic: topic_labels_by_id.get(topic, topic)
         for topic in topics

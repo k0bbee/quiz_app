@@ -62,6 +62,7 @@ class AIGenerationDialog(QDialog):
         available_topics: list = None,
         course_project=None,
         task_center=None,
+        material_pack=None,
     ):
         super().__init__(parent)
         self.course_content = course_content
@@ -69,6 +70,7 @@ class AIGenerationDialog(QDialog):
         self.available_topics = available_topics or []
         self.course_project = course_project
         self.task_center = task_center
+        self.material_pack = material_pack
         self._generation_task_id: str | None = None
         self.lang_manager = LanguageManager.instance()
         self.generated_questions: list[Question] = []
@@ -1317,6 +1319,7 @@ class AIGenerationDialog(QDialog):
                 question_plan_items=retry_plan.plan_items if retry_plan is not None else None,
                 task_center=self.task_center,
                 task_id=task_id,
+                material_pack=self.material_pack,
             )
             self._connect_generation_worker(self.worker)
             self._apply_runtime_instruction_to_worker(announce=False)

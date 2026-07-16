@@ -24,6 +24,7 @@ from ai.generation_task_bridge import GenerationTaskBridge
 from ai.question_generation_service import QuestionGenerationService
 from ai.question_plan import QuestionPlanItem
 from core.course_index import retrieve_course_context, retrieve_course_source_refs
+from core.current_events import material_pack_prompt, material_pack_source_refs
 from utils.constants import topic_value
 
 
@@ -44,7 +45,8 @@ class GenerationWorker(QThread):
                  topics: list, count: int, difficulty: str, course_project=None,
                  generation_config: GenerationConfig | None = None,
                  question_plan_items: list[QuestionPlanItem] | None = None,
-                 task_center=None, task_id: str | None = None):
+                 task_center=None, task_id: str | None = None,
+                 material_pack=None):
         super().__init__()
         if (task_center is None) != (task_id is None):
             raise ValueError("task_center and task_id must be provided together")
@@ -56,6 +58,7 @@ class GenerationWorker(QThread):
         self.course_project = course_project
         self.generation_config = generation_config or GenerationConfig()
         self.question_plan_items = list(question_plan_items or [])
+        self.material_pack = material_pack
         self._generation_service = QuestionGenerationService(self.topics)
         self._cancelled = threading.Event()
         self._cached_context: str | None = None
@@ -200,9 +203,10 @@ class GenerationWorker(QThread):
 
     def _build_course_context(self) -> str:
         """Retrieve the best context for currently selected topics."""
+        course_context = self.course_content
         if self.course_project is not None:
             topic_keys = [topic_value(t) for t in self.topics]
-            self._cached_source_refs = retrieve_course_source_refs(
+            course_refs = retrieve_course_source_refs(
                 self.course_project,
                 topic_keys,
             )
@@ -213,18 +217,31 @@ class GenerationWorker(QThread):
                 )
                 for topic_key in topic_keys
             }
-            self._source_resolver = GenerationSourceResolver(
-                self._cached_source_refs,
-                self._cached_source_refs_by_topic,
-            )
-            return retrieve_course_context(
+            course_context = retrieve_course_context(
                 self.course_project,
                 topic_keys,
                 max_chars=GENERATION_CONTEXT_MAX_CHARS,
             )
-        self._cached_source_refs_by_topic = {}
-        self._source_resolver = GenerationSourceResolver()
-        return self.course_content
+        else:
+            course_refs = []
+            self._cached_source_refs_by_topic = {}
+        event_refs = (
+            material_pack_source_refs(self.material_pack)
+            if self.material_pack is not None
+            else []
+        )
+        self._cached_source_refs = [*event_refs, *course_refs]
+        self._source_resolver = GenerationSourceResolver(
+            self._cached_source_refs,
+            self._cached_source_refs_by_topic,
+        )
+        if self.material_pack is None:
+            return course_context
+        return (
+            f"{course_context}\n\n"
+            "## 用户审阅的热点材料（用于课程知识应用题）\n"
+            f"{material_pack_prompt(self.material_pack, max_chars=6000)}"
+        )
 
     def _question_source_refs(
         self,
@@ -244,13 +261,16 @@ class GenerationWorker(QThread):
         return resolver.resolve(qdata, plan_item=plan_item, plan_refs=plan_refs)
 
     def _course_metadata(self) -> dict:
-        if self.course_project is None:
-            return {}
-        return {
-            "course_id": getattr(self.course_project, "course_id", ""),
-            "course_title": getattr(self.course_project, "title", ""),
-            "course_updated_at": getattr(self.course_project, "updated_at", ""),
-        }
+        metadata = {}
+        if self.course_project is not None:
+            metadata.update({
+                "course_id": getattr(self.course_project, "course_id", ""),
+                "course_title": getattr(self.course_project, "title", ""),
+                "course_updated_at": getattr(self.course_project, "updated_at", ""),
+            })
+        if self.material_pack is not None:
+            metadata["material_pack_id"] = getattr(self.material_pack, "pack_id", "")
+        return metadata
 
     def _topic_keywords(self) -> dict[str, list[str]]:
         if self.course_project is None:

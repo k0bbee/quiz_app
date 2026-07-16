@@ -26,7 +26,7 @@ class GenerationSourceResolver:
         plan_item: QuestionPlanItem | None = None,
         plan_refs: list[dict] | None = None,
     ) -> tuple[list[dict], str, list[str]]:
-        """Return trusted refs, resolution status, and rejected model chunk IDs."""
+        """Return trusted refs, resolution status, and rejected model evidence IDs."""
         refs = qdata.get("source_refs") if isinstance(qdata, dict) else None
         if isinstance(refs, list):
             sanitized = [sanitize_source_ref(ref) for ref in refs]
@@ -64,19 +64,23 @@ class GenerationSourceResolver:
         invalid_ids: list[str] = []
         allowed_chunk_ids = set(plan_item.evidence_chunk_ids if plan_item else [])
         for ref in refs:
-            chunk_id = str(ref.get("chunk_id") or "").strip()
-            if not chunk_id:
+            ref_id = _ref_id(ref)
+            if not ref_id:
                 invalid_ids.append("")
                 continue
-            registered = self.registry.get(chunk_id)
+            registered = self.registry.get(ref_id)
             if registered is None:
-                invalid_ids.append(chunk_id)
+                invalid_ids.append(ref_id)
                 continue
-            if allowed_chunk_ids and chunk_id not in allowed_chunk_ids:
-                invalid_ids.append(chunk_id)
+            if (
+                ref.get("source_kind") != "current_event"
+                and allowed_chunk_ids
+                and ref_id not in allowed_chunk_ids
+            ):
+                invalid_ids.append(ref_id)
                 continue
             if not _matches_registered(ref, registered):
-                invalid_ids.append(chunk_id)
+                invalid_ids.append(ref_id)
                 continue
             valid.append(dict(registered))
         return valid, invalid_ids
@@ -85,6 +89,24 @@ class GenerationSourceResolver:
 def sanitize_source_ref(ref) -> dict:
     if not isinstance(ref, dict):
         return {}
+    source_kind = str(ref.get("source_kind", "") or "").strip()
+    candidate_id = str(ref.get("candidate_id", "") or "").strip()
+    if source_kind == "current_event":
+        if not candidate_id:
+            return {}
+        clean = {
+            "source_kind": "current_event",
+            "candidate_id": candidate_id,
+            "url": str(ref.get("url", "") or "").strip(),
+            "title": str(ref.get("title", "") or "").strip(),
+            "domain": str(ref.get("domain", "") or "").strip(),
+            "seen_at": str(ref.get("seen_at", "") or "").strip(),
+            "retrieved_at": str(ref.get("retrieved_at", "") or "").strip(),
+            "excerpt": _compact_excerpt(ref.get("excerpt", "")),
+            "content_hash": str(ref.get("content_hash", "") or "").strip(),
+            "review_status": str(ref.get("review_status", "") or "").strip(),
+        }
+        return {key: value for key, value in clean.items() if value not in ("", None)}
     chunk_id = str(ref.get("chunk_id", "") or "").strip()
     source_file = str(ref.get("source_file", "") or "").strip()
     if not chunk_id and not source_file:
@@ -118,12 +140,23 @@ def _build_registry(refs: list[dict], refs_by_topic: dict[str, list[dict]]) -> d
 
 def _register(registry: dict[str, dict], ref) -> None:
     clean = sanitize_source_ref(ref)
-    chunk_id = str(clean.get("chunk_id") or "").strip()
-    if chunk_id and chunk_id not in registry:
-        registry[chunk_id] = clean
+    ref_id = _ref_id(clean)
+    if ref_id and ref_id not in registry:
+        registry[ref_id] = clean
+
+
+def _ref_id(ref: dict) -> str:
+    if str(ref.get("source_kind", "") or "").strip() == "current_event":
+        return str(ref.get("candidate_id", "") or "").strip()
+    return str(ref.get("chunk_id", "") or "").strip()
 
 
 def _matches_registered(ref: dict, registered: dict) -> bool:
+    if registered.get("source_kind") == "current_event":
+        return (
+            ref.get("source_kind") == "current_event"
+            and ref.get("candidate_id") == registered.get("candidate_id")
+        )
     expected_file = str(registered.get("source_file") or "").strip()
     actual_file = str(ref.get("source_file") or "").strip()
     if actual_file and expected_file and actual_file != expected_file:

@@ -322,6 +322,9 @@ class MainWindow(QMainWindow):
         course_screen.generate_questions_requested.connect(
             lambda _course_id: self._on_ai_generate()
         )
+        course_screen.current_event_generation_requested.connect(
+            self._on_current_event_generation
+        )
         self._get_question_bank_screen().question_bank_changed.connect(self._on_question_bank_changed)
 
         # Topic selection
@@ -996,6 +999,7 @@ class MainWindow(QMainWindow):
         course_override=None,
         initial_plan=None,
         prediction=None,
+        material_pack=None,
     ):
         """Open the AI question generation dialog."""
         gm = self.lang_manager.get_text
@@ -1059,6 +1063,7 @@ class MainWindow(QMainWindow):
             available_topics=available_topics,
             course_project=course_project,
             task_center=getattr(self, "task_center", None),
+            material_pack=material_pack,
         )
         dialog.configure_from_course_profile(course_project)
         if initial_plan is not None:
@@ -1070,6 +1075,7 @@ class MainWindow(QMainWindow):
                     gm("预测配置不可用", "Prediction Plan Unavailable"),
                     str(exc),
                 )
+
                 return
             if hasattr(dialog, "set_title_input"):
                 course_title = str(getattr(course_project, "title", "") or "").strip()
@@ -1092,6 +1098,7 @@ class MainWindow(QMainWindow):
                     lang=lang,
                     course_project=course_project,
                     custom_title=dialog.question_set_title(),
+                    material_pack=material_pack,
                 )
                 try:
                     qset, saved = persist_new_question_set(
@@ -1135,6 +1142,13 @@ class MainWindow(QMainWindow):
                 " Historical types unsupported by the current generator were excluded.",
             )
         return text
+
+    def _on_current_event_generation(self, course_id: str, material_pack) -> None:
+        """Generate against the reviewed material pack for its selected course."""
+        project = self.course_manager.get(course_id)
+        if project is None or material_pack is None:
+            return
+        self._on_ai_generate(course_override=project, material_pack=material_pack)
 
     def _on_generate_predicted_exam(self, course_id: str, prediction):
         """Open the normal generation review flow with a historical profile plan."""
