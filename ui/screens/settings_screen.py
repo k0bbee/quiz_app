@@ -22,6 +22,7 @@ from core.environment_check import collect_environment_report, format_environmen
 from core.ocr_runtime import OCR_REMEDIATION
 from core.language_manager import LanguageManager
 from config import (
+    APP_NAME,
     BASE_DIR,
     DATA_DIR,
     SETTINGS_FILE,
@@ -639,12 +640,24 @@ class SettingsScreen(QWidget):
         data_layout.addLayout(self.app_data_status_layout)
 
         layout.addWidget(self.data_group)
-        layout.addStretch()
 
-        version_label = QLabel("Course Quiz Studio v1.0.0")
-        version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        version_label.setObjectName("settingsVersionLabel")
-        layout.addWidget(version_label)
+        # ── About ──
+        self.about_group = QGroupBox(self.lang_manager.get_text("关于", "About"))
+        self.about_group.setObjectName("aboutSettingsGroup")
+        about_layout = QVBoxLayout(self.about_group)
+        self.about_description_label = QLabel()
+        self.about_description_label.setWordWrap(True)
+        self.about_description_label.setObjectName("secondaryText")
+        about_layout.addWidget(self.about_description_label)
+        self.about_license_label = QLabel("License: GPL-3.0-only")
+        self.about_license_label.setObjectName("secondaryText")
+        about_layout.addWidget(self.about_license_label)
+        self.version_label = QLabel(f"{APP_NAME} v1.0.0")
+        self.version_label.setObjectName("settingsVersionLabel")
+        about_layout.addWidget(self.version_label)
+        layout.addWidget(self.about_group)
+        layout.addStretch()
+        self._refresh_about_text()
 
         self.settings_scroll.setWidget(self.settings_content)
         outer.addWidget(self.settings_scroll, 1)
@@ -749,6 +762,8 @@ class SettingsScreen(QWidget):
             self.lang_manager.get_text("练习时显示计时器", "Show timer during practice")
         )
         self.data_group.setTitle(self.lang_manager.get_text("数据管理", "Data Management"))
+        self.about_group.setTitle(self.lang_manager.get_text("关于", "About"))
+        self._refresh_about_text()
         self._refresh_settings_nav(preserve_selection=True)
         self.export_btn.setText(self.lang_manager.get_text("导出进度", "Export Progress"))
         self.import_btn.setText(self.lang_manager.get_text("导入进度", "Import Progress"))
@@ -774,6 +789,7 @@ class SettingsScreen(QWidget):
             (self.lang_manager.get_text("练习默认值", "Practice Defaults"), self.practice_group),
             (self.lang_manager.get_text("运行环境", "Runtime Environment"), self.environment_group),
             (self.lang_manager.get_text("数据管理", "Data Management"), self.data_group),
+            (self.lang_manager.get_text("关于", "About"), self.about_group),
         ]
         self.settings_nav_list.blockSignals(True)
         self.settings_nav_list.clear()
@@ -790,6 +806,16 @@ class SettingsScreen(QWidget):
             self._active_settings_group = self.settings_nav_list.item(row_to_select).data(
                 Qt.ItemDataRole.UserRole
             )
+
+    def _refresh_about_text(self):
+        self.about_description_label.setText(self.lang_manager.get_text(
+            "从课程资料生成总结、题库并完成练习复盘。",
+            "Generate summaries and question banks from course materials, then review practice results.",
+        ))
+        self.about_license_label.setText(self.lang_manager.get_text(
+            "许可证：GPL-3.0-only",
+            "License: GPL-3.0-only",
+        ))
 
     def _on_settings_nav_changed(self, row: int):
         """Scroll the settings detail pane to the selected category."""

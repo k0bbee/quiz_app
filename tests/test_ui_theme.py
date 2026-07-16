@@ -294,6 +294,8 @@ class UiThemeTests(unittest.TestCase):
         self.assertTrue(main_window.learning_nav_btn.isChecked())
         self.assertEqual(["Question Sets", "Progress"], [button.text() for button in main_window.context_tabs()])
         self.assertTrue(main_window.progress_tab_btn.isChecked())
+        self.assertFalse(main_window.incorrect_review_btn.isHidden())
+        self.assertEqual("Review Incorrect", main_window.incorrect_review_btn.text())
         self.assertFalse(main_window.context_back_btn.isVisible())
 
         main_window.navigate_to(main_window.SCREEN_SETTINGS)
@@ -646,9 +648,11 @@ class UiThemeTests(unittest.TestCase):
             for index in range(settings.settings_nav_list.count())
         ]
         self.assertEqual(
-            ["显示语言", "AI 出题", "练习默认值", "运行环境", "数据管理"],
+            ["显示语言", "AI 出题", "练习默认值", "运行环境", "数据管理", "关于"],
             nav_labels,
         )
+        self.assertEqual("aboutSettingsGroup", settings.about_group.objectName())
+        self.assertIn("GPL-3.0-only", settings.about_license_label.text())
         self.assertEqual(960, settings.settings_content.maximumWidth())
         self.assertEqual(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,

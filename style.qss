@@ -696,7 +696,8 @@ QLabel#contextTitle {
 }
 
 QPushButton#contextBackButton,
-QPushButton#contextTabButton {
+QPushButton#contextTabButton,
+QPushButton#contextActionButton {
     color: #bdbdbd;
     background-color: transparent;
     border: 1px solid transparent;
@@ -706,6 +707,7 @@ QPushButton#contextTabButton {
 
 QPushButton#contextBackButton:hover,
 QPushButton#contextTabButton:hover,
+QPushButton#contextActionButton:hover,
 QPushButton#contextTabButton:checked {
     color: #ffffff;
     background-color: #2a2d2e;
@@ -713,7 +715,8 @@ QPushButton#contextTabButton:checked {
 }
 
 QPushButton#contextBackButton:focus,
-QPushButton#contextTabButton:focus {
+QPushButton#contextTabButton:focus,
+QPushButton#contextActionButton:focus {
     border-color: #007fd4;
 }
 

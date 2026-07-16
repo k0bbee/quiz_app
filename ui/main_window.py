@@ -247,6 +247,11 @@ class MainWindow(QMainWindow):
         self.past_exams_tab_btn = self._create_context_tab(self.SCREEN_PAST_EXAMS)
         for button in self._all_context_tabs():
             header_layout.addWidget(button)
+        self.incorrect_review_btn = QPushButton("")
+        self.incorrect_review_btn.setObjectName("contextActionButton")
+        self.incorrect_review_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.incorrect_review_btn.clicked.connect(self._on_practice_incorrect)
+        header_layout.addWidget(self.incorrect_review_btn)
 
         content_layout.addWidget(self.context_header)
         content_layout.addWidget(self.stack, 1)
@@ -345,6 +350,7 @@ class MainWindow(QMainWindow):
         self.progress_tab_btn.setText(gm("进度", "Progress"))
         self.bank_tab_btn.setText(gm("题库", "Question Bank"))
         self.past_exams_tab_btn.setText(gm("历史真题", "Historical Exams"))
+        self.incorrect_review_btn.setText(gm("错题复习", "Review Incorrect"))
         self._update_navigation_actions()
 
     def navigate_to(self, screen_index: int, remember: bool = True, confirm_current: bool = True) -> bool:
@@ -427,6 +433,9 @@ class MainWindow(QMainWindow):
         library = current in {self.SCREEN_QUESTION_BANK, self.SCREEN_PAST_EXAMS}
         for button in (self.topics_tab_btn, self.progress_tab_btn):
             button.setVisible(learning and current not in {self.SCREEN_QUIZ, self.SCREEN_RESULTS})
+        self.incorrect_review_btn.setVisible(
+            learning and current not in {self.SCREEN_QUIZ, self.SCREEN_RESULTS}
+        )
         for button in (self.bank_tab_btn, self.past_exams_tab_btn):
             button.setVisible(library)
         self.topics_tab_btn.setChecked(current == self.SCREEN_TOPIC_SELECTION)
