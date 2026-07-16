@@ -479,7 +479,17 @@ class QuizScreen(QWidget):
 
         draft_answer = self._draft_answers_by_question_id.get(q.question_id)
         if draft_answer is not None and not preserve_answer:
-            self.answer_area.set_answer(draft_answer)
+            restored = self.answer_area.set_answer(draft_answer)
+            if not restored:
+                self._draft_answers_by_question_id.pop(q.question_id, None)
+                QMessageBox.warning(
+                    self,
+                    self.lang_manager.get_text("草稿已失效", "Draft No Longer Matches"),
+                    self.lang_manager.get_text(
+                        "这道题的选项已发生变化，旧的排序草稿无法安全恢复，已清除该题草稿。",
+                        "This question's options changed, so its old ordering draft could not be restored safely and was cleared.",
+                    ),
+                )
 
         self.answer_area.set_enabled(True)
         self.feedback_frame.hide()

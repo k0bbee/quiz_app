@@ -527,6 +527,72 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
         self.assertTrue(area.ordering_widget.has_user_reordered())
 
+    def test_ordering_widget_reports_stale_draft_restore_failure(self):
+        area = AnswerArea()
+        area.set_question_type(
+            QuestionType.ORDERING,
+            [
+                {"id": "item_1", "text": "取指"},
+                {"id": "item_2", "text": "译码"},
+            ],
+        )
+
+        restored = area.set_answer(["item_1", "removed_item"])
+
+        self.assertIs(False, restored)
+        self.assertEqual(["item_1", "item_2"], area.get_answer())
+        self.assertFalse(area.ordering_widget.has_user_reordered())
+
+    def test_quiz_screen_warns_and_removes_stale_ordering_draft(self):
+        question = Question.create_new(
+            qtype=QuestionType.ORDERING,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": "按执行顺序排序",
+                    "options": [
+                        {"id": "item_1", "text": "取指"},
+                        {"id": "item_2", "text": "译码"},
+                    ],
+                    "explanation": "解释说明",
+                },
+                "en": {
+                    "stem": "Order the stages",
+                    "options": [
+                        {"id": "item_1", "text": "Fetch"},
+                        {"id": "item_2", "text": "Decode"},
+                    ],
+                    "explanation": "Explanation text",
+                },
+            },
+            correct_answer=["item_1", "item_2"],
+            topic="pipeline",
+        )
+        qset = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["pipeline"],
+            question_ids=[question.question_id],
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = QuizScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                ProgressManager(str(Path(tmpdir) / "progress")),
+            )
+            screen.start_quiz(qset, [question], show_timer=False)
+            screen._draft_answers_by_question_id[question.question_id] = [
+                "item_1",
+                "removed_item",
+            ]
+
+            with patch("ui.screens.quiz_screen.QMessageBox.warning") as warning:
+                screen._display_current_question()
+
+            warning.assert_called_once()
+            self.assertNotIn(question.question_id, screen._draft_answers_by_question_id)
+            self.assertFalse(screen.answer_area.ordering_widget.has_user_reordered())
+
     def test_ordering_question_confirms_when_submitting_default_order(self):
         question = Question.create_new(
             qtype=QuestionType.ORDERING,

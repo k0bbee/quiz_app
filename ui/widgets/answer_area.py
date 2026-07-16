@@ -141,10 +141,11 @@ class AnswerArea(QWidget):
         return None
 
     def set_answer(self, answer):
-        """Restore an answer into the active type-specific widget."""
+        """Restore an answer and report whether the active widget accepted it."""
         widget = self.stack.currentWidget()
         if hasattr(widget, "set_answer"):
-            widget.set_answer(answer)
+            return widget.set_answer(answer) is not False
+        return False
 
     def has_answer(self) -> bool:
         """Return whether the active widget currently contains a meaningful answer."""
@@ -560,8 +561,10 @@ class OrderingWidget(QWidget):
 
     def set_answer(self, answer):
         """Restore ordering by stable IDs, falling back to labels for legacy answers."""
+        if answer is None:
+            return True
         if not isinstance(answer, list):
-            return
+            return False
         available: dict[str, QListWidgetItem] = {}
         for index in range(self.list_widget.count()):
             item = self.list_widget.item(index)
@@ -572,10 +575,10 @@ class OrderingWidget(QWidget):
         for raw in answer:
             item = available.get(str(raw))
             if item is None or item in selected_items:
-                return
+                return False
             selected_items.append(item)
         if len(selected_items) != self.list_widget.count():
-            return
+            return False
         selected_payload = [
             (item.text(), item.data(Qt.ItemDataRole.UserRole) or item.text())
             for item in selected_items
@@ -586,6 +589,7 @@ class OrderingWidget(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, item_id)
             self.list_widget.addItem(item)
         self._user_reordered = True
+        return True
 
     def clear(self):
         self.list_widget.clear()
