@@ -1232,6 +1232,21 @@ class AIGenerationDialog(QDialog):
             )
             return
 
+        if retry_plan is None and self.generated_questions:
+            count = len(self.generated_questions)
+            reply = QMessageBox.question(
+                self,
+                self.lang_manager.get_text("替换未保存题目", "Replace Unsaved Questions"),
+                self.lang_manager.get_text(
+                    f"当前有 {count} 道已生成但尚未保存的题目。重新生成会替换这些题目，是否继续？",
+                    f"There are {count} generated question(s) that have not been saved. Regenerating will replace them. Continue?",
+                ),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+
         from core.secrets_manager import SecretsManager
         requires_api_key = provider_requires_api_key(self.settings)
         api_key = SecretsManager.instance().get_key() if requires_api_key else ""

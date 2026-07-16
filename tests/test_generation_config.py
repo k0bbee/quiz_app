@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication, QDialog
+from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
 from PyQt6.QtCore import Qt
 
 from ai.batch_generator import GenerationWorker
@@ -1708,6 +1708,28 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertFalse(dialog._generation_failed)
         self.assertFalse(dialog.generate_btn.isEnabled())
         critical.assert_not_called()
+
+    def test_direct_regeneration_requires_confirmation_before_discarding_results(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+            available_topics=["cache"],
+        )
+        dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+        existing = [object(), object()]
+        dialog.generated_questions = existing
+
+        with patch(
+            "ui.dialogs.ai_generation_dialog.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.No,
+        ) as confirm, patch(
+            "ui.dialogs.ai_generation_dialog.GenerationWorker"
+        ) as worker_type:
+            dialog._start_generation()
+
+        self.assertEqual(existing, dialog.generated_questions)
+        confirm.assert_called_once()
+        worker_type.assert_not_called()
 
     def test_generation_retry_task_links_back_to_partial_attempt(self):
         with tempfile.TemporaryDirectory() as tmpdir:
