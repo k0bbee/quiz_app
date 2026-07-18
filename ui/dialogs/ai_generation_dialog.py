@@ -1311,6 +1311,10 @@ class AIGenerationDialog(QDialog):
                 model=model,
                 template=generation_config.template,
                 retry=retry_plan is not None,
+                difficulty=difficulty,
+                generation_config=generation_config,
+                question_set_title=self.question_set_title(),
+                runtime_instruction=self._current_runtime_instruction(),
             )
             self.worker = GenerationWorker(
                 client, self.course_content, topics, count, difficulty,
@@ -1384,6 +1388,10 @@ class AIGenerationDialog(QDialog):
         model: str,
         template: str,
         retry: bool,
+        difficulty: str = "medium",
+        generation_config: GenerationConfig | None = None,
+        question_set_title: str = "",
+        runtime_instruction: str = "",
     ) -> str | None:
         if self.task_center is None:
             return None
@@ -1393,17 +1401,31 @@ class AIGenerationDialog(QDialog):
             f"AI 出题 · {course_title}" if course_title else "AI 出题",
             f"AI Generation · {course_title}" if course_title else "AI Generation",
         )
+        topic_ids = [topic_value(topic) for topic in topics]
+        metadata = {
+            "course_id": str(getattr(self.course_project, "course_id", "") or ""),
+            "requested_count": int(count),
+            "topic_ids": topic_ids,
+            "provider": str(provider or ""),
+            "model": str(model or ""),
+            "template": str(template or ""),
+            "question_set_title": str(question_set_title or "").strip(),
+            "runtime_instruction": str(runtime_instruction or "").strip(),
+        }
+        if generation_config is not None:
+            metadata["exam_plan"] = {
+                "question_count": int(count),
+                "difficulty": str(difficulty or "medium"),
+                "template": str(generation_config.template or template or "quick_review"),
+                "selected_topics": topic_ids,
+                "question_type_weights": generation_config.normalized_type_weights(),
+                "difficulty_weights": generation_config.normalized_difficulty_weights(),
+                "topic_weights": generation_config.normalized_topic_weights(topic_ids),
+            }
         task = self.task_center.create(
             kind="question_generation",
             title=title,
-            metadata={
-                "course_id": str(getattr(self.course_project, "course_id", "") or ""),
-                "requested_count": int(count),
-                "topic_ids": [topic_value(topic) for topic in topics],
-                "provider": str(provider or ""),
-                "model": str(model or ""),
-                "template": str(template or ""),
-            },
+            metadata=metadata,
             retry_of=previous_task_id,
         )
         self._generation_task_id = task.task_id

@@ -1656,6 +1656,8 @@ class GenerationConfigTests(unittest.TestCase):
                 task_center=center,
             )
             dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+            dialog.set_title_input.setText("Cache recovery set")
+            dialog.runtime_instruction_input.setPlainText("Avoid storage topics")
 
             with patch("ui.dialogs.ai_generation_dialog.GenerationWorker", FakeWorker):
                 dialog._start_generation()
@@ -1667,6 +1669,15 @@ class GenerationConfigTests(unittest.TestCase):
             self.assertEqual("question_generation", task.kind)
             self.assertEqual(15, task.metadata["requested_count"])
             self.assertEqual(["cache"], task.metadata["topic_ids"])
+            self.assertEqual("Cache recovery set", task.metadata["question_set_title"])
+            self.assertEqual("Avoid storage topics", task.metadata["runtime_instruction"])
+            self.assertEqual(15, task.metadata["exam_plan"]["question_count"])
+            self.assertEqual(["cache"], task.metadata["exam_plan"]["selected_topics"])
+            self.assertEqual("medium", task.metadata["exam_plan"]["difficulty"])
+            self.assertEqual(
+                dialog._build_generation_config().normalized_type_weights(),
+                task.metadata["exam_plan"]["question_type_weights"],
+            )
 
     def test_generation_dialog_ignores_queued_signals_from_replaced_worker(self):
         class FakeSignal:
