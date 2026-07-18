@@ -6,6 +6,7 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QDialog
 
 from core.background_task_center import BackgroundTaskCenter
 from ui.dialogs.background_task_dialog import BackgroundTaskDialog
@@ -50,6 +51,28 @@ class BackgroundTaskDialogTests(unittest.TestCase):
             _APP.processEvents()
             self.assertEqual(1, dialog.task_list.topLevelItemCount())
             self.assertEqual("Completed", dialog.task_list.topLevelItem(0).text(2))
+
+    def test_open_task_page_returns_the_selected_task_id(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            center = BackgroundTaskCenter(Path(tmpdir) / "tasks.json")
+            task = center.create(
+                kind="course_import",
+                title="导入课程",
+                metadata={"source_folder": "C:/courses/physics"},
+            )
+            center.fail(task.task_id, "interrupted")
+            dialog = BackgroundTaskDialog(center, language="zh")
+
+            item = dialog.task_list.topLevelItem(0)
+            dialog.task_list.setCurrentItem(item)
+            open_task_btn = getattr(dialog, "open_task_btn", None)
+            self.assertIsNotNone(open_task_btn)
+            self.assertTrue(open_task_btn.isEnabled())
+
+            open_task_btn.click()
+
+            self.assertEqual(task.task_id, dialog.requested_task_id)
+            self.assertEqual(QDialog.DialogCode.Accepted, dialog.result())
 
 
 if __name__ == "__main__":

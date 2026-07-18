@@ -350,6 +350,23 @@ class CourseScreen(QWidget):
             self._clear_summary()
             self.qa_panel.set_course(None)
 
+    def restore_task_context(self, snapshot) -> None:
+        """Restore safe local inputs for a persisted course task without starting it."""
+        metadata = getattr(snapshot, "metadata", {}) or {}
+        if getattr(snapshot, "kind", "") == "course_import":
+            self._import_expanded = True
+            self.import_group.setVisible(True)
+            self.folder_input.setText(str(metadata.get("source_folder", "") or ""))
+            self.title_input.setText(str(metadata.get("course_title", "") or ""))
+            self._update_import_toggle_text()
+            return
+        course_id = str(metadata.get("course_id", "") or "")
+        for row in range(self.project_list.count()):
+            item = self.project_list.item(row)
+            if str(item.data(Qt.ItemDataRole.UserRole) or "") == course_id:
+                self.project_list.setCurrentRow(row)
+                break
+
     def _toggle_import_panel(self):
         self._import_expanded = not self._import_expanded
         self.import_group.setVisible(self._import_expanded)

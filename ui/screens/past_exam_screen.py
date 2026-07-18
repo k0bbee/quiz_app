@@ -264,6 +264,27 @@ class PastExamScreen(QWidget):
         self._restore_combo_data(self.import_course_combo, import_selection)
         self._restore_combo_data(self.assignment_combo, assignment_selection)
 
+    def restore_task_context(self, snapshot) -> None:
+        """Restore a previous import selection without restarting OCR or analysis."""
+        metadata = getattr(snapshot, "metadata", {}) or {}
+        if getattr(snapshot, "kind", "") == "past_exam_analysis":
+            exam_id = str(metadata.get("exam_id", "") or "")
+            for row in range(self.exam_list.count()):
+                item = self.exam_list.item(row)
+                if str(item.data(Qt.ItemDataRole.UserRole) or "") == exam_id:
+                    self.exam_list.setCurrentRow(row)
+                    break
+            return
+        source_path = str(metadata.get("source_path", "") or "")
+        self.file_input.setText(source_path)
+        title = str(metadata.get("exam_title", "") or "").strip()
+        self.title_input.setText(title or (Path(source_path).stem if source_path else ""))
+        self._reload_course_choices()
+        self._restore_combo_data(
+            self.import_course_combo,
+            metadata.get("manual_course_id"),
+        )
+
     @staticmethod
     def _restore_combo_data(combo, value):
         index = combo.findData(value)
@@ -342,6 +363,7 @@ class PastExamScreen(QWidget):
             metadata={
                 "source_path": str(source),
                 "manual_course_id": self.import_course_combo.currentData(),
+                "exam_title": self.title_input.text().strip(),
             },
             worker=worker,
         )

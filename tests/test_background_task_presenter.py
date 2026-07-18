@@ -3,6 +3,7 @@ import unittest
 from core.background_task import TaskProgress
 from core.background_task_center import TaskSnapshot, TaskStatus
 from core.background_task_presenter import build_task_center_view, task_toolbar_text
+from core.background_task_recovery import task_destination
 
 
 def snapshot(task_id, status, *, current=0, total=0, detail="", error="", kind="question_generation"):
@@ -39,8 +40,11 @@ class BackgroundTaskPresenterTests(unittest.TestCase):
         )
         self.assertEqual("运行中", view.items[0].status_text)
         self.assertEqual("3 / 10", view.items[0].progress_text)
+        self.assertNotIn("T", view.items[0].updated_at)
+        self.assertNotIn("+00:00", view.items[0].updated_at)
         self.assertTrue(view.items[0].can_cancel)
         self.assertFalse(view.items[0].can_dismiss)
+        self.assertTrue(view.items[0].can_open)
         self.assertEqual("provider timed out", view.items[1].detail_text)
         self.assertTrue(view.items[1].can_dismiss)
 
@@ -83,6 +87,25 @@ class BackgroundTaskPresenterTests(unittest.TestCase):
 
         self.assertEqual("题库检查", zh.items[0].kind_text)
         self.assertEqual("Question bank check", en.items[0].kind_text)
+
+    def test_unknown_task_kind_does_not_offer_a_dead_end_open_action(self):
+        view = build_task_center_view(
+            [snapshot("task-1", TaskStatus.FAILED, kind="future_unknown_task")],
+            language="en",
+            attention_only=False,
+        )
+
+        self.assertIs(False, getattr(view.items[0], "can_open", None))
+
+    def test_every_persisted_task_kind_routes_to_an_existing_workspace(self):
+        self.assertEqual("generation", task_destination("question_generation"))
+        self.assertEqual("courses", task_destination("course_import"))
+        self.assertEqual("courses", task_destination("course_summary"))
+        self.assertEqual("past_exams", task_destination("past_exam_ocr"))
+        self.assertEqual("past_exams", task_destination("past_exam_analysis"))
+        self.assertEqual("settings_data", task_destination("app_data_import"))
+        self.assertEqual("settings_data", task_destination("app_data_export"))
+        self.assertEqual("question_bank", task_destination("question_bank_validation"))
 
 
 if __name__ == "__main__":

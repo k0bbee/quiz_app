@@ -20,7 +20,7 @@ from models.course_project import CourseProject, CourseProjectManager, CourseTop
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
 from main import _apply_dark_palette, load_stylesheet
-from ui.main_window import MainWindow
+from ui.main_window import MainWindow, _generation_plan_from_task_metadata
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
 from ui.screens.course_screen import CourseScreen
@@ -334,6 +334,64 @@ class UiThemeTests(unittest.TestCase):
                 parent=main_window,
             )
             dialog_type.return_value.exec.assert_called_once_with()
+
+    def test_task_center_reopens_course_import_with_safe_prefilled_context(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            center = BackgroundTaskCenter(Path(tmpdir) / "tasks.json")
+            task = center.create(
+                kind="course_import",
+                title="Import Physics",
+                metadata={
+                    "source_folder": "C:/courses/physics",
+                    "course_title": "Physics",
+                },
+            )
+            center.fail(task.task_id, "application closed")
+            main_window = MainWindow()
+            self.addCleanup(main_window.close)
+            main_window.task_center = center
+
+            reopened = getattr(main_window, "_open_task_context", lambda _task_id: False)(
+                task.task_id
+            )
+
+            self.assertTrue(reopened)
+            self.assertEqual(main_window.SCREEN_COURSES, main_window.stack.currentIndex())
+            self.assertEqual("C:/courses/physics", main_window._course_screen.folder_input.text())
+            self.assertEqual("Physics", main_window._course_screen.title_input.text())
+            self.assertFalse(main_window._course_screen.import_group.isHidden())
+
+    def test_generation_task_recovery_rebuilds_the_confirmed_exam_plan(self):
+        metadata = {
+            "requested_count": 12,
+            "topic_ids": ["cache"],
+            "exam_plan": {
+                "question_count": 12,
+                "difficulty": "mixed",
+                "template": "final_exam",
+                "selected_topics": ["cache"],
+                "question_type_weights": {
+                    "multiple_choice": 50,
+                    "scenario_choice": 20,
+                    "true_false": 10,
+                    "fill_in_blank": 10,
+                    "matching": 5,
+                    "ordering": 5,
+                    "short_answer": 0,
+                },
+                "difficulty_weights": {"easy": 20, "medium": 50, "hard": 30},
+                "topic_weights": {"cache": 100},
+            },
+        }
+
+        plan = _generation_plan_from_task_metadata(metadata)
+
+        self.assertEqual(12, plan.question_count)
+        self.assertEqual("mixed", plan.difficulty)
+        self.assertEqual("final_exam", plan.template)
+        self.assertEqual(("cache",), plan.selected_topics)
+        self.assertEqual(50, plan.question_type_weights["multiple_choice"])
+        self.assertEqual(100, plan.topic_weights["cache"])
 
     def test_top_navigation_confirms_before_leaving_active_quiz(self):
         main_window = MainWindow()

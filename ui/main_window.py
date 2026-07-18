@@ -19,6 +19,7 @@ from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.mastery_overrides import MasteryOverrideStore
 from core.background_task_center import BackgroundTaskCenter
 from core.background_task_presenter import build_task_center_view, task_toolbar_text
+from core.background_task_recovery import task_destination
 from core.topic_display import topic_display_name
 from models.course_project import CourseProjectManager
 from models.past_exam import PastExamManager
@@ -62,6 +63,36 @@ def _ai_generation_settings_error(
         detected_agents=detect_local_agents() if detected_agents is None else detected_agents,
     )
     return "" if result.ok else result.message
+
+
+def _generation_plan_from_task_metadata(metadata: dict) -> ExamGenerationPlan:
+    """Build a validated generation draft from current or legacy task metadata."""
+    metadata = metadata if isinstance(metadata, dict) else {}
+    raw = metadata.get("exam_plan")
+    raw = raw if isinstance(raw, dict) else {}
+    try:
+        count = int(raw.get("question_count", metadata.get("requested_count", 15)))
+    except (TypeError, ValueError):
+        count = 15
+    count = max(3, min(60, count))
+    selected = raw.get("selected_topics", metadata.get("topic_ids", ()))
+    if not isinstance(selected, (list, tuple)):
+        selected = ()
+    selected = tuple(str(item).strip() for item in selected if str(item).strip())
+    kwargs = {
+        "question_count": count,
+        "difficulty": raw.get("difficulty", "medium"),
+        "template": raw.get("template", metadata.get("template", "quick_review")),
+        "selected_topics": selected,
+    }
+    for key in ("question_type_weights", "difficulty_weights", "topic_weights"):
+        value = raw.get(key)
+        if isinstance(value, dict):
+            kwargs[key] = value
+    try:
+        return ExamGenerationPlan(**kwargs)
+    except (TypeError, ValueError):
+        return ExamGenerationPlan(question_count=count, selected_topics=selected)
 
 
 class MainWindow(QMainWindow):
@@ -504,7 +535,56 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         dialog.exec()
+        requested_task_id = str(getattr(dialog, "requested_task_id", "") or "")
+        if requested_task_id:
+            self._open_task_context(requested_task_id)
         self._refresh_task_center_action()
+
+    def _open_task_context(self, task_id: str) -> bool:
+        """Return to the existing owner page and restore safe persisted inputs."""
+        try:
+            snapshot = self.task_center.get(task_id)
+        except (KeyError, OSError, ValueError):
+            return False
+        destination = task_destination(snapshot.kind)
+        metadata = snapshot.metadata or {}
+        course_id = str(metadata.get("course_id", "") or "")
+
+        if course_id and self.course_manager.get(course_id) is not None:
+            if self.course_manager.set_current(course_id):
+                self._on_course_changed()
+
+        if destination == "courses":
+            if not self.navigate_to(self.SCREEN_COURSES):
+                return False
+            self._get_course_screen().restore_task_context(snapshot)
+            return True
+        if destination == "past_exams":
+            if not self.navigate_to(self.SCREEN_PAST_EXAMS):
+                return False
+            self._get_past_exam_screen().restore_task_context(snapshot)
+            return True
+        if destination == "question_bank":
+            return self.navigate_to(self.SCREEN_QUESTION_BANK)
+        if destination == "settings_data":
+            if not self.navigate_to(self.SCREEN_SETTINGS):
+                return False
+            self.settings_screen.show_data_management()
+            return True
+        if destination == "generation":
+            course = self.course_manager.get(course_id) if course_id else self.course_manager.current()
+            if course is None:
+                return self.navigate_to(self.SCREEN_COURSES)
+            if not self.navigate_to(self.SCREEN_COURSES):
+                return False
+            self._get_course_screen().restore_task_context(snapshot)
+            self._on_ai_generate(
+                course_override=course,
+                initial_plan=_generation_plan_from_task_metadata(metadata),
+                recovery_context=metadata,
+            )
+            return True
+        return False
 
     # --- Slot handlers ---
 
@@ -1000,6 +1080,7 @@ class MainWindow(QMainWindow):
         initial_plan=None,
         prediction=None,
         material_pack=None,
+        recovery_context=None,
     ):
         """Open the AI question generation dialog."""
         gm = self.lang_manager.get_text
@@ -1087,6 +1168,14 @@ class MainWindow(QMainWindow):
                 dialog.status_label.setText(
                     MainWindow._prediction_prefill_status(prediction, gm)
                 )
+        if isinstance(recovery_context, dict):
+            if hasattr(dialog, "set_title_input"):
+                title = str(recovery_context.get("question_set_title", "") or "").strip()
+                if title:
+                    dialog.set_title_input.setText(title)
+            if hasattr(dialog, "runtime_instruction_input"):
+                instruction = str(recovery_context.get("runtime_instruction", "") or "").strip()
+                dialog.runtime_instruction_input.setPlainText(instruction)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             questions = dialog.generated_questions
             if questions:

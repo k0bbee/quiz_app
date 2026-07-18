@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from core.background_task_center import TaskSnapshot, TaskStatus
+from core.background_task_recovery import task_destination
 
 
 _ACTIVE = {TaskStatus.QUEUED, TaskStatus.RUNNING, TaskStatus.CANCELLING}
@@ -28,6 +30,7 @@ class TaskDisplayItem:
     updated_at: str
     can_cancel: bool
     can_dismiss: bool
+    can_open: bool
     needs_attention: bool
 
 
@@ -88,9 +91,10 @@ def _display_item(snapshot: TaskSnapshot, language: str) -> TaskDisplayItem:
             or snapshot.progress.detail
             or snapshot.result_summary
         ),
-        updated_at=snapshot.updated_at,
+        updated_at=_updated_text(snapshot.updated_at),
         can_cancel=snapshot.status in _ACTIVE,
         can_dismiss=snapshot.status in _DISMISSIBLE,
+        can_open=bool(task_destination(snapshot.kind)),
         needs_attention=snapshot.status in _ATTENTION,
     )
 
@@ -111,6 +115,18 @@ def _progress_text(snapshot: TaskSnapshot) -> str:
     if current:
         return str(current)
     return ""
+
+
+def _updated_text(value: str) -> str:
+    """Format persisted ISO timestamps for compact local display only."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return parsed.astimezone().strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return raw
 
 
 def _status_text(status: TaskStatus, language: str) -> str:

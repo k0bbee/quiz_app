@@ -827,6 +827,15 @@ class SettingsScreen(QWidget):
         self._active_settings_group = group
         self.settings_scroll.ensureWidgetVisible(group, 0, 12)
 
+    def show_data_management(self) -> None:
+        """Select the existing data-management section for a recovered task."""
+        for row in range(self.settings_nav_list.count()):
+            item = self.settings_nav_list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) is self.data_group:
+                self.settings_nav_list.setCurrentRow(row)
+                self._on_settings_nav_changed(row)
+                return
+
     def _on_language_combo_changed(self, index):
         if self._initializing:
             return
