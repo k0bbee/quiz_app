@@ -597,6 +597,35 @@ class CourseIndexCacheTests(unittest.TestCase):
         self.assertIn("page tables", ctx_b)
         self.assertNotIn("page tables", ctx_a)
 
+    def test_payload_cache_isolated_when_project_metadata_identity_collides(self):
+        def make_project(summary: str) -> CourseProject:
+            return CourseProject(
+                course_id="same-id",
+                title="Same title",
+                source_folder="",
+                summary_markdown=summary,
+                summary_path="",
+                topics=[],
+                documents=[{
+                    "path": "summary.md",
+                    "title": "summary",
+                    "extension": ".md",
+                    "_course_index": course_index.build_course_index(summary),
+                }],
+                created_at="2026-07-01T00:00:00+00:00",
+                updated_at="2026-07-01T00:00:00+00:00",
+            )
+
+        project_a = make_project("## Cache\nDirect-mapped cache uses address bits.")
+        project_b = make_project("## VM\nVirtual memory uses page tables.")
+
+        ctx_a = course_index.retrieve_course_context(project_a, ["cache"], max_chars=500)
+        ctx_b = course_index.retrieve_course_context(project_b, ["vm"], max_chars=500)
+
+        self.assertIn("Direct-mapped", ctx_a)
+        self.assertIn("page tables", ctx_b)
+        self.assertNotIn("Direct-mapped", ctx_b)
+
 
 if __name__ == "__main__":
     unittest.main()

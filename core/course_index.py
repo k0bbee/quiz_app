@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import re
 import hashlib
+import json
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
 from core.term_extraction import extract_course_terms
 from models.course_project import CourseProject
 
 _MAX_PAYLOAD_CACHE_SIZE = 24
-_PAYLOAD_CACHE: dict[tuple[str, str], str] = {}
+_INDEX_CACHE_SCHEMA_VERSION = 1
+_PAYLOAD_CACHE: dict[tuple[int, str, str, str, str], str] = {}
 
 
 @dataclass
@@ -167,11 +170,11 @@ def retrieve_course_context(
 ) -> str:
     """Retrieve relevant context from a project, using cached scoring."""
     topic_key = tuple(sorted(str(t) for t in selected_topics))
-    payload_key = (project.course_id, project.updated_at, project.summary_path)
+    payload_key = _project_cache_key(project)
     if payload_key not in _PAYLOAD_CACHE:
         _PAYLOAD_CACHE[payload_key] = _project_payload(project)
         _trim_payload_cache()
-    return _retrieve_cached(project.course_id, project.updated_at, project.summary_path, topic_key, max_chars)
+    return _retrieve_cached(payload_key, topic_key, max_chars)
 
 
 def retrieve_course_source_refs(
@@ -237,16 +240,12 @@ def enrich_course_source_refs(project: CourseProject, source_refs) -> list[dict]
 
 @lru_cache(maxsize=128)
 def _retrieve_cached(
-    course_id: str,
-    updated_at: str,
-    summary_path: str,
+    payload_key: tuple[int, str, str, str, str],
     topic_key: tuple[str, ...],
     max_chars: int,
 ) -> str:
     """Cached retrieval; payload is a compact serialized index/summary string."""
-    import json
-
-    payload = _PAYLOAD_CACHE.get((course_id, updated_at, summary_path), "")
+    payload = _PAYLOAD_CACHE.get(payload_key, "")
     try:
         data = json.loads(payload)
     except (json.JSONDecodeError, TypeError):
@@ -389,8 +388,6 @@ def _ref_excerpt(text: str, limit: int = 320) -> str:
 
 def _project_payload(project: CourseProject) -> str:
     """Serialize stable fields for cache key payload."""
-    import json
-
     return json.dumps(
         {
             "summary": project.summary_markdown,
@@ -402,6 +399,47 @@ def _project_payload(project: CourseProject) -> str:
         ensure_ascii=False,
         sort_keys=True,
     )
+
+
+def _project_cache_key(project: CourseProject) -> tuple[int, str, str, str, str]:
+    """Return a cache identity scoped to one project location and index schema."""
+    location = _project_location_identity(project)
+    content_identity = "" if location else _project_content_identity(project)
+    return (
+        _INDEX_CACHE_SCHEMA_VERSION,
+        str(getattr(project, "course_id", "") or ""),
+        str(getattr(project, "updated_at", "") or ""),
+        location,
+        content_identity,
+    )
+
+
+def _project_location_identity(project: CourseProject) -> str:
+    """Normalize persisted paths so equal metadata in different roots cannot collide."""
+    source_folder = str(getattr(project, "source_folder", "") or "").strip()
+    summary_path = str(getattr(project, "summary_path", "") or "").strip()
+    if not source_folder and not summary_path:
+        return ""
+
+    source = Path(source_folder).expanduser() if source_folder else None
+    summary = Path(summary_path).expanduser() if summary_path else None
+    if summary is not None and not summary.is_absolute() and source is not None:
+        summary = source / summary
+    source_value = str(source.resolve(strict=False)).casefold() if source is not None else ""
+    summary_value = str(summary.resolve(strict=False)).casefold() if summary is not None else ""
+    return f"{source_value}\n{summary_value}"
+
+
+def _project_content_identity(project: CourseProject) -> str:
+    """Fingerprint pathless projects without building the retrieval payload twice."""
+    digest = hashlib.sha256()
+    digest.update(str(getattr(project, "summary_markdown", "") or "").encode("utf-8"))
+    for topic in getattr(project, "topics", []) or []:
+        payload = topic.to_dict() if hasattr(topic, "to_dict") else vars(topic)
+        digest.update(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8"))
+    for document in getattr(project, "documents", []) or []:
+        digest.update(json.dumps(document, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8"))
+    return digest.hexdigest()
 
 
 def _topic_keyword_payload(project: CourseProject) -> dict[str, list[str]]:
