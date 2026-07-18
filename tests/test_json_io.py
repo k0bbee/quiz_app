@@ -31,6 +31,28 @@ class JsonIoTests(unittest.TestCase):
             self.assertEqual(original, read_json(str(path)))
             self.assertEqual(["progress.json"], [item.name for item in Path(tmpdir).iterdir()])
 
+    def test_write_json_retries_a_transient_windows_file_lock(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "background_tasks.json"
+            path.write_text('{"version": 1}', encoding="utf-8")
+            real_replace = __import__("os").replace
+            attempts = []
+
+            def replace_after_unlock(source, target):
+                attempts.append((source, target))
+                if len(attempts) == 1:
+                    raise PermissionError(13, "file temporarily locked", target)
+                real_replace(source, target)
+
+            with patch("utils.json_io.os.replace", side_effect=replace_after_unlock), \
+                    patch("time.sleep") as sleep:
+                ok = write_json(str(path), {"version": 2})
+
+            self.assertTrue(ok)
+            self.assertEqual({"version": 2}, read_json(str(path)))
+            self.assertEqual(2, len(attempts))
+            sleep.assert_called_once()
+
     def test_write_json_preserves_existing_file_when_data_is_not_serializable(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "question.json"

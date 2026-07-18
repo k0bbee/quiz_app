@@ -5,7 +5,11 @@ import json
 import os
 import re
 import tempfile
+import time
 from typing import Any, Optional
+
+
+_REPLACE_RETRY_DELAYS = (0.02, 0.05, 0.1)
 
 
 def sanitize_filename_part(name: str) -> str:
@@ -68,7 +72,7 @@ def write_json(filepath: str, data: Any, indent: int = 2) -> bool:
             json.dump(data, f, ensure_ascii=False, indent=indent, allow_nan=False)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp_path, target_path)
+        _replace_with_retry(tmp_path, target_path)
         _fsync_parent_directory(directory)
         return True
     except (OSError, TypeError, ValueError) as e:
@@ -80,6 +84,27 @@ def write_json(filepath: str, data: Any, indent: int = 2) -> bool:
             except OSError as cleanup_error:
                 warning(f"Failed to remove temporary JSON file {tmp_path}: {cleanup_error}")
         return False
+
+
+def _replace_with_retry(source: str, target: str) -> None:
+    """Retry only transient file-lock failures while preserving atomic replace."""
+    for delay in (*_REPLACE_RETRY_DELAYS, None):
+        try:
+            os.replace(source, target)
+            return
+        except OSError as exc:
+            if delay is None or not _is_transient_replace_error(exc):
+                raise
+            time.sleep(delay)
+
+
+def _is_transient_replace_error(error: OSError) -> bool:
+    """Return whether another process may briefly hold the destination file."""
+    return isinstance(error, PermissionError) or getattr(error, "winerror", None) in {
+        5,   # access denied
+        32,  # sharing violation
+        33,  # lock violation
+    }
 
 
 def _fsync_parent_directory(directory: str):
