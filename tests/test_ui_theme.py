@@ -1,4 +1,5 @@
 import os
+import importlib.util
 import re
 import tempfile
 import unittest
@@ -19,8 +20,8 @@ from core.progress_tracker import ProgressManager
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
-from main import _apply_dark_palette, load_stylesheet
 from core.background_task_recovery import generation_plan_from_task_metadata
+from ui.application_style import apply_dark_palette as _apply_dark_palette, load_stylesheet
 from ui.main_window import MainWindow
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
@@ -40,6 +41,9 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class UiThemeTests(unittest.TestCase):
+    def test_application_style_policy_lives_outside_the_process_entry_point(self):
+        self.assertIsNotNone(importlib.util.find_spec("ui.application_style"))
+
     def doCleanups(self):
         """Run registered cleanups before draining deferred Qt deletions."""
         result = super().doCleanups()
