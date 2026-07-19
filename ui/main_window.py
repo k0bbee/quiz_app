@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog,
     QFrame, QLabel, QButtonGroup, QSizePolicy,
 )
-from PyQt6.QtCore import QTimer, Qt, pyqtSignal
+from PyQt6.QtCore import QTimer, Qt
 
 from core.language_manager import LanguageManager
 from models.question import QuestionBank
@@ -19,7 +19,10 @@ from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.mastery_overrides import MasteryOverrideStore
 from core.background_task_center import BackgroundTaskCenter
 from core.background_task_presenter import build_task_center_view, task_toolbar_text
-from core.background_task_recovery import task_destination
+from core.background_task_recovery import (
+    generation_plan_from_task_metadata,
+    task_destination,
+)
 from core.topic_display import topic_display_name
 from models.course_project import CourseProjectManager
 from models.past_exam import PastExamManager
@@ -41,9 +44,9 @@ from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.settings_screen import SettingsScreen
 from utils.constants import Difficulty, topic_value
 from ai.course_summary_factory import provider_requires_api_key
+from ai.exam_plan import ExamGenerationPlan
 from ai.provider_presets import detect_local_agents
 from ai.settings_validation import validate_ai_settings
-from ai.exam_plan import ExamGenerationPlan
 
 
 def _provider_requires_api_key(settings: dict) -> bool:
@@ -63,36 +66,6 @@ def _ai_generation_settings_error(
         detected_agents=detect_local_agents() if detected_agents is None else detected_agents,
     )
     return "" if result.ok else result.message
-
-
-def _generation_plan_from_task_metadata(metadata: dict) -> ExamGenerationPlan:
-    """Build a validated generation draft from current or legacy task metadata."""
-    metadata = metadata if isinstance(metadata, dict) else {}
-    raw = metadata.get("exam_plan")
-    raw = raw if isinstance(raw, dict) else {}
-    try:
-        count = int(raw.get("question_count", metadata.get("requested_count", 15)))
-    except (TypeError, ValueError):
-        count = 15
-    count = max(3, min(60, count))
-    selected = raw.get("selected_topics", metadata.get("topic_ids", ()))
-    if not isinstance(selected, (list, tuple)):
-        selected = ()
-    selected = tuple(str(item).strip() for item in selected if str(item).strip())
-    kwargs = {
-        "question_count": count,
-        "difficulty": raw.get("difficulty", "medium"),
-        "template": raw.get("template", metadata.get("template", "quick_review")),
-        "selected_topics": selected,
-    }
-    for key in ("question_type_weights", "difficulty_weights", "topic_weights"):
-        value = raw.get(key)
-        if isinstance(value, dict):
-            kwargs[key] = value
-    try:
-        return ExamGenerationPlan(**kwargs)
-    except (TypeError, ValueError):
-        return ExamGenerationPlan(question_count=count, selected_topics=selected)
 
 
 class MainWindow(QMainWindow):
@@ -580,7 +553,7 @@ class MainWindow(QMainWindow):
             self._get_course_screen().restore_task_context(snapshot)
             self._on_ai_generate(
                 course_override=course,
-                initial_plan=_generation_plan_from_task_metadata(metadata),
+                initial_plan=generation_plan_from_task_metadata(metadata),
                 recovery_context=metadata,
             )
             return True

@@ -1,5 +1,6 @@
 import unittest
 
+import core.background_task_recovery as task_recovery
 from core.background_task import TaskProgress
 from core.background_task_center import TaskSnapshot, TaskStatus
 from core.background_task_presenter import build_task_center_view, task_toolbar_text
@@ -20,6 +21,11 @@ def snapshot(task_id, status, *, current=0, total=0, detail="", error="", kind="
 
 
 class BackgroundTaskPresenterTests(unittest.TestCase):
+    def test_generation_plan_recovery_policy_lives_outside_the_ui_layer(self):
+        self.assertTrue(
+            hasattr(task_recovery, "generation_plan_from_task_metadata")
+        )
+
     def test_attention_view_prioritizes_active_failed_and_interrupted_tasks(self):
         view = build_task_center_view(
             [

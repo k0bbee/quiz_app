@@ -11,7 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QCloseEvent, QPalette
 from PyQt6.QtCore import QEvent, Qt
-from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QGridLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QSplitter, QTextEdit
+from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QSplitter, QTextEdit
 
 from core.language_manager import LanguageManager
 from core.background_task_center import BackgroundTaskCenter
@@ -20,7 +20,8 @@ from models.course_project import CourseProject, CourseProjectManager, CourseTop
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
 from main import _apply_dark_palette, load_stylesheet
-from ui.main_window import MainWindow, _generation_plan_from_task_metadata
+from core.background_task_recovery import generation_plan_from_task_metadata
+from ui.main_window import MainWindow
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
 from ui.screens.course_screen import CourseScreen
@@ -384,7 +385,7 @@ class UiThemeTests(unittest.TestCase):
             },
         }
 
-        plan = _generation_plan_from_task_metadata(metadata)
+        plan = generation_plan_from_task_metadata(metadata)
 
         self.assertEqual(12, plan.question_count)
         self.assertEqual("mixed", plan.difficulty)
