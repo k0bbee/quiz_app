@@ -13,6 +13,7 @@ import hashlib
 import zipfile
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Callable
 from xml.etree import ElementTree as ET
 
 from core.ocr_runtime import configure_pytesseract
@@ -62,6 +63,8 @@ class DocumentParser:
         self,
         folder: str,
         task: TaskControl | None = None,
+        cached_documents: dict[str, ExtractedDocument] | None = None,
+        on_document_parsed: Callable[[Path, ExtractedDocument], None] | None = None,
     ) -> list[ExtractedDocument]:
         """Parse supported files under a folder recursively.
 
@@ -69,27 +72,26 @@ class DocumentParser:
         .git/, etc.) to avoid ingesting the app's own output.
         """
         root = Path(folder)
-        if not root.exists() or not root.is_dir():
-            raise FileNotFoundError(f"Folder not found: {folder}")
-
-        paths = [
-            path
-            for path in sorted(root.rglob("*"), key=_source_sort_key)
-            if path.is_file()
-            and not path.name.startswith("~$")
-            and not self._should_skip_path(path, root=root)
-            and path.suffix.lower() in SUPPORTED_EXTENSIONS
-        ]
+        paths = self.source_paths(folder)
         if task is not None:
             task.report("files_found", total=len(paths), detail=str(root))
 
         docs: list[ExtractedDocument] = []
+        cached_documents = cached_documents or {}
         seen_fingerprints: set[str] = set()
         seen_signatures: list[set[str]] = []
         for index, path in enumerate(paths, start=1):
-            if task is not None:
-                task.report("parsing_file", index, len(paths), path.name)
-            doc = self.parse_file(path, task=task)
+            cached = cached_documents.get(str(path.resolve()))
+            if cached is not None:
+                if task is not None:
+                    task.report("reusing_file", index, len(paths), path.name)
+                doc = _clone_document(cached)
+            else:
+                if task is not None:
+                    task.report("parsing_file", index, len(paths), path.name)
+                doc = self.parse_file(path, task=task)
+                if on_document_parsed is not None:
+                    on_document_parsed(path, _clone_document(doc))
             if _is_auxiliary_text_document(doc):
                 continue
             fingerprint = _content_fingerprint(doc.text)
@@ -104,6 +106,20 @@ class DocumentParser:
                     seen_signatures.append(signature)
             docs.append(doc)
         return docs
+
+    def source_paths(self, folder: str) -> list[Path]:
+        """Return supported source files in the same stable order used for parsing."""
+        root = Path(folder)
+        if not root.exists() or not root.is_dir():
+            raise FileNotFoundError(f"Folder not found: {folder}")
+        return [
+            path
+            for path in sorted(root.rglob("*"), key=_source_sort_key)
+            if path.is_file()
+            and not path.name.startswith("~$")
+            and not self._should_skip_path(path, root=root)
+            and path.suffix.lower() in SUPPORTED_EXTENSIONS
+        ]
 
     def _should_skip_path(self, path: Path, root: Path | None = None) -> bool:
         """Return True if a path is clearly generated output or app metadata."""
