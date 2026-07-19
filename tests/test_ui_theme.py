@@ -1,9 +1,11 @@
 import os
 import importlib.util
+import inspect
 import re
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import main as main_module
@@ -17,7 +19,10 @@ from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QHBoxLayout, Q
 from core.language_manager import LanguageManager
 from core.background_task_center import BackgroundTaskCenter
 from core.progress_tracker import ProgressManager
+from core.mastery_overrides import MasteryOverrideStore
+from core.quiz_snapshot_manager import QuizSnapshotManager
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
+from models.past_exam import PastExamManager
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
 from core.background_task_recovery import generation_plan_from_task_metadata
@@ -41,6 +46,30 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class UiThemeTests(unittest.TestCase):
+    def test_main_window_accepts_an_application_service_container(self):
+        self.assertIn("services", inspect.signature(MainWindow.__init__).parameters)
+
+    def test_main_window_uses_injected_application_services(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            services = SimpleNamespace(
+                question_bank=QuestionBank(str(root / "questions")),
+                set_manager=SetManager(str(root / "sets")),
+                progress_manager=ProgressManager(str(root / "progress")),
+                snapshot_manager=QuizSnapshotManager(str(root / "snapshots")),
+                mastery_overrides=MasteryOverrideStore(root / "mastery.json"),
+                course_manager=CourseProjectManager(str(root / "courses")),
+                past_exam_manager=PastExamManager(root / "past-exams"),
+                task_center=BackgroundTaskCenter(root / "tasks.json"),
+            )
+
+            window = MainWindow(services=services)
+            self.addCleanup(window.close)
+
+            self.assertIs(services.question_bank, window.question_bank)
+            self.assertIs(services.course_manager, window.course_manager)
+            self.assertIs(services.task_center, window.task_center)
+
     def test_application_style_policy_lives_outside_the_process_entry_point(self):
         self.assertIsNotNone(importlib.util.find_spec("ui.application_style"))
 

@@ -9,33 +9,19 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QTimer, Qt
 
+from core.application_services import ApplicationServices
 from core.language_manager import LanguageManager
-from models.question import QuestionBank
-from models.question_set import SetManager
 from core.question_set_regenerator import persist_new_question_set, persist_regenerated_question_set
 from core.question_set_builder import build_ai_question_set
-from core.progress_tracker import ProgressManager
-from core.quiz_snapshot_manager import QuizSnapshotManager
-from core.mastery_overrides import MasteryOverrideStore
-from core.background_task_center import BackgroundTaskCenter
 from core.background_task_presenter import build_task_center_view, task_toolbar_text
 from core.background_task_recovery import (
     generation_plan_from_task_metadata,
     task_destination,
 )
 from core.topic_display import topic_display_name
-from models.course_project import CourseProjectManager
-from models.past_exam import PastExamManager
 from core.past_exam_prediction import prediction_prefill_status
 from ui.dialogs.background_task_dialog import BackgroundTaskDialog
-from config import (
-    APP_NAME,
-    BACKGROUND_TASKS_FILE,
-    PROGRESS_DIR,
-    QUESTIONS_DIR,
-    QUESTION_SETS_DIR,
-    QUIZ_SNAPSHOTS_DIR,
-)
+from config import APP_NAME
 
 from ui.screens.home_screen import HomeScreen
 from ui.screens.topic_selection_screen import TopicSelectionScreen
@@ -65,20 +51,21 @@ class MainWindow(QMainWindow):
     SCREEN_QUESTION_BANK = 7
     SCREEN_PAST_EXAMS = 8
 
-    def __init__(self):
+    def __init__(self, services: ApplicationServices | None = None):
         super().__init__()
         self.setWindowTitle(APP_NAME)
         self.resize(900, 680)
 
-        # Data managers
-        self.question_bank = QuestionBank(QUESTIONS_DIR)
-        self.set_manager = SetManager(QUESTION_SETS_DIR)
-        self.progress_manager = ProgressManager(PROGRESS_DIR)
-        self.snapshot_manager = QuizSnapshotManager(QUIZ_SNAPSHOTS_DIR)
-        self.mastery_overrides = MasteryOverrideStore()
-        self.course_manager = CourseProjectManager()
-        self.past_exam_manager = PastExamManager()
-        self.task_center = BackgroundTaskCenter(BACKGROUND_TASKS_FILE)
+        services = services or ApplicationServices.default()
+        self.services = services
+        self.question_bank = services.question_bank
+        self.set_manager = services.set_manager
+        self.progress_manager = services.progress_manager
+        self.snapshot_manager = services.snapshot_manager
+        self.mastery_overrides = services.mastery_overrides
+        self.course_manager = services.course_manager
+        self.past_exam_manager = services.past_exam_manager
+        self.task_center = services.task_center
         self.lang_manager = LanguageManager.instance()
 
         # Central stacked widget
