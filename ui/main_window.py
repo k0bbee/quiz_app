@@ -26,6 +26,7 @@ from core.background_task_recovery import (
 from core.topic_display import topic_display_name
 from models.course_project import CourseProjectManager
 from models.past_exam import PastExamManager
+from core.past_exam_prediction import prediction_prefill_status
 from ui.dialogs.background_task_dialog import BackgroundTaskDialog
 from config import (
     APP_NAME,
@@ -43,29 +44,11 @@ from ui.screens.results_screen import ResultsScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.settings_screen import SettingsScreen
 from utils.constants import Difficulty, topic_value
-from ai.course_summary_factory import provider_requires_api_key
+from ai.course_summary_factory import provider_requires_api_key as _provider_requires_api_key
 from ai.exam_plan import ExamGenerationPlan
-from ai.provider_presets import detect_local_agents
-from ai.settings_validation import validate_ai_settings
-
-
-def _provider_requires_api_key(settings: dict) -> bool:
-    """Return whether the selected AI provider needs a configured API key."""
-    return provider_requires_api_key(settings)
-
-
-def _ai_generation_settings_error(
-    settings: dict,
-    api_key: str,
-    detected_agents: list[str] | None = None,
-) -> str:
-    """Return a blocking AI settings error for generation, or an empty string."""
-    result = validate_ai_settings(
-        settings,
-        api_key=api_key,
-        detected_agents=detect_local_agents() if detected_agents is None else detected_agents,
-    )
-    return "" if result.ok else result.message
+from ai.settings_validation import (
+    ai_generation_settings_error as _ai_generation_settings_error,
+)
 
 
 class MainWindow(QMainWindow):
@@ -1139,7 +1122,7 @@ class MainWindow(QMainWindow):
                 ))
             if prediction is not None and hasattr(dialog, "status_label"):
                 dialog.status_label.setText(
-                    MainWindow._prediction_prefill_status(prediction, gm)
+                    prediction_prefill_status(prediction, gm)
                 )
         if isinstance(recovery_context, dict):
             if hasattr(dialog, "set_title_input"):
@@ -1183,27 +1166,6 @@ class MainWindow(QMainWindow):
                        f"Saved {saved} questions and created a question set:\n{qset.get_title(lang)}"),
                 )
                 self.navigate_to(self.SCREEN_TOPIC_SELECTION)
-
-    @staticmethod
-    def _prediction_prefill_status(prediction, get_text) -> str:
-        """Return accurate localized notes for each prediction exclusion reason."""
-        source_count = int(getattr(prediction, "source_count", 0) or 0)
-        text = get_text(
-            f"已按 {source_count} 份历史真题画像预填；这反映历史分布，不代表未来考题。",
-            f"Pre-filled from {source_count} historical exam profiles; this reflects past distribution, not future questions.",
-        )
-        warnings = tuple(str(item or "") for item in getattr(prediction, "warnings", ()) or ())
-        if any("outside the current exam scope" in item.lower() for item in warnings):
-            text += get_text(
-                " 考试范围外的历史知识点证据已排除。",
-                " Historical topic evidence outside the exam scope was excluded.",
-            )
-        if any("not available in the current ai generation controls" in item.lower() for item in warnings):
-            text += get_text(
-                " 当前生成器不支持的历史题型未计入题型权重。",
-                " Historical types unsupported by the current generator were excluded.",
-            )
-        return text
 
     def _on_current_event_generation(self, course_id: str, material_pack) -> None:
         """Generate against the reviewed material pack for its selected course."""

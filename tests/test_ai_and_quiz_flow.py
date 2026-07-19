@@ -10,6 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QComboBox, QMessageBox, QRadioButton
 
+import ai.settings_validation as settings_validation
 from ai.llm_client import LLMClient
 from models.progress import AnswerRecord, ProgressRecord, SessionSummary
 from models.question import Question
@@ -34,18 +35,23 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class LocalAgentTests(unittest.TestCase):
-    def test_local_agent_provider_does_not_require_api_key(self):
-        from ui.main_window import _provider_requires_api_key
+    def test_generation_preflight_policy_lives_in_ai_settings_validation(self):
+        self.assertTrue(
+            hasattr(settings_validation, "ai_generation_settings_error")
+        )
 
-        self.assertFalse(_provider_requires_api_key({"ai_provider": "local_agent"}))
-        self.assertFalse(_provider_requires_api_key({"ai_base_url": "local-agent://auto"}))
-        self.assertFalse(_provider_requires_api_key({"ai_provider": "custom", "ai_base_url": "local-agent://codex"}))
-        self.assertTrue(_provider_requires_api_key({"ai_provider": "custom"}))
+    def test_local_agent_provider_does_not_require_api_key(self):
+        from ai.course_summary_factory import provider_requires_api_key
+
+        self.assertFalse(provider_requires_api_key({"ai_provider": "local_agent"}))
+        self.assertFalse(provider_requires_api_key({"ai_base_url": "local-agent://auto"}))
+        self.assertFalse(provider_requires_api_key({"ai_provider": "custom", "ai_base_url": "local-agent://codex"}))
+        self.assertTrue(provider_requires_api_key({"ai_provider": "custom"}))
 
     def test_ai_generation_preflight_reports_missing_remote_key(self):
-        from ui.main_window import _ai_generation_settings_error
+        from ai.settings_validation import ai_generation_settings_error
 
-        message = _ai_generation_settings_error(
+        message = ai_generation_settings_error(
             {"ai_provider": "openai", "ai_base_url": "https://api.openai.com/v1", "ai_model": "gpt-4.1-mini"},
             api_key="",
             detected_agents=[],
@@ -54,9 +60,9 @@ class LocalAgentTests(unittest.TestCase):
         self.assertIn("API key", message)
 
     def test_ai_generation_preflight_accepts_detected_local_agent(self):
-        from ui.main_window import _ai_generation_settings_error
+        from ai.settings_validation import ai_generation_settings_error
 
-        message = _ai_generation_settings_error(
+        message = ai_generation_settings_error(
             {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
             api_key="",
             detected_agents=["codex"],

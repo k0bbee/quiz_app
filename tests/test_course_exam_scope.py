@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
+import core.past_exam_prediction as past_exam_prediction
 from core.course_initializer import CourseInitializer
 from core.document_parser import ExtractedDocument
 from core.past_exam_prediction import PastExamPredictionPlanner
@@ -161,6 +162,11 @@ class CourseExamScopeConsumerTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
+    def test_prediction_prefill_policy_lives_with_prediction_domain(self):
+        self.assertTrue(
+            hasattr(past_exam_prediction, "prediction_prefill_status")
+        )
+
     def test_generation_context_exposes_only_topics_in_exam_scope(self):
         project = _project()
         project.set_exam_scope("selected", ["io"])
@@ -245,7 +251,7 @@ class CourseExamScopeConsumerTests(unittest.TestCase):
             ),
         )
 
-        text = MainWindow._prediction_prefill_status(
+        text = past_exam_prediction.prediction_prefill_status(
             prediction,
             lambda zh, _en: zh,
         )

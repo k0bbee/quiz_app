@@ -25,6 +25,32 @@ class PastExamPrediction:
         return len(self.exam_ids)
 
 
+def prediction_prefill_status(prediction, get_text) -> str:
+    """Return localized notes for each historical-prediction exclusion reason."""
+    source_count = int(getattr(prediction, "source_count", 0) or 0)
+    text = get_text(
+        f"已按 {source_count} 份历史真题画像预填；这反映历史分布，不代表未来考题。",
+        f"Pre-filled from {source_count} historical exam profiles; this reflects past distribution, not future questions.",
+    )
+    warnings = tuple(
+        str(item or "") for item in getattr(prediction, "warnings", ()) or ()
+    )
+    if any("outside the current exam scope" in item.lower() for item in warnings):
+        text += get_text(
+            " 考试范围外的历史知识点证据已排除。",
+            " Historical topic evidence outside the exam scope was excluded.",
+        )
+    if any(
+        "not available in the current ai generation controls" in item.lower()
+        for item in warnings
+    ):
+        text += get_text(
+            " 当前生成器不支持的历史题型未计入题型权重。",
+            " Historical types unsupported by the current generator were excluded.",
+        )
+    return text
+
+
 class PastExamPredictionPlanner:
     """Use observed distributions as evidence, not as a claim of future certainty."""
 

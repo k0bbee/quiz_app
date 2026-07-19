@@ -7,7 +7,7 @@ import ipaddress
 from urllib.parse import urlsplit
 
 from ai.course_summary_factory import provider_requires_api_key
-from ai.provider_presets import provider_from_base_url
+from ai.provider_presets import detect_local_agents, provider_from_base_url
 
 
 @dataclass(frozen=True)
@@ -93,3 +93,19 @@ def validate_ai_settings(
         return AISettingsValidationResult(False, "API key is required for the selected remote provider.")
 
     return AISettingsValidationResult(True, f"AI settings look valid for provider '{provider}' and model '{model}'.")
+
+
+def ai_generation_settings_error(
+    settings: dict,
+    api_key: str,
+    detected_agents: list[str] | None = None,
+) -> str:
+    """Return a blocking generation-settings message, or an empty string."""
+    result = validate_ai_settings(
+        settings,
+        api_key=api_key,
+        detected_agents=(
+            detect_local_agents() if detected_agents is None else detected_agents
+        ),
+    )
+    return "" if result.ok else result.message
