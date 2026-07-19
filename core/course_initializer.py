@@ -7,8 +7,9 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
-from core.document_parser import DocumentParser, ExtractedDocument
 from core.course_index import attach_index_to_project
+from core.course_build_pipeline import CourseBuildPipeline
+from core.document_parser import DocumentParser, ExtractedDocument
 from core.term_extraction import extract_course_terms, is_low_value_keyword
 from core.background_task import TaskControl
 from core.course_parse_checkpoint import CourseParseCheckpointStore
@@ -17,7 +18,6 @@ from utils.logger import warning
 from utils.constants import topic_alias_values, topic_value
 from ai.course_generation_profile import (
     CourseGenerationProfileGenerator,
-    build_local_course_profile,
 )
 
 def _is_generic_title(title: str) -> bool:
@@ -83,12 +83,14 @@ class CourseInitializer:
         summary_generator=None,
         profile_generator=None,
         checkpoint_store: CourseParseCheckpointStore | None = None,
+        build_pipeline: CourseBuildPipeline | None = None,
     ):
         self.parser = DocumentParser()
         self.manager = manager or CourseProjectManager()
         self.summary_generator = summary_generator
         self.profile_generator = profile_generator or CourseGenerationProfileGenerator()
         self.checkpoint_store = checkpoint_store
+        self._build_pipeline_override = build_pipeline
 
     def initialize(
         self,
@@ -107,47 +109,31 @@ class CourseInitializer:
             task=task,
         )
         self._check(task)
-        if not docs:
-            raise ValueError("No supported course files found. Supported: docx, pptx, pdf, txt, md.")
-        if not any(doc.text.strip() for doc in docs):
-            raise ValueError(
-                "No readable course content was extracted. Check damaged files, OCR, or text encoding."
-            )
+        self._require_readable_documents(docs)
 
         course_title = title.strip() or Path(folder).name
-        self._report(task, "topics")
-        topics = infer_topics(docs)
-        self._report(task, "summary")
-        summary = build_summary_markdown(course_title, docs, topics)
-        summary_source = "local"
-        summary_warning = ""
-        if self.summary_generator is not None:
-            self._report(task, "summary_ai")
-            summary = self.summary_generator.generate(course_title, docs, topics, summary)
-            self._check(task)
-            summary_source = getattr(self.summary_generator, "summary_source", "llm")
-            summary_warning = getattr(self.summary_generator, "summary_warning", "")
-        self._report(task, "profile")
-        generation_profile, profile_source, profile_warning = self._generate_profile(
-            course_title, topics, summary
+        artifacts = self._semantic_pipeline().build(
+            course_title,
+            docs,
+            previous_topics=None,
+            task=task,
         )
-        self._check(task)
         now = datetime.now(timezone.utc).isoformat()
         project = CourseProject(
             course_id=course_id.strip() or CourseProjectManager.new_id(),
             title=course_title,
             source_folder=str(Path(folder).resolve()),
-            summary_markdown=summary,
+            summary_markdown=artifacts.summary_markdown,
             summary_path="",
-            topics=topics,
+            topics=artifacts.topics,
             documents=_document_records(docs),
             created_at=now,
             updated_at=now,
-            summary_source=summary_source,
-            summary_warning=summary_warning,
-            generation_profile=generation_profile,
-            generation_profile_source=profile_source,
-            generation_profile_warning=profile_warning,
+            summary_source=artifacts.summary_source,
+            summary_warning=artifacts.summary_warning,
+            generation_profile=artifacts.generation_profile,
+            generation_profile_source=artifacts.generation_profile_source,
+            generation_profile_warning=artifacts.generation_profile_warning,
         )
         self._report(task, "index")
         project = attach_index_to_project(project)
@@ -158,6 +144,17 @@ class CourseInitializer:
         if task is not None:
             task.complete("saved")
         return project
+
+    def _semantic_pipeline(self) -> CourseBuildPipeline:
+        if self._build_pipeline_override is not None:
+            return self._build_pipeline_override
+        return CourseBuildPipeline(
+            topic_inferer=infer_topics,
+            summary_builder=build_summary_markdown,
+            topic_reconciler=reconcile_topic_identities,
+            summary_generator=self.summary_generator,
+            profile_generator=self.profile_generator,
+        )
 
     def regenerate_summary(
         self,
@@ -174,46 +171,30 @@ class CourseInitializer:
             task=task,
         )
         self._check(task)
-        if not docs:
-            raise ValueError("No supported course files found. Supported: docx, pptx, pdf, txt, md.")
-        if not any(doc.text.strip() for doc in docs):
-            raise ValueError(
-                "No readable course content was extracted. Check damaged files, OCR, or text encoding."
-            )
+        self._require_readable_documents(docs)
 
-        self._report(task, "topics")
-        topics = reconcile_topic_identities(project.topics, infer_topics(docs))
-        self._report(task, "summary")
-        summary = build_summary_markdown(project.title, docs, topics)
-        summary_source = "local"
-        summary_warning = ""
-        if self.summary_generator is not None:
-            self._report(task, "summary_ai")
-            summary = self.summary_generator.generate(project.title, docs, topics, summary)
-            self._check(task)
-            summary_source = getattr(self.summary_generator, "summary_source", "llm")
-            summary_warning = getattr(self.summary_generator, "summary_warning", "")
-        self._report(task, "profile")
-        generation_profile, profile_source, profile_warning = self._generate_profile(
-            project.title, topics, summary
+        artifacts = self._semantic_pipeline().build(
+            project.title,
+            docs,
+            previous_topics=project.topics,
+            task=task,
         )
-        self._check(task)
 
         updated = CourseProject(
             course_id=project.course_id,
             title=project.title,
             source_folder=project.source_folder,
-            summary_markdown=summary,
+            summary_markdown=artifacts.summary_markdown,
             summary_path=project.summary_path,
-            topics=topics,
+            topics=artifacts.topics,
             documents=_document_records(docs),
             created_at=project.created_at,
             updated_at=datetime.now(timezone.utc).isoformat(),
-            summary_source=summary_source,
-            summary_warning=summary_warning,
-            generation_profile=generation_profile,
-            generation_profile_source=profile_source,
-            generation_profile_warning=profile_warning,
+            summary_source=artifacts.summary_source,
+            summary_warning=artifacts.summary_warning,
+            generation_profile=artifacts.generation_profile,
+            generation_profile_source=artifacts.generation_profile_source,
+            generation_profile_warning=artifacts.generation_profile_warning,
             exam_scope_mode=project.exam_scope_mode,
             exam_scope_topic_ids=list(project.exam_scope_topic_ids),
         )
@@ -282,6 +263,17 @@ class CourseInitializer:
             warning(f"Failed to clear completed course parse checkpoint: {exc}")
 
     @staticmethod
+    def _require_readable_documents(documents: list[ExtractedDocument]) -> None:
+        if not documents:
+            raise ValueError(
+                "No supported course files found. Supported: docx, pptx, pdf, txt, md."
+            )
+        if not any(document.text.strip() for document in documents):
+            raise ValueError(
+                "No readable course content was extracted. Check damaged files, OCR, or text encoding."
+            )
+
+    @staticmethod
     def _check(task: TaskControl | None) -> None:
         if task is not None:
             task.check_cancelled()
@@ -296,19 +288,6 @@ class CourseInitializer:
     ) -> None:
         if task is not None:
             task.report(stage, current, total, detail)
-
-    def _generate_profile(self, title, topics, summary) -> tuple[dict, str, str]:
-        """Generate defaults without allowing an optional LLM failure to block import."""
-        try:
-            plan = self.profile_generator.generate(title, topics, summary)
-            source = getattr(self.profile_generator, "profile_source", "local")
-            warning = getattr(self.profile_generator, "profile_warning", "")
-        except Exception as exc:
-            plan = build_local_course_profile(topics, summary)
-            source = "local"
-            warning = f"Course generation profile failed: {exc}"
-        return plan.to_dict(), source, warning
-
 
 def _document_records(docs: list[ExtractedDocument]) -> list[dict]:
     return [

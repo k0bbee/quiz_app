@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
@@ -132,22 +132,24 @@ class CourseExamScopeRegenerationTests(unittest.TestCase):
             def save(_project, make_current=True):
                 return True
 
-        initializer = CourseInitializer(manager=Manager())
-        initializer.parser = Parser()
         regenerated_topics = [
             CourseTopic(topic_id="io", title="Input and Output"),
             CourseTopic(topic_id="cpu", title="Processor"),
         ]
+        pipeline = Mock()
+        pipeline.build.return_value = SimpleNamespace(
+            topics=regenerated_topics,
+            summary_markdown="# Updated",
+            summary_source="local",
+            summary_warning="",
+            generation_profile={},
+            generation_profile_source="local",
+            generation_profile_warning="",
+        )
+        initializer = CourseInitializer(manager=Manager(), build_pipeline=pipeline)
+        initializer.parser = Parser()
 
-        with patch(
-            "core.course_initializer.reconcile_topic_identities",
-            return_value=regenerated_topics,
-        ), patch.object(
-            initializer,
-            "_generate_profile",
-            return_value=({}, "local", ""),
-        ):
-            updated = initializer.regenerate_summary(project, make_current=False)
+        updated = initializer.regenerate_summary(project, make_current=False)
 
         self.assertEqual("selected", updated.exam_scope_mode)
         self.assertEqual(["io"], updated.exam_scope_topic_ids)
