@@ -11,7 +11,9 @@ from core.document_parser import DocumentParser, ExtractedDocument
 from core.course_index import attach_index_to_project
 from core.term_extraction import extract_course_terms, is_low_value_keyword
 from core.background_task import TaskControl
+from core.course_parse_checkpoint import CourseParseCheckpointStore
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
+from utils.logger import warning
 from utils.constants import topic_alias_values, topic_value
 from ai.course_generation_profile import (
     CourseGenerationProfileGenerator,
@@ -80,11 +82,13 @@ class CourseInitializer:
         manager: CourseProjectManager | None = None,
         summary_generator=None,
         profile_generator=None,
+        checkpoint_store: CourseParseCheckpointStore | None = None,
     ):
         self.parser = DocumentParser()
         self.manager = manager or CourseProjectManager()
         self.summary_generator = summary_generator
         self.profile_generator = profile_generator or CourseGenerationProfileGenerator()
+        self.checkpoint_store = checkpoint_store
 
     def initialize(
         self,
@@ -96,7 +100,12 @@ class CourseInitializer:
     ) -> CourseProject:
         """Parse a folder and save a course project."""
         self._report(task, "parsing", detail=str(folder))
-        docs = self.parser.parse_folder(folder, task=task) if task else self.parser.parse_folder(folder)
+        docs = self._parse_documents(
+            folder,
+            operation="initialize",
+            course_id=course_id,
+            task=task,
+        )
         self._check(task)
         if not docs:
             raise ValueError("No supported course files found. Supported: docx, pptx, pdf, txt, md.")
@@ -145,6 +154,7 @@ class CourseInitializer:
         self._report(task, "saving")
         if not self.manager.save(project, make_current=make_current):
             raise OSError("Failed to save course data.")
+        self._clear_checkpoint(folder, operation="initialize", course_id=course_id)
         if task is not None:
             task.complete("saved")
         return project
@@ -157,10 +167,11 @@ class CourseInitializer:
     ) -> CourseProject:
         """Re-parse an existing course's source folder and update its reusable summary."""
         self._report(task, "parsing", detail=project.source_folder)
-        docs = (
-            self.parser.parse_folder(project.source_folder, task=task)
-            if task
-            else self.parser.parse_folder(project.source_folder)
+        docs = self._parse_documents(
+            project.source_folder,
+            operation="regenerate",
+            course_id=project.course_id,
+            task=task,
         )
         self._check(task)
         if not docs:
@@ -211,9 +222,64 @@ class CourseInitializer:
         self._report(task, "saving")
         if not self.manager.save(updated, make_current=make_current):
             raise OSError("Failed to save course data.")
+        self._clear_checkpoint(
+            project.source_folder,
+            operation="regenerate",
+            course_id=project.course_id,
+        )
         if task is not None:
             task.complete("saved")
         return updated
+
+    def _parse_documents(
+        self,
+        folder: str,
+        *,
+        operation: str,
+        course_id: str,
+        task: TaskControl | None,
+    ) -> list[ExtractedDocument]:
+        if self.checkpoint_store is None:
+            return self.parser.parse_folder(folder, task=task) if task else self.parser.parse_folder(folder)
+
+        source_paths = self.parser.source_paths(folder)
+        cached = self.checkpoint_store.load_documents(
+            folder,
+            operation=operation,
+            course_id=course_id,
+            source_paths=source_paths,
+        )
+
+        def save_checkpoint(path: Path, document: ExtractedDocument) -> None:
+            try:
+                self.checkpoint_store.save_document(
+                    folder,
+                    operation=operation,
+                    course_id=course_id,
+                    source_path=path,
+                    document=document,
+                )
+            except OSError as exc:
+                warning(f"Course parse checkpoint unavailable; continuing import: {exc}")
+
+        return self.parser.parse_folder(
+            folder,
+            task=task,
+            cached_documents=cached,
+            on_document_parsed=save_checkpoint,
+        )
+
+    def _clear_checkpoint(self, folder: str, *, operation: str, course_id: str) -> None:
+        if self.checkpoint_store is None:
+            return
+        try:
+            self.checkpoint_store.clear(
+                folder,
+                operation=operation,
+                course_id=course_id,
+            )
+        except OSError as exc:
+            warning(f"Failed to clear completed course parse checkpoint: {exc}")
 
     @staticmethod
     def _check(task: TaskControl | None) -> None:

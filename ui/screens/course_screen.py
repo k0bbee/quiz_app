@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
 from core.course_initializer import CourseInitializer
+from core.course_parse_checkpoint import CourseParseCheckpointStore
 from core.course_asset_lifecycle import (
     CourseRemovalMode,
     analyze_course_asset_impact,
@@ -27,7 +28,7 @@ from core.ocr_runtime import OCR_REMEDIATION
 from core.topic_identity_migration import TopicIdentityRepairReport, repair_question_topic_identities
 from models.course_project import CourseProjectManager
 from core.language_manager import LanguageManager
-from config import SETTINGS_FILE
+from config import COURSE_CHECKPOINTS_DIR, SETTINGS_FILE
 from ui.dialogs.course_exam_scope_dialog import CourseExamScopeDialog
 from ui.widgets.course_qa_panel import CourseQAPanel
 from utils.json_io import read_json
@@ -58,6 +59,7 @@ class CourseScreen(QWidget):
         task_center=None,
         qa_service_factory=None,
         current_event_dialog_factory=None,
+        checkpoint_store=None,
     ):
         super().__init__(parent)
         self.manager = manager
@@ -70,7 +72,13 @@ class CourseScreen(QWidget):
         self.current_event_dialog_factory = (
             current_event_dialog_factory or self._create_current_event_dialog
         )
-        self.initializer = CourseInitializer(manager)
+        self.checkpoint_store = checkpoint_store or CourseParseCheckpointStore(
+            COURSE_CHECKPOINTS_DIR
+        )
+        self.initializer = CourseInitializer(
+            manager,
+            checkpoint_store=self.checkpoint_store,
+        )
         self.lang_manager = LanguageManager.instance()
         self._init_worker = None
         self._regen_worker = None
@@ -80,6 +88,7 @@ class CourseScreen(QWidget):
         self._task_bridge = None
         self._import_expanded = False
         self._setup_ui()
+        self.folder_input.editingFinished.connect(self._refresh_checkpoint_action)
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self.refresh()
 
@@ -116,6 +125,7 @@ class CourseScreen(QWidget):
         ))
         self.qa_panel.retranslate()
         self._update_summary_mode_button_text()
+        self._refresh_checkpoint_action()
         self.refresh()
 
     def _setup_ui(self):
@@ -359,6 +369,7 @@ class CourseScreen(QWidget):
             self.folder_input.setText(str(metadata.get("source_folder", "") or ""))
             self.title_input.setText(str(metadata.get("course_title", "") or ""))
             self._update_import_toggle_text()
+            self._refresh_checkpoint_action()
             return
         course_id = str(metadata.get("course_id", "") or "")
         for row in range(self.project_list.count()):
@@ -389,6 +400,39 @@ class CourseScreen(QWidget):
             self.folder_input.setText(folder)
             if not self.title_input.text().strip():
                 self.title_input.setText(folder.split("/")[-1].split("\\")[-1])
+            self._refresh_checkpoint_action()
+
+    def _refresh_checkpoint_action(self) -> None:
+        """Reflect reusable parsed files without starting background work."""
+        normal_text = self.lang_manager.get_text(
+            "解析并生成总结",
+            "Parse and generate summary",
+        )
+        self.init_btn.setText(normal_text)
+        self.init_btn.setToolTip("")
+        folder = self.folder_input.text().strip()
+        if not folder:
+            return
+        try:
+            source_paths = self.initializer.parser.source_paths(folder)
+            count = self.checkpoint_store.reusable_count(
+                folder,
+                operation="initialize",
+                course_id="",
+                source_paths=source_paths,
+            )
+        except (FileNotFoundError, OSError, ValueError):
+            return
+        if count <= 0:
+            return
+        self.init_btn.setText(self.lang_manager.get_text(
+            "继续解析并生成总结",
+            "Resume Parsing and Summary",
+        ))
+        self.init_btn.setToolTip(self.lang_manager.get_text(
+            f"将复用 {count} 个已解析且未变化的文件；仍需你点击后才会继续。",
+            f"Reuses {count} parsed unchanged file(s); nothing resumes until you click.",
+        ))
 
     def _initialize_course(self):
         folder = self.folder_input.text().strip()
@@ -475,6 +519,7 @@ class CourseScreen(QWidget):
             self.init_btn.setText(self.lang_manager.get_text(
                 "解析并生成总结", "Parse and generate summary"
             ))
+            self._refresh_checkpoint_action()
             self.more_actions_btn.setEnabled(True)
             self.refresh_action.setEnabled(True)
             self._on_project_selected(self.project_list.currentItem(), None)
@@ -527,6 +572,7 @@ class CourseScreen(QWidget):
             "parsing": ("扫描课程资料", "Scanning course materials"),
             "files_found": ("已发现资料文件", "Course files found"),
             "parsing_file": ("正在解析文件", "Parsing file"),
+            "reusing_file": ("复用已解析文件", "Reusing parsed file"),
             "parsing_page": ("正在解析页面", "Parsing page"),
             "topics": ("识别课程主题", "Identifying course topics"),
             "summary": ("生成本地总结", "Building local summary"),
@@ -580,6 +626,7 @@ class CourseScreen(QWidget):
             self.manager,
             summary_generator=summary_generator,
             profile_generator=profile_generator,
+            checkpoint_store=self.checkpoint_store,
         )
 
     def _on_init_done(self, project):

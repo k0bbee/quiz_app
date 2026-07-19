@@ -9,7 +9,7 @@ from core.document_parser import ExtractedDocument
 from utils.json_io import read_json, write_json
 
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 _MANIFEST_NAME = "checkpoint.json"
 
 
@@ -28,7 +28,7 @@ class CourseParseCheckpointStore:
         source_path: str | Path,
         document: ExtractedDocument,
     ) -> None:
-        checkpoint_dir = self._prepare(folder, operation, course_id)
+        checkpoint_dir, manifest = self._prepare(folder, operation, course_id)
         source = Path(source_path).resolve()
         signature = _source_signature(source)
         if not signature:
@@ -38,9 +38,17 @@ class CourseParseCheckpointStore:
             "signature": signature,
             "document": _document_payload(document),
         }
-        path = checkpoint_dir / _document_filename(source)
+        filename = _document_filename(source)
+        path = checkpoint_dir / filename
         if not write_json(str(path), payload):
             raise OSError(f"failed to save course parse checkpoint: {path}")
+        documents = manifest.get("documents")
+        documents = dict(documents) if isinstance(documents, dict) else {}
+        documents[filename] = signature
+        manifest["documents"] = documents
+        manifest_path = checkpoint_dir / _MANIFEST_NAME
+        if not write_json(str(manifest_path), manifest):
+            raise OSError(f"failed to update course parse checkpoint: {manifest_path}")
 
     def load_documents(
         self,
@@ -52,7 +60,7 @@ class CourseParseCheckpointStore:
     ) -> dict[str, ExtractedDocument]:
         checkpoint_dir = self._checkpoint_dir(folder, operation, course_id)
         manifest = read_json(str(checkpoint_dir / _MANIFEST_NAME))
-        if manifest != self._manifest(folder, operation, course_id):
+        if not _manifest_matches(manifest, self._manifest(folder, operation, course_id)):
             return {}
         documents: dict[str, ExtractedDocument] = {}
         for source_path in source_paths:
@@ -97,23 +105,36 @@ class CourseParseCheckpointStore:
         course_id: str,
         source_paths: list[str | Path],
     ) -> int:
-        return len(self.load_documents(
-            folder,
-            operation=operation,
-            course_id=course_id,
-            source_paths=source_paths,
-        ))
+        checkpoint_dir = self._checkpoint_dir(folder, operation, course_id)
+        manifest = read_json(str(checkpoint_dir / _MANIFEST_NAME))
+        if not _manifest_matches(manifest, self._manifest(folder, operation, course_id)):
+            return 0
+        documents = manifest.get("documents")
+        if not isinstance(documents, dict):
+            return 0
+        count = 0
+        for source_path in source_paths:
+            source = Path(source_path).resolve()
+            filename = _document_filename(source)
+            if (
+                documents.get(filename) == _source_signature(source)
+                and (checkpoint_dir / filename).is_file()
+            ):
+                count += 1
+        return count
 
-    def _prepare(self, folder: str, operation: str, course_id: str) -> Path:
+    def _prepare(self, folder: str, operation: str, course_id: str) -> tuple[Path, dict]:
         checkpoint_dir = self._checkpoint_dir(folder, operation, course_id)
         expected = self._manifest(folder, operation, course_id)
         current = read_json(str(checkpoint_dir / _MANIFEST_NAME))
-        if current != expected:
+        if not _manifest_matches(current, expected):
             self.clear(folder, operation=operation, course_id=course_id)
             checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            expected["documents"] = {}
             if not write_json(str(checkpoint_dir / _MANIFEST_NAME), expected):
                 raise OSError(f"failed to initialize course parse checkpoint: {checkpoint_dir}")
-        return checkpoint_dir
+            current = expected
+        return checkpoint_dir, dict(current)
 
     def _checkpoint_dir(self, folder: str, operation: str, course_id: str) -> Path:
         identity = "\0".join((
@@ -144,6 +165,12 @@ def _source_signature(path: Path) -> dict:
         "size": int(stat.st_size),
         "mtime_ns": int(stat.st_mtime_ns),
     }
+
+
+def _manifest_matches(manifest, expected: dict) -> bool:
+    if not isinstance(manifest, dict):
+        return False
+    return all(manifest.get(key) == value for key, value in expected.items())
 
 
 def _document_filename(path: Path) -> str:

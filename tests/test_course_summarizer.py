@@ -1,4 +1,5 @@
 import json
+import inspect
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,6 +19,7 @@ from core.course_asset_lifecycle import (
     CourseRemovalResult,
 )
 from core.course_initializer import CourseInitializer, build_summary_markdown, infer_topics
+from core.course_parse_checkpoint import CourseParseCheckpointStore
 from core.document_parser import DocumentParser, ExtractedDocument
 from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
 from core.background_task_center import BackgroundTaskCenter, TaskStatus
@@ -70,6 +72,40 @@ class FakeProfileGenerator:
 
 
 class CourseSummaryGeneratorTests(unittest.TestCase):
+    def test_course_screen_surfaces_reusable_parse_checkpoint_without_auto_starting(self):
+        self.assertIn(
+            "checkpoint_store",
+            inspect.signature(CourseScreen.__init__).parameters,
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "materials"
+            source.mkdir()
+            source_file = source / "lecture.txt"
+            source_file.write_text("cache mapping " * 100, encoding="utf-8")
+            store = CourseParseCheckpointStore(root / "checkpoints")
+            store.save_document(
+                str(source),
+                operation="initialize",
+                course_id="",
+                source_path=source_file,
+                document=ExtractedDocument(
+                    str(source_file), "lecture", ".txt", "cached", ["cached"], []
+                ),
+            )
+            screen = CourseScreen(
+                CourseProjectManager(str(root / "projects")),
+                checkpoint_store=store,
+            )
+
+            screen.folder_input.setText(str(source))
+            screen._refresh_checkpoint_action()
+
+            self.assertIn("继续", screen.init_btn.text())
+            self.assertIn("1", screen.init_btn.toolTip())
+            self.assertIs(store, screen.initializer.checkpoint_store)
+            self.assertIsNone(screen._init_worker)
+
     def test_initialize_rejects_folders_with_only_unreadable_documents(self):
         manager = Mock()
         initializer = CourseInitializer(manager=manager)
