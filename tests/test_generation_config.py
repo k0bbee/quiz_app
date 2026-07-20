@@ -32,6 +32,13 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class GenerationConfigTests(unittest.TestCase):
+    def test_main_window_exposes_one_shared_generation_dialog_preparation_path(self):
+        from ui.main_window import MainWindow
+
+        self.assertTrue(
+            callable(getattr(MainWindow, "_prepare_generation_dialog", None))
+        )
+
     def test_generation_worker_cancel_interrupts_active_client_request(self):
         client = SimpleNamespace(model="test-model", cancel=Mock())
         worker = GenerationWorker(

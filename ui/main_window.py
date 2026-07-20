@@ -21,6 +21,10 @@ from core.background_task_recovery import (
 from core.topic_display import topic_display_name
 from core.past_exam_prediction import prediction_prefill_status
 from ui.dialogs.background_task_dialog import BackgroundTaskDialog
+from ui.generation_launch_controller import (
+    GenerationLaunchController,
+    generation_launch_copy,
+)
 from config import APP_NAME
 
 from ui.screens.home_screen import HomeScreen
@@ -1016,6 +1020,43 @@ class MainWindow(QMainWindow):
         )
         self.navigate_to(self.SCREEN_QUIZ)
 
+    def _prepare_generation_dialog(
+        self,
+        *,
+        course_override=None,
+        material_pack=None,
+        purpose: str = "create",
+    ):
+        """Prepare one validated generation dialog for create or regenerate."""
+        gm = self.lang_manager.get_text
+        context_provider = getattr(
+            self,
+            "_load_generation_context",
+            lambda: ("", [], None),
+        )
+        controller = GenerationLaunchController(
+            settings_provider=self.settings_screen.settings_snapshot,
+            course_context_provider=context_provider,
+            task_center=getattr(self, "task_center", None),
+            api_key_required=_provider_requires_api_key,
+            settings_validator=_ai_generation_settings_error,
+        )
+        preparation = controller.prepare(
+            self,
+            course_override=course_override,
+            material_pack=material_pack,
+        )
+        if preparation.ok:
+            return preparation
+        copy = generation_launch_copy(preparation.issue, purpose=purpose)
+        detail = preparation.message or gm(copy.detail_zh, copy.detail_en)
+        QMessageBox.warning(
+            self,
+            gm(copy.title_zh, copy.title_en),
+            detail,
+        )
+        return None
+
     def _on_ai_generate(
         self,
         *,
@@ -1027,69 +1068,16 @@ class MainWindow(QMainWindow):
     ):
         """Open the AI question generation dialog."""
         gm = self.lang_manager.get_text
-
-        # Read settings directly — don't trigger save dialog
-        settings = self.settings_screen.settings_snapshot()
-
-        # Check course content first
-        if course_override is None:
-            course_content, available_topics, course_project = self._load_generation_context()
-        else:
-            course_project = course_override
-            course_content = str(getattr(course_project, "summary_markdown", "") or "")
-            scoped_topics = getattr(course_project, "exam_topics", None)
-            available_topics = list(
-                scoped_topics()
-                if callable(scoped_topics)
-                else getattr(course_project, "topics", []) or []
-            )
-        if not course_content:
-            QMessageBox.warning(
-                self,
-                gm("缺少课程内容", "No Course Content"),
-                gm("尚未导入任何课程资料。请先通过「课程资料」页面导入课件文件夹（支持 pptx/pdf/docx/md/txt），\n系统将自动解析并生成课程摘要，之后即可使用 AI 出题功能。",
-                   "No course materials imported yet. Please go to Course Materials to import a folder\n(pptx/pdf/docx/md/txt). The system will parse and generate a summary for AI generation."),
-            )
-            return
-        if (
-            course_project is not None
-            and getattr(course_project, "exam_scope_mode", "all") == "selected"
-            and not available_topics
-        ):
-            QMessageBox.warning(
-                self,
-                gm("考试范围为空", "Empty Exam Scope"),
-                gm(
-                    "当前指定范围中的知识点已不存在。请到课程页重新设置考试范围后再出题。",
-                    "The topics in the selected scope no longer exist. Reset the exam scope on the Courses page before generating questions.",
-                ),
-            )
-            return
-
-        # Check API key unless a local CLI agent is selected.
-        from core.secrets_manager import SecretsManager
-        api_key = SecretsManager.instance().get_key() if _provider_requires_api_key(settings) else ""
-        settings_error = _ai_generation_settings_error(settings, api_key)
-        if settings_error:
-            QMessageBox.warning(
-                self,
-                gm("AI 设置需要处理", "AI Settings Need Attention"),
-                settings_error,
-            )
-            return
-
-        # Lazy import — avoid loading AI deps until actually needed
-        from ui.dialogs.ai_generation_dialog import AIGenerationDialog
-        dialog = AIGenerationDialog(
-            course_content,
-            settings,
+        preparation = MainWindow._prepare_generation_dialog(
             self,
-            available_topics=available_topics,
-            course_project=course_project,
-            task_center=getattr(self, "task_center", None),
+            course_override=course_override,
             material_pack=material_pack,
+            purpose="create",
         )
-        dialog.configure_from_course_profile(course_project)
+        if preparation is None:
+            return
+        dialog = preparation.dialog
+        course_project = preparation.course_project
         if initial_plan is not None:
             try:
                 dialog.apply_exam_plan(initial_plan)
@@ -1188,52 +1176,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, gm("错误", "Error"), gm("未找到题目集。", "Question set not found."))
             return
 
-        settings = self.settings_screen.settings_snapshot()
-        course_content, available_topics, course_project = self._load_generation_context()
-        if not course_content:
-            QMessageBox.warning(
-                self,
-                gm("缺少课程内容", "No Course Content"),
-                gm("请先导入课程资料并生成课程总结，然后再重新生成题目。",
-                   "Import course materials and generate a course summary before regenerating questions."),
-            )
-            return
-        if (
-            course_project is not None
-            and getattr(course_project, "exam_scope_mode", "all") == "selected"
-            and not available_topics
-        ):
-            QMessageBox.warning(
-                self,
-                gm("考试范围为空", "Empty Exam Scope"),
-                gm(
-                    "当前指定范围中的知识点已不存在。请到课程页重新设置考试范围后再重新生成题目。",
-                    "The topics in the selected scope no longer exist. Reset the exam scope on the Courses page before regenerating questions.",
-                ),
-            )
-            return
-
-        from core.secrets_manager import SecretsManager
-        api_key = SecretsManager.instance().get_key() if _provider_requires_api_key(settings) else ""
-        settings_error = _ai_generation_settings_error(settings, api_key)
-        if settings_error:
-            QMessageBox.warning(
-                self,
-                gm("AI 设置需要处理", "AI Settings Need Attention"),
-                settings_error,
-            )
-            return
-
-        from ui.dialogs.ai_generation_dialog import AIGenerationDialog
-        dialog = AIGenerationDialog(
-            course_content,
-            settings,
+        preparation = MainWindow._prepare_generation_dialog(
             self,
-            available_topics=available_topics,
-            course_project=course_project,
-            task_center=getattr(self, "task_center", None),
+            purpose="regenerate",
         )
-        dialog.configure_from_course_profile(course_project)
+        if preparation is None:
+            return
+        dialog = preparation.dialog
+        course_project = preparation.course_project
         dialog.configure_from_question_set(qset)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
