@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import pyqtSignal, Qt
 
+from config import APP_NAME_EN, APP_NAME_ZH
 from core.language_manager import LanguageManager
 from core.today_learning_plan import (
     DraftLearningState,
@@ -48,7 +49,7 @@ class HomeScreen(QWidget):
         main_layout.setSpacing(16)
 
         # Title
-        self.title = QLabel(self.lang_manager.get_text("课程刷题工具", "Course Quiz Studio"))
+        self.title = QLabel(self.lang_manager.get_text(APP_NAME_ZH, APP_NAME_EN))
         self.title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.title.setObjectName("screenTitle")
         main_layout.addWidget(self.title)
@@ -193,7 +194,7 @@ class HomeScreen(QWidget):
 
     def _on_language_changed(self, lang):
         """Update all UI text when language changes."""
-        self.title.setText(self.lang_manager.get_text("课程刷题工具", "Course Quiz Studio"))
+        self.title.setText(self.lang_manager.get_text(APP_NAME_ZH, APP_NAME_EN))
         self.subtitle.setText(self.lang_manager.get_text(
             "从课件生成总结、题库和自测练习",
             "Generate summaries, question banks and self-tests from courseware"

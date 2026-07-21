@@ -98,6 +98,7 @@ DEFAULT_SETTINGS = {
 }
 
 # ── Application metadata ──────────────────────────────────────
-APP_NAME = "Course Quiz Studio"
-APP_NAME_ZH = "课程刷题工具"
+APP_NAME = "AI课程刷题器"
+APP_NAME_ZH = APP_NAME
+APP_NAME_EN = "AI Course Quiz"
 APP_VERSION = "1.0.0"

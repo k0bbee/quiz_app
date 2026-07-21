@@ -1,4 +1,4 @@
-"""Entry point for the Course Quiz Studio application."""
+"""Entry point for the AI课程刷题器 application."""
 
 import sys
 
@@ -13,7 +13,7 @@ from utils.json_io import read_json
 
 def main() -> None:
     app = QApplication(sys.argv)
-    app.setOrganizationName("Course Quiz Studio")
+    app.setOrganizationName(APP_NAME)
     app.setApplicationName(APP_NAME)
 
     settings = read_json(SETTINGS_FILE) or {}

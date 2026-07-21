@@ -24,6 +24,7 @@ from core.ocr_runtime import OCR_REMEDIATION
 from core.language_manager import LanguageManager
 from config import (
     APP_NAME,
+    APP_VERSION,
     BASE_DIR,
     DATA_DIR,
     SETTINGS_FILE,
@@ -653,7 +654,7 @@ class SettingsScreen(QWidget):
         self.about_license_label = QLabel("License: GPL-3.0-only")
         self.about_license_label.setObjectName("secondaryText")
         about_layout.addWidget(self.about_license_label)
-        self.version_label = QLabel(f"{APP_NAME} v1.0.0")
+        self.version_label = QLabel(f"{APP_NAME} V{APP_VERSION}")
         self.version_label.setObjectName("settingsVersionLabel")
         about_layout.addWidget(self.version_label)
         layout.addWidget(self.about_group)

@@ -80,7 +80,7 @@ class WindowsDPAPISecretStore:
         _ = input_buffer
         if not crypt32.CryptProtectData(
             ctypes.byref(input_blob),
-            "Course Quiz Studio API Key",
+            "AI课程刷题器 API Key",
             None,
             None,
             None,

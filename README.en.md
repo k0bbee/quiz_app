@@ -1,4 +1,4 @@
-# Course Quiz Studio
+# AI课程刷题器 (AI Course Quiz)
 
 [简体中文](README.md) | [English](README.en.md)
 

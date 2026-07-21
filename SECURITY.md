@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Course Quiz Studio is currently developed as a rolling desktop application rather than a set of long-lived release branches.
+AI课程刷题器 is currently developed as a rolling desktop application rather than a set of long-lived release branches.
 
 | Version | Security fixes |
 |---|---|

@@ -27,7 +27,7 @@ from ui.generation_launch_controller import (
     generation_launch_copy,
 )
 from ui.session_retry_presenter import session_retry_copy
-from config import APP_NAME
+from config import APP_NAME, APP_NAME_EN
 
 from ui.screens.home_screen import HomeScreen
 from ui.screens.topic_selection_screen import TopicSelectionScreen
@@ -338,7 +338,7 @@ class MainWindow(QMainWindow):
         gm = self.lang_manager.get_text
 
         self.context_back_btn.setText(gm("返回", "Back"))
-        self.sidebar_title.setText(gm("刷题平台", "Quiz Studio"))
+        self.sidebar_title.setText(gm(APP_NAME, APP_NAME_EN))
         self.home_nav_btn.setText(gm("首页", "Home"))
         self.learning_nav_btn.setText(gm("学习", "Study"))
         self.courses_nav_btn.setText(gm("课程", "Courses"))
