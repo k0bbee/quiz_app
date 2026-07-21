@@ -196,7 +196,7 @@ python -m pytest tests/ -q --run-full
 - Do not commit API keys, private course materials, generated runtime data, or exported study packages.
 - API keys are excluded from application-data exports.
 - Imported course content is sent to a remote provider only when the user explicitly runs an AI operation configured for that provider.
-- See [SECURITY.md](SECURITY.md) for private vulnerability reporting and the supported-version policy.
+- See [SECURITY.en.md](SECURITY.en.md) for private vulnerability reporting and the supported-version policy.
 
 ## License
 

@@ -1,65 +1,61 @@
-# Security Policy
+# 安全策略
 
-## Supported versions
+[简体中文](SECURITY.md) | [English](SECURITY.en.md)
 
-AI课程刷题软件 is currently developed as a rolling desktop application rather than a set of long-lived release branches.
+## 支持版本
 
-| Version | Security fixes |
+AI课程刷题软件目前采用滚动开发方式，不维护多条长期支持的发布分支。
+
+| 版本 | 安全修复状态 |
 |---|---|
-| Latest release | Supported |
-| Current `main` branch | Supported |
-| Older releases and commits | Not supported; reproduce against the latest version first |
+| 最新发布版本 | 支持 |
+| 当前 `main` 分支 | 支持 |
+| 更早的发布版本和提交 | 不支持；请先在最新版本上确认问题仍可复现 |
 
-## Reporting a vulnerability
+## 报告安全漏洞
 
-Please do not disclose a suspected vulnerability in a public issue, discussion, pull request, screenshot, log, or course-data sample.
+请勿在公开Issue、Discussion、Pull Request、截图、日志或课程数据样例中披露疑似漏洞。
 
-Use the repository's **Security → Report a vulnerability** action to create a private GitHub security advisory. If private vulnerability reporting is not available, open a public issue titled `[Security contact request]` containing only a request for a private reporting channel. Do not include technical details, credentials, personal information, or proof-of-concept material in that issue.
+优先使用仓库的 **Security → Report a vulnerability** 创建私密GitHub安全公告。如果仓库尚未启用私密漏洞报告，只创建标题为 `[Security contact request]` 的公开Issue，请求私密报告渠道。该Issue中不得包含技术细节、凭据、个人信息或概念验证材料。
 
-A useful private report includes:
+有效的私密报告建议包含：
 
-- The affected version or commit.
-- The operating system and Python version.
-- The affected component and required configuration.
-- Reproduction steps with sanitized test data.
-- The expected and observed security boundary.
-- The likely impact and any known mitigations.
-- A minimal proof of concept that contains no real API key, private course material, or personal data.
+- 受影响的版本或Git提交。
+- 操作系统和Python版本。
+- 受影响的组件及必要配置。
+- 使用脱敏测试数据的复现步骤。
+- 预期安全边界与实际行为。
+- 可能影响和已知缓解措施。
+- 不含真实API Key、私人课件或个人数据的最小概念验证。
 
-Reports will be acknowledged as soon as practical. The maintainer may request additional reproduction details, coordinate a fix and release, and credit the reporter if requested. Please allow time for remediation before public disclosure.
+维护者会在实际条件允许时尽快确认报告，并可能请求进一步的复现信息、协调修复与发布，以及按报告者意愿致谢。公开披露前请为修复预留合理时间。
 
-## Security-sensitive areas
+## 安全敏感区域
 
-Reports are especially useful when they involve:
+以下问题尤其值得报告：
 
-- API-key storage, retrieval, migration, or accidental logging.
-- Windows DPAPI or system-keyring fallback behavior.
-- `.quizdata`, course, question-bank, or progress import path traversal and unsafe archive handling.
-- Untrusted PDF, PPTX, DOCX, Markdown, JSON, or generated HTML content.
-- Remote LLM endpoint validation, request routing, or credential exposure.
-- Local CLI Agent command, argument, environment, stdin, or file-access boundaries.
-- Unsafe file opening, source navigation, or URL handling.
-- Cross-course data isolation, destructive deletion, or unintended export of private material.
-- Dependency vulnerabilities with a demonstrated impact on this application.
+- API Key的存储、读取、迁移或意外日志记录。
+- Windows DPAPI或系统keyring的fallback行为。
+- `.quizdata`、课程、题库或进度导入中的路径穿越和不安全归档处理。
+- 不可信PDF、PPTX、DOCX、Markdown、JSON或生成HTML的处理。
+- 远程LLM端点验证、请求路由或凭据泄露。
+- 本地CLI Agent的命令、参数、环境变量、标准输入或文件访问边界。
+- 不安全的文件打开、来源定位或URL处理。
+- 跨课程数据隔离、破坏性删除或私人材料意外导出。
+- 能够证明对本应用产生实际影响的依赖漏洞。
 
-## Out of scope
+## 通常不在受理范围
 
-The following are normally not treated as vulnerabilities without a demonstrated security impact:
+在无法证明安全影响时，以下情况通常不作为安全漏洞处理：
 
-- Model hallucinations, low-quality generated questions, or inaccurate course summaries.
-- Availability or behavior of third-party LLM and OCR services.
-- Attacks that require a user to deliberately disable operating-system protections or modify the application source.
-- Reports based only on automated scanner output without a reproducible application impact.
-- Secrets or private documents that a user intentionally enters into an untrusted third-party endpoint.
+- 模型幻觉、低质量生成题目或不准确的课程总结。
+- 第三方LLM或OCR服务的可用性与一般行为。
+- 必须由用户主动关闭操作系统保护或修改应用源码才能实施的攻击。
+- 只有自动扫描器输出、没有可复现应用影响的报告。
+- 用户主动输入到不可信第三方端点的密钥或私人文档。
 
-## Handling sensitive test material
+## 处理敏感测试材料
 
-Use synthetic content whenever possible. Redact API keys, usernames, local paths, course documents, student records, and provider responses before sharing logs or screenshots. Never commit a live key or private course file as a regression fixture.
+尽量使用合成内容。分享日志或截图前，必须清除API Key、用户名、本地路径、课程文档、学生记录和服务商响应。不得把有效密钥或私人课程文件作为回归测试夹具提交。
 
-If a credential may have been exposed, revoke or rotate it immediately. Removing it from the latest commit is not sufficient when it exists in Git history.
-
-## 安全问题报告（中文）
-
-请不要在公开 Issue、Discussion、PR、截图或日志中披露漏洞细节。优先通过仓库 **Security → Report a vulnerability** 创建私密安全报告。如果该入口尚未启用，只创建标题为 `[Security contact request]` 的公开 Issue，请求私密联系方式；Issue 中不要包含复现步骤、密钥、个人信息、课件内容或攻击样例。
-
-提交材料应尽量使用合成数据，并清除 API Key、用户名、本地路径、课程资料、学生记录和第三方服务响应。若怀疑密钥已经泄露，应立即在对应服务商处撤销或轮换；仅从最新提交中删除并不能清除 Git 历史中的密钥。
+如果凭据可能已经泄露，应立即在对应服务商处撤销或轮换。仅从最新提交中删除并不能清除Git历史中的凭据。
