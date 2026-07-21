@@ -49,6 +49,7 @@ bugs.md
 页面设计样例与入口分层.md
 docs/superpowers/plans/*.md
 docs/superpowers/specs/*.md
+docs/audits/2026-06-25-settings-connection/
 docs/**/*.png
 
 # OS files
