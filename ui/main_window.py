@@ -20,11 +20,13 @@ from core.background_task_recovery import (
 )
 from core.topic_display import topic_display_name
 from core.past_exam_prediction import prediction_prefill_status
+from core.session_retry import SessionRetryMode, session_retry_question_ids
 from ui.dialogs.background_task_dialog import BackgroundTaskDialog
 from ui.generation_launch_controller import (
     GenerationLaunchController,
     generation_launch_copy,
 )
+from ui.session_retry_presenter import session_retry_copy
 from config import APP_NAME
 
 from ui.screens.home_screen import HomeScreen
@@ -808,89 +810,53 @@ class MainWindow(QMainWindow):
 
     def _on_retry_incorrect(self):
         """Retry only incorrectly answered questions."""
-        gm = self.lang_manager.get_text
-        record = self.results_screen.current_record
-        if not record:
-            return
-
-        incorrect_ids = [
-            answer.question_id
-            for answer in record.answers
-            if not answer.skipped and not answer.is_correct
-        ]
-        if not incorrect_ids:
-            QMessageBox.information(
-                self,
-                gm("全部正确！", "All Correct!"),
-                gm("你答对了所有题目！🎉", "You answered all questions correctly! 🎉"),
-            )
-            return
-
-        questions = self.question_bank.get_many(incorrect_ids, course_id=self._current_course_id())
-        if questions:
-            self._active_questions = {q.question_id: q for q in questions}
-            self.quiz_screen.start_quiz_custom(
-                questions,
-                gm("重做：错题", "Retry: Incorrect Questions"),
-                show_timer=self._show_timer_setting(),
-            )
-            self.navigate_to(self.SCREEN_QUIZ)
+        MainWindow._retry_current_session(self, SessionRetryMode.INCORRECT)
 
     def _on_retry_unsure(self):
         """Retry questions the user marked as unsure in the completed session."""
-        gm = self.lang_manager.get_text
-        record = self.results_screen.current_record
-        if not record:
-            return
-
-        unsure_ids = [
-            answer.question_id
-            for answer in record.answers
-            if not answer.skipped and getattr(answer, "confidence", "sure") == "unsure"
-        ]
-        if not unsure_ids:
-            QMessageBox.information(
-                self,
-                gm("没有不确定题", "No Unsure Questions"),
-                gm("本次练习没有标记为不确定的题目。", "No questions were marked unsure in this session."),
-            )
-            return
-
-        questions = self.question_bank.get_many(unsure_ids, course_id=self._current_course_id())
-        if questions:
-            self._active_questions = {q.question_id: q for q in questions}
-            self.quiz_screen.start_quiz_custom(
-                questions,
-                gm("重做：不确定题", "Retry: Unsure Questions"),
-                show_timer=self._show_timer_setting(),
-            )
-            self.navigate_to(self.SCREEN_QUIZ)
+        MainWindow._retry_current_session(self, SessionRetryMode.UNSURE)
 
     def _on_retry_review(self):
         """Retry questions the user marked for review in the completed session."""
+        MainWindow._retry_current_session(self, SessionRetryMode.REVIEW)
+
+    def _retry_current_session(self, mode: SessionRetryMode) -> None:
+        """Start one retry subset from the current completed session."""
         gm = self.lang_manager.get_text
         record = self.results_screen.current_record
         if not record:
             return
-
-        review_ids = list(dict.fromkeys(getattr(record, "marked_review_question_ids", [])))
-        if not review_ids:
+        copy = session_retry_copy(mode)
+        question_ids = session_retry_question_ids(record, mode)
+        parent = self if isinstance(self, QWidget) else None
+        if not question_ids:
             QMessageBox.information(
-                self if isinstance(self, QWidget) else None,
-                gm("没有复查题", "No Review Questions"),
-                gm("本次练习没有标记为复查的题目。", "No questions were marked for review in this session."),
+                parent,
+                gm(copy.empty_title_zh, copy.empty_title_en),
+                gm(copy.empty_detail_zh, copy.empty_detail_en),
             )
             return
-
-        questions = self.question_bank.get_many(review_ids, course_id=self._current_course_id())
-        if questions:
-            self._active_questions = {q.question_id: q for q in questions}
-            self.quiz_screen.start_quiz_custom(
-                questions,
-                gm("重做：复查题", "Retry: Review Questions"),
-                show_timer=self._show_timer_setting(),
+        questions = self.question_bank.get_many(
+            question_ids,
+            course_id=self._current_course_id(),
+        )
+        if not questions:
+            QMessageBox.warning(
+                parent,
+                gm("题目不可用", "Questions Unavailable"),
+                gm(
+                    "这些题目已被删除，或不属于当前课程。请返回结果页选择其他练习。",
+                    "These questions were deleted or do not belong to the current course. Choose another practice action from Results.",
+                ),
             )
-            self.navigate_to(self.SCREEN_QUIZ)
+            return
+        self._active_questions = {question.question_id: question for question in questions}
+        self.quiz_screen.start_quiz_custom(
+            questions,
+            gm(copy.session_title_zh, copy.session_title_en),
+            show_timer=self._show_timer_setting(),
+        )
+        self.navigate_to(self.SCREEN_QUIZ)
 
     def _on_practice_incorrect(self):
         """Start a quiz session from all historical incorrect questions."""

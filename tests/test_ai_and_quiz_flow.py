@@ -1436,9 +1436,16 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             _current_course_id=lambda: "course-a",
         )
 
-        MainWindow._on_retry_incorrect(shell)
+        with patch("ui.main_window.QMessageBox.warning") as warning:
+            MainWindow._on_retry_incorrect(shell)
 
         self.assertEqual(["q-wrong"], requested)
+        self.assertIn("题目不可用", warning.call_args.args[1])
+
+    def test_session_retry_modes_share_one_main_window_entry(self):
+        from ui.main_window import MainWindow
+
+        self.assertTrue(callable(getattr(MainWindow, "_retry_current_session", None)))
 
     def test_results_screen_enables_retry_unsure_action_when_needed(self):
         record = ProgressRecord.create_new("set-1")
