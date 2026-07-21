@@ -156,9 +156,23 @@ class CourseProject:
 class CourseProjectManager:
     """Persistence for imported course projects."""
 
-    def __init__(self, projects_dir: str = COURSE_PROJECTS_DIR):
+    def __init__(
+        self,
+        projects_dir: str = COURSE_PROJECTS_DIR,
+        *,
+        current_course_file: str | Path | None = None,
+    ):
         self._dir = projects_dir
+        self._injected_current_course_file = (
+            Path(current_course_file) if current_course_file is not None else None
+        )
         os.makedirs(self._dir, exist_ok=True)
+
+    @property
+    def _current_course_file(self) -> Path:
+        if self._injected_current_course_file is not None:
+            return self._injected_current_course_file
+        return Path(CURRENT_COURSE_FILE)
 
     @property
     def directory(self) -> str:
@@ -196,7 +210,7 @@ class CourseProjectManager:
             ]
             if make_current:
                 files.append((
-                    Path(CURRENT_COURSE_FILE),
+                    self._current_course_file,
                     _json_bytes({"course_id": project.course_id}),
                 ))
             return _commit_course_files(files, Path(self._dir).parent)
@@ -222,19 +236,19 @@ class CourseProjectManager:
         return sorted(projects, key=lambda project: project.updated_at, reverse=True)
 
     def current(self) -> Optional[CourseProject]:
-        data = read_json(CURRENT_COURSE_FILE)
+        data = read_json(self._current_course_file)
         if not data:
             return None
         project = self.get(data.get("course_id", ""))
         if project:
             return project
-        delete_json(CURRENT_COURSE_FILE)
+        delete_json(self._current_course_file)
         return None
 
     def set_current(self, course_id: str) -> bool:
         if not self.get(course_id):
             return False
-        return write_json(CURRENT_COURSE_FILE, {"course_id": course_id})
+        return write_json(self._current_course_file, {"course_id": course_id})
 
     def delete(self, course_id: str) -> bool:
         """Delete a course project and its generated summary file."""
@@ -250,9 +264,9 @@ class CourseProjectManager:
                         summary_path.unlink()
                 except OSError:
                     ok = False
-        current = read_json(CURRENT_COURSE_FILE) or {}
+        current = read_json(self._current_course_file) or {}
         if current.get("course_id") == course_id:
-            delete_json(CURRENT_COURSE_FILE)
+            delete_json(self._current_course_file)
         return ok
 
     @staticmethod
