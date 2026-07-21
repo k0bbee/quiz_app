@@ -1,4 +1,4 @@
-# AI课程刷题器
+# AI课程刷题软件
 
 [简体中文](README.md) | [English](README.en.md)
 

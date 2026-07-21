@@ -1,4 +1,4 @@
-"""Entry point for the AI课程刷题器 application."""
+"""Entry point for the AI课程刷题软件 application."""
 
 import sys
 

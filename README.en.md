@@ -1,4 +1,4 @@
-# AI课程刷题器 (AI Course Quiz)
+# AI课程刷题软件 (AI Course Quiz)
 
 [简体中文](README.md) | [English](README.en.md)
 

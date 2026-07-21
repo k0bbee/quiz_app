@@ -1,4 +1,4 @@
-"""Command-line environment check for AI课程刷题器."""
+"""Command-line environment check for AI课程刷题软件."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from core.environment_check import collect_environment_report, format_environmen
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check AI课程刷题器 runtime dependencies.")
+    parser = argparse.ArgumentParser(description="Check AI课程刷题软件 runtime dependencies.")
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     args = parser.parse_args()
 
