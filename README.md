@@ -230,3 +230,4 @@ python -m pytest tests/ -q --run-full
 ## 许可证
 
 本项目采用 [GNU General Public License v3.0 only](LICENSE)。
+项目原创内容、软著申报范围与第三方内容的边界见 [COPYRIGHT.md](COPYRIGHT.md)，直接依赖和重要运行时的许可证记录见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

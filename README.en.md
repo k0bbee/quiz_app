@@ -201,3 +201,4 @@ python -m pytest tests/ -q --run-full
 ## License
 
 This project is distributed under the [GNU General Public License v3.0 only](LICENSE).
+See [COPYRIGHT.md](COPYRIGHT.md) for the boundary between project-original and third-party material, and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for direct dependencies and significant runtimes.
