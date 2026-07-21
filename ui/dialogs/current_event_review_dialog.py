@@ -48,11 +48,14 @@ class CurrentEventSearchWorker(QThread):
                 limit=self.limit,
             )
         except CurrentEventsError as exc:
-            self.failed.emit(exc.error)
+            if not self.isInterruptionRequested():
+                self.failed.emit(exc.error)
         except Exception as exc:
-            self.failed.emit(exc)
+            if not self.isInterruptionRequested():
+                self.failed.emit(exc)
         else:
-            self.succeeded.emit(candidates)
+            if not self.isInterruptionRequested():
+                self.succeeded.emit(candidates)
 
 
 class CurrentEventReviewDialog(QDialog):
@@ -75,6 +78,7 @@ class CurrentEventReviewDialog(QDialog):
         self.material_manager = material_manager or CurrentEventMaterialManager()
         self.lang_manager = LanguageManager.instance()
         self.search_worker = None
+        self._close_when_search_stops = False
         self._candidates = []
         self.saved_pack = None
         self.generate_after_save = False
@@ -217,18 +221,32 @@ class CurrentEventReviewDialog(QDialog):
         worker.start()
 
     def _deliver_worker_result(self, source, handler, *args) -> None:
-        if source is self.search_worker:
+        if source is self.search_worker and not self._close_when_search_stops:
             handler(*args)
 
     def _finish_search(self, source) -> None:
-        if source is self.search_worker:
-            self._set_busy(False)
+        if source is not self.search_worker:
+            return
+        close_after_search = self._close_when_search_stops
+        self.search_worker = None
+        self._close_when_search_stops = False
+        if hasattr(source, "deleteLater"):
+            source.deleteLater()
+        if close_after_search:
+            super().reject()
+            return
+        self._set_busy(False)
 
     def _set_busy(self, busy: bool) -> None:
         self.search_btn.setEnabled(not busy)
         self.query_input.setEnabled(not busy)
         self.hours_input.setEnabled(not busy)
         self.limit_input.setEnabled(not busy)
+        self.candidate_list.setEnabled(not busy)
+        self.save_btn.setEnabled(False if busy else bool(self._selected_candidate_ids()))
+        self.save_generate_btn.setEnabled(
+            False if busy else bool(self._selected_candidate_ids())
+        )
         if busy:
             self.status_label.setText(self.lang_manager.get_text(
                 "正在检索公共新闻索引…",
@@ -349,3 +367,17 @@ class CurrentEventReviewDialog(QDialog):
             self.lang_manager.get_text("检索失败", "Search Failed"),
             str(error),
         )
+
+    def reject(self) -> None:
+        """Cancel an active search without blocking the Qt event loop."""
+        worker = self.search_worker
+        if worker is not None and worker.isRunning():
+            self._close_when_search_stops = True
+            worker.requestInterruption()
+            self.cancel_btn.setEnabled(False)
+            self.status_label.setText(self.lang_manager.get_text(
+                "正在取消热点检索…当前网络请求结束后将自动关闭。",
+                "Cancelling current-events search... this window will close when the network request ends.",
+            ))
+            return
+        super().reject()
