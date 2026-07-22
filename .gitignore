@@ -30,6 +30,14 @@ data/
 logs/
 exports/
 generated/
+copyright-submission/
+软件著作权申请资料/
+
+# Local software-copyright application tooling and source materials
+/core/copyright_*.py
+/scripts/*copyright*.py
+/tests/test_copyright_*.py
+/docs/copyright/
 
 # Local course materials and generated study artifacts
 courses/

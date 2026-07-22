@@ -31,6 +31,20 @@ class ProjectMetadataTests(unittest.TestCase):
         self.assertIn("windows dpapi", readme)
         self.assertIn("keyring backend", readme)
 
+    def test_public_readmes_do_not_document_local_copyright_application_tools(self):
+        private_tool_references = (
+            "build_copyright_",
+            "check_copyright_submission",
+            "copyright-submission/",
+            "docs/copyright/",
+        )
+
+        for readme_path in (Path("README.md"), Path("README.en.md")):
+            with self.subTest(readme=readme_path.name):
+                readme = readme_path.read_text(encoding="utf-8").lower()
+                for reference in private_tool_references:
+                    self.assertNotIn(reference, readme)
+
 
 if __name__ == "__main__":
     unittest.main()
