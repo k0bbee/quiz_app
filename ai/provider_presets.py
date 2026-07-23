@@ -21,8 +21,8 @@ PROVIDER_PRESETS = {
     "local_agent": {
         "label": "Local CLI Agent",
         "base_url": "local-agent://auto",
-        "models": ["auto", "claude", "codex"],
-        "help": "Uses a detected local CLI agent when available. No API key is needed. Experimental and local-only.",
+        "models": ["auto", "claude"],
+        "help": "Uses a detected local CLI agent when available. No API key is needed. Codex is detected but not eligible for untrusted course content.",
     },
     "custom": {
         "label": "Custom endpoint",

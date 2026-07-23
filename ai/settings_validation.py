@@ -78,12 +78,34 @@ def validate_ai_settings(
     if provider == "local_agent" or base_url.startswith("local-agent://"):
         detected = detected_agents or []
         if model == "auto":
+            if "claude" in detected:
+                return AISettingsValidationResult(True, "Local agent ready: claude.")
             if detected:
-                return AISettingsValidationResult(True, f"Local agent ready: {', '.join(detected)}.")
-            return AISettingsValidationResult(False, "No local CLI agent detected. Install or log in to codex/claude CLI.")
+                return AISettingsValidationResult(
+                    False,
+                    "Codex CLI detected but cannot guarantee no-tools isolation; "
+                    "only Claude CLI is currently eligible for local generation. "
+                    "Install Claude CLI or switch to a remote API.",
+                )
+            return AISettingsValidationResult(
+                False,
+                "No eligible local CLI agent detected. "
+                "Install claude CLI or use a remote API.",
+            )
+        if model != "claude":
+            return AISettingsValidationResult(
+                False,
+                f"Local agent '{model}' is not eligible for safe execution. "
+                "Only Claude CLI is currently supported. "
+                "Switch to a remote API or use model=claude.",
+            )
         if model in detected:
             return AISettingsValidationResult(True, f"Local agent ready: {model}.")
-        return AISettingsValidationResult(False, f"Local agent '{model}' was not found on PATH.")
+        return AISettingsValidationResult(
+            False,
+            f"Local agent '{model}' was not found on PATH. "
+            "Install claude CLI or log in.",
+        )
 
     endpoint_result = validate_remote_endpoint(base_url)
     if not endpoint_result.ok:

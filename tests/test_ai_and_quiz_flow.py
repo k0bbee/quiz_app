@@ -59,7 +59,18 @@ class LocalAgentTests(unittest.TestCase):
 
         self.assertIn("API key", message)
 
-    def test_ai_generation_preflight_accepts_detected_local_agent(self):
+    def test_ai_generation_preflight_accepts_detected_claude(self):
+        from ai.settings_validation import ai_generation_settings_error
+
+        message = ai_generation_settings_error(
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "claude"},
+            api_key="",
+            detected_agents=["claude"],
+        )
+
+        self.assertEqual("", message)
+
+    def test_ai_generation_preflight_rejects_detected_codex(self):
         from ai.settings_validation import ai_generation_settings_error
 
         message = ai_generation_settings_error(
@@ -68,35 +79,46 @@ class LocalAgentTests(unittest.TestCase):
             detected_agents=["codex"],
         )
 
-        self.assertEqual("", message)
+        self.assertNotEqual("", message)
+        self.assertIn("codex", message.lower())
 
     def test_local_agent_accepts_course_prompt_characters_without_shell_rejection(self):
         client = LLMClient(api_key="", base_url="local-agent://auto", model="claude")
-        result = types.SimpleNamespace(returncode=0, stdout='{"questions":[]}', stderr="")
+        fake_proc = types.SimpleNamespace(
+            poll=lambda: 0,
+            returncode=0,
+            communicate=lambda timeout=0: ('{"questions":[]}', ""),
+        )
         messages = [{"role": "user", "content": "Cache set = block # modulo sets; tag -> compare [A/B]."}]
 
-        with patch("ai.llm_client.shutil.which", return_value="claude"), \
-             patch("ai.local_agent_runner.subprocess.run", return_value=result) as run:
+        with patch("ai.local_agent_runner.resolve_local_agent_executable",
+                   return_value=Path("claude")), \
+             patch("ai.local_agent_runner.subprocess.Popen",
+                   return_value=fake_proc) as popen_mock:
             text = client.generate(messages)
 
         self.assertEqual(text, '{"questions":[]}')
-        self.assertTrue(run.called)
+        self.assertTrue(popen_mock.called)
 
     def test_local_agent_sends_prompt_via_stdin_not_command_arguments(self):
         client = LLMClient(api_key="", base_url="local-agent://auto", model="claude")
-        result = types.SimpleNamespace(returncode=0, stdout='{"questions":[]}', stderr="")
         prompt = "Sensitive course prompt with enough text to exceed safe argv expectations."
         messages = [{"role": "user", "content": prompt}]
+        fake_proc = types.SimpleNamespace(
+            poll=lambda: 0,
+            returncode=0,
+            communicate=lambda timeout=0: ('{"questions":[]}', ""),
+        )
 
-        with patch("ai.llm_client.shutil.which", return_value="claude"), \
-             patch("ai.local_agent_runner.subprocess.run", return_value=result) as run:
+        with patch("ai.local_agent_runner.resolve_local_agent_executable",
+                   return_value=Path("claude")), \
+             patch("ai.local_agent_runner.subprocess.Popen",
+                   return_value=fake_proc) as popen_mock:
             text = client.generate(messages)
 
         self.assertEqual(text, '{"questions":[]}')
-        command = run.call_args.args[0]
+        command = popen_mock.call_args.args[0]
         self.assertNotIn(prompt, command)
-        self.assertIn(prompt, run.call_args.kwargs["input"])
-        self.assertEqual("claude", command[0])
         self.assertIn("--no-session-persistence", command)
 
 

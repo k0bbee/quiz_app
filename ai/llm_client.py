@@ -106,16 +106,16 @@ class LLMClient:
     def _generate_local_agent(self, messages: list[dict], max_tokens: int) -> Optional[str]:
         """Use a capability-constrained local CLI agent without an API key.
 
-        All execution policy (no tools, no session persistence, isolated
-        work directory, sanitized environment) lives in ai.local_agent_runner.
+        All execution policy lives in ai.local_agent_runner.
+        The cancel event from self._cancelled is polled every 50 ms.
         """
         from ai.local_agent_runner import (
             LocalAgentPolicyError,
+            resolve_local_agent_executable,
             run_local_agent,
         )
 
         prompt = self._messages_to_prompt(messages)
-
         preferred = (self.model or "auto").lower()
 
         candidates = []
@@ -124,11 +124,16 @@ class LLMClient:
 
         missing = []
         for agent in candidates:
-            if shutil.which(agent) is None:
+            if resolve_local_agent_executable(agent) is None:
                 missing.append(agent)
                 continue
             try:
-                result = run_local_agent(agent, prompt, timeout=180)
+                result = run_local_agent(
+                    agent,
+                    prompt,
+                    timeout=180,
+                    cancel_event=self._cancelled,
+                )
                 if result:
                     return result
             except LocalAgentPolicyError as exc:
@@ -140,11 +145,10 @@ class LLMClient:
         if not self.last_error:
             wanted = ", ".join(missing or [name for name in candidates])
             self.last_error = (
-                f"No supported local agent CLI found for model "
+                f"No supported local CLI agent found for model "
                 f"'{self.model}'. Tried: {wanted}."
             )
         return None
-
     def _generate_anthropic(
         self,
         messages: list[dict],

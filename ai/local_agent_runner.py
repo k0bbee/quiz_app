@@ -11,6 +11,8 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
 from pathlib import Path
 from typing import Mapping
 
@@ -19,17 +21,16 @@ class LocalAgentPolicyError(Exception):
     """The requested agent cannot meet the minimum security policy."""
 
 
-# Keys dropped from the child environment to prevent credential leaking.
+# Keys unconditionally dropped from the child environment.
 _SANITIZE_ENV_KEYS: frozenset[str] = frozenset({
     "QUIZ_APP_API_KEY",
-    "ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
     "AZURE_OPENAI_API_KEY",
     "GOOGLE_API_KEY",
     "COHERE_API_KEY",
 })
 
-# Keys explicitly allowed through the sanitized environment.
+# Keys always allowed through.
 _ALLOWED_ENV_KEYS: frozenset[str] = frozenset({
     "PATH",
     "SYSTEMROOT",
@@ -63,16 +64,24 @@ _ALLOWED_ENV_KEYS: frozenset[str] = frozenset({
 })
 
 
-def build_local_agent_command(agent: str, workspace: Path) -> list[str]:
-    """Build a capability-constrained command line for *agent*.
+def resolve_local_agent_executable(agent_name: str) -> Path | None:
+    """Return the full resolved path to *agent_name*, or None if not found."""
+    resolved = shutil.which(agent_name)
+    if resolved is None:
+        return None
+    return Path(resolved)
+
+
+def build_local_agent_command(agent_name: str, executable: Path) -> list[str]:
+    """Build a capability-constrained command line using the resolved executable.
 
     Only Claude CLI is currently eligible.  Codex has no verified no-tools
-    mode and is explicitly rejected for untrusted document processing.
+    mode and is explicitly rejected.
     """
-    normalized = agent.strip().lower()
+    normalized = agent_name.strip().lower()
     if normalized == "claude":
         return [
-            "claude",
+            str(executable),
             "--print",
             "--bare",
             "--tools", "",
@@ -80,68 +89,132 @@ def build_local_agent_command(agent: str, workspace: Path) -> list[str]:
             "--no-session-persistence",
         ]
     raise LocalAgentPolicyError(
-        f"codex/unknown agent '{agent}' is not eligible for local generation: "
-        "no verified no-tools mode is available. Use a restricted Claude CLI "
-        "or a remote API instead."
+        f"codex/unknown agent '{agent_name}' is not eligible for local "
+        "generation: no verified no-tools mode is available. Use a "
+        "restricted Claude CLI or a remote API instead."
     )
 
 
 def sanitized_child_environment(
     source: Mapping[str, str],
+    *,
+    preserve_anthropic_key: bool = False,
 ) -> dict[str, str]:
     """Return a copy of *source* with credential-bearing keys removed.
 
-    Only known-safe system keys and a narrow allowlist of non-secret vars
-    survive.  This is defense-in-depth — the caller should never pass
-    credential-bearing environment variables to a child process.
+    When *preserve_anthropic_key* is True, ANTHROPIC_API_KEY is kept
+    (needed for Claude CLI in --bare mode).  Other secret keys are
+    always dropped.
     """
     clean: dict[str, str] = {}
     for key, value in source.items():
         upper = key.upper()
         if upper in _SANITIZE_ENV_KEYS:
             continue
+        if upper == "ANTHROPIC_API_KEY":
+            if preserve_anthropic_key:
+                clean[key] = value
+            continue
         if upper in _ALLOWED_ENV_KEYS:
             clean[key] = value
     return clean
 
 
+def _windows_cmd_wrap(executable: str) -> list[str] | None:
+    """If *executable* is a .cmd/.bat, return a COMSPEC wrapper list."""
+    suffix = Path(executable).suffix.lower()
+    if suffix in {".cmd", ".bat"}:
+        comspec = os.environ.get("COMSPEC", "cmd.exe")
+        return [comspec, "/d", "/s", "/c", executable]
+    return None
+
+
 def run_local_agent(
-    agent: str,
+    agent_name: str,
     prompt: str,
     *,
     timeout: int = 180,
+    cancel_event: threading.Event | None = None,
 ) -> str:
-    """Execute *agent* with the prompt on stdin in a throwaway directory.
+    """Execute *agent_name* with the prompt on stdin in a throwaway directory.
 
     Returns the stripped stdout on success.  Raises :class:`LocalAgentPolicyError`
     when the agent is ineligible, and :class:`subprocess.SubprocessError` or
     :class:`OSError` on execution failures.
-    """
-    workspace = Path(tempfile.mkdtemp(prefix="quiz-local-agent-"))
-    try:
-        command = build_local_agent_command(agent, workspace)
-        env = sanitized_child_environment(os.environ)
 
-        result = subprocess.run(
+    The optional *cancel_event* is polled every 50 ms; when set the child
+    process tree is terminated and a :class:`LocalAgentPolicyError` is raised.
+    """
+    executable = resolve_local_agent_executable(agent_name)
+    if executable is None:
+        raise LocalAgentPolicyError(
+            f"Local agent '{agent_name}' not found on PATH."
+        )
+
+    if cancel_event is not None and cancel_event.is_set():
+        raise LocalAgentPolicyError("Local agent execution cancelled.")
+
+    command = build_local_agent_command(agent_name, executable)
+    env = sanitized_child_environment(os.environ, preserve_anthropic_key=True)
+    workspace = Path(tempfile.mkdtemp(prefix="quiz-local-agent-"))
+
+    try:
+        proc = subprocess.Popen(
             command,
-            check=False,
-            capture_output=True,
-            input=prompt,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=timeout,
             cwd=str(workspace),
             env=env,
         )
-        if result.returncode != 0 or not result.stdout.strip():
-            detail = (result.stderr or result.stdout or "").strip()[:500]
+        try:
+            stdout_data, stderr_data = "", ""
+            deadline = time_monotonic() + timeout
+
+            while proc.poll() is None:
+                if cancel_event is not None and cancel_event.is_set():
+                    _terminate_process(proc)
+                    raise LocalAgentPolicyError(
+                        "Local agent execution cancelled by user."
+                    )
+                if time_monotonic() > deadline:
+                    _terminate_process(proc)
+                    raise subprocess.TimeoutExpired(command, timeout)
+                time.sleep(0.05)  # 50 ms poll
+
+            stdout_data, stderr_data = proc.communicate(timeout=5)
+
+        except subprocess.TimeoutExpired:
+            _terminate_process(proc)
+            raise
+
+        if proc.returncode != 0 or not (stdout_data or "").strip():
+            detail = (stderr_data or stdout_data or "").strip()[:500]
             raise subprocess.CalledProcessError(
-                result.returncode,
-                command,
-                output=result.stdout,
+                proc.returncode, command,
+                output=stdout_data,
                 stderr=detail,
             )
-        return result.stdout.strip()
+        return (stdout_data or "").strip()
     finally:
         shutil.rmtree(workspace, ignore_errors=True)
+
+
+def _terminate_process(proc: subprocess.Popen) -> None:
+    """Best-effort termination of a subprocess and its children."""
+    try:
+        proc.kill()
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=2)
+    except Exception:
+        pass
+
+
+def time_monotonic() -> float:
+    """Thin wrapper so tests can override without mocking the stdlib."""
+    return time.monotonic()
