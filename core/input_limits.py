@@ -1,0 +1,34 @@
+"""Centralised resource-budget constants and error type for untrusted input.
+
+Every constant is defined here so that all limits are reviewable in one file.
+"""
+
+from __future__ import annotations
+
+
+class InputLimitError(ValueError):
+    """Untrusted input exceeded a declared resource budget."""
+
+    def __init__(self, code: str, message_zh: str, message_en: str):
+        super().__init__(f"[{code}] {message_en}")
+        self.code = code
+        self.message_zh = message_zh
+        self.message_en = message_en
+
+
+# ── ZIP / archive budgets (used by app_data_bundle) ────────────────
+
+MAX_BUNDLE_MEMBERS = 5_000
+MAX_BUNDLE_ENTRY_BYTES = 64 * 1024 * 1024       # 64 MiB
+MAX_BUNDLE_TOTAL_BYTES = 1024 * 1024 * 1024     # 1 GiB
+MAX_ZIP_COMPRESSION_RATIO = 200
+
+# ── Document budgets (used by document_parser & past_exam_importer) ─
+
+MAX_DOCUMENT_BYTES = 256 * 1024 * 1024           # 256 MiB
+MAX_OFFICE_XML_ENTRY_BYTES = 32 * 1024 * 1024    # 32 MiB
+MAX_OFFICE_XML_TOTAL_BYTES = 256 * 1024 * 1024   # 256 MiB
+MAX_PDF_PAGES = 2_000
+MAX_RENDER_PIXELS = 40_000_000
+MAX_EXTRACTED_TEXT_CHARS = 20_000_000
+OCR_PAGE_TIMEOUT_SECONDS = 60

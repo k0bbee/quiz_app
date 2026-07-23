@@ -400,5 +400,59 @@ class AppDataBundleTests(unittest.TestCase):
             self.assertEqual([], result.skipped_files)
 
 
+    def test_import_rejects_suspicious_compression_ratio(self):
+        """An entry whose compression ratio exceeds the budget is rejected."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bundle = root / "bomb.quizdata"
+            target = root / "data"
+
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
+                archive.writestr("questions/q1.json", '{"question_id":"q1"}')
+
+            # Patch the ZipInfo to simulate a zip bomb entry.
+            original_infolist = zipfile.ZipFile.infolist
+
+            def fake_infolist(zf_self):
+                result = original_infolist(zf_self)
+                for info in result:
+                    if info.filename == "questions/q1.json":
+                        info.compress_size = 1
+                        info.file_size = 50 * 1024 * 1024  # ratio > 200
+                return result
+
+            with patch.object(zipfile.ZipFile, "infolist", fake_infolist):
+                with self.assertRaisesRegex(ValueError, "DATA-IMPORT-005"):
+                    import_app_data_bundle(bundle, target)
+
+    def test_import_rejects_more_members_than_budget(self):
+        """Budget check happens before reading any payload."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            target = root / "data"
+            from core.input_limits import MAX_BUNDLE_MEMBERS
+
+            # Build a valid bundle and patch infolist to simulate too many members.
+            bundle = root / "bomb.quizdata"
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
+                archive.writestr("questions/q1.json", "{}")
+
+            original_infolist = zipfile.ZipFile.infolist
+
+            def fake_infolist(zf_self):
+                real = list(original_infolist(zf_self))
+                for i in range(MAX_BUNDLE_MEMBERS + 1):
+                    info = zipfile.ZipInfo(f"questions/q{i:05d}.json")
+                    info.file_size = 10
+                    real.append(info)
+                return real
+
+            with patch.object(zipfile.ZipFile, "infolist", fake_infolist):
+                with self.assertRaisesRegex(ValueError, "DATA-IMPORT-003"):
+                    import_app_data_bundle(bundle, target)
+
+
 if __name__ == "__main__":
     unittest.main()

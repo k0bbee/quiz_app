@@ -196,6 +196,7 @@ def _prepare_bundle(
     seen: set[str] = set()
 
     members = archive.infolist()
+    _validate_zip_budget(members)
     total = sum(not info.is_dir() and info.filename != "manifest.json" for info in members)
     current = 0
     for info in members:
@@ -408,3 +409,54 @@ def _is_within_directory(directory: Path, path: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _validate_zip_budget(infos: list) -> None:
+    """Raise :class:`ValueError` (with a stable error code) before reading any
+    untrusted archive member that exceeds the declared resource budgets."""
+    from core.input_limits import (
+        InputLimitError,
+        MAX_BUNDLE_ENTRY_BYTES,
+        MAX_BUNDLE_MEMBERS,
+        MAX_BUNDLE_TOTAL_BYTES,
+        MAX_ZIP_COMPRESSION_RATIO,
+    )
+
+    member_count = sum(1 for info in infos if not info.is_dir())
+    if member_count > MAX_BUNDLE_MEMBERS:
+        raise InputLimitError(
+            "DATA-IMPORT-003",
+            f"导入包包含 {member_count} 个成员，超出 {MAX_BUNDLE_MEMBERS} 个的上限。",
+            f"Import bundle contains {member_count} members, exceeding the limit of {MAX_BUNDLE_MEMBERS}.",
+        )
+
+    for info in infos:
+        if getattr(info, "flag_bits", 0) & 0x1:  # encrypted entry
+            raise ValueError("Encrypted ZIP entries are not allowed in app data bundles.")
+
+    total_uncompressed = 0
+    for info in infos:
+        if info.is_dir():
+            continue
+        file_size = info.file_size
+        if file_size > MAX_BUNDLE_ENTRY_BYTES:
+            raise InputLimitError(
+                "DATA-IMPORT-004",
+                f"导入包成员 {info.filename} 大小 {file_size} 字节，超出 {MAX_BUNDLE_ENTRY_BYTES} 字节上限。",
+                f"Bundle member {info.filename} is {file_size} bytes, exceeding the limit of {MAX_BUNDLE_ENTRY_BYTES} bytes.",
+            )
+        total_uncompressed += file_size
+        if total_uncompressed > MAX_BUNDLE_TOTAL_BYTES:
+            raise InputLimitError(
+                "DATA-IMPORT-004",
+                f"导入包总解压大小超过 {MAX_BUNDLE_TOTAL_BYTES} 字节上限。",
+                f"Total uncompressed size exceeds the limit of {MAX_BUNDLE_TOTAL_BYTES} bytes.",
+            )
+
+        compress_size = info.compress_size
+        if compress_size > 0 and file_size / compress_size > MAX_ZIP_COMPRESSION_RATIO:
+            raise InputLimitError(
+                "DATA-IMPORT-005",
+                f"导入包成员 {info.filename} 压缩比异常。",
+                f"Bundle member {info.filename} has a suspicious compression ratio.",
+            )
