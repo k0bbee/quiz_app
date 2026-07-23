@@ -182,20 +182,9 @@ class CourseProjectManager:
         return Path(self._dir) / f"{safe_id}_summary.md"
 
     def _normalize_summary_path(self, project: CourseProject, safe_id: str) -> Path:
-        expected_path = self._summary_path_for(safe_id)
-        if not project.summary_path:
-            return expected_path
-
-        summary_path = Path(project.summary_path)
-        project_dir = Path(self._dir).resolve()
-        try:
-            resolved_summary = summary_path.resolve()
-        except OSError:
-            resolved_summary = summary_path.absolute()
-
-        if resolved_summary == project_dir or project_dir in resolved_summary.parents:
-            return summary_path
-        return expected_path
+        # Persisted/imported paths are metadata, not authority. Every course
+        # owns exactly one canonical summary path derived from its safe ID.
+        return self._summary_path_for(safe_id)
 
     def save(self, project: CourseProject, make_current: bool = True) -> bool:
         safe_id = sanitize_filename_part(project.course_id)
@@ -255,15 +244,13 @@ class CourseProjectManager:
         project = self.get(course_id)
         safe_id = sanitize_filename_part(course_id)
         ok = delete_json(os.path.join(self._dir, f"{safe_id}.json"))
-        if project and project.summary_path:
-            summary_path = Path(project.summary_path).resolve()
-            project_dir = Path(self._dir).resolve()
-            if summary_path == project_dir or project_dir in summary_path.parents:
-                try:
-                    if summary_path.exists():
-                        summary_path.unlink()
-                except OSError:
-                    ok = False
+        if project:
+            summary_path = self._summary_path_for(safe_id)
+            try:
+                if summary_path.exists():
+                    summary_path.unlink()
+            except OSError:
+                ok = False
         current = read_json(self._current_course_file) or {}
         if current.get("course_id") == course_id:
             delete_json(self._current_course_file)

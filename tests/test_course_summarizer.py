@@ -956,6 +956,42 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertEqual("# Repaired Summary\n", repaired_summary.read_text(encoding="utf-8"))
             self.assertFalse(stale_summary.exists())
 
+    def test_project_manager_never_uses_another_course_file_as_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            victim = CourseProject(
+                course_id="course-victim",
+                title="Victim",
+                source_folder="",
+                summary_markdown="# Victim summary",
+                summary_path="",
+                topics=[],
+                documents=[],
+                created_at="2026-07-23T00:00:00+00:00",
+                updated_at="2026-07-23T00:00:00+00:00",
+            )
+            self.assertTrue(manager.save(victim, make_current=False))
+            victim_json = Path(manager.directory) / "course-victim.json"
+            attacker = CourseProject(
+                course_id="course-attacker",
+                title="Attacker",
+                source_folder="",
+                summary_markdown="# Attacker summary",
+                summary_path=str(victim_json),
+                topics=[],
+                documents=[],
+                created_at="2026-07-23T00:00:00+00:00",
+                updated_at="2026-07-23T00:00:00+00:00",
+            )
+
+            self.assertTrue(manager.save(attacker, make_current=False))
+
+            self.assertEqual("Victim", manager.get("course-victim").title)
+            self.assertEqual(
+                Path(manager.directory) / "course-attacker_summary.md",
+                Path(attacker.summary_path),
+            )
+
     def test_project_manager_rolls_back_all_course_files_when_commit_fails(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1031,7 +1067,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertFalse((Path(manager.directory) / "course-invalid.json").exists())
             self.assertFalse((Path(manager.directory) / "course-invalid_summary.md").exists())
 
-    def test_project_manager_rejects_conflicting_course_artifact_paths(self):
+    def test_project_manager_repairs_conflicting_course_artifact_paths(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
             conflicting_path = Path(manager.directory) / "course-conflict.json"
@@ -1047,10 +1083,13 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 updated_at="2026-07-13T00:00:00+00:00",
             )
 
-            self.assertFalse(manager.save(project, make_current=False))
+            self.assertTrue(manager.save(project, make_current=False))
 
-            self.assertEqual(str(conflicting_path), project.summary_path)
-            self.assertFalse(conflicting_path.exists())
+            self.assertEqual(
+                str(Path(manager.directory) / "course-conflict_summary.md"),
+                project.summary_path,
+            )
+            self.assertTrue(conflicting_path.exists())
 
     def test_project_manager_persists_summary_generation_status(self):
         with tempfile.TemporaryDirectory() as tmpdir:
