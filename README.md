@@ -7,7 +7,7 @@
 ## 环境要求
 
 - Python 3.10+
-- `requirements.txt` 中的 Python 依赖（PyQt6、requests、keyring、PyMuPDF、Pillow、pytesseract）
+- `requirements.txt` 中的 Python 依赖（PyQt6、requests、keyring、pypdfium2、Pillow、pytesseract）
 - Tesseract OCR 及 `eng`/`chi_sim` 语言包（可选，仅扫描版 PDF OCR 需要）
 
 ## 快速启动
@@ -169,7 +169,7 @@ LLM 不可用、返回非法 JSON 或引用不存在的知识点时，不会阻�
 
 ### OCR fallback 配置
 
-PDF 页面没有可提取文本时，程序会用 `PyMuPDF` 渲染页面，再通过 `Pillow` 和 `pytesseract` 尝试 OCR。`requirements.txt` 会安装这些 Python 依赖，但还必须单独安装 **Tesseract OCR** 系统程序，并确保 `tesseract` 可执行文件位于 `PATH`。
+PDF 页面没有可提取文本时，程序会用 `pypdfium2` 渲染页面，再通过 `Pillow` 和 `pytesseract` 尝试 OCR。`requirements.txt` 会安装这些 Python 依赖，但还必须单独安装 **Tesseract OCR** 系统程序，并确保 `tesseract` 可执行文件位于 `PATH`。
 
 Windows 推荐补齐入口：
 

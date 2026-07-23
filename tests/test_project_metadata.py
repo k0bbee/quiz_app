@@ -6,7 +6,8 @@ class ProjectMetadataTests(unittest.TestCase):
     def test_requirements_include_document_parser_dependencies(self):
         requirements = Path("requirements.txt").read_text(encoding="utf-8").lower()
 
-        self.assertIn("pymupdf", requirements)
+        self.assertNotIn("pymupdf", requirements)
+        self.assertIn("pypdfium2", requirements)
         self.assertIn("pillow", requirements)
         self.assertIn("pytesseract", requirements)
         self.assertIn("keyring", requirements)

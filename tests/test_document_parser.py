@@ -85,50 +85,73 @@ class DocumentParserQualityTests(unittest.TestCase):
         self.assertTrue(docs[0].warnings == [] or all("duplicate" not in w.lower() for w in docs[0].warnings))
 
     def test_pdf_empty_text_page_records_ocr_unavailable_warning(self):
-        class FakePage:
-            def get_text(self, _kind):
+        class FakeTextPage:
+            def get_text_range(self):
                 return ""
 
+        class FakePage:
+            def get_textpage(self):
+                return FakeTextPage()
+
         class FakeDoc:
-            def __enter__(self):
-                return [FakePage()]
+            def __init__(self, _path):
+                self.pages = [FakePage()]
 
-            def __exit__(self, *_args):
-                return False
+            def __len__(self):
+                return len(self.pages)
 
-        fake_fitz = types.SimpleNamespace(open=lambda _path: FakeDoc())
+            def __getitem__(self, index):
+                return self.pages[index]
+
+        fake_pdfium = types.SimpleNamespace(PdfDocument=FakeDoc)
 
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "scan.pdf"
             pdf_path.write_bytes(b"%PDF-1.4 fake")
-            with patch.dict("sys.modules", {"fitz": fake_fitz, "pytesseract": None}):
+            with patch.dict(
+                "sys.modules",
+                {"pypdfium2": fake_pdfium, "pytesseract": None},
+            ):
                 doc = DocumentParser().parse_file(pdf_path)
 
         self.assertIn("Page 1 has no extractable text", "\n".join(doc.warnings))
         self.assertIn("OCR fallback unavailable", "\n".join(doc.warnings))
 
     def test_pdf_page_labels_preserve_original_page_numbers_when_empty_pages_are_skipped(self):
+        class FakeTextPage:
+            def __init__(self, text):
+                self.text = text
+
+            def get_text_range(self):
+                return self.text
+
         class EmptyPage:
-            def get_text(self, _kind):
-                return ""
+            def get_textpage(self):
+                return FakeTextPage("")
 
         class TextPage:
-            def get_text(self, _kind):
-                return "Second page content"
+            def get_textpage(self):
+                return FakeTextPage("Second page content")
 
         class FakeDoc:
-            def __enter__(self):
-                return [EmptyPage(), TextPage()]
+            def __init__(self, _path):
+                self.pages = [EmptyPage(), TextPage()]
 
-            def __exit__(self, *_args):
-                return False
+            def __len__(self):
+                return len(self.pages)
 
-        fake_fitz = types.SimpleNamespace(open=lambda _path: FakeDoc())
+            def __getitem__(self, index):
+                return self.pages[index]
+
+        fake_pdfium = types.SimpleNamespace(PdfDocument=FakeDoc)
 
         with tempfile.TemporaryDirectory() as tmp:
             pdf_path = Path(tmp) / "partial.pdf"
             pdf_path.write_bytes(b"%PDF-1.4 fake")
-            with patch.dict("sys.modules", {"fitz": fake_fitz, "pytesseract": None}):
+            with patch.dict(
+                "sys.modules",
+                {"pypdfium2": fake_pdfium, "pytesseract": None},
+            ):
                 doc = DocumentParser().parse_file(pdf_path)
 
         self.assertIn("[Page 2]\nSecond page content", doc.text)

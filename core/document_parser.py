@@ -2,7 +2,7 @@
 
 Supported formats are intentionally handled with lightweight local parsers:
 PPTX/DOCX through their zipped XML payloads, text/Markdown directly, and PDF
-through PyMuPDF when it is installed.
+through pypdfium2.
 """
 
 from __future__ import annotations
@@ -215,27 +215,44 @@ class DocumentParser:
         pages: list[str] = []
         numbered_pages: list[tuple[int, str]] = []
         try:
-            import fitz  # type: ignore
+            import pypdfium2 as pdfium  # type: ignore
 
-            with fitz.open(path) as doc:
+            doc = pdfium.PdfDocument(str(path))
+            try:
                 total_pages = len(doc)
-                for i, page in enumerate(doc):
+                for i in range(total_pages):
+                    page = doc[i]
                     if task is not None:
                         task.report("parsing_page", i + 1, total_pages, path.name)
-                    text = page.get_text("text").strip()
-                    if text:
-                        normalized = _normalize_text(text)
-                        pages.append(normalized)
-                        numbered_pages.append((i + 1, normalized))
-                    else:
-                        warnings.append(f"Page {i + 1} has no extractable text")
-                        ocr_text = _ocr_pdf_page(page, i + 1, warnings)
-                        if ocr_text:
-                            normalized = _normalize_text(ocr_text)
+                    try:
+                        text_page = page.get_textpage()
+                        try:
+                            text = text_page.get_text_range().strip()
+                        finally:
+                            close_text_page = getattr(text_page, "close", None)
+                            if callable(close_text_page):
+                                close_text_page()
+                        if text:
+                            normalized = _normalize_text(text)
                             pages.append(normalized)
                             numbered_pages.append((i + 1, normalized))
+                        else:
+                            warnings.append(f"Page {i + 1} has no extractable text")
+                            ocr_text = _ocr_pdf_page(page, i + 1, warnings)
+                            if ocr_text:
+                                normalized = _normalize_text(ocr_text)
+                                pages.append(normalized)
+                                numbered_pages.append((i + 1, normalized))
+                    finally:
+                        close_page = getattr(page, "close", None)
+                        if callable(close_page):
+                            close_page()
+            finally:
+                close_doc = getattr(doc, "close", None)
+                if callable(close_doc):
+                    close_doc()
         except ImportError:
-            warnings.append("PyMuPDF is not installed; PDF text extraction is unavailable.")
+            warnings.append("pypdfium2 is not installed; PDF text extraction is unavailable.")
         except Exception as exc:
             warnings.append(f"Failed to parse PDF: {exc}")
         text = "\n\n".join(
@@ -388,8 +405,13 @@ def _ocr_pdf_page(page, page_number: int, warnings: list[str]) -> str:
         return ""
 
     try:
-        pix = page.get_pixmap(matrix=None, alpha=False)
-        image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        bitmap = page.render(scale=2)
+        try:
+            image = bitmap.to_pil().convert("RGB").copy()
+        finally:
+            close_bitmap = getattr(bitmap, "close", None)
+            if callable(close_bitmap):
+                close_bitmap()
         ocr_config = configure_pytesseract(pytesseract)
         text = pytesseract.image_to_string(image, lang="eng+chi_sim", config=ocr_config)
         if text.strip():

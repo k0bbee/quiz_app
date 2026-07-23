@@ -16,6 +16,15 @@ def _requirement_names() -> set[str]:
 
 
 class ThirdPartyNoticesTests(unittest.TestCase):
+    def test_pdf_runtime_uses_liberal_licensed_pdfium_binding(self):
+        notices = Path("THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+
+        self.assertIn("pypdfium2", notices)
+        self.assertIn("Apache-2.0", notices)
+        self.assertIn("BSD-3-Clause", notices)
+        self.assertNotIn("PyMuPDF", notices)
+        self.assertNotIn("AGPL", notices)
+
     def test_notice_covers_every_direct_requirement(self):
         notice = (PROJECT_ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8").casefold()
 

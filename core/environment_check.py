@@ -20,7 +20,7 @@ PYTHON_DEPENDENCIES = (
     ("PyQt6", "PyQt6"),
     ("requests", "requests"),
     ("keyring", "keyring"),
-    ("PyMuPDF", "fitz"),
+    ("pypdfium2", "pypdfium2"),
     ("Pillow", "PIL"),
     ("pytesseract", "pytesseract"),
 )

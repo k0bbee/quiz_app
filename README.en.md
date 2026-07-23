@@ -7,7 +7,7 @@ A general-purpose **PyQt6** desktop application for turning course materials int
 ## Requirements
 
 - Python 3.10+
-- Python packages from `requirements.txt`, including PyQt6, requests, keyring, PyMuPDF, Pillow, and pytesseract
+- Python packages from `requirements.txt`, including PyQt6, requests, keyring, pypdfium2, Pillow, and pytesseract
 - Optional: Tesseract OCR with the `eng` and `chi_sim` language packs for scanned PDFs
 
 ## Quick start
@@ -138,7 +138,7 @@ For a Local CLI Agent, common Chinese and English instructions are interpreted w
 
 ### OCR fallback
 
-When a PDF page contains no extractable text, the application renders it with PyMuPDF and tries OCR through Pillow and pytesseract. Install Tesseract separately on Windows:
+When a PDF page contains no extractable text, the application renders it with pypdfium2 and tries OCR through Pillow and pytesseract. Install Tesseract separately on Windows:
 
 ```powershell
 winget install -e --id UB-Mannheim.TesseractOCR --accept-package-agreements --accept-source-agreements

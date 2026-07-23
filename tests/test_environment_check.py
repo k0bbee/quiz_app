@@ -39,7 +39,7 @@ class EnvironmentCheckTests(unittest.TestCase):
             report = collect_environment_report(Path(tmpdir))
 
         by_name = {check.name: check for check in report.checks}
-        for dependency in ("PyQt6", "requests", "keyring", "PyMuPDF", "Pillow", "pytesseract"):
+        for dependency in ("PyQt6", "requests", "keyring", "pypdfium2", "Pillow", "pytesseract"):
             self.assertIn(dependency, by_name)
             self.assertTrue(by_name[dependency].ok, by_name[dependency].detail)
         self.assertTrue(by_name["data directory"].ok)

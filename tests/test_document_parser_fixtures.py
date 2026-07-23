@@ -49,15 +49,13 @@ class DocumentParserFixtureTests(unittest.TestCase):
             self.assertIn("[Slide 3]\nTenth slide", document.text)
 
     def test_real_text_pdf_extracts_page_text(self):
-        import fitz
-
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "memory.pdf"
-            pdf = fitz.open()
-            page = pdf.new_page()
-            page.insert_text((72, 72), "Virtual memory maps pages through a page table.")
-            pdf.save(path)
-            pdf.close()
+            path.write_bytes(
+                _minimal_text_pdf(
+                    "Virtual memory maps pages through a page table."
+                )
+            )
 
             document = DocumentParser().parse_file(path)
 
@@ -66,7 +64,7 @@ class DocumentParserFixtureTests(unittest.TestCase):
             self.assertEqual(1, len(document.pages))
 
     def test_real_image_pdf_runs_render_to_ocr_fallback_pipeline(self):
-        import fitz
+        import pypdfium2 as pdfium
         from PIL import Image, ImageDraw
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -74,13 +72,19 @@ class DocumentParserFixtureTests(unittest.TestCase):
             image_path = root / "scan.png"
             image = Image.new("RGB", (600, 200), "white")
             ImageDraw.Draw(image).text((30, 70), "Scanned cache hierarchy", fill="black")
-            image.save(image_path)
+            jpeg_path = root / "scan.jpg"
+            image.save(jpeg_path, format="JPEG")
 
             pdf_path = root / "scan.pdf"
-            pdf = fitz.open()
-            page = pdf.new_page(width=600, height=200)
-            page.insert_image(page.rect, filename=str(image_path))
+            pdf = pdfium.PdfDocument.new()
+            page = pdf.new_page(600, 200)
+            image_object = pdfium.PdfImage.new(pdf)
+            image_object.load_jpeg(jpeg_path)
+            page.insert_obj(image_object)
+            page.gen_content()
             pdf.save(pdf_path)
+            image_object.close()
+            page.close()
             pdf.close()
 
             ocr = Mock(return_value="Recovered OCR cache hierarchy")
@@ -94,6 +98,42 @@ class DocumentParserFixtureTests(unittest.TestCase):
             self.assertGreater(rendered_image.height, 0)
             self.assertIn("Recovered OCR cache hierarchy", document.text)
             self.assertIn("text recovered by OCR fallback", "\n".join(document.warnings))
+
+
+def _minimal_text_pdf(text: str) -> bytes:
+    """Return a one-page PDF with a standard-font text content stream."""
+    escaped = text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    stream = f"BT /F1 12 Tf 72 720 Td ({escaped}) Tj ET".encode("ascii")
+    objects = (
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        (
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+            b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>"
+        ),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n"
+        + stream + b"\nendstream",
+    )
+    output = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(output))
+        output.extend(f"{number} 0 obj\n".encode("ascii"))
+        output.extend(body)
+        output.extend(b"\nendobj\n")
+    xref = len(output)
+    output.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    output.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        output.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
+    output.extend(
+        (
+            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+            f"startxref\n{xref}\n%%EOF\n"
+        ).encode("ascii")
+    )
+    return bytes(output)
 
 
 if __name__ == "__main__":
