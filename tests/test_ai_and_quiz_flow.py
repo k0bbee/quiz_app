@@ -71,33 +71,33 @@ class LocalAgentTests(unittest.TestCase):
         self.assertEqual("", message)
 
     def test_local_agent_accepts_course_prompt_characters_without_shell_rejection(self):
-        client = LLMClient(api_key="", base_url="local-agent://auto", model="codex")
+        client = LLMClient(api_key="", base_url="local-agent://auto", model="claude")
         result = types.SimpleNamespace(returncode=0, stdout='{"questions":[]}', stderr="")
         messages = [{"role": "user", "content": "Cache set = block # modulo sets; tag -> compare [A/B]."}]
 
-        with patch("ai.llm_client.shutil.which", return_value="codex"), \
-             patch("ai.llm_client.subprocess.run", return_value=result) as run:
+        with patch("ai.llm_client.shutil.which", return_value="claude"), \
+             patch("ai.local_agent_runner.subprocess.run", return_value=result) as run:
             text = client.generate(messages)
 
         self.assertEqual(text, '{"questions":[]}')
         self.assertTrue(run.called)
 
     def test_local_agent_sends_prompt_via_stdin_not_command_arguments(self):
-        client = LLMClient(api_key="", base_url="local-agent://auto", model="codex")
+        client = LLMClient(api_key="", base_url="local-agent://auto", model="claude")
         result = types.SimpleNamespace(returncode=0, stdout='{"questions":[]}', stderr="")
         prompt = "Sensitive course prompt with enough text to exceed safe argv expectations."
         messages = [{"role": "user", "content": prompt}]
 
-        with patch("ai.llm_client.shutil.which", return_value="codex"), \
-             patch("ai.llm_client.subprocess.run", return_value=result) as run:
+        with patch("ai.llm_client.shutil.which", return_value="claude"), \
+             patch("ai.local_agent_runner.subprocess.run", return_value=result) as run:
             text = client.generate(messages)
 
         self.assertEqual(text, '{"questions":[]}')
         command = run.call_args.args[0]
         self.assertNotIn(prompt, command)
-        self.assertEqual(prompt, run.call_args.kwargs["input"].split(":\n", 1)[1])
-        self.assertEqual(["codex", "exec"], command[:2])
-        self.assertIn("-", command)
+        self.assertIn(prompt, run.call_args.kwargs["input"])
+        self.assertEqual("claude", command[0])
+        self.assertIn("--no-session-persistence", command)
 
 
 class QuizWidgetAndSessionTests(unittest.TestCase):

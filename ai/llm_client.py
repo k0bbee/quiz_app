@@ -104,47 +104,45 @@ class LLMClient:
         return "custom"
 
     def _generate_local_agent(self, messages: list[dict], max_tokens: int) -> Optional[str]:
-        """Use a known local CLI agent without requiring an API key.
+        """Use a capability-constrained local CLI agent without an API key.
 
-        This is intentionally allowlisted. It does not execute arbitrary commands
-        from settings or model output.
+        All execution policy (no tools, no session persistence, isolated
+        work directory, sanitized environment) lives in ai.local_agent_runner.
         """
+        from ai.local_agent_runner import (
+            LocalAgentPolicyError,
+            run_local_agent,
+        )
+
         prompt = self._messages_to_prompt(messages)
 
         preferred = (self.model or "auto").lower()
+
         candidates = []
         if preferred in {"auto", "claude"}:
-            candidates.append(("claude", ["claude", "-p"]))
-        if preferred in {"auto", "codex"}:
-            candidates.append(("codex", ["codex", "exec", "-"]))
+            candidates.append("claude")
 
         missing = []
-        for name, command in candidates:
-            if shutil.which(command[0]) is None:
-                missing.append(command[0])
+        for agent in candidates:
+            if shutil.which(agent) is None:
+                missing.append(agent)
                 continue
             try:
-                result = subprocess.run(
-                    command,
-                    check=False,
-                    capture_output=True,
-                    input=prompt,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    timeout=180,
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    return result.stdout.strip()
-                detail = (result.stderr or result.stdout or "").strip()[:500]
-                self.last_error = f"Local agent {name} failed with exit code {result.returncode}: {detail}"
+                result = run_local_agent(agent, prompt, timeout=180)
+                if result:
+                    return result
+            except LocalAgentPolicyError as exc:
+                self.last_error = str(exc)
                 debug(self.last_error)
             except (OSError, subprocess.SubprocessError) as exc:
-                self.last_error = f"Local agent {name} request failed: {exc}"
+                self.last_error = f"Local agent {agent} request failed: {exc}"
                 debug(self.last_error)
         if not self.last_error:
-            wanted = ", ".join(missing or [name for name, _ in candidates])
-            self.last_error = f"No supported local agent CLI found for model '{self.model}'. Tried: {wanted}."
+            wanted = ", ".join(missing or [name for name in candidates])
+            self.last_error = (
+                f"No supported local agent CLI found for model "
+                f"'{self.model}'. Tried: {wanted}."
+            )
         return None
 
     def _generate_anthropic(
