@@ -146,9 +146,19 @@ class SecretsManager:
         # Always remove legacy plaintext material from settings.json. If the
         # keychain is unavailable, the environment value remains session-only.
         settings = read_json(SETTINGS_FILE) or {}
+        had_legacy_plaintext = bool(
+            settings.get("ai_api_key")
+            or settings.get("ai_api_key_stored_in_plaintext")
+        )
         settings.pop("ai_api_key", None)
         settings.pop("ai_api_key_stored_in_plaintext", None)
-        write_json(SETTINGS_FILE, settings)
+        settings_write_ok = write_json(SETTINGS_FILE, settings)
+        plaintext_cleanup_failed = (
+            had_legacy_plaintext
+            and not settings_write_ok
+        )
+        if plaintext_cleanup_failed:
+            self._record_plaintext_cleanup_warning()
 
         if not key:
             location = "not set (system keychain clear failed)" if keychain_clear_failed else "not set"
@@ -158,6 +168,8 @@ class SecretsManager:
             location = "Windows DPAPI encrypted store"
         else:
             location = "environment variable (current session only)"
+        if plaintext_cleanup_failed:
+            location = f"{location} (legacy plaintext cleanup failed)"
         self._last_storage_location = location
         return location
 
@@ -173,6 +185,14 @@ class SecretsManager:
             self._storage_warning = message
         log_warning(f"API key persistence warning: {message}")
 
+    def _record_plaintext_cleanup_warning(self) -> None:
+        message = (
+            "legacy plaintext cleanup failed; the secure copy was kept, "
+            "but settings.json may still contain the previous key"
+        )
+        self._storage_warning = message
+        log_warning(f"API key persistence warning: {message}")
+
     def _migrate_legacy_plaintext_key(self, key: str, settings: dict) -> None:
         """Persist a legacy plaintext key to keyring/DPAPI and remove it from settings.
 
@@ -181,12 +201,14 @@ class SecretsManager:
         permanently lost.
         """
         migrated = False
+        migration_location = ""
         if KEYRING_AVAILABLE:
             try:
                 keyring.set_password(_SERVICE_NAME, _ACCOUNT_NAME, key)
                 readback = keyring.get_password(_SERVICE_NAME, _ACCOUNT_NAME)
                 if readback == key:
                     migrated = True
+                    migration_location = "system keychain"
             except Exception:
                 pass
         if not migrated and _dpapi_store_available():
@@ -195,6 +217,7 @@ class SecretsManager:
                     readback = DPAPI_STORE.get_key()
                     if readback == key:
                         migrated = True
+                        migration_location = "Windows DPAPI encrypted store"
                     else:
                         DPAPI_STORE.delete_key()
             except Exception:
@@ -202,7 +225,11 @@ class SecretsManager:
         if migrated:
             settings.pop("ai_api_key", None)
             settings.pop("ai_api_key_stored_in_plaintext", None)
-            write_json(SETTINGS_FILE, settings)
+            if not write_json(SETTINGS_FILE, settings):
+                self._record_plaintext_cleanup_warning()
+                self._last_storage_location = (
+                    f"{migration_location} (legacy plaintext cleanup failed)"
+                )
         # On failure, plaintext remains — the key survives.
 
     def is_keychain_available(self) -> bool:

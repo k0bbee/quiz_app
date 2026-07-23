@@ -91,6 +91,26 @@ class SecretsManagerTests(unittest.TestCase):
                 self.assertEqual("system keychain", manager.get_storage_location())
                 self.assertEqual(1, dpapi.deleted)
 
+    def test_keyring_storage_reports_failed_legacy_plaintext_cleanup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_file = str(Path(tmpdir) / "settings.json")
+            Path(settings_file).write_text(
+                json.dumps({"ai_api_key": "legacy"}),
+                encoding="utf-8",
+            )
+            with patch("core.secrets_manager.SETTINGS_FILE", settings_file), \
+                 patch("core.secrets_manager.KEYRING_AVAILABLE", True), \
+                 patch("core.secrets_manager.keyring"), \
+                 patch("core.secrets_manager.DPAPI_STORE", FakeDPAPIStore()), \
+                 patch("core.secrets_manager.write_json", return_value=False):
+                manager = SecretsManager()
+
+                location = manager.set_key("sk-new")
+
+                self.assertIn("plaintext cleanup failed", location)
+                self.assertIn("plaintext cleanup failed", manager.get_storage_warning())
+                self.assertNotIn("sk-new", manager.get_storage_warning())
+
     def test_clear_key_removes_session_key_keyring_and_legacy_fields(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             settings_file = str(Path(tmpdir) / "settings.json")
@@ -135,6 +155,38 @@ class SecretsManagerTests(unittest.TestCase):
             remaining = json.loads(Path(settings_file).read_text(encoding="utf-8"))
             self.assertNotIn("ai_api_key", remaining)
             self.assertNotIn("ai_api_key_stored_in_plaintext", remaining)
+
+    def test_legacy_migration_reports_failed_plaintext_cleanup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_file = str(Path(tmpdir) / "settings.json")
+            Path(settings_file).write_text(
+                json.dumps({
+                    "ai_api_key": "sk-legacy-secret",
+                    "ai_api_key_stored_in_plaintext": True,
+                }),
+                encoding="utf-8",
+            )
+            store = FakeDPAPIStore()
+            with patch("core.secrets_manager.SETTINGS_FILE", settings_file), \
+                 patch("core.secrets_manager.KEYRING_AVAILABLE", False), \
+                 patch("core.secrets_manager.DPAPI_STORE", store), \
+                patch("core.secrets_manager.write_json", return_value=False):
+                manager = SecretsManager()
+
+                self.assertEqual("sk-legacy-secret", manager.get_key())
+
+                self.assertIn(
+                    "plaintext cleanup failed",
+                    manager.get_storage_warning(),
+                )
+                self.assertIn(
+                    "plaintext cleanup failed",
+                    manager.get_storage_location(),
+                )
+                self.assertNotIn(
+                    "sk-legacy-secret",
+                    manager.get_storage_warning(),
+                )
 
     def test_windows_dpapi_persists_key_when_keyring_is_unavailable(self):
         with tempfile.TemporaryDirectory() as tmpdir:
