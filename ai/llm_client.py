@@ -69,6 +69,7 @@ class LLMClient:
         """Run requests.post off-thread so cancellation never waits on socket timeout."""
         completed = threading.Event()
         outcome: dict[str, object] = {}
+        kwargs.setdefault("allow_redirects", False)
 
         def send() -> None:
             try:

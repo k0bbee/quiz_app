@@ -155,6 +155,30 @@ class LLMErrorMessageTests(unittest.TestCase):
         self.assertFalse(post.called)
         self.assertIn("HTTPS", client.last_error)
 
+    def test_client_never_forwards_credentials_or_prompt_through_redirects(self):
+        class RedirectResponse:
+            status_code = 307
+            text = ""
+            headers = {"location": "https://redirected.example.com/v1/messages"}
+
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://api.example.com/v1",
+            model="model",
+            provider="anthropic",
+        )
+
+        with patch(
+            "ai.llm_client.requests.post",
+            return_value=RedirectResponse(),
+        ) as post:
+            result = client.generate(
+                [{"role": "user", "content": "private course prompt"}]
+            )
+
+        self.assertIsNone(result)
+        self.assertFalse(post.call_args.kwargs["allow_redirects"])
+
     def test_openai_compatible_client_retries_without_response_format_when_provider_rejects_it(self):
         class FakeResponse:
             def __init__(self, status_code, payload=None, text=""):
