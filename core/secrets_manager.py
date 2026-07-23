@@ -86,7 +86,15 @@ class SecretsManager:
 
         # 4. settings.json legacy plaintext migration compatibility
         settings = read_json(SETTINGS_FILE) or {}
-        return settings.get("ai_api_key", "")
+        legacy = settings.get("ai_api_key", "")
+        if legacy:
+            legacy = legacy.strip()
+        if not legacy:
+            return ""
+        # Auto-migrate to persistent storage on first read.
+        with self._storage_lock:
+            self._migrate_legacy_plaintext_key(legacy, settings)
+        return legacy
 
     def set_key(self, key: str) -> str:
         """Store a key in-session and, when available, in the system keychain.
@@ -164,6 +172,23 @@ class SecretsManager:
         with self._storage_lock:
             self._storage_warning = message
         log_warning(f"API key persistence warning: {message}")
+
+    def _migrate_legacy_plaintext_key(self, key: str, settings: dict) -> None:
+        """Persist a legacy plaintext key to keyring/DPAPI and remove it from settings."""
+        # Try keychain first, then Windows DPAPI.
+        migrated = False
+        if KEYRING_AVAILABLE:
+            try:
+                keyring.set_password(_SERVICE_NAME, _ACCOUNT_NAME, key)
+                migrated = True
+            except Exception:
+                pass
+        if not migrated and _dpapi_store_available():
+            migrated = DPAPI_STORE.set_key(key)
+        # Always remove plaintext material regardless of migration success.
+        settings.pop("ai_api_key", None)
+        settings.pop("ai_api_key_stored_in_plaintext", None)
+        write_json(SETTINGS_FILE, settings)
 
     def is_keychain_available(self) -> bool:
         return KEYRING_AVAILABLE or _dpapi_store_available()

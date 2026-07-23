@@ -115,17 +115,26 @@ class SecretsManagerTests(unittest.TestCase):
                 self.assertNotIn("ai_api_key_stored_in_plaintext", saved)
                 self.assertEqual(1, dpapi.deleted)
 
-    def test_legacy_plaintext_remains_readable_until_user_migrates_it(self):
+    def test_legacy_plaintext_is_readable_and_auto_migrated_to_dpapi(self):
+        """First read of a legacy plaintext key migrates it to DPAPI and removes plaintext."""
         with tempfile.TemporaryDirectory() as tmpdir:
             settings_file = str(Path(tmpdir) / "settings.json")
-            Path(settings_file).write_text(json.dumps({"ai_api_key": "legacy"}), encoding="utf-8")
+            Path(settings_file).write_text(json.dumps({
+                "ai_api_key": "legacy",
+                "ai_api_key_stored_in_plaintext": True,
+            }), encoding="utf-8")
+            store = FakeDPAPIStore()
             with patch("core.secrets_manager.SETTINGS_FILE", settings_file), \
                  patch("core.secrets_manager.KEYRING_AVAILABLE", False), \
-                 patch("core.secrets_manager.DPAPI_STORE", FakeDPAPIStore(available=False)):
+                 patch("core.secrets_manager.DPAPI_STORE", store):
                 manager = SecretsManager()
 
                 self.assertEqual("legacy", manager.get_key())
-                self.assertIn("plaintext", manager.get_storage_location())
+
+            # After migration, settings no longer contain the key.
+            remaining = json.loads(Path(settings_file).read_text(encoding="utf-8"))
+            self.assertNotIn("ai_api_key", remaining)
+            self.assertNotIn("ai_api_key_stored_in_plaintext", remaining)
 
     def test_windows_dpapi_persists_key_when_keyring_is_unavailable(self):
         with tempfile.TemporaryDirectory() as tmpdir:

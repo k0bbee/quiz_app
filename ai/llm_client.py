@@ -191,7 +191,7 @@ class LLMClient:
                 )
                 return None
             else:
-                self.last_error = f"Anthropic API error {resp.status_code}: {resp.text[:500]}"
+                self.last_error = self._safe_http_error(resp.status_code, resp)
                 debug(self.last_error)
                 return None
         except requests.RequestException as e:
@@ -328,7 +328,7 @@ class LLMClient:
                     "OpenAI-compatible API response did not contain usable text content."
                 )
                 return None
-            self.last_error = f"OpenAI-compatible API error {resp.status_code}: {resp.text[:500]}"
+            self.last_error = self._safe_http_error(resp.status_code, resp)
             debug(self.last_error)
             return None
         except requests.RequestException as e:
@@ -363,6 +363,25 @@ class LLMClient:
         if text_parts:
             return "\n".join(text_parts)
         return None
+
+    @staticmethod
+    def _safe_http_error(status_code: int, response) -> str:
+        """Return a diagnostic string with HTTP status and a safe request-id only.
+
+        Raw response bodies are never included to prevent credential or
+        course-content leakage through error messages and logs.
+        """
+        request_id = ""
+        if hasattr(response, "headers") and response.headers is not None:
+            for header in ("request-id", "x-request-id", "cf-ray"):
+                raw = response.headers.get(header, "")
+                if raw:
+                    import re
+                    safe = re.sub(r"[^A-Za-z0-9._:-]", "", str(raw))[:128]
+                    if safe:
+                        request_id = f"; request_id={safe}"
+                        break
+        return f"Provider API error HTTP {status_code}{request_id}"
 
     @staticmethod
     def _response_format_rejected(text: str) -> bool:
