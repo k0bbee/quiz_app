@@ -18,6 +18,12 @@ python scripts/check_environment.py
 python main.py
 ```
 
+`requirements.txt` 用于日常开发并声明受支持的最低版本。若要复现经过审计的 Windows 发布环境，请改用：
+
+```bash
+python -m pip install -r requirements-release.txt
+```
+
 `check_environment.py` 不读取或输出任何 API Key。它会检查 Python 版本、全部 Python 包、keyring backend、Windows DPAPI 回退、Tesseract/语言包和 `data/` 写权限。缺少启动必需项时返回非零退出码；缺少可选 Tesseract 时显示 `WARN`，其他功能仍可启动。启动应用后，也可以在 **设置 → 运行环境 → 检查环境** 查看同一份诊断和 OCR 补齐命令，或点击 **复制 OCR 修复命令** 直接把 Tesseract 安装与 `data/tessdata/` 语言包补齐提示复制到剪贴板。需要机器可读结果时使用：
 
 ```bash
@@ -112,7 +118,8 @@ quiz_app/
 ├── utils/               # JSON读写、日志、常量
 ├── data/                # 🚫 运行时数据（题库/题目集/练习快照/进度/课程/设置）
 ├── tests/               # 单元测试
-└── requirements.txt
+├── requirements.txt          # 日常开发最低版本
+└── requirements-release.txt  # 经审计的 Windows 发布锁
 ```
 
 ## AI 配置
@@ -121,7 +128,7 @@ quiz_app/
 |---|---|
 | Anthropic | 原生 Messages API |
 | OpenAI 兼容 | 硅基流动、DeepSeek 等第三方端点 |
-| Local CLI Agent | 免 API Key，调用本地 claude/codex CLI；课程提示词通过 stdin 传入，不放在命令行参数里 |
+| Local CLI Agent | 仅允许 Claude CLI 的无工具受限模式；需在启动程序前设置 `ANTHROPIC_API_KEY`，课程提示词通过 stdin 传入；检测到 Codex 时会因无法保证无工具隔离而拒绝执行 |
 
 API Key 读取优先级：环境变量 `QUIZ_APP_API_KEY` → 系统密钥环 → Windows DPAPI 加密存储。设置页不会回显已有密钥；空输入表示保持不变，只有输入新值才会更新，清除操作需要单独确认。
 

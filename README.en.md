@@ -18,6 +18,12 @@ python scripts/check_environment.py
 python main.py
 ```
 
+`requirements.txt` declares supported development floors. To reproduce the audited Windows release environment, install the exact lock instead:
+
+```bash
+python -m pip install -r requirements-release.txt
+```
+
 The environment checker never reads or prints API keys. It verifies Python and package versions, the keyring backend, the Windows DPAPI fallback, Tesseract and its language packs, and write access to `data/`. Missing startup requirements produce a non-zero exit code; missing optional OCR support produces a warning.
 
 For machine-readable diagnostics:
@@ -91,7 +97,7 @@ The conversation keeps only recent context during the current application sessio
 |---|---|
 | Anthropic | Native Messages API |
 | OpenAI-compatible | Compatible endpoints such as DeepSeek or SiliconFlow |
-| Local CLI Agent | Uses a local Claude/Codex command without requiring an API key; course prompts are sent through stdin rather than command-line arguments |
+| Local CLI Agent | Uses Claude CLI only in restricted no-tools mode; set `ANTHROPIC_API_KEY` before starting the app. Prompts are sent through stdin, while detected Codex CLIs are rejected because no verified no-tools boundary is available |
 
 API key lookup order:
 

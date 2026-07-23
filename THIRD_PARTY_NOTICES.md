@@ -6,6 +6,8 @@
 
 `requirements.txt`目前声明最低兼容版本而非锁定版本。下表“审计环境版本”来自2026年7月23日实际测试环境，仅用于当前审计；制作V1.0.0发布包和软件著作权材料时，必须从冻结环境重新生成版本与许可证清单。
 
+`requirements-release.txt` 另行锁定了面向 Windows x64、CPython 3.12 的直接及传递 Python 依赖，并由安全工作流执行全新安装、`pip check` 和 `pip-audit`。该锁文件是发布复现口径；下表仍保留生成许可证证据时的本机审计环境版本，因此个别版本可能不同。
+
 | 组件 | 审计环境版本 | 项目用途 | 许可证/授权模式 | 官方来源 |
 |---|---:|---|---|---|
 | PyQt6 | 6.11.0 | 桌面用户界面、信号和工作线程 | GPL-3.0-only；如另行购买则可适用Riverbank商业许可 | [Riverbank PyQt](https://www.riverbankcomputing.com/software/pyqt/) |
