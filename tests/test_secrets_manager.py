@@ -294,5 +294,60 @@ class SecretsManagerTests(unittest.TestCase):
         self.assertEqual(1, max_active_writes)
 
 
+    def test_migration_failure_preserves_plaintext_when_both_backends_unavailable(self):
+        """When keyring and DPAPI both fail, plaintext key must survive."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_file = str(Path(tmpdir) / "settings.json")
+            original = {
+                "ai_api_key": "legacy-key",
+                "ai_api_key_stored_in_plaintext": True,
+            }
+            Path(settings_file).write_text(
+                json.dumps(original), encoding="utf-8"
+            )
+            store = FakeDPAPIStore(write_ok=False, available=True)
+            with patch("core.secrets_manager.SETTINGS_FILE", settings_file), \
+                 patch("core.secrets_manager.KEYRING_AVAILABLE", False), \
+                 patch("core.secrets_manager.DPAPI_STORE", store):
+                manager = SecretsManager()
+
+                first = manager.get_key()
+                second = manager.get_key()
+
+            self.assertEqual("legacy-key", first)
+            self.assertEqual("legacy-key", second)
+            remaining = json.loads(Path(settings_file).read_text(encoding="utf-8"))
+            self.assertIn("ai_api_key", remaining)
+            self.assertEqual("legacy-key", remaining["ai_api_key"])
+
+    def test_migration_readback_failure_preserves_plaintext(self):
+        """Plaintext must survive when migration write cannot be verified."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_file = str(Path(tmpdir) / "settings.json")
+            Path(settings_file).write_text(
+                json.dumps({"ai_api_key": "legacy-key-2"}), encoding="utf-8"
+            )
+            # keyring write succeeds but readback returns different value.
+            readback_values = ["legacy-key-2", "mismatch"]
+
+            def fake_get_password(service, account):
+                return readback_values.pop(0)
+
+            with patch("core.secrets_manager.KEYRING_AVAILABLE", True), \
+                 patch("core.secrets_manager.keyring.set_password"), \
+                 patch("core.secrets_manager.keyring.get_password",
+                       side_effect=fake_get_password), \
+                 patch("core.secrets_manager.SETTINGS_FILE", settings_file), \
+                 patch("core.secrets_manager.DPAPI_STORE",
+                       FakeDPAPIStore(available=False)):
+                manager = SecretsManager()
+                key = manager.get_key()
+
+            self.assertEqual("legacy-key-2", key)
+            remaining = json.loads(Path(settings_file).read_text(encoding="utf-8"))
+            self.assertIn("ai_api_key", remaining,
+                          "plaintext must survive when readback fails")
+
+
 if __name__ == "__main__":
     unittest.main()

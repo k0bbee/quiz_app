@@ -174,21 +174,36 @@ class SecretsManager:
         log_warning(f"API key persistence warning: {message}")
 
     def _migrate_legacy_plaintext_key(self, key: str, settings: dict) -> None:
-        """Persist a legacy plaintext key to keyring/DPAPI and remove it from settings."""
-        # Try keychain first, then Windows DPAPI.
+        """Persist a legacy plaintext key to keyring/DPAPI and remove it from settings.
+
+        The plaintext is only deleted after a successful write+readback round-trip.
+        If both backends fail, the plaintext field is preserved so the key is not
+        permanently lost.
+        """
         migrated = False
         if KEYRING_AVAILABLE:
             try:
                 keyring.set_password(_SERVICE_NAME, _ACCOUNT_NAME, key)
-                migrated = True
+                readback = keyring.get_password(_SERVICE_NAME, _ACCOUNT_NAME)
+                if readback == key:
+                    migrated = True
             except Exception:
                 pass
         if not migrated and _dpapi_store_available():
-            migrated = DPAPI_STORE.set_key(key)
-        # Always remove plaintext material regardless of migration success.
-        settings.pop("ai_api_key", None)
-        settings.pop("ai_api_key_stored_in_plaintext", None)
-        write_json(SETTINGS_FILE, settings)
+            try:
+                if DPAPI_STORE.set_key(key):
+                    readback = DPAPI_STORE.get_key()
+                    if readback == key:
+                        migrated = True
+                    else:
+                        DPAPI_STORE.delete_key()
+            except Exception:
+                pass
+        if migrated:
+            settings.pop("ai_api_key", None)
+            settings.pop("ai_api_key_stored_in_plaintext", None)
+            write_json(SETTINGS_FILE, settings)
+        # On failure, plaintext remains — the key survives.
 
     def is_keychain_available(self) -> bool:
         return KEYRING_AVAILABLE or _dpapi_store_available()
