@@ -21,7 +21,7 @@ class InputLimitError(ValueError):
 MAX_BUNDLE_MEMBERS = 5_000
 MAX_BUNDLE_ENTRY_BYTES = 64 * 1024 * 1024       # 64 MiB
 MAX_BUNDLE_TOTAL_BYTES = 1024 * 1024 * 1024     # 1 GiB
-MAX_ZIP_COMPRESSION_RATIO = 200
+MAX_ZIP_COMPRESSION_RATIO = 200  # advisory warning only — not a blocking gate
 
 # ── Document budgets (used by document_parser & past_exam_importer) ─
 

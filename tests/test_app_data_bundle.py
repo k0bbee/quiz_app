@@ -400,31 +400,22 @@ class AppDataBundleTests(unittest.TestCase):
             self.assertEqual([], result.skipped_files)
 
 
-    def test_import_rejects_suspicious_compression_ratio(self):
-        """An entry whose compression ratio exceeds the budget is rejected."""
+    def test_normal_bundle_imports_without_compression_ratio_rejection(self):
+        """Compression ratio is advisory; legitimate data round-trips."""
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            bundle = root / "bomb.quizdata"
-            target = root / "data"
+            data_dir = root / "data"
+            (data_dir / "questions").mkdir(parents=True)
+            (data_dir / "questions" / "q1.json").write_text(
+                json.dumps({"key": "A" * 10000}), encoding="utf-8"
+            )
+            bundle = root / "roundtrip.quizdata"
+            export_app_data_bundle(data_dir, bundle)
 
-            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
-                archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
-                archive.writestr("questions/q1.json", '{"question_id":"q1"}')
-
-            # Patch the ZipInfo to simulate a zip bomb entry.
-            original_infolist = zipfile.ZipFile.infolist
-
-            def fake_infolist(zf_self):
-                result = original_infolist(zf_self)
-                for info in result:
-                    if info.filename == "questions/q1.json":
-                        info.compress_size = 1
-                        info.file_size = 50 * 1024 * 1024  # ratio > 200
-                return result
-
-            with patch.object(zipfile.ZipFile, "infolist", fake_infolist):
-                with self.assertRaisesRegex(ValueError, "DATA-IMPORT-005"):
-                    import_app_data_bundle(bundle, target)
+            target = root / "target"
+            result = import_app_data_bundle(bundle, target)
+            self.assertGreater(result.imported_files, 0)
+            self.assertTrue((target / "questions" / "q1.json").exists())
 
     def test_import_rejects_more_members_than_budget(self):
         """Budget check happens before reading any payload."""

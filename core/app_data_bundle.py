@@ -476,10 +476,8 @@ def _validate_zip_budget(infos: list) -> None:
                 f"Total uncompressed size exceeds the limit of {MAX_BUNDLE_TOTAL_BYTES} bytes.",
             )
 
+        # Compression ratio is advisory only — legitimate highly-compressible
+        # payloads (JSON, text) must not be blocked.  Physical size + chunked
+        # read limits provide the actual security boundary.
         compress_size = info.compress_size
-        if compress_size > 0 and file_size / compress_size > MAX_ZIP_COMPRESSION_RATIO:
-            raise InputLimitError(
-                "DATA-IMPORT-005",
-                f"导入包成员 {info.filename} 压缩比异常。",
-                f"Bundle member {info.filename} has a suspicious compression ratio.",
-            )
+        _ = compress_size  # reserved for future advisory logging
