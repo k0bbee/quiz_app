@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import tempfile
 from functools import lru_cache
 from pathlib import Path
 
@@ -53,3 +54,66 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.qt)
         if item.get_closest_marker("full") and not config.getoption("--run-full"):
             item.add_marker(skip_full)
+
+
+class _InMemorySecrets:
+    def __init__(self):
+        self.value = ""
+
+    def get_key(self) -> str:
+        return self.value
+
+    def set_key(self, value: str) -> str:
+        self.value = value.strip()
+        return "test memory"
+
+    def get_storage_location(self) -> str:
+        return "test memory"
+
+    def get_storage_warning(self) -> str:
+        return ""
+
+
+@pytest.fixture(autouse=True)
+def _isolate_qt_settings_and_secrets(request, monkeypatch):
+    """Prevent UI tests from touching real settings files or OS credentials."""
+    if request.node.get_closest_marker("qt") is None or not _pyqt6_available():
+        yield
+        return
+
+    from core.secrets_manager import SecretsManager
+    from ui.screens import settings_screen
+
+    secrets = _InMemorySecrets()
+    with tempfile.TemporaryDirectory(prefix="quiz-app-qt-test-") as temp_dir:
+        monkeypatch.setattr(
+            settings_screen,
+            "SETTINGS_FILE",
+            str(Path(temp_dir) / "settings.json"),
+        )
+        monkeypatch.setattr(
+            SecretsManager,
+            "instance",
+            classmethod(lambda cls: secrets),
+        )
+        yield
+
+
+@pytest.fixture(autouse=True)
+def _cleanup_qt_top_level_widgets(request):
+    """Keep Qt tests isolated instead of accumulating windows across modules."""
+    yield
+    if request.node.get_closest_marker("qt") is None or not _pyqt6_available():
+        return
+
+    from PyQt6.QtCore import QEvent
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in tuple(app.topLevelWidgets()):
+        widget.hide()
+        widget.deleteLater()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()

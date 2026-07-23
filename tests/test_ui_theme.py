@@ -13,7 +13,7 @@ import main as main_module
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QCloseEvent, QPalette
-from PyQt6.QtCore import QEvent, Qt
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QSplitter, QTextEdit
 
 from core.language_manager import LanguageManager
@@ -64,7 +64,6 @@ class UiThemeTests(unittest.TestCase):
             )
 
             window = MainWindow(services=services)
-            self.addCleanup(window.close)
 
             self.assertIs(services.question_bank, window.question_bank)
             self.assertIs(services.course_manager, window.course_manager)
@@ -72,16 +71,6 @@ class UiThemeTests(unittest.TestCase):
 
     def test_application_style_policy_lives_outside_the_process_entry_point(self):
         self.assertIsNotNone(importlib.util.find_spec("ui.application_style"))
-
-    def doCleanups(self):
-        """Run registered cleanups before draining deferred Qt deletions."""
-        result = super().doCleanups()
-        for widget in QApplication.topLevelWidgets():
-            widget.close()
-            widget.deleteLater()
-        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-        _APP.processEvents()
-        return result
 
     def test_stylesheet_font_scaling_is_based_on_original_sizes(self):
         from ui.font_scale import scale_stylesheet_font_sizes
@@ -278,7 +267,6 @@ class UiThemeTests(unittest.TestCase):
         self.assertNotIn("border-color: transparent", sidebar_focus_rule.group("body"))
 
         main_window = MainWindow()
-        self.addCleanup(main_window.close)
 
         self.assertEqual(Qt.FocusPolicy.NoFocus, main_window.menuBar().focusPolicy())
         for button in main_window.navigation_buttons():
@@ -286,7 +274,6 @@ class UiThemeTests(unittest.TestCase):
 
     def test_main_navigation_uses_left_workspaces_and_context_tabs(self):
         main_window = MainWindow()
-        self.addCleanup(main_window.close)
         self.addCleanup(main_window.lang_manager.set_language, "zh")
         main_window.lang_manager.set_language("en")
 
@@ -351,7 +338,6 @@ class UiThemeTests(unittest.TestCase):
             task = center.create(kind="question_generation", title="Generate questions")
             center.fail(task.task_id, "provider timeout")
             main_window = MainWindow()
-            self.addCleanup(main_window.close)
             self.addCleanup(main_window.lang_manager.set_language, "zh")
             main_window.task_center = center
             main_window.lang_manager.set_language("en")
@@ -382,7 +368,6 @@ class UiThemeTests(unittest.TestCase):
             )
             center.fail(task.task_id, "application closed")
             main_window = MainWindow()
-            self.addCleanup(main_window.close)
             main_window.task_center = center
 
             reopened = getattr(main_window, "_open_task_context", lambda _task_id: False)(
@@ -429,7 +414,6 @@ class UiThemeTests(unittest.TestCase):
 
     def test_top_navigation_confirms_before_leaving_active_quiz(self):
         main_window = MainWindow()
-        self.addCleanup(main_window.close)
         main_window.stack.setCurrentIndex(main_window.SCREEN_QUIZ)
         main_window.quiz_screen.confirm_exit = Mock(return_value=False)
 
@@ -448,7 +432,6 @@ class UiThemeTests(unittest.TestCase):
 
     def test_quiz_and_results_use_focus_mode_without_global_sidebar(self):
         main_window = MainWindow()
-        self.addCleanup(main_window.close)
         main_window.quiz_screen.confirm_exit = Mock(return_value=True)
 
         main_window.navigate_to(main_window.SCREEN_QUIZ)
@@ -466,7 +449,6 @@ class UiThemeTests(unittest.TestCase):
 
     def test_historical_exam_prediction_is_routed_to_main_generation_flow(self):
         main_window = MainWindow()
-        self.addCleanup(main_window.close)
         handler = Mock()
         main_window._on_generate_predicted_exam = handler
 
@@ -807,7 +789,6 @@ class UiThemeTests(unittest.TestCase):
     def test_main_window_routes_course_generation_to_existing_dialog_flow(self):
         with patch.object(MainWindow, "_on_ai_generate") as generate:
             main_window = MainWindow()
-            self.addCleanup(main_window.close)
 
             main_window._get_course_screen().generate_questions_requested.emit("course-a")
 
@@ -1267,7 +1248,6 @@ class UiThemeTests(unittest.TestCase):
             results = ResultsScreen()
             progress = ProgressDashboard(progress_manager, question_bank)
             main_window = MainWindow()
-            self.addCleanup(main_window.close)
 
         self.assertEqual("secondaryButton", topic.export_btn.objectName())
         self.assertEqual("secondaryButton", topic.regenerate_btn.objectName())
