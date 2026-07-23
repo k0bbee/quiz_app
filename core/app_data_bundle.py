@@ -33,6 +33,12 @@ DATA_DIRECTORIES = (
 DATA_FILES = ("current_course.json", "settings.json", "mastery_overrides.json")
 SECRET_FILENAMES = {".api_key.dpapi"}
 SECRET_SETTING_KEYS = {"ai_api_key"}
+LOCAL_ONLY_SETTING_KEYS = frozenset({
+    "ai_api_key",
+    "ai_provider",
+    "ai_base_url",
+    "ai_model",
+})
 DERIVED_FILENAMES = {
     INDEX_FILENAME,
     f"{INDEX_FILENAME}-wal",
@@ -46,6 +52,7 @@ class AppDataImportResult:
 
     imported_files: int
     skipped_files: list[str] = field(default_factory=list)
+    ignored_settings: list[str] = field(default_factory=list)
 
 
 def export_app_data_bundle(
@@ -80,7 +87,7 @@ def export_app_data_bundle(
         "version": BUNDLE_VERSION,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "includes": [*DATA_DIRECTORIES, *DATA_FILES],
-        "excludes": sorted([*SECRET_FILENAMES, *SECRET_SETTING_KEYS]),
+        "excludes": sorted([*SECRET_FILENAMES, *LOCAL_ONLY_SETTING_KEYS]),
     }
 
     temporary_path: Path | None = None
@@ -138,7 +145,12 @@ def import_app_data_bundle(
         _report(task, "validating", detail=str(bundle_path))
         with zipfile.ZipFile(bundle_path) as archive:
             _validate_manifest(archive)
-            staged_files, skipped = _prepare_bundle(archive, staging_dir, task=task)
+            staged_files, skipped, ignored_settings = _prepare_bundle(
+                archive,
+                staging_dir,
+                task=task,
+                target_dir=target_dir,
+            )
 
         imported = _commit_staged_files(
             staged_files,
@@ -148,7 +160,11 @@ def import_app_data_bundle(
         )
 
     _complete(task, "saved", str(target_dir))
-    return AppDataImportResult(imported_files=imported, skipped_files=skipped)
+    return AppDataImportResult(
+        imported_files=imported,
+        skipped_files=skipped,
+        ignored_settings=ignored_settings,
+    )
 
 
 def _prepare_bundle(
@@ -156,10 +172,17 @@ def _prepare_bundle(
     staging_dir: Path,
     *,
     task: TaskControl | None = None,
-) -> tuple[list[tuple[Path, Path]], list[str]]:
-    """Validate every import candidate and write it only to staging."""
+    target_dir: Path | None = None,
+) -> tuple[list[tuple[Path, Path]], list[str], list[str]]:
+    """Validate every import candidate and write it only to staging.
+
+    Returns ``(staged_files, skipped_names, ignored_settings)``.
+    When *target_dir* is supplied, existing ``settings.json`` is read
+    so local AI trust fields survive the import.
+    """
     staged_files: list[tuple[Path, Path]] = []
     skipped: list[str] = []
+    ignored_settings: list[str] = []
     seen: set[str] = set()
 
     members = archive.infolist()
@@ -186,13 +209,29 @@ def _prepare_bundle(
 
         payload = archive.read(info)
         if relative_path.suffix.lower() == ".json":
-            payload = _validated_json_payload(name, payload)
+            if name == "settings.json" and target_dir is not None:
+                data = json.loads(payload.decode("utf-8"))
+                existing = _read_existing_settings(target_dir)
+                merged, ignored_settings = _merge_portable_settings(data, existing)
+                payload = json.dumps(merged, ensure_ascii=False, indent=2).encode("utf-8")
+            else:
+                payload = _validated_json_payload(name, payload)
 
         staged_path.parent.mkdir(parents=True, exist_ok=True)
         staged_path.write_bytes(payload)
         staged_files.append((relative_path, staged_path))
 
-    return staged_files, skipped
+    return staged_files, skipped, ignored_settings
+
+
+def _read_existing_settings(target_dir: Path) -> dict:
+    """Read the target settings.json, returning an empty dict on any failure."""
+    path = target_dir / "settings.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def _validated_json_payload(name: str, payload: bytes) -> bytes:
@@ -206,9 +245,30 @@ def _validated_json_payload(name: str, payload: bytes) -> bytes:
         return payload
     if not isinstance(data, dict):
         raise ValueError("Invalid settings.json in data bundle: expected an object")
-    for key in SECRET_SETTING_KEYS:
+    for key in LOCAL_ONLY_SETTING_KEYS:
         data.pop(key, None)
     return json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def _merge_portable_settings(
+    imported: dict,
+    existing: dict,
+) -> tuple[dict, list[str]]:
+    """Merge imported settings, preserving the receiving machine's AI trust.
+
+    Returns ``(merged_settings, list_of_ignored_keys)``.  ``ai_api_key`` is
+    never restored from either dictionary.
+    """
+    ignored = sorted(key for key in imported if key in LOCAL_ONLY_SETTING_KEYS)
+    merged = {
+        key: value
+        for key, value in imported.items()
+        if key not in LOCAL_ONLY_SETTING_KEYS
+    }
+    for key in LOCAL_ONLY_SETTING_KEYS:
+        if key != "ai_api_key" and key in existing:
+            merged[key] = existing[key]
+    return merged, ignored
 
 
 def _commit_staged_files(
@@ -297,7 +357,7 @@ def _portable_settings(path: Path) -> dict:
     if not isinstance(data, dict):
         return {}
     portable = dict(data)
-    for key in SECRET_SETTING_KEYS:
+    for key in LOCAL_ONLY_SETTING_KEYS:
         portable.pop(key, None)
     return portable
 

@@ -486,7 +486,7 @@ class AISettingsValidationTests(unittest.TestCase):
     def test_app_data_import_runs_in_background_worker(self):
         screen = SettingsScreen()
         worker = ManualAppDataWorker()
-        result = SimpleNamespace(imported_files=12, skipped_files=["unsafe.txt"])
+        result = SimpleNamespace(imported_files=12, skipped_files=["unsafe.txt"], ignored_settings=[])
 
         with patch("ui.screens.settings_screen.QFileDialog.getOpenFileName", return_value=("backup.quizdata", "")), \
              patch("ui.screens.settings_screen.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes), \

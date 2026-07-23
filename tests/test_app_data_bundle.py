@@ -8,7 +8,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from core.app_data_bundle import export_app_data_bundle, import_app_data_bundle
+from core.app_data_bundle import (
+    export_app_data_bundle,
+    import_app_data_bundle,
+    LOCAL_ONLY_SETTING_KEYS,
+)
 from core.background_task import BackgroundTaskCancelled, TaskControl
 
 
@@ -122,8 +126,9 @@ class AppDataBundleTests(unittest.TestCase):
 
                 settings = json.loads(archive.read("settings.json").decode("utf-8"))
                 self.assertEqual("zh", settings["language"])
-                self.assertEqual("model", settings["ai_model"])
-                self.assertNotIn("ai_api_key", settings)
+                # All AI trust fields are excluded from portable settings
+                for key in LOCAL_ONLY_SETTING_KEYS:
+                    self.assertNotIn(key, settings)
 
     def test_import_bundle_restores_whitelisted_paths_and_rejects_traversal(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -232,6 +237,94 @@ class AppDataBundleTests(unittest.TestCase):
                 json.loads(existing.read_text(encoding="utf-8")),
             )
             self.assertFalse((target_dir / "questions" / "q2.json").exists())
+
+
+    def test_portable_settings_exclude_all_ai_trust_keys(self):
+        """Export removes all four AI trust fields from settings.json."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            data_dir = root / "data"
+            (data_dir / "questions").mkdir(parents=True)
+            (data_dir / "questions" / "q1.json").write_text('{"question_id": "q1"}', encoding="utf-8")
+            (data_dir / "settings.json").write_text(
+                json.dumps({
+                    "language": "zh",
+                    "ai_api_key": "secret",
+                    "ai_provider": "custom",
+                    "ai_base_url": "https://attacker.example/v1",
+                    "ai_model": "hostile-model",
+                }, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            bundle_path = export_app_data_bundle(data_dir, root / "bundle.quizdata")
+
+            with zipfile.ZipFile(bundle_path) as archive:
+                settings = json.loads(archive.read("settings.json").decode("utf-8"))
+                self.assertEqual("zh", settings["language"])
+                for key in LOCAL_ONLY_SETTING_KEYS:
+                    self.assertNotIn(key, settings, f"{key} must not be exported")
+
+    def test_import_preserves_existing_ai_trust_settings(self):
+        """Import replaces language but keeps the local machine AI trust fields."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            target_dir = root / "data"
+            (target_dir / "questions").mkdir(parents=True)
+            (target_dir / "questions" / "q1.json").write_text('{"question_id": "q1"}', encoding="utf-8")
+            existing_settings = {
+                "language": "zh",
+                "ai_provider": "anthropic",
+                "ai_base_url": "https://api.anthropic.com/v1",
+                "ai_model": "claude-sonnet-4-6",
+            }
+            (target_dir / "settings.json").write_text(
+                json.dumps(existing_settings, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            bundle = root / "bundle.quizdata"
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
+                archive.writestr("questions/q2.json", '{"question_id": "q2"}')
+                archive.writestr(
+                    "settings.json",
+                    json.dumps({
+                        "language": "en",
+                        "ai_provider": "custom",
+                        "ai_base_url": "https://attacker.example/v1",
+                        "ai_model": "hostile-model",
+                    }, ensure_ascii=False),
+                )
+
+            result = import_app_data_bundle(bundle, target_dir)
+
+            imported_settings = json.loads((target_dir / "settings.json").read_text(encoding="utf-8"))
+            self.assertEqual("en", imported_settings["language"])
+            self.assertEqual("anthropic", imported_settings["ai_provider"])
+            self.assertEqual("https://api.anthropic.com/v1", imported_settings["ai_base_url"])
+            self.assertEqual("claude-sonnet-4-6", imported_settings["ai_model"])
+            self.assertNotIn("ai_api_key", imported_settings)
+            self.assertIn("ai_provider", result.ignored_settings)
+            self.assertIn("ai_base_url", result.ignored_settings)
+            self.assertIn("ai_model", result.ignored_settings)
+
+    def test_export_omits_ai_trust_keys_from_synthetic_settings(self):
+        """A settings dict with all four keys strips every one at the portable layer."""
+        from core.app_data_bundle import _portable_settings
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_path = Path(tmpdir) / "settings.json"
+            settings_path.write_text(json.dumps({
+                "language": "zh",
+                "ai_api_key": "sk-test",
+                "ai_provider": "local_agent",
+                "ai_base_url": "http://127.0.0.1:8080/v1",
+                "ai_model": "test-model",
+            }, ensure_ascii=False), encoding="utf-8")
+            portable = _portable_settings(settings_path)
+            self.assertEqual("zh", portable["language"])
+            for key in LOCAL_ONLY_SETTING_KEYS:
+                self.assertNotIn(key, portable, f"{key} must not appear in portable settings")
 
 
 if __name__ == "__main__":

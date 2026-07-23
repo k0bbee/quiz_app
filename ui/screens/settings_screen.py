@@ -1653,12 +1653,18 @@ class SettingsScreen(QWidget):
                 f"\n已跳过 {len(result.skipped_files)} 个不安全或不支持的文件。",
                 f"\nSkipped {len(result.skipped_files)} unsafe or unsupported files.",
             )
+        ignored_hint = ""
+        if result.ignored_settings:
+            ignored_hint = self.lang_manager.get_text(
+                "\nAI 提供商、端点和模型属于本机信任设置，未从数据包导入。",
+                "\nAI provider, base URL, and model are local trust settings and were not imported.",
+            )
         QMessageBox.information(
             self,
             self.lang_manager.get_text("已导入", "Imported"),
             self.lang_manager.get_text(
-                f"已导入 {result.imported_files} 个数据文件。{skipped_hint}\n建议重启应用以刷新全部数据。",
-                f"Imported {result.imported_files} data files.{skipped_hint}\nRestart the app to refresh all data.",
+                f"已导入 {result.imported_files} 个数据文件。{skipped_hint}{ignored_hint}\n建议重启应用以刷新全部数据。",
+                f"Imported {result.imported_files} data files.{skipped_hint}{ignored_hint}\nRestart the app to refresh all data.",
             ),
         )
 
