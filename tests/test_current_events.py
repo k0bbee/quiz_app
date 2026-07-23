@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from core.current_events import (
     CurrentEventCandidate,
@@ -138,6 +139,32 @@ class CurrentEventsTests(unittest.TestCase):
 
         self.assertEqual("WEB-SEARCH-429", raised.exception.error.code)
         self.assertIn("稍后", raised.exception.error.action("zh"))
+
+    def test_provider_rejects_response_over_transport_budget(self):
+        class OversizedResponse(FakeResponse):
+            headers = {}
+
+            def iter_content(self, chunk_size):
+                self.chunk_size = chunk_size
+                yield b"12345"
+                yield b"67890"
+
+            def close(self):
+                pass
+
+        session = FakeSession(OversizedResponse(payload={"articles": []}))
+        provider = GDELTContextProvider(session=session)
+
+        with patch(
+            "core.current_events._MAX_GDELT_RESPONSE_BYTES",
+            8,
+            create=True,
+        ):
+            with self.assertRaises(CurrentEventsError) as raised:
+                provider.search("administrative law")
+
+        self.assertEqual("WEB-SEARCH-003", raised.exception.error.code)
+        self.assertTrue(session.calls[0][1]["stream"])
 
     def test_provider_maps_gdelt_keyword_rejection_to_query_error(self):
         provider = GDELTContextProvider(session=FakeSession(FakeResponse(

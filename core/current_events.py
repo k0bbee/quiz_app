@@ -22,6 +22,8 @@ from utils.logger import warning
 
 
 GDELT_CONTEXT_ENDPOINT = "https://api.gdeltproject.org/api/v2/context/context"
+_MAX_GDELT_RESPONSE_BYTES = 2 * 1024 * 1024
+_GDELT_RESPONSE_CHUNK_BYTES = 64 * 1024
 _TRACKING_QUERY_KEYS = {
     "fbclid",
     "gclid",
@@ -29,6 +31,41 @@ _TRACKING_QUERY_KEYS = {
     "mc_eid",
     "ref_src",
 }
+
+
+class _GDELTResponseLimitError(ValueError):
+    pass
+
+
+def _buffer_gdelt_response(response) -> None:
+    iter_content = getattr(response, "iter_content", None)
+    if not callable(iter_content):
+        return
+    headers = getattr(response, "headers", {}) or {}
+    try:
+        declared_bytes = int(headers.get("content-length", 0) or 0)
+    except (TypeError, ValueError):
+        declared_bytes = 0
+    if declared_bytes > _MAX_GDELT_RESPONSE_BYTES:
+        response.close()
+        raise _GDELTResponseLimitError("response exceeded the size limit")
+
+    chunks: list[bytes] = []
+    total_bytes = 0
+    try:
+        for chunk in iter_content(chunk_size=_GDELT_RESPONSE_CHUNK_BYTES):
+            if not chunk:
+                continue
+            total_bytes += len(chunk)
+            if total_bytes > _MAX_GDELT_RESPONSE_BYTES:
+                raise _GDELTResponseLimitError(
+                    "response exceeded the size limit"
+                )
+            chunks.append(chunk)
+        response._content = b"".join(chunks)
+        response._content_consumed = True
+    finally:
+        response.close()
 
 
 @dataclass(frozen=True)
@@ -267,9 +304,13 @@ class GDELTContextProvider:
                 headers={"User-Agent": "CourseQuizStudio/1.0 current-events-review"},
                 timeout=(15, 30),
                 allow_redirects=False,
+                stream=True,
             )
+            _buffer_gdelt_response(response)
         except requests.RequestException as exc:
             raise CurrentEventsError(_network_error(str(exc))) from exc
+        except _GDELTResponseLimitError as exc:
+            raise CurrentEventsError(_response_error(str(exc))) from exc
 
         if response.status_code == 429:
             raise CurrentEventsError(_rate_limit_error(response.text))
