@@ -279,8 +279,15 @@ class PastExamManager:
             data = read_json(str(path))
             if isinstance(data, dict):
                 record = PastExamRecord.from_dict(data)
-                if record.exam_id:
-                    records.append(record)
+                if not record.exam_id:
+                    continue
+                try:
+                    safe_id = sanitize_filename_part(record.exam_id)
+                except ValueError:
+                    continue
+                if path.parent.name != safe_id:
+                    continue
+                records.append(record)
         return sorted(records, key=lambda record: record.imported_at, reverse=True)
 
     def find_by_hash(self, source_sha256: str) -> Optional[PastExamRecord]:

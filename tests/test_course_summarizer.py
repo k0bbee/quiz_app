@@ -72,6 +72,27 @@ class FakeProfileGenerator:
 
 
 class CourseSummaryGeneratorTests(unittest.TestCase):
+    def test_llm_summary_prompt_does_not_expose_absolute_source_paths(self):
+        private_path = r"C:\Users\student\Downloads\private-course\lecture.md"
+        messages = CourseSummaryGenerator.build_messages(
+            "Course",
+            [
+                ExtractedDocument(
+                    path=private_path,
+                    title="lecture",
+                    extension=".md",
+                    text="Course content",
+                )
+            ],
+            [],
+            "# Local summary",
+        )
+
+        prompt = messages[-1]["content"]
+        self.assertIn("Source: lecture (.md)", prompt)
+        self.assertNotIn(private_path, prompt)
+        self.assertNotIn(r"C:\Users\student", prompt)
+
     def test_course_initializer_accepts_a_shared_build_pipeline(self):
         self.assertIn(
             "build_pipeline",
@@ -935,11 +956,50 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertEqual("# Repaired Summary\n", repaired_summary.read_text(encoding="utf-8"))
             self.assertFalse(stale_summary.exists())
 
+    def test_project_manager_never_uses_another_course_file_as_summary(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            victim = CourseProject(
+                course_id="course-victim",
+                title="Victim",
+                source_folder="",
+                summary_markdown="# Victim summary",
+                summary_path="",
+                topics=[],
+                documents=[],
+                created_at="2026-07-23T00:00:00+00:00",
+                updated_at="2026-07-23T00:00:00+00:00",
+            )
+            self.assertTrue(manager.save(victim, make_current=False))
+            victim_json = Path(manager.directory) / "course-victim.json"
+            attacker = CourseProject(
+                course_id="course-attacker",
+                title="Attacker",
+                source_folder="",
+                summary_markdown="# Attacker summary",
+                summary_path=str(victim_json),
+                topics=[],
+                documents=[],
+                created_at="2026-07-23T00:00:00+00:00",
+                updated_at="2026-07-23T00:00:00+00:00",
+            )
+
+            self.assertTrue(manager.save(attacker, make_current=False))
+
+            self.assertEqual("Victim", manager.get("course-victim").title)
+            self.assertEqual(
+                Path(manager.directory) / "course-attacker_summary.md",
+                Path(attacker.summary_path),
+            )
+
     def test_project_manager_rolls_back_all_course_files_when_commit_fails(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
-            manager = CourseProjectManager(str(root / "projects"))
             current_file = root / "current_course.json"
+            manager = CourseProjectManager(
+                str(root / "projects"),
+                current_course_file=current_file,
+            )
             project = CourseProject(
                 course_id="course-transaction",
                 title="Systems",
@@ -968,8 +1028,10 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                         raise OSError("disk full")
                 return real_replace(source, destination)
 
-            with patch("models.course_project.CURRENT_COURSE_FILE", str(current_file)), \
-                    patch("models.course_project.os.replace", side_effect=fail_current_pointer_commit):
+            with patch(
+                "models.course_project.os.replace",
+                side_effect=fail_current_pointer_commit,
+            ):
                 self.assertFalse(manager.save(project, make_current=True))
 
             stored = manager.get(project.course_id)
@@ -1005,7 +1067,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertFalse((Path(manager.directory) / "course-invalid.json").exists())
             self.assertFalse((Path(manager.directory) / "course-invalid_summary.md").exists())
 
-    def test_project_manager_rejects_conflicting_course_artifact_paths(self):
+    def test_project_manager_repairs_conflicting_course_artifact_paths(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
             conflicting_path = Path(manager.directory) / "course-conflict.json"
@@ -1021,10 +1083,13 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 updated_at="2026-07-13T00:00:00+00:00",
             )
 
-            self.assertFalse(manager.save(project, make_current=False))
+            self.assertTrue(manager.save(project, make_current=False))
 
-            self.assertEqual(str(conflicting_path), project.summary_path)
-            self.assertFalse(conflicting_path.exists())
+            self.assertEqual(
+                str(Path(manager.directory) / "course-conflict_summary.md"),
+                project.summary_path,
+            )
+            self.assertTrue(conflicting_path.exists())
 
     def test_project_manager_persists_summary_generation_status(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1350,24 +1415,26 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             current_file = str(Path(tmpdir) / "current.json")
             source = Path(tmpdir) / "source"
             source.mkdir()
-            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            manager = CourseProjectManager(
+                str(Path(tmpdir) / "projects"),
+                current_course_file=current_file,
+            )
             initializer = CourseInitializer(manager=manager)
             initializer.parser = FakeParser(self._docs())
 
-            with patch("models.course_project.CURRENT_COURSE_FILE", current_file):
-                kept = initializer.initialize(str(source), title="Keep", make_current=True)
-                deleted = initializer.initialize(str(source), title="Delete", make_current=True)
-                deleted_json = Path(manager.directory) / f"{deleted.course_id}.json"
-                deleted_summary = Path(deleted.summary_path)
+            kept = initializer.initialize(str(source), title="Keep", make_current=True)
+            deleted = initializer.initialize(str(source), title="Delete", make_current=True)
+            deleted_json = Path(manager.directory) / f"{deleted.course_id}.json"
+            deleted_summary = Path(deleted.summary_path)
 
-                self.assertTrue(manager.delete(deleted.course_id))
+            self.assertTrue(manager.delete(deleted.course_id))
 
-                self.assertFalse(deleted_json.exists())
-                self.assertFalse(deleted_summary.exists())
-                self.assertIsNone(manager.current())
+            self.assertFalse(deleted_json.exists())
+            self.assertFalse(deleted_summary.exists())
+            self.assertIsNone(manager.current())
 
-                self.assertTrue(manager.set_current(kept.course_id))
-                self.assertEqual(kept.course_id, manager.current().course_id)
+            self.assertTrue(manager.set_current(kept.course_id))
+            self.assertEqual(kept.course_id, manager.current().course_id)
 
     def test_course_screen_delete_uses_impact_snapshot_and_selected_policy(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1462,7 +1529,10 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
     def test_project_manager_current_returns_none_without_explicit_pointer(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             current_file = str(Path(tmpdir) / "current.json")
-            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            manager = CourseProjectManager(
+                str(Path(tmpdir) / "projects"),
+                current_course_file=current_file,
+            )
             project = CourseProject(
                 course_id="course-safe",
                 title="Safe Course",
@@ -1475,16 +1545,18 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 updated_at="2026-06-23T00:00:00+00:00",
             )
 
-            with patch("models.course_project.CURRENT_COURSE_FILE", current_file):
-                self.assertTrue(manager.save(project, make_current=False))
+            self.assertTrue(manager.save(project, make_current=False))
 
-                self.assertIsNone(manager.current())
+            self.assertIsNone(manager.current())
 
     def test_project_manager_current_ignores_unsafe_course_pointer(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             current_file = str(root / "current.json")
-            manager = CourseProjectManager(str(root / "projects"))
+            manager = CourseProjectManager(
+                str(root / "projects"),
+                current_course_file=current_file,
+            )
             project = CourseProject(
                 course_id="course-safe",
                 title="Safe Course",
@@ -1512,40 +1584,41 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("models.course_project.CURRENT_COURSE_FILE", current_file):
-                self.assertTrue(manager.save(project, make_current=False))
-                Path(current_file).write_text('{"course_id": "../outside"}', encoding="utf-8")
+            self.assertTrue(manager.save(project, make_current=False))
+            Path(current_file).write_text('{"course_id": "../outside"}', encoding="utf-8")
 
-                current = manager.current()
+            current = manager.current()
 
-                self.assertIsNone(current)
-                self.assertFalse(Path(current_file).exists())
+            self.assertIsNone(current)
+            self.assertFalse(Path(current_file).exists())
 
     def test_course_screen_can_delete_selected_project(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             current_file = str(Path(tmpdir) / "current.json")
             source = Path(tmpdir) / "source"
             source.mkdir()
-            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            manager = CourseProjectManager(
+                str(Path(tmpdir) / "projects"),
+                current_course_file=current_file,
+            )
             initializer = CourseInitializer(manager=manager)
             initializer.parser = FakeParser(self._docs())
 
-            with patch("models.course_project.CURRENT_COURSE_FILE", current_file):
-                project = initializer.initialize(str(source), title="Systems", make_current=True)
-                screen = CourseScreen(manager)
-                screen.refresh()
-                screen.project_list.setCurrentRow(0)
+            project = initializer.initialize(str(source), title="Systems", make_current=True)
+            screen = CourseScreen(manager)
+            screen.refresh()
+            screen.project_list.setCurrentRow(0)
 
-                with patch.object(
-                    screen,
-                    "_choose_course_removal_mode",
-                    return_value=CourseRemovalMode.KEEP_ASSETS,
-                ):
-                    screen.delete_action.trigger()
+            with patch.object(
+                screen,
+                "_choose_course_removal_mode",
+                return_value=CourseRemovalMode.KEEP_ASSETS,
+            ):
+                screen.delete_action.trigger()
 
-                self.assertIsNone(manager.get(project.course_id))
-                self.assertEqual(0, screen.project_list.count())
-                self.assertNotIn("Systems", screen.summary_label.text())
+            self.assertIsNone(manager.get(project.course_id))
+            self.assertEqual(0, screen.project_list.count())
+            self.assertNotIn("Systems", screen.summary_label.text())
 
     def test_course_screen_guides_user_when_course_library_is_empty(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -59,6 +59,8 @@ python scripts/check_environment.py --json
 | Data portability | Export/import `.quizdata` packages containing courses, question banks, question sets, past-exam assets, drafts, progress, mastery overrides, and non-sensitive settings |
 | Localization | Live Chinese/English UI switching with bilingual question content and explanations |
 
+Course-folder imports skip symbolic links and resolved paths outside the selected folder. One import accepts at most 2,000 supported files and 1 GiB of source data; larger collections must be split before import.
+
 ## Weight configuration
 
 Question type, difficulty, and topic values are relative weights. Users do not need to make them sum to 100. For example, raw topic weights of `100` and `80` become effective shares of approximately `56%` and `44%`.
@@ -106,9 +108,9 @@ API key lookup order:
 3. Windows DPAPI-encrypted local fallback
 4. Current process memory only
 
-The settings page never displays an existing key. An empty key field keeps the current key; replacing or clearing it requires an explicit action. Keys are not stored in `data/settings.json` and are excluded from `.quizdata` exports.
+The settings page never displays an existing key. An empty key field keeps the current key; replacing or clearing it requires an explicit action. Keys are not stored in `data/settings.json` and are excluded from `.quizdata` exports. Keyring failures are reported without displaying raw backend exception text. If cleanup of a legacy plaintext key cannot be written to disk after secure migration, the application explicitly reports the remaining plaintext risk.
 
-Remote LLM endpoints must use `https://`. Plain `http://` is accepted only for `localhost`, `127.0.0.1`, or `::1`. URLs containing embedded credentials, missing a host, or using another protocol are rejected before any request is sent.
+Remote LLM endpoints must use `https://`. Plain `http://` is accepted only for `localhost`, `127.0.0.1`, or `::1`. URLs containing embedded credentials, missing a host, or using another protocol are rejected before any request is sent. LLM requests do not follow HTTP redirects, and response bodies are capped at 16 MiB so an abnormal endpoint cannot keep forwarding credentials/course content or consume unbounded memory.
 
 The connection test sends only a minimal JSON probe. It does not include course materials, questions, progress, or the API key text, although a remote provider may still bill the small request.
 
@@ -137,8 +139,8 @@ For a Local CLI Agent, common Chinese and English instructions are interpreted w
 
 | Format | Handling |
 |---|---|
-| `.pptx` | Extract text per slide |
-| `.pdf` | Extract text per page and attempt OCR on pages without extractable text |
+| `.pptx` | Extract text per slide; at most 10,000 ZIP members and 2,000 slides per file |
+| `.pdf` | Extract text per page and attempt OCR on pages without extractable text; at most the first 2,000 pages per file |
 | `.docx` | Extract Word document content |
 | `.txt` / `.md` | Read UTF-8 text and Markdown |
 

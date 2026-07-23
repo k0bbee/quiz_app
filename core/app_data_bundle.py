@@ -448,9 +448,21 @@ def canonical_bundle_target(name: str) -> str | None:
     parts = name.split("/")
     if "" in parts or "." in parts or ".." in parts:
         return None
-    # Disallow drive letters (e.g. C:) and device paths (e.g. \\?\C:).
+    # Keep bundle names portable to Windows: reject alternate data streams,
+    # device basenames, trailing dot/space aliases, and forbidden characters.
+    reserved_basenames = {"con", "prn", "aux", "nul"}
+    reserved_basenames.update(f"com{index}" for index in range(1, 10))
+    reserved_basenames.update(f"lpt{index}" for index in range(1, 10))
+    for part in parts:
+        if (
+            part.endswith((" ", "."))
+            or any(ord(char) < 32 or char in '<>:"|?*' for char in part)
+            or part.split(".", 1)[0].casefold() in reserved_basenames
+        ):
+            return None
+    # Disallow device paths (e.g. \\?\C:).
     lower = name.lower()
-    if len(parts) > 0 and (":" in parts[0] or lower.startswith("\\\\")):
+    if lower.startswith("\\\\"):
         return None
     return name.casefold()
 

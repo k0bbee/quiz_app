@@ -6,9 +6,17 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 from typing import Optional
 
 import requests
+
+_MAX_LLM_RESPONSE_BYTES = 16 * 1024 * 1024
+_LLM_RESPONSE_CHUNK_BYTES = 64 * 1024
+
+
+class _LLMResponseLimitError(requests.RequestException):
+    pass
 
 
 class LLMClient:
@@ -30,6 +38,8 @@ class LLMClient:
         self.provider = normalized_provider or self._infer_provider_from_base_url(self.base_url)
         self.last_error = ""
         self._cancelled = threading.Event()
+        self._transport_lock = threading.Lock()
+        self._active_response = None
 
     def __repr__(self) -> str:
         return (
@@ -64,18 +74,43 @@ class LLMClient:
     def cancel(self) -> None:
         """Stop waiting for an in-flight transport request."""
         self._cancelled.set()
+        with self._transport_lock:
+            response = self._active_response
+        if response is not None:
+            try:
+                response.close()
+            except Exception:
+                pass
 
     def _post_interruptibly(self, *args, **kwargs):
         """Run requests.post off-thread so cancellation never waits on socket timeout."""
         completed = threading.Event()
         outcome: dict[str, object] = {}
+        kwargs.setdefault("allow_redirects", False)
+        kwargs.setdefault("stream", True)
+        request_timeout = kwargs.get("timeout", 120)
+        total_timeout = (
+            float(request_timeout)
+            if isinstance(request_timeout, (int, float))
+            else 120.0
+        )
 
         def send() -> None:
+            response = None
             try:
-                outcome["response"] = requests.post(*args, **kwargs)
+                response = requests.post(*args, **kwargs)
+                with self._transport_lock:
+                    self._active_response = response
+                outcome["response"] = self._buffer_response_bounded(
+                    response,
+                    deadline=time.monotonic() + total_timeout,
+                )
             except BaseException as exc:  # re-raised on the calling generation thread
                 outcome["error"] = exc
             finally:
+                with self._transport_lock:
+                    if self._active_response is response:
+                        self._active_response = None
                 completed.set()
 
         threading.Thread(target=send, daemon=True, name="llm-http-request").start()
@@ -90,6 +125,45 @@ class LLMClient:
         if error_value is not None:
             raise error_value
         return outcome.get("response")
+
+    def _buffer_response_bounded(self, response, *, deadline: float):
+        """Buffer a streamed response under fixed byte and wall-clock limits."""
+        iter_content = getattr(response, "iter_content", None)
+        if not callable(iter_content):
+            return response
+        headers = getattr(response, "headers", {}) or {}
+        content_length = headers.get("content-length")
+        try:
+            declared_bytes = int(content_length) if content_length else 0
+        except (TypeError, ValueError):
+            declared_bytes = 0
+        if declared_bytes > _MAX_LLM_RESPONSE_BYTES:
+            response.close()
+            raise _LLMResponseLimitError(
+                f"LLM response exceeded the {_MAX_LLM_RESPONSE_BYTES}-byte size limit."
+            )
+
+        chunks: list[bytes] = []
+        total_bytes = 0
+        try:
+            for chunk in iter_content(chunk_size=_LLM_RESPONSE_CHUNK_BYTES):
+                if self._cancelled.is_set():
+                    raise requests.RequestException("LLM request cancelled by user.")
+                if time.monotonic() > deadline:
+                    raise requests.Timeout("LLM response exceeded the total time limit.")
+                if not chunk:
+                    continue
+                total_bytes += len(chunk)
+                if total_bytes > _MAX_LLM_RESPONSE_BYTES:
+                    raise _LLMResponseLimitError(
+                        f"LLM response exceeded the {_MAX_LLM_RESPONSE_BYTES}-byte size limit."
+                    )
+                chunks.append(chunk)
+            response._content = b"".join(chunks)
+            response._content_consumed = True
+            return response
+        finally:
+            response.close()
 
     @staticmethod
     def _infer_provider_from_base_url(base_url: str) -> str:

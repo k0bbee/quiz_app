@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -64,7 +65,7 @@ class PastExamImportTests(unittest.TestCase):
             self.assertEqual(record, manager.find_by_hash("abc123"))
             self.assertEqual([record], manager.load_all())
             self.assertEqual(
-                Path(tmpdir) / "past-exam-a" / "source" / "2025-final.pdf",
+                (Path(tmpdir) / "past-exam-a" / "source" / "2025-final.pdf").resolve(),
                 manager.resolve_source_path(record),
             )
 
@@ -73,6 +74,38 @@ class PastExamImportTests(unittest.TestCase):
             self.assertEqual("manual", reassigned.assignment_mode)
             self.assertEqual(record.match_candidates, reassigned.match_candidates)
             self.assertEqual("course-b", manager.get(record.exam_id).course_id)
+
+    def test_manager_skips_record_whose_exam_id_mismatches_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = PastExamManager(tmpdir)
+            victim = PastExamRecord(
+                exam_id="exam-victim",
+                title="Victim",
+                source_filename="victim.pdf",
+                source_path="source/victim.pdf",
+                content_path="content.json",
+                source_sha256="victim-hash",
+                imported_at="2026-07-23T00:00:00+00:00",
+                course_id="course-victim",
+                assignment_mode="manual",
+            )
+            self.assertTrue(manager.save_record(victim))
+            alias = victim.to_dict()
+            alias["title"] = "Alias"
+            alias["course_id"] = "course-alias"
+            alias_dir = Path(tmpdir) / "exam-alias"
+            alias_dir.mkdir()
+            (alias_dir / "record.json").write_text(
+                json.dumps(alias, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            records = manager.load_all()
+
+            self.assertEqual(
+                [("exam-victim", "Victim")],
+                [(record.exam_id, record.title) for record in records],
+            )
 
     def test_course_matcher_auto_assigns_only_a_clear_explainable_match(self):
         systems = SimpleNamespace(

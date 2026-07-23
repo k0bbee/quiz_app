@@ -63,6 +63,7 @@ If a credential may have been exposed, revoke or rotate it immediately. Removing
 ## Data boundaries
 
 - `.quizdata` bundles may contain private courses, questions, and progress and must not be attached to public vulnerability reports.
-- Custom AI endpoints receive the configured credential and selected course context only after explicit local configuration.
-- Local-agent execution is capability-constrained: tools, session persistence, and project loading are disabled, and the process runs in an isolated work directory. CLI agents without a verified no-tools mode are rejected.
-- Import bundles and documents that exceed size or compression-ratio budgets are rejected before any content is read or parsed.
+- Custom AI endpoints receive the configured credential and selected course context only after explicit local configuration. Requests do not follow redirects, and response bodies have a fixed limit.
+- Local-agent execution is capability-constrained: tools, session persistence, and project loading are disabled, and the process runs in an isolated work directory. CLI agents without a verified no-tools mode are rejected, and output pipes are drained under a fixed budget.
+- Symbolic links and resolved paths outside the selected course folder are not read. Course file count, total source bytes, Office members/pages, and extracted text all have resource budgets.
+- Oversized, over-populated, or suspiciously compressed `.quizdata` bundles are rejected before application data is written.

@@ -6,6 +6,16 @@ from models.course_project import CourseProject, CourseProjectManager, CourseTop
 
 
 class CourseProjectManagerPathTests(unittest.TestCase):
+    def test_custom_project_directory_keeps_current_pointer_on_same_storage_root(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            manager = CourseProjectManager(str(root / "courses"))
+
+            self.assertEqual(
+                root / "current_course.json",
+                manager._current_course_file,
+            )
+
     def test_current_course_pointer_can_be_isolated_with_project_directory(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

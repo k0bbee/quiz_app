@@ -135,6 +135,24 @@ class LocalAgentRunnerTests(unittest.TestCase):
 
         self.assertEqual("course prompt", result)
 
+    def test_large_agent_output_is_drained_while_process_is_running(self):
+        output_size = 1024 * 1024
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}), \
+             patch(
+                 "ai.local_agent_runner.resolve_local_agent_executable",
+                 return_value=Path(sys.executable),
+             ), patch(
+                 "ai.local_agent_runner.build_local_agent_command",
+                 return_value=[
+                     sys.executable,
+                     "-c",
+                     f"import sys; sys.stdout.write('x' * {output_size})",
+                 ],
+             ):
+            result = run_local_agent("claude", "prompt", timeout=2)
+
+        self.assertEqual(output_size, len(result))
+
     def test_cancel_kills_running_process(self):
         cancel_event = threading.Event()
         cancel_event.set()  # cancel immediately before run

@@ -64,6 +64,8 @@ _ALLOWED_ENV_KEYS: frozenset[str] = frozenset({
     "OS",
 })
 
+_MAX_LOCAL_AGENT_OUTPUT_CHARS = 4 * 1024 * 1024
+
 
 def resolve_local_agent_executable(agent_name: str) -> Path | None:
     """Return the full resolved path to *agent_name*, or None if not found."""
@@ -151,6 +153,28 @@ def _process_isolation_kwargs(platform: str) -> dict:
     return {"start_new_session": True}
 
 
+def _drain_stream_bounded(
+    stream,
+    chunks: list[str],
+    overflow: threading.Event,
+) -> None:
+    """Continuously drain a child stream without retaining unbounded output."""
+    retained = 0
+    while not overflow.is_set():
+        chunk = stream.read(64 * 1024)
+        if not chunk:
+            return
+        remaining = _MAX_LOCAL_AGENT_OUTPUT_CHARS - retained
+        if remaining <= 0:
+            overflow.set()
+            return
+        chunks.append(chunk[:remaining])
+        retained += min(len(chunk), remaining)
+        if len(chunk) > remaining:
+            overflow.set()
+            return
+
+
 def run_local_agent(
     agent_name: str,
     prompt: str,
@@ -207,18 +231,52 @@ def run_local_agent(
                 proc.stdin.close()
                 proc.stdin = None
 
+            stdout_chunks: list[str] = []
+            stderr_chunks: list[str] = []
+            output_overflow = threading.Event()
+            streams = (getattr(proc, "stdout", None), getattr(proc, "stderr", None))
+            drain_threads: list[threading.Thread] = []
+            if all(callable(getattr(stream, "read", None)) for stream in streams):
+                for name, stream, chunks in (
+                    ("stdout", streams[0], stdout_chunks),
+                    ("stderr", streams[1], stderr_chunks),
+                ):
+                    thread = threading.Thread(
+                        target=_drain_stream_bounded,
+                        args=(stream, chunks, output_overflow),
+                        daemon=True,
+                        name=f"local-agent-{name}",
+                    )
+                    thread.start()
+                    drain_threads.append(thread)
+
             while proc.poll() is None:
                 if cancel_event is not None and cancel_event.is_set():
                     _terminate_process(proc)
                     raise LocalAgentPolicyError(
                         "Local agent execution cancelled by user."
                     )
+                if output_overflow.is_set():
+                    _terminate_process(proc)
+                    raise LocalAgentPolicyError(
+                        "Local agent output exceeded the 4 MiB safety limit."
+                    )
                 if time_monotonic() > deadline:
                     _terminate_process(proc)
                     raise subprocess.TimeoutExpired(launch_command, timeout)
                 time.sleep(0.05)  # 50 ms poll
 
-            stdout_data, stderr_data = proc.communicate(timeout=5)
+            if drain_threads:
+                for thread in drain_threads:
+                    thread.join(timeout=5)
+                if any(thread.is_alive() for thread in drain_threads):
+                    _terminate_process(proc)
+                    raise subprocess.TimeoutExpired(launch_command, timeout)
+                stdout_data = "".join(stdout_chunks)
+                stderr_data = "".join(stderr_chunks)
+            else:
+                # Test doubles and legacy wrappers may only expose communicate().
+                stdout_data, stderr_data = proc.communicate(timeout=5)
 
         except subprocess.TimeoutExpired:
             _terminate_process(proc)

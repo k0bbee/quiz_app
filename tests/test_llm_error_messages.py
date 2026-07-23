@@ -155,6 +155,74 @@ class LLMErrorMessageTests(unittest.TestCase):
         self.assertFalse(post.called)
         self.assertIn("HTTPS", client.last_error)
 
+    def test_client_never_forwards_credentials_or_prompt_through_redirects(self):
+        class RedirectResponse:
+            status_code = 307
+            text = ""
+            headers = {"location": "https://redirected.example.com/v1/messages"}
+
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://api.example.com/v1",
+            model="model",
+            provider="anthropic",
+        )
+
+        with patch(
+            "ai.llm_client.requests.post",
+            return_value=RedirectResponse(),
+        ) as post:
+            result = client.generate(
+                [{"role": "user", "content": "private course prompt"}]
+            )
+
+        self.assertIsNone(result)
+        self.assertFalse(post.call_args.kwargs["allow_redirects"])
+
+    def test_client_rejects_response_bodies_over_transport_budget(self):
+        class OversizedResponse:
+            status_code = 200
+            text = ""
+            headers = {}
+
+            def iter_content(self, chunk_size):
+                self.chunk_size = chunk_size
+                yield b"12345"
+                yield b"67890"
+
+            def close(self):
+                pass
+
+            def json(self):
+                return {
+                    "choices": [
+                        {"message": {"content": '{"questions":[]}'}}
+                    ]
+                }
+
+        response = OversizedResponse()
+        client = LLMClient(
+            api_key="sk-test",
+            base_url="https://api.example.com/v1",
+            model="model",
+        )
+
+        with patch(
+            "ai.llm_client._MAX_LLM_RESPONSE_BYTES",
+            8,
+            create=True,
+        ), patch(
+            "ai.llm_client.requests.post",
+            return_value=response,
+        ) as post:
+            result = client.generate(
+                [{"role": "user", "content": "Return JSON."}]
+            )
+
+        self.assertIsNone(result)
+        self.assertIn("size limit", client.last_error)
+        self.assertTrue(post.call_args.kwargs["stream"])
+
     def test_openai_compatible_client_retries_without_response_format_when_provider_rejects_it(self):
         class FakeResponse:
             def __init__(self, status_code, payload=None, text=""):
