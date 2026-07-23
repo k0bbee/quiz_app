@@ -6,9 +6,29 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core.document_parser import DocumentParser
+from core.input_limits import InputLimitError
 
 
 class DocumentParserQualityTests(unittest.TestCase):
+    def test_source_paths_skip_symbolic_linked_course_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            safe = root / "safe.md"
+            linked = root / "linked.md"
+            safe.write_text("safe course content", encoding="utf-8")
+            linked.write_text("simulated linked content", encoding="utf-8")
+            original_is_symlink = Path.is_symlink
+
+            def is_symlink(path):
+                if path == linked:
+                    return True
+                return original_is_symlink(path)
+
+            with patch.object(Path, "is_symlink", is_symlink):
+                paths = DocumentParser().source_paths(str(root))
+
+        self.assertEqual([safe], paths)
+
     def test_explicit_data_folder_root_is_not_skipped_as_its_own_ancestor(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "data"
@@ -160,6 +180,74 @@ class DocumentParserQualityTests(unittest.TestCase):
 
 
 class DocumentParserBudgetTests(unittest.TestCase):
+    def test_course_folder_rejects_more_supported_files_than_budget(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "one.md").write_text("one", encoding="utf-8")
+            (root / "two.md").write_text("two", encoding="utf-8")
+
+            with patch(
+                "core.input_limits.MAX_COURSE_SOURCE_FILES",
+                1,
+                create=True,
+            ):
+                with self.assertRaises(InputLimitError) as raised:
+                    DocumentParser().source_paths(str(root))
+
+        self.assertEqual("DOC-COURSE-001", raised.exception.code)
+
+    def test_course_folder_rejects_total_source_bytes_over_budget(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            (root / "one.md").write_bytes(b"1234")
+            (root / "two.md").write_bytes(b"5678")
+
+            with patch(
+                "core.input_limits.MAX_COURSE_SOURCE_BYTES",
+                7,
+                create=True,
+            ):
+                with self.assertRaises(InputLimitError) as raised:
+                    DocumentParser().source_paths(str(root))
+
+        self.assertEqual("DOC-COURSE-002", raised.exception.code)
+
+    def test_pptx_rejects_more_slides_than_budget(self):
+        slide_xml = '<p:sld xmlns:p="urn:p"><p:t>text</p:t></p:sld>'
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "many-slides.pptx"
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("ppt/slides/slide1.xml", slide_xml)
+                archive.writestr("ppt/slides/slide2.xml", slide_xml)
+
+            with patch(
+                "core.input_limits.MAX_PPTX_SLIDES",
+                1,
+                create=True,
+            ):
+                document = DocumentParser().parse_file(path)
+
+        self.assertEqual([], document.pages)
+        self.assertIn("slide count", "\n".join(document.warnings).lower())
+
+    def test_pptx_rejects_more_archive_members_than_budget(self):
+        slide_xml = '<p:sld xmlns:p="urn:p"><p:t>text</p:t></p:sld>'
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "many-members.pptx"
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("ppt/slides/slide1.xml", slide_xml)
+                archive.writestr("ppt/media/image1.bin", b"x")
+
+            with patch(
+                "core.input_limits.MAX_OFFICE_ARCHIVE_MEMBERS",
+                1,
+                create=True,
+            ):
+                document = DocumentParser().parse_file(path)
+
+        self.assertEqual([], document.pages)
+        self.assertIn("member count", "\n".join(document.warnings).lower())
+
     def test_oversized_docx_xml_is_rejected_before_member_read(self):
         from core.input_limits import MAX_OFFICE_XML_ENTRY_BYTES
 

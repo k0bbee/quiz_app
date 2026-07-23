@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from core.app_data_bundle import (
+    canonical_bundle_target,
     export_app_data_bundle,
     import_app_data_bundle,
     LOCAL_ONLY_SETTING_KEYS,
@@ -18,6 +19,18 @@ from core.input_limits import InputLimitError
 
 
 class AppDataBundleTests(unittest.TestCase):
+    def test_bundle_targets_reject_nonportable_windows_segments(self):
+        invalid = (
+            "courses/report.txt:payload.txt",
+            "courses/NUL.txt",
+            "courses/alias. /file.txt",
+            "courses/trailing./file.txt",
+        )
+
+        for name in invalid:
+            with self.subTest(name=name):
+                self.assertIsNone(canonical_bundle_target(name))
+
     def test_oversized_archive_is_rejected_before_zip_open(self):
         from core.input_limits import MAX_BUNDLE_ARCHIVE_BYTES
 
@@ -25,12 +38,25 @@ class AppDataBundleTests(unittest.TestCase):
             root = Path(tmpdir)
             bundle = root / "oversized.quizdata"
             bundle.write_bytes(b"not opened")
-            oversized_stat = SimpleNamespace(
-                st_size=MAX_BUNDLE_ARCHIVE_BYTES + 1,
-            )
+            real_stat = Path.stat
 
-            with patch.object(Path, "stat", return_value=oversized_stat), \
-                 patch("core.app_data_bundle.zipfile.ZipFile") as zip_file:
+            def stat_with_oversized_bundle(path, *args, **kwargs):
+                if Path(path) == bundle:
+                    actual = real_stat(path, *args, **kwargs)
+                    values = list(actual)
+                    values[6] = MAX_BUNDLE_ARCHIVE_BYTES + 1
+                    return os.stat_result(values)
+                return real_stat(path, *args, **kwargs)
+
+            with (
+                patch.object(
+                    Path,
+                    "stat",
+                    autospec=True,
+                    side_effect=stat_with_oversized_bundle,
+                ),
+                patch("core.app_data_bundle.zipfile.ZipFile") as zip_file,
+            ):
                 with self.assertRaises(InputLimitError) as context:
                     import_app_data_bundle(bundle, root / "data")
 

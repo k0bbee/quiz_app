@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -101,6 +102,25 @@ class QuizSessionSnapshotTests(unittest.TestCase):
             self.assertEqual(1, deleted)
             self.assertIsNone(manager.get("snapshot-a"))
             self.assertIsNotNone(manager.get("snapshot-b"))
+
+    def test_snapshot_manager_skips_filename_identity_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = QuizSnapshotManager(tmpdir)
+            victim = self._snapshot("snapshot-victim")
+            victim.set_id = "set-victim"
+            self.assertTrue(manager.save(victim))
+            alias = self._snapshot("snapshot-victim")
+            alias.set_id = "set-trigger"
+            (Path(tmpdir) / "snapshot-alias.json").write_text(
+                json.dumps(alias.to_dict(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+            deleted = manager.delete_for_set("set-trigger")
+
+            self.assertEqual(0, deleted)
+            self.assertIsNotNone(manager.get("snapshot-victim"))
+            self.assertTrue((Path(tmpdir) / "snapshot-alias.json").exists())
 
     def test_snapshot_manager_creates_directory_on_init(self):
         with tempfile.TemporaryDirectory() as tmpdir:

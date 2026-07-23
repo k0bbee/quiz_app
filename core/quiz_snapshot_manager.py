@@ -39,7 +39,15 @@ class QuizSnapshotManager:
             try:
                 if not isinstance(data, dict):
                     raise TypeError(f"expected object, got {type(data).__name__}")
-                snapshots.append(QuizSessionSnapshot.from_dict(data))
+                snapshot = QuizSessionSnapshot.from_dict(data)
+                expected_filename = (
+                    f"{sanitize_filename_part(snapshot.snapshot_id)}.json"
+                )
+                if filename != expected_filename:
+                    raise ValueError(
+                        "snapshot_id does not match the snapshot filename"
+                    )
+                snapshots.append(snapshot)
             except Exception as exc:
                 warning(f"Skipped invalid quiz snapshot {filename}: {exc}")
                 continue

@@ -109,17 +109,44 @@ class DocumentParser:
 
     def source_paths(self, folder: str) -> list[Path]:
         """Return supported source files in the same stable order used for parsing."""
+        from core.input_limits import (
+            InputLimitError,
+            MAX_COURSE_SOURCE_BYTES,
+            MAX_COURSE_SOURCE_FILES,
+        )
+
         root = Path(folder)
         if not root.exists() or not root.is_dir():
             raise FileNotFoundError(f"Folder not found: {folder}")
-        return [
-            path
-            for path in sorted(root.rglob("*"), key=_source_sort_key)
-            if path.is_file()
-            and not path.name.startswith("~$")
-            and not self._should_skip_path(path, root=root)
-            and path.suffix.lower() in SUPPORTED_EXTENSIONS
-        ]
+        paths: list[Path] = []
+        total_bytes = 0
+        for path in root.rglob("*"):
+            if (
+                not _is_safe_source_path(path, root)
+                or path.name.startswith("~$")
+                or self._should_skip_path(path, root=root)
+                or path.suffix.lower() not in SUPPORTED_EXTENSIONS
+            ):
+                continue
+            try:
+                source_bytes = path.stat().st_size
+            except OSError:
+                continue
+            paths.append(path)
+            if len(paths) > MAX_COURSE_SOURCE_FILES:
+                raise InputLimitError(
+                    "DOC-COURSE-001",
+                    f"课程资料文件超过 {MAX_COURSE_SOURCE_FILES} 个，请拆分后导入。",
+                    f"Course source exceeds {MAX_COURSE_SOURCE_FILES} files; split it before import.",
+                )
+            total_bytes += source_bytes
+            if total_bytes > MAX_COURSE_SOURCE_BYTES:
+                raise InputLimitError(
+                    "DOC-COURSE-002",
+                    f"课程资料总大小超过 {MAX_COURSE_SOURCE_BYTES} 字节，请拆分后导入。",
+                    f"Course source exceeds {MAX_COURSE_SOURCE_BYTES} bytes; split it before import.",
+                )
+        return sorted(paths, key=_source_sort_key)
 
     def _should_skip_path(self, path: Path, root: Path | None = None) -> bool:
         """Return True if a path is clearly generated output or app metadata."""
@@ -194,8 +221,10 @@ class DocumentParser:
 
     def _parse_pptx(self, path: Path, task: TaskControl | None = None) -> ExtractedDocument:
         from core.input_limits import (
+            MAX_OFFICE_ARCHIVE_MEMBERS,
             MAX_OFFICE_XML_ENTRY_BYTES,
             MAX_OFFICE_XML_TOTAL_BYTES,
+            MAX_PPTX_SLIDES,
         )
 
         pages: list[str] = []
@@ -204,10 +233,33 @@ class DocumentParser:
         text_total = 0
         try:
             with zipfile.ZipFile(path) as zf:
+                member_count = len(zf.infolist())
+                if member_count > MAX_OFFICE_ARCHIVE_MEMBERS:
+                    warnings.append(
+                        f"PPTX member count {member_count} exceeds limit "
+                        f"of {MAX_OFFICE_ARCHIVE_MEMBERS}; file was not parsed."
+                    )
+                    return ExtractedDocument(
+                        str(path),
+                        path.stem,
+                        ".pptx",
+                        warnings=warnings,
+                    )
                 slide_names = sorted(
                     [name for name in zf.namelist() if re.match(r"ppt/slides/slide\d+\.xml$", name)],
                     key=lambda name: int(re.search(r"slide(\d+)\.xml$", name).group(1)),
                 )
+                if len(slide_names) > MAX_PPTX_SLIDES:
+                    warnings.append(
+                        f"PPTX slide count {len(slide_names)} exceeds limit "
+                        f"of {MAX_PPTX_SLIDES}; file was not parsed."
+                    )
+                    return ExtractedDocument(
+                        str(path),
+                        path.stem,
+                        ".pptx",
+                        warnings=warnings,
+                    )
                 for index, slide_name in enumerate(slide_names, start=1):
                     if task is not None:
                         task.report("parsing_page", index, len(slide_names), path.name)
@@ -468,6 +520,17 @@ def _decode_text_bytes(raw: bytes) -> tuple[str, str]:
         except UnicodeDecodeError:
             continue
     return raw.decode("utf-8", errors="replace"), "UTF-8 with replacement characters"
+
+
+def _is_safe_source_path(path: Path, root: Path) -> bool:
+    """Accept only regular files whose resolved path stays inside *root*."""
+    try:
+        if path.is_symlink() or not path.is_file():
+            return False
+        path.resolve().relative_to(root.resolve())
+        return True
+    except (OSError, RuntimeError, ValueError):
+        return False
 
 
 def _source_sort_key(path: Path) -> tuple[int, str, str]:
