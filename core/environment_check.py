@@ -77,12 +77,33 @@ def collect_environment_report(project_root: str | Path) -> EnvironmentReport:
         )
     ]
 
+    try:
+        from packaging.version import Version as _Version
+        _HAS_PACKAGING = True
+    except ImportError:
+        _HAS_PACKAGING = False
+        _Version = None  # type: ignore
+
+    _MIN_PILLOW = "12.3.0"
     package_status = {}
     for distribution, module_name in PYTHON_DEPENDENCIES:
         try:
             importlib.import_module(module_name)
             version = importlib.metadata.version(distribution)
-            result = CheckResult(distribution, True, True, version)
+            ok = True
+            detail = version
+            if distribution == "Pillow" and _HAS_PACKAGING:
+                try:
+                    if _Version(version) < _Version(_MIN_PILLOW):
+                        ok = False
+                        detail = (
+                            f"{version} (minimum required: {_MIN_PILLOW}); "
+                            "upgrade: pip install --upgrade Pillow>=" + _MIN_PILLOW
+                        )
+                except Exception:
+                    detail = f"{version} (version parse failed; required >= {_MIN_PILLOW})"
+                    ok = False
+            result = CheckResult(distribution, ok, True, detail)
         except Exception as exc:
             result = CheckResult(
                 distribution,

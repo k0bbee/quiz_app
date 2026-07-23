@@ -14,7 +14,7 @@
 | requests | 2.33.1 | LLM与用户主动发起的联网请求 | Apache-2.0 | [Requests LICENSE](https://github.com/psf/requests/blob/main/LICENSE) |
 | keyring | 25.7.0 | 操作系统安全凭据存储 | MIT | [keyring LICENSE](https://github.com/jaraco/keyring/blob/main/LICENSE) |
 | pypdfium2 | 5.10.1 | PDF文本提取和扫描页渲染 | pypdfium2主体为Apache-2.0或BSD-3-Clause；PDFium为BSD风格许可，二进制分发还须随附PDFium及其依赖许可证 | [pypdfium2许可说明](https://pypdfium2.readthedocs.io/en/stable/readme.html#licensing) |
-| Pillow | >=12.3.0 (audited floor) | OCR图像转换 | MIT-CMU | [Pillow LICENSE](https://github.com/python-pillow/Pillow/blob/main/LICENSE) |
+| Pillow | 12.3.0 | OCR图像转换 | MIT-CMU | [Pillow LICENSE](https://github.com/python-pillow/Pillow/blob/main/LICENSE) |
 | pytesseract | 0.3.13 | 调用本机Tesseract OCR | Apache-2.0 | [pytesseract LICENSE](https://github.com/madmaze/pytesseract/blob/master/LICENSE) |
 | Tesseract OCR（可选外部程序） | 5.4.0.20240606 | 扫描版PDF的中英文OCR fallback | Apache-2.0；独立安装可能包含Leptonica等其他第三方库 | [Tesseract LICENSE](https://github.com/tesseract-ocr/tesseract/blob/main/LICENSE) |
 

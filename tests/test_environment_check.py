@@ -186,5 +186,27 @@ class EnvironmentCheckTests(unittest.TestCase):
         self.assertIn("app can use", result.detail)
 
 
+    def test_pillow_below_minimum_is_reported_as_failure(self):
+        """Pillow < 12.3.0 must produce a blocking failure."""
+        with patch("core.environment_check.importlib.metadata.version",
+                   return_value="12.1.1"), \
+             patch("core.environment_check.importlib.import_module"), \
+             patch("core.environment_check.WindowsDPAPISecretStore") as mock_dpapi:
+            mock_dpapi.return_value.is_available.return_value = False
+            report = collect_environment_report(".")
+            pillow = next(c for c in report.checks if c.name == "Pillow")
+            self.assertFalse(pillow.ok, f"Pillow 12.1.1 must fail: {pillow.detail}")
+
+    def test_pillow_at_minimum_passes(self):
+        with patch("core.environment_check.importlib.metadata.version",
+                   return_value="12.3.0"), \
+             patch("core.environment_check.importlib.import_module"), \
+             patch("core.environment_check.WindowsDPAPISecretStore") as mock_dpapi:
+            mock_dpapi.return_value.is_available.return_value = False
+            report = collect_environment_report(".")
+            pillow = next(c for c in report.checks if c.name == "Pillow")
+            self.assertTrue(pillow.ok, f"Pillow 12.3.0 must pass: {pillow.detail}")
+
+
 if __name__ == "__main__":
     unittest.main()
