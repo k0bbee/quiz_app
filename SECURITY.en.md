@@ -59,3 +59,10 @@ The following are normally not treated as vulnerabilities without a demonstrated
 Use synthetic content whenever possible. Redact API keys, usernames, local paths, course documents, student records, and provider responses before sharing logs or screenshots. Never commit a live key or private course file as a regression fixture.
 
 If a credential may have been exposed, revoke or rotate it immediately. Removing it from the latest commit is not sufficient when it exists in Git history.
+
+## Data boundaries
+
+- `.quizdata` bundles may contain private courses, questions, and progress and must not be attached to public vulnerability reports.
+- Custom AI endpoints receive the configured credential and selected course context only after explicit local configuration.
+- Local-agent execution is capability-constrained: tools, session persistence, and project loading are disabled, and the process runs in an isolated work directory. CLI agents without a verified no-tools mode are rejected.
+- Import bundles and documents that exceed size or compression-ratio budgets are rejected before any content is read or parsed.

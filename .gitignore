@@ -60,6 +60,9 @@ docs/superpowers/specs/*.md
 docs/audits/2026-06-25-settings-connection/
 docs/**/*.png
 
+# Application data bundles (may contain private courses/questions/progress)
+*.quizdata
+
 # OS files
 .DS_Store
 Thumbs.db
