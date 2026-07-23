@@ -127,7 +127,7 @@ class SourceRefsPanel(QWidget):
 
     def _update_action_state(self, *_args) -> None:
         ref, location = self._selected()
-        self.open_btn.setEnabled(bool(location and location.exists))
+        self.open_btn.setEnabled(bool(location and location.exists and location.is_openable))
         self.copy_btn.setEnabled(location is not None)
         self.details_btn.setEnabled(ref is not None)
 

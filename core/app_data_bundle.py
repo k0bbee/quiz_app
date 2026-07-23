@@ -45,6 +45,16 @@ DERIVED_FILENAMES = {
     f"{INDEX_FILENAME}-shm",
 }
 
+ALLOWED_BUNDLE_SUFFIXES: dict[str, frozenset[str]] = {
+    "courses": frozenset({".json", ".md", ".txt", ".pdf", ".pptx", ".docx"}),
+    "questions": frozenset({".json"}),
+    "question_sets": frozenset({".json"}),
+    "quiz_snapshots": frozenset({".json"}),
+    "progress": frozenset({".json"}),
+    "past_exams": frozenset({".json", ".md", ".txt", ".pdf", ".pptx", ".docx"}),
+    "current_event_materials": frozenset({".json"}),
+}
+
 
 @dataclass(frozen=True)
 class AppDataImportResult:
@@ -383,7 +393,13 @@ def _is_allowed_bundle_member(name: str) -> bool:
     if name in DATA_FILES:
         return True
     parts = Path(name).parts
-    return bool(parts) and parts[0] in DATA_DIRECTORIES
+    if not parts or parts[0] not in DATA_DIRECTORIES:
+        return False
+    suffix = Path(name).suffix.lower()
+    allowed = ALLOWED_BUNDLE_SUFFIXES.get(parts[0])
+    if allowed is None:
+        return False
+    return suffix in allowed
 
 
 def _is_within_directory(directory: Path, path: Path) -> bool:

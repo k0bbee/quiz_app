@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+OPENABLE_SOURCE_SUFFIXES: frozenset[str] = frozenset(
+    {".md", ".txt", ".pdf", ".pptx", ".docx"}
+)
+
 
 @dataclass(frozen=True)
 class SourceLocation:
@@ -15,6 +19,10 @@ class SourceLocation:
     @property
     def exists(self) -> bool:
         return self.path.is_file()
+
+    @property
+    def is_openable(self) -> bool:
+        return self.path.suffix.lower() in OPENABLE_SOURCE_SUFFIXES
 
 
 def resolve_source_location(project, source_ref: dict) -> SourceLocation | None:
@@ -49,6 +57,8 @@ def resolve_source_location(project, source_ref: dict) -> SourceLocation | None:
 
     page_or_slide = _positive_int(source_ref.get("page_or_slide"))
     path = matches[0]
+    if path.suffix.lower() not in OPENABLE_SOURCE_SUFFIXES:
+        return None
     return SourceLocation(path, page_or_slide, path.suffix.lower().lstrip("."))
 
 

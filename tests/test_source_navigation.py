@@ -123,5 +123,52 @@ class SourceNavigationTests(unittest.TestCase):
             self.assertEqual("page=9", url.fragment())
 
 
+    def test_source_navigation_rejects_unsafe_extensions(self):
+        """Registered files with unsafe extensions cannot be resolved or opened."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            unsafe = [
+                root / "launcher.exe",
+                root / "script.bat",
+                root / "run.cmd",
+                root / "evil.ps1",
+                root / "link.lnk",
+                root / "site.url",
+                root / "page.html",
+                root / "page.htm",
+                root / "malware.com",
+                root / "noextension",
+            ]
+            for path in unsafe:
+                path.write_bytes(b"unsafe")
+            project = _project([{"path": str(p)} for p in unsafe], root)
+
+            for path in unsafe:
+                location = resolve_source_location(
+                    project, {"source_file": path.name}
+                )
+                self.assertIsNone(
+                    location,
+                    f"resolve_source_location must reject {path.name}",
+                )
+
+    def test_source_panel_disables_open_for_unsafe_extension(self):
+        """Open button stays disabled when resolved source has unsafe extension."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            payload = root / "payload.exe"
+            payload.write_bytes(b"unsafe")
+            project = _project([{"path": str(payload)}], root)
+            panel = SourceRefsPanel()
+            panel.set_source_refs(
+                [{"source_file": payload.name}],
+                course_project=project,
+                language="zh",
+            )
+            panel.source_list.setCurrentRow(0)
+
+            self.assertFalse(panel.open_btn.isEnabled())
+
+
 if __name__ == "__main__":
     unittest.main()

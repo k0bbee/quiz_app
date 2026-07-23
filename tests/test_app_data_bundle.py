@@ -327,5 +327,78 @@ class AppDataBundleTests(unittest.TestCase):
                 self.assertNotIn(key, portable, f"{key} must not appear in portable settings")
 
 
+    def test_import_skips_unsafe_bundle_artifact_extensions(self):
+        """Executables, scripts, shortcuts, HTML, and extensionless payloads are skipped."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            target = root / "data"
+            (target / "questions").mkdir(parents=True)
+            bundle = root / "bundle.quizdata"
+
+            unsafe_members = [
+                "courses/c-a/source/payload.exe",
+                "courses/c-a/source/setup.msi",
+                "courses/c-a/source/launch.bat",
+                "courses/c-a/source/run.cmd",
+                "courses/c-a/source/script.ps1",
+                "courses/c-a/source/shortcut.lnk",
+                "courses/c-a/source/page.url",
+                "courses/c-a/source/page.html",
+                "courses/c-a/source/page.htm",
+                "courses/c-a/source/malware.com",
+                "courses/c-a/source/noextension",
+                "questions/q-bad.js",
+                "progress/p-bad.py",
+            ]
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
+                archive.writestr("courses/c-a/source/notes.pdf", "%PDF-1.4 fake")
+                archive.writestr("courses/c-a/source/notes.txt", "safe text")
+                archive.writestr("questions/q1.json", '{"question_id": "q1"}')
+                for name in unsafe_members:
+                    archive.writestr(name, b"unsafe")
+
+            result = import_app_data_bundle(bundle, target)
+
+            self.assertTrue((target / "courses" / "c-a" / "source" / "notes.pdf").exists())
+            self.assertTrue((target / "courses" / "c-a" / "source" / "notes.txt").exists())
+            self.assertTrue((target / "questions" / "q1.json").exists())
+            for name in unsafe_members:
+                self.assertIn(name, result.skipped_files, f"{name} must be skipped")
+                self.assertFalse(
+                    (target / name).exists(),
+                    f"{name} must not exist on disk",
+                )
+
+    def test_import_allows_known_safe_data_bundle_suffixes(self):
+        """All standard data files with safe suffixes pass validation."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            target = root / "data"
+            bundle = root / "bundle.quizdata"
+
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
+                archive.writestr("courses/c-a/source/slides.pdf", "%PDF safe")
+                archive.writestr("courses/c-a/source/notes.txt", "safe text")
+                archive.writestr("courses/c-a/source/lecture.md", "# safe")
+                archive.writestr("courses/c-a/source/slides.pptx", "PK fake pptx")
+                archive.writestr("courses/c-a/source/paper.docx", "PK fake docx")
+                archive.writestr("past_exams/e-a/source/exam.pdf", "%PDF safe")
+                archive.writestr("past_exams/e-a/source/exam.txt", "safe text")
+                archive.writestr("questions/q1.json", '{"q": 1}')
+                archive.writestr("question_sets/s1.json", '{"s": 1}')
+                archive.writestr("quiz_snapshots/snap.json", '{"s": 1}')
+                archive.writestr("progress/p1.json", '{"p": 1}')
+                archive.writestr("current_event_materials/m1.json", '{"m": 1}')
+                archive.writestr("mastery_overrides.json", '{"overrides": {}}')
+                archive.writestr("current_course.json", '{"course_id": "c-a"}')
+                archive.writestr("settings.json", '{"language": "zh"}')
+
+            result = import_app_data_bundle(bundle, target)
+            self.assertEqual(15, result.imported_files)
+            self.assertEqual([], result.skipped_files)
+
+
 if __name__ == "__main__":
     unittest.main()
