@@ -145,10 +145,11 @@ class DocumentParser:
         if cache_key in self._FILE_CACHE:
             return _clone_document(self._FILE_CACHE[cache_key])
 
-        if path.stat().st_size > _max_document_bytes():
+        from core.input_limits import MAX_DOCUMENT_BYTES
+        if path.stat().st_size > MAX_DOCUMENT_BYTES:
             return ExtractedDocument(
                 str(path), title, ext,
-                warnings=[f"File exceeds size limit ({_max_document_bytes()} bytes)"],
+                warnings=[f"File exceeds size limit ({MAX_DOCUMENT_BYTES} bytes)"],
             )
 
         if ext in {".txt", ".md"}:
@@ -225,14 +226,15 @@ class DocumentParser:
 
             doc = pdfium.PdfDocument(str(path))
             try:
+                from core.input_limits import MAX_PDF_PAGES
                 total_pages = len(doc)
-                if total_pages > _max_pdf_pages():
+                if total_pages > MAX_PDF_PAGES:
                     warnings.append(
                         f"PDF has {total_pages} pages, exceeding limit "
-                        f"of {_max_pdf_pages()}; only the first "
-                        f"{_max_pdf_pages()} pages will be parsed."
+                        f"of {MAX_PDF_PAGES}; only the first "
+                        f"{MAX_PDF_PAGES} pages will be parsed."
                     )
-                    total_pages = _max_pdf_pages()
+                    total_pages = MAX_PDF_PAGES
                 for i in range(total_pages):
                     page = doc[i]
                     if task is not None:
@@ -418,16 +420,23 @@ def _ocr_pdf_page(page, page_number: int, warnings: list[str]) -> str:
         return ""
 
     try:
-        bitmap = page.render(scale=2)
-        try:
-            width = getattr(bitmap, "width", 0)
-            height = getattr(bitmap, "height", 0)
-            if width > 0 and height > 0 and (width * height) > _max_render_pixels():
+        from core.input_limits import MAX_RENDER_PIXELS, OCR_PAGE_TIMEOUT_SECONDS
+
+        # Check pixel budget BEFORE rendering to avoid allocating a giant bitmap.
+        page_width = getattr(page, "get_width", lambda: 0)()
+        page_height = getattr(page, "get_height", lambda: 0)()
+        if page_width > 0 and page_height > 0:
+            scaled_pixels = (page_width * 2) * (page_height * 2)
+            if scaled_pixels > MAX_RENDER_PIXELS:
                 warnings.append(
-                    f"Page {page_number} render size {width}x{height} "
+                    f"Page {page_number} estimated render size "
+                    f"{page_width * 2}x{page_height * 2} "
                     f"exceeds pixel budget; OCR skipped."
                 )
                 return ""
+
+        bitmap = page.render(scale=2)
+        try:
             image = bitmap.to_pil().convert("RGB").copy()
         finally:
             close_bitmap = getattr(bitmap, "close", None)
@@ -438,7 +447,7 @@ def _ocr_pdf_page(page, page_number: int, warnings: list[str]) -> str:
             image,
             lang="eng+chi_sim",
             config=ocr_config,
-            timeout=_ocr_timeout_seconds(),
+            timeout=OCR_PAGE_TIMEOUT_SECONDS,
         )
         if text.strip():
             warnings.append(f"Page {page_number} text recovered by OCR fallback")
@@ -447,23 +456,3 @@ def _ocr_pdf_page(page, page_number: int, warnings: list[str]) -> str:
     except Exception as exc:
         warnings.append(f"OCR fallback failed on page {page_number}: {exc}")
     return ""
-
-
-def _max_document_bytes() -> int:
-    from core.input_limits import MAX_DOCUMENT_BYTES
-    return MAX_DOCUMENT_BYTES
-
-
-def _max_pdf_pages() -> int:
-    from core.input_limits import MAX_PDF_PAGES
-    return MAX_PDF_PAGES
-
-
-def _max_render_pixels() -> int:
-    from core.input_limits import MAX_RENDER_PIXELS
-    return MAX_RENDER_PIXELS
-
-
-def _ocr_timeout_seconds() -> int:
-    from core.input_limits import OCR_PAGE_TIMEOUT_SECONDS
-    return OCR_PAGE_TIMEOUT_SECONDS
