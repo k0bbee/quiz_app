@@ -170,5 +170,28 @@ class SourceNavigationTests(unittest.TestCase):
             self.assertFalse(panel.open_btn.isEnabled())
 
 
+    def test_source_navigation_rejects_unc_and_device_paths(self):
+        """UNC, device, and URI paths are rejected before any filesystem call."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            project = _project([
+                {"path": r"\\server\share\slides.pdf"},
+                {"path": r"\\?\C:\device.pdf"},
+                {"path": r"\\.\COM1"},
+                {"path": "https://example.com/doc.pdf"},
+            ], root)
+
+            for ref in [
+                {"source_file": r"\\server\share\slides.pdf"},
+                {"source_file": r"\\?\C:\device.pdf"},
+                {"source_file": r"\\.\COM1"},
+                {"source_file": "https://example.com/doc.pdf"},
+            ]:
+                self.assertIsNone(
+                    resolve_source_location(project, ref),
+                    f"must reject remote/device source: {ref}",
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
