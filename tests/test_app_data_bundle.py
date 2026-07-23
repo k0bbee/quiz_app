@@ -454,5 +454,34 @@ class AppDataBundleTests(unittest.TestCase):
                     import_app_data_bundle(bundle, target)
 
 
+    def test_import_rejects_case_insensitive_duplicate_members(self):
+        """questions/q1.json and questions/Q1.json collide on Windows FS."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bundle = root / "dupe.quizdata"
+            target = root / "data"
+
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
+                archive.writestr("questions/q1.json", '{"a": 1}')
+                archive.writestr("questions/Q1.json", '{"a": 2}')
+
+            with self.assertRaisesRegex(ValueError, "Duplicate"):
+                import_app_data_bundle(bundle, target)
+
+    def test_import_rejects_double_slash_and_backslash_paths(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            target = root / "data"
+            bundle = root / "paths.quizdata"
+
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", '{"format": "quiz_app_data_bundle", "version": 1}')
+                archive.writestr("questions//q1.json", "{}")
+
+            result = import_app_data_bundle(bundle, target)
+            self.assertIn("questions//q1.json", result.skipped_files)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -208,9 +208,13 @@ def _prepare_bundle(
         if not _is_allowed_bundle_member(name):
             skipped.append(name)
             continue
-        if name in seen:
+        canonical = canonical_bundle_target(name)
+        if canonical is None:
+            skipped.append(name)
+            continue
+        if canonical in seen:
             raise ValueError(f"Duplicate data bundle member: {name}")
-        seen.add(name)
+        seen.add(canonical)
 
         relative_path = Path(name)
         staged_path = staging_dir / relative_path
@@ -386,8 +390,27 @@ def _validate_manifest(archive: zipfile.ZipFile) -> None:
         raise ValueError("Unsupported data bundle version")
 
 
+def canonical_bundle_target(name: str) -> str | None:
+    """Return a casefolded, normalised portable path for dedup and staging.
+
+    Returns ``None`` when *name* contains backslashes, empty segments,
+    ``/../``, drive letters, UNC prefixes, or device-namespace markers.
+    """
+    if "\\" in name:
+        return None
+    # Disallow empty segments, dot / dotdot, and repeated separators.
+    parts = name.split("/")
+    if "" in parts or "." in parts or ".." in parts:
+        return None
+    # Disallow drive letters (e.g. C:) and device paths (e.g. \\?\C:).
+    lower = name.lower()
+    if len(parts) > 0 and (":" in parts[0] or lower.startswith("\\\\")):
+        return None
+    return name.casefold()
+
+
 def _is_allowed_bundle_member(name: str) -> bool:
-    if "\\" in name or name.startswith("/") or ".." in Path(name).parts:
+    if canonical_bundle_target(name) is None:
         return False
     if Path(name).name in SECRET_FILENAMES | DERIVED_FILENAMES:
         return False
