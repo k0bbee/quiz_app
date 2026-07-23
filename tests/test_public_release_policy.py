@@ -19,6 +19,15 @@ class PublicReleasePolicyTests(unittest.TestCase):
         self.assertIn("pip-audit", text)
         self.assertIn("pytest", text)
 
+    def test_security_workflow_bounds_and_identifies_stuck_tests(self):
+        workflow = self._root / ".github/workflows/security.yml"
+        text = workflow.read_text(encoding="utf-8")
+
+        self.assertIn("timeout-minutes:", text)
+        self.assertIn("pytest-timeout", text)
+        self.assertIn("pytest -vv", text)
+        self.assertIn("--timeout=", text)
+
     def test_release_dependencies_are_pinned_and_audited(self):
         lock_file = self._root / "requirements-release.txt"
         self.assertTrue(
