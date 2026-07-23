@@ -179,8 +179,7 @@ class SecretsManager:
             return self._storage_warning
 
     def _record_keychain_warning(self, action: str, exc: Exception) -> None:
-        detail = f"{type(exc).__name__}: {exc}"
-        message = f"system keychain {action} failed: {detail}"
+        message = f"system keychain {action} failed ({type(exc).__name__})"
         with self._storage_lock:
             self._storage_warning = message
         log_warning(f"API key persistence warning: {message}")

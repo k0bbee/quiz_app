@@ -224,8 +224,32 @@ class SecretsManagerTests(unittest.TestCase):
                 self.assertEqual("Windows DPAPI encrypted store", location)
                 self.assertEqual("sk-secret-write-failure", store.value)
                 self.assertIn("system keychain", warning)
-                self.assertIn("RuntimeError: credential store locked", warning)
+                self.assertIn("RuntimeError", warning)
+                self.assertNotIn("credential store locked", warning)
                 self.assertNotIn("sk-secret-write-failure", warning)
+
+    def test_keyring_warning_never_displays_backend_exception_content(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            settings_file = str(Path(tmpdir) / "settings.json")
+            token = "AIzaSyDUMMY_SECRET_1234567890"
+            with patch("core.secrets_manager.SETTINGS_FILE", settings_file), \
+                 patch("core.secrets_manager.KEYRING_AVAILABLE", True), \
+                 patch("core.secrets_manager.keyring") as keyring, \
+                 patch(
+                     "core.secrets_manager.DPAPI_STORE",
+                     FakeDPAPIStore(available=False),
+                 ):
+                keyring.set_password.side_effect = RuntimeError(
+                    f"backend rejected credential={token}"
+                )
+                manager = SecretsManager()
+
+                manager.set_key(token)
+
+                warning = manager.get_storage_warning()
+                self.assertIn("RuntimeError", warning)
+                self.assertNotIn(token, warning)
+                self.assertNotIn("backend rejected", warning)
 
     def test_keyring_read_failure_records_warning_and_uses_fallback(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -242,7 +266,8 @@ class SecretsManagerTests(unittest.TestCase):
 
                 warning = manager.get_storage_warning()
                 self.assertIn("system keychain", warning)
-                self.assertIn("OSError: backend unavailable", warning)
+                self.assertIn("OSError", warning)
+                self.assertNotIn("backend unavailable", warning)
                 self.assertNotIn("sk-dpapi-fallback", warning)
 
     def test_keyring_delete_failure_does_not_report_clean_clear(self):
@@ -264,7 +289,8 @@ class SecretsManagerTests(unittest.TestCase):
 
                 warning = manager.get_storage_warning()
                 self.assertIn("system keychain clear failed", location)
-                self.assertIn("RuntimeError: delete denied", warning)
+                self.assertIn("RuntimeError", warning)
+                self.assertNotIn("delete denied", warning)
                 self.assertNotIn("sk-session", warning)
                 self.assertNotIn("QUIZ_APP_API_KEY", os.environ)
                 self.assertEqual(1, dpapi.deleted)
