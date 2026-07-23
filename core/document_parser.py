@@ -145,6 +145,12 @@ class DocumentParser:
         if cache_key in self._FILE_CACHE:
             return _clone_document(self._FILE_CACHE[cache_key])
 
+        if path.stat().st_size > _max_document_bytes():
+            return ExtractedDocument(
+                str(path), title, ext,
+                warnings=[f"File exceeds size limit ({_max_document_bytes()} bytes)"],
+            )
+
         if ext in {".txt", ".md"}:
             doc = self._parse_text(path)
         elif ext == ".pptx":
@@ -220,6 +226,13 @@ class DocumentParser:
             doc = pdfium.PdfDocument(str(path))
             try:
                 total_pages = len(doc)
+                if total_pages > _max_pdf_pages():
+                    warnings.append(
+                        f"PDF has {total_pages} pages, exceeding limit "
+                        f"of {_max_pdf_pages()}; only the first "
+                        f"{_max_pdf_pages()} pages will be parsed."
+                    )
+                    total_pages = _max_pdf_pages()
                 for i in range(total_pages):
                     page = doc[i]
                     if task is not None:
@@ -407,13 +420,26 @@ def _ocr_pdf_page(page, page_number: int, warnings: list[str]) -> str:
     try:
         bitmap = page.render(scale=2)
         try:
+            width = getattr(bitmap, "width", 0)
+            height = getattr(bitmap, "height", 0)
+            if width > 0 and height > 0 and (width * height) > _max_render_pixels():
+                warnings.append(
+                    f"Page {page_number} render size {width}x{height} "
+                    f"exceeds pixel budget; OCR skipped."
+                )
+                return ""
             image = bitmap.to_pil().convert("RGB").copy()
         finally:
             close_bitmap = getattr(bitmap, "close", None)
             if callable(close_bitmap):
                 close_bitmap()
         ocr_config = configure_pytesseract(pytesseract)
-        text = pytesseract.image_to_string(image, lang="eng+chi_sim", config=ocr_config)
+        text = pytesseract.image_to_string(
+            image,
+            lang="eng+chi_sim",
+            config=ocr_config,
+            timeout=_ocr_timeout_seconds(),
+        )
         if text.strip():
             warnings.append(f"Page {page_number} text recovered by OCR fallback")
             return text.strip()
@@ -421,3 +447,23 @@ def _ocr_pdf_page(page, page_number: int, warnings: list[str]) -> str:
     except Exception as exc:
         warnings.append(f"OCR fallback failed on page {page_number}: {exc}")
     return ""
+
+
+def _max_document_bytes() -> int:
+    from core.input_limits import MAX_DOCUMENT_BYTES
+    return MAX_DOCUMENT_BYTES
+
+
+def _max_pdf_pages() -> int:
+    from core.input_limits import MAX_PDF_PAGES
+    return MAX_PDF_PAGES
+
+
+def _max_render_pixels() -> int:
+    from core.input_limits import MAX_RENDER_PIXELS
+    return MAX_RENDER_PIXELS
+
+
+def _ocr_timeout_seconds() -> int:
+    from core.input_limits import OCR_PAGE_TIMEOUT_SECONDS
+    return OCR_PAGE_TIMEOUT_SECONDS

@@ -158,5 +158,74 @@ class DocumentParserQualityTests(unittest.TestCase):
         self.assertNotIn("[Page 1]\nSecond page content", doc.text)
 
 
+class DocumentParserBudgetTests(unittest.TestCase):
+    def test_oversized_file_is_rejected_with_warning(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "huge.pdf"
+            path.write_bytes(b"%PDF-huge")
+            with patch.object(Path, "stat") as mock_stat:
+                mock_stat.return_value = types.SimpleNamespace(
+                    st_size=300 * 1024 * 1024,  # > 256 MiB
+                    st_mtime_ns=0,
+                )
+                doc = DocumentParser().parse_file(path)
+            self.assertIn("File exceeds size limit", "\n".join(doc.warnings))
+
+    def test_pdf_page_count_beyond_limit_produces_warning(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "many-pages.pdf"
+            path.write_bytes(b"%PDF-many")
+
+            class FakePdf:
+                def __len__(self):
+                    return 2500  # exceeds MAX_PDF_PAGES
+                def __getitem__(self, i):
+                    return FakePage()
+                def close(self):
+                    pass
+
+            class FakePage:
+                def get_textpage(self):
+                    return FakeTextPage()
+                def close(self):
+                    pass
+
+            class FakeTextPage:
+                def get_text_range(self):
+                    return "text"
+                def close(self):
+                    pass
+
+            with patch("pypdfium2.PdfDocument", return_value=FakePdf()):
+                doc = DocumentParser().parse_file(path)
+            self.assertIn("exceeding limit", "\n".join(doc.warnings))
+
+    def test_ocr_called_with_timeout(self):
+        try:
+            import pytesseract  # noqa: F401
+        except ImportError:
+            self.skipTest("pytesseract not available")
+        page = types.SimpleNamespace()
+        page.render = lambda scale: types.SimpleNamespace(
+            width=100, height=100,
+            to_pil=lambda: types.SimpleNamespace(
+                convert=lambda mode: types.SimpleNamespace(copy=lambda: None)
+            ),
+            close=None,
+        )
+
+        with patch(
+            "pytesseract.image_to_string", return_value=""
+        ) as mock_ocr, patch(
+            "core.document_parser.configure_pytesseract", return_value=""
+        ):
+            from core.document_parser import _ocr_pdf_page
+            _ocr_pdf_page(page, 1, [])
+            self.assertTrue(mock_ocr.called)
+            call_kwargs = mock_ocr.call_args.kwargs
+            self.assertIn("timeout", call_kwargs)
+            self.assertGreater(call_kwargs["timeout"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
