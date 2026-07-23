@@ -64,7 +64,7 @@ class PastExamImportTests(unittest.TestCase):
             self.assertEqual(record, manager.find_by_hash("abc123"))
             self.assertEqual([record], manager.load_all())
             self.assertEqual(
-                Path(tmpdir) / "past-exam-a" / "source" / "2025-final.pdf",
+                (Path(tmpdir) / "past-exam-a" / "source" / "2025-final.pdf").resolve(),
                 manager.resolve_source_path(record),
             )
 
