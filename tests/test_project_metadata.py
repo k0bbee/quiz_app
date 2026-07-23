@@ -46,13 +46,11 @@ class ProjectMetadataTests(unittest.TestCase):
                 for reference in private_tool_references:
                     self.assertNotIn(reference, readme)
 
-    def test_public_metadata_does_not_link_historical_personal_identity(self):
-        public_metadata = "\n".join(
-            Path(path).read_text(encoding="utf-8")
-            for path in ("COPYRIGHT.md", "README.md", "README.en.md")
-        ).lower()
+    def test_public_metadata_uses_identity_neutral_provenance_wording(self):
+        copyright_notice = Path("COPYRIGHT.md").read_text(encoding="utf-8")
 
-        self.assertNotIn("historical-identity", public_metadata)
+        self.assertIn("Git提交记录仅用于追溯代码变更和技术来源", copyright_notice)
+        self.assertNotIn("当前 Git 历史记录的提交作者", copyright_notice)
 
 
 if __name__ == "__main__":
