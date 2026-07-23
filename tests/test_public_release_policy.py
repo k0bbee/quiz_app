@@ -19,6 +19,30 @@ class PublicReleasePolicyTests(unittest.TestCase):
         self.assertIn("pip-audit", text)
         self.assertIn("pytest", text)
 
+    def test_release_dependencies_are_pinned_and_audited(self):
+        lock_file = self._root / "requirements-release.txt"
+        self.assertTrue(
+            lock_file.exists(),
+            "requirements-release.txt must define the reproducible release environment",
+        )
+        pinned = [
+            line.strip()
+            for line in lock_file.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+        self.assertTrue(pinned)
+        self.assertTrue(
+            all("==" in line.split(";", 1)[0] for line in pinned),
+            "every release dependency must use an exact version",
+        )
+
+        workflow = (
+            self._root / ".github/workflows/security.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("pip install -r requirements-release.txt", workflow)
+        self.assertIn("pip_audit -r requirements-release.txt", workflow)
+        self.assertIn("Audit release lock", workflow)
+
     def test_dependabot_config_exists(self):
         config = self._root / ".github/dependabot.yml"
         self.assertTrue(config.exists(), "dependabot.yml must exist")
