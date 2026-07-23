@@ -3,7 +3,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -62,11 +62,12 @@ class LocalAgentTests(unittest.TestCase):
     def test_ai_generation_preflight_accepts_detected_claude(self):
         from ai.settings_validation import ai_generation_settings_error
 
-        message = ai_generation_settings_error(
-            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "claude"},
-            api_key="",
-            detected_agents=["claude"],
-        )
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            message = ai_generation_settings_error(
+                {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "claude"},
+                api_key="",
+                detected_agents=["claude"],
+            )
 
         self.assertEqual("", message)
 
@@ -84,14 +85,17 @@ class LocalAgentTests(unittest.TestCase):
 
     def test_local_agent_accepts_course_prompt_characters_without_shell_rejection(self):
         client = LLMClient(api_key="", base_url="local-agent://auto", model="claude")
+        stdin = types.SimpleNamespace(write=Mock(), close=Mock())
         fake_proc = types.SimpleNamespace(
             poll=lambda: 0,
             returncode=0,
             communicate=lambda timeout=0: ('{"questions":[]}', ""),
+            stdin=stdin,
         )
         messages = [{"role": "user", "content": "Cache set = block # modulo sets; tag -> compare [A/B]."}]
 
-        with patch("ai.local_agent_runner.resolve_local_agent_executable",
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}), \
+             patch("ai.local_agent_runner.resolve_local_agent_executable",
                    return_value=Path("claude")), \
              patch("ai.local_agent_runner.subprocess.Popen",
                    return_value=fake_proc) as popen_mock:
@@ -104,13 +108,16 @@ class LocalAgentTests(unittest.TestCase):
         client = LLMClient(api_key="", base_url="local-agent://auto", model="claude")
         prompt = "Sensitive course prompt with enough text to exceed safe argv expectations."
         messages = [{"role": "user", "content": prompt}]
+        stdin = types.SimpleNamespace(write=Mock(), close=Mock())
         fake_proc = types.SimpleNamespace(
             poll=lambda: 0,
             returncode=0,
             communicate=lambda timeout=0: ('{"questions":[]}', ""),
+            stdin=stdin,
         )
 
-        with patch("ai.local_agent_runner.resolve_local_agent_executable",
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}), \
+             patch("ai.local_agent_runner.resolve_local_agent_executable",
                    return_value=Path("claude")), \
              patch("ai.local_agent_runner.subprocess.Popen",
                    return_value=fake_proc) as popen_mock:
@@ -120,6 +127,9 @@ class LocalAgentTests(unittest.TestCase):
         command = popen_mock.call_args.args[0]
         self.assertNotIn(prompt, command)
         self.assertIn("--no-session-persistence", command)
+        sent_prompt = stdin.write.call_args.args[0]
+        self.assertIn(prompt, sent_prompt)
+        stdin.close.assert_called_once()
 
 
 class QuizWidgetAndSessionTests(unittest.TestCase):

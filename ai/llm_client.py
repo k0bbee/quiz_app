@@ -145,7 +145,7 @@ class LLMClient:
         if not self.last_error:
             wanted = ", ".join(missing or [name for name in candidates])
             self.last_error = (
-                f"No supported local CLI agent found for model "
+                f"No supported local agent CLI found for model "
                 f"'{self.model}'. Tried: {wanted}."
             )
         return None

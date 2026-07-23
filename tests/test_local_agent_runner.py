@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -8,6 +10,7 @@ from unittest.mock import patch
 
 from ai.local_agent_runner import (
     LocalAgentPolicyError,
+    _windows_cmd_wrap,
     build_local_agent_command,
     resolve_local_agent_executable,
     run_local_agent,
@@ -47,6 +50,22 @@ class LocalAgentRunnerTests(unittest.TestCase):
         self.assertIn("--no-session-persistence", command)
         self.assertIn("--disable-slash-commands", command)
 
+    def test_windows_cmd_is_launched_through_comspec_without_shell(self):
+        command = [
+            r"C:\Users\china\AppData\Roaming\npm\claude.CMD",
+            "--print",
+            "--tools",
+            "",
+        ]
+
+        with patch.dict(os.environ, {"COMSPEC": r"C:\Windows\System32\cmd.exe"}):
+            launch = _windows_cmd_wrap(command)
+
+        self.assertEqual(r"C:\Windows\System32\cmd.exe", launch[0])
+        self.assertEqual(["/d", "/s", "/c"], launch[1:4])
+        self.assertIn("claude.CMD", launch[4])
+        self.assertIn("--print", launch[4])
+
     def test_codex_is_rejected(self):
         with self.assertRaises(LocalAgentPolicyError) as ctx:
             build_local_agent_command("codex", Path("/usr/local/bin/codex"))
@@ -82,35 +101,54 @@ class LocalAgentRunnerTests(unittest.TestCase):
     # -- Cancellation --
 
     def test_cancel_stops_subprocess_within_one_second(self):
-        """A long-running subprocess must be terminated by cancel within 1s."""
         cancel_event = threading.Event()
+        timer = threading.Timer(0.1, cancel_event.set)
+        timer.start()
         started = time.monotonic()
-
-        def fake_popen(*args, **kwargs):
-            # Simulate a slow process; cancel is set from outside.
-            cancel_event.set()
-            raise KeyboardInterrupt  # short-circuit before real Popen
-
-        with patch("ai.local_agent_runner.subprocess.Popen", side_effect=fake_popen):
-            try:
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}), \
+             patch("ai.local_agent_runner.resolve_local_agent_executable", return_value=Path(sys.executable)), \
+             patch(
+                 "ai.local_agent_runner.build_local_agent_command",
+                 return_value=[sys.executable, "-c", "import time; time.sleep(30)"],
+            ):
+            with self.assertRaises(LocalAgentPolicyError):
                 run_local_agent("claude", "prompt", cancel_event=cancel_event)
-            except KeyboardInterrupt:
-                pass
-
         elapsed = time.monotonic() - started
+        timer.cancel()
         self.assertLess(elapsed, 1.0, "cancel must stop execution within 1 second")
 
-    # -- Real sleep-process cancellation --
+    def test_prompt_is_sent_to_stdin_before_waiting_for_exit(self):
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}), \
+             patch("ai.local_agent_runner.resolve_local_agent_executable", return_value=Path(sys.executable)), \
+             patch(
+                 "ai.local_agent_runner.build_local_agent_command",
+                 return_value=[
+                     sys.executable,
+                     "-c",
+                     "import sys; print(sys.stdin.read())",
+                 ],
+             ):
+            result = run_local_agent("claude", "course prompt", timeout=3)
+
+        self.assertEqual("course prompt", result)
 
     def test_cancel_kills_running_process(self):
-        import subprocess
-
         cancel_event = threading.Event()
         cancel_event.set()  # cancel immediately before run
 
         # Should raise/subprocess error quickly because cancel is already set.
         with self.assertRaises((OSError, subprocess.SubprocessError, LocalAgentPolicyError)):
             run_local_agent("claude", "test", cancel_event=cancel_event, timeout=1)
+
+    def test_missing_claude_auth_is_rejected_before_process_start(self):
+        with patch.dict(os.environ, {}, clear=True), \
+             patch("ai.local_agent_runner.resolve_local_agent_executable", return_value=Path(sys.executable)), \
+             patch("ai.local_agent_runner.subprocess.Popen") as popen:
+            with self.assertRaises(LocalAgentPolicyError) as ctx:
+                run_local_agent("claude", "prompt")
+
+        popen.assert_not_called()
+        self.assertIn("ANTHROPIC_API_KEY", str(ctx.exception))
 
 
 if __name__ == "__main__":

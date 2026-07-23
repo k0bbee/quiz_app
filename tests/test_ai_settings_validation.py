@@ -76,15 +76,37 @@ class AISettingsValidationTests(unittest.TestCase):
             screen.get_setting("default_question_type_weights")["multiple_choice"],
         )
 
-    def test_local_agent_settings_are_valid_when_agent_is_detected(self):
+    def test_codex_is_detected_but_rejected_for_untrusted_content(self):
         result = validate_ai_settings(
             {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
             api_key="",
             detected_agents=["codex"],
         )
 
+        self.assertFalse(result.ok)
+        self.assertIn("Codex", result.message)
+
+    def test_claude_is_valid_when_detected(self):
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+            result = validate_ai_settings(
+                {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "claude"},
+                api_key="",
+                detected_agents=["claude"],
+            )
+
         self.assertTrue(result.ok)
-        self.assertIn("codex", result.message)
+        self.assertIn("claude", result.message)
+
+    def test_auto_selects_eligible_claude(self):
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}):
+            result = validate_ai_settings(
+                {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "auto"},
+                api_key="",
+                detected_agents=["codex", "claude"],
+            )
+
+        self.assertTrue(result.ok)
+        self.assertIn("claude", result.message)
 
     def test_remote_provider_requires_key_base_url_and_model(self):
         result = validate_ai_settings(
@@ -132,12 +154,13 @@ class AISettingsValidationTests(unittest.TestCase):
         screen = SettingsScreen()
         screen.provider_combo.setCurrentIndex(screen.provider_combo.findData("local_agent"))
         screen.api_base_url.setText("local-agent://auto")
-        screen.model_combo.setCurrentText("codex")
+        screen.model_combo.setCurrentText("claude")
         screen.api_key_input.clear()
         worker = ManualConnectionWorker()
 
-        with patch.object(screen, "_create_connection_test_worker", return_value=worker) as create_worker, \
-             patch("ui.screens.settings_screen.detect_local_agents", return_value=["codex"]), \
+        with patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test-key"}), \
+             patch.object(screen, "_create_connection_test_worker", return_value=worker) as create_worker, \
+             patch("ui.screens.settings_screen.detect_local_agents", return_value=["claude"]), \
              patch("ui.screens.settings_screen.QMessageBox.information") as info:
             screen.test_ai_btn.click()
             self.assertTrue(worker.start_called)
@@ -145,17 +168,32 @@ class AISettingsValidationTests(unittest.TestCase):
 
             worker.result_ready.emit(ConnectionProbeResult(
                 ok=True,
-                message="Connected to provider 'local_agent' with model 'codex'.",
+                message="Connected to provider 'local_agent' with model 'claude'.",
                 elapsed_ms=15,
                 provider="local_agent",
-                model="codex",
+                model="claude",
             ))
 
         settings_arg, api_key_arg = create_worker.call_args.args
         self.assertEqual("local_agent", settings_arg["ai_provider"])
         self.assertEqual("", api_key_arg)
         self.assertTrue(info.called)
-        self.assertIn("codex", info.call_args.args[2])
+        self.assertIn("claude", info.call_args.args[2])
+
+    def test_settings_screen_rejects_codex_without_starting_probe(self):
+        screen = SettingsScreen()
+        screen.provider_combo.setCurrentIndex(screen.provider_combo.findData("local_agent"))
+        screen.api_base_url.setText("local-agent://auto")
+        screen.model_combo.setCurrentText("codex")
+
+        with patch.object(screen, "_create_connection_test_worker") as create_worker, \
+             patch("ui.screens.settings_screen.detect_local_agents", return_value=["codex"]), \
+             patch("ui.screens.settings_screen.QMessageBox.warning") as warning:
+            screen.test_ai_btn.click()
+
+        create_worker.assert_not_called()
+        warning.assert_called_once()
+        self.assertIn("not eligible", warning.call_args.args[2])
 
     def test_settings_screen_runs_connection_probe_in_background(self):
         screen = SettingsScreen()

@@ -120,13 +120,21 @@ def sanitized_child_environment(
     return clean
 
 
-def _windows_cmd_wrap(executable: str) -> list[str] | None:
-    """If *executable* is a .cmd/.bat, return a COMSPEC wrapper list."""
-    suffix = Path(executable).suffix.lower()
+def _windows_cmd_wrap(command: list[str]) -> list[str]:
+    """Wrap a Windows batch command through COMSPEC without enabling shell."""
+    if not command:
+        return command
+    suffix = Path(command[0]).suffix.lower()
     if suffix in {".cmd", ".bat"}:
         comspec = os.environ.get("COMSPEC", "cmd.exe")
-        return [comspec, "/d", "/s", "/c", executable]
-    return None
+        return [
+            comspec,
+            "/d",
+            "/s",
+            "/c",
+            subprocess.list2cmdline(command),
+        ]
+    return command
 
 
 def run_local_agent(
@@ -155,12 +163,23 @@ def run_local_agent(
         raise LocalAgentPolicyError("Local agent execution cancelled.")
 
     command = build_local_agent_command(agent_name, executable)
+    if agent_name.strip().lower() == "claude" and not os.environ.get("ANTHROPIC_API_KEY", "").strip():
+        raise LocalAgentPolicyError(
+            "Restricted Claude CLI execution requires ANTHROPIC_API_KEY "
+            "in the process environment because --bare disables stored login state."
+        )
     env = sanitized_child_environment(os.environ, preserve_anthropic_key=True)
     workspace = Path(tempfile.mkdtemp(prefix="quiz-local-agent-"))
+    launch_command = _windows_cmd_wrap(command) if os.name == "nt" else command
+    creationflags = (
+        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+        if os.name == "nt"
+        else 0
+    )
 
     try:
         proc = subprocess.Popen(
-            command,
+            launch_command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -169,10 +188,15 @@ def run_local_agent(
             errors="replace",
             cwd=str(workspace),
             env=env,
+            creationflags=creationflags,
         )
         try:
             stdout_data, stderr_data = "", ""
             deadline = time_monotonic() + timeout
+            if proc.stdin is not None:
+                proc.stdin.write(prompt)
+                proc.stdin.close()
+                proc.stdin = None
 
             while proc.poll() is None:
                 if cancel_event is not None and cancel_event.is_set():
@@ -182,7 +206,7 @@ def run_local_agent(
                     )
                 if time_monotonic() > deadline:
                     _terminate_process(proc)
-                    raise subprocess.TimeoutExpired(command, timeout)
+                    raise subprocess.TimeoutExpired(launch_command, timeout)
                 time.sleep(0.05)  # 50 ms poll
 
             stdout_data, stderr_data = proc.communicate(timeout=5)

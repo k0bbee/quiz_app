@@ -1271,13 +1271,18 @@ class SettingsScreen(QWidget):
         found = detect_local_agents()
         if found:
             agents_str = ", ".join(found)
-            self.local_agent_status.setText(self.lang_manager.get_text(
-                f"检测到: {agents_str}。选择 Local CLI Agent 无需 API Key。",
-                f"Detected: {agents_str}. Select Local CLI Agent for keyless mode."))
+            if "claude" in found:
+                self.local_agent_status.setText(self.lang_manager.get_text(
+                    f"检测到：{agents_str}。受限模式仅使用 Claude，需在进程环境中设置 ANTHROPIC_API_KEY。",
+                    f"Detected: {agents_str}. Restricted mode uses Claude only and requires ANTHROPIC_API_KEY in the process environment."))
+            else:
+                self.local_agent_status.setText(self.lang_manager.get_text(
+                    f"检测到：{agents_str}，但当前不支持安全处理不可信课件。请安装 Claude CLI 或使用远程 API。",
+                    f"Detected: {agents_str}, but none can safely process untrusted course content. Install Claude CLI or use a remote API."))
         else:
             self.local_agent_status.setText(self.lang_manager.get_text(
-                "未检测到本地 CLI。需要 API Key 或安装 claude/codex CLI。",
-                "No local CLI detected. API key required, or install claude/codex CLI."))
+                "未检测到可用的 Claude CLI。请安装 Claude CLI 并配置 ANTHROPIC_API_KEY，或使用远程 API。",
+                "No eligible Claude CLI detected. Install Claude CLI and configure ANTHROPIC_API_KEY, or use a remote API."))
 
     def _test_ai_settings(self):
         from core.secrets_manager import SecretsManager

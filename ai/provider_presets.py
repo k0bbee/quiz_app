@@ -22,7 +22,7 @@ PROVIDER_PRESETS = {
         "label": "Local CLI Agent",
         "base_url": "local-agent://auto",
         "models": ["auto", "claude"],
-        "help": "Uses a detected local CLI agent when available. No API key is needed. Codex is detected but not eligible for untrusted course content.",
+        "help": "Uses Claude CLI in restricted no-tools mode. Set ANTHROPIC_API_KEY in the process environment. Codex may be detected but is not eligible for untrusted course content.",
     },
     "custom": {
         "label": "Custom endpoint",

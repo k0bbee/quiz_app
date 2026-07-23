@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import ipaddress
+import os
 from urllib.parse import urlsplit
 
 from ai.course_summary_factory import provider_requires_api_key
@@ -79,27 +80,35 @@ def validate_ai_settings(
         detected = detected_agents or []
         if model == "auto":
             if "claude" in detected:
-                return AISettingsValidationResult(True, "Local agent ready: claude.")
-            if detected:
+                model = "claude"
+            elif detected:
                 return AISettingsValidationResult(
                     False,
                     "Codex CLI detected but cannot guarantee no-tools isolation; "
                     "only Claude CLI is currently eligible for local generation. "
                     "Install Claude CLI or switch to a remote API.",
                 )
-            return AISettingsValidationResult(
-                False,
-                "No eligible local CLI agent detected. "
-                "Install claude CLI or use a remote API.",
-            )
+            if model != "claude":
+                return AISettingsValidationResult(
+                    False,
+                    "No eligible local CLI agent detected. "
+                    "Install claude CLI or use a remote API.",
+                )
         if model != "claude":
+            display_model = "Codex" if model.lower() == "codex" else model
             return AISettingsValidationResult(
                 False,
-                f"Local agent '{model}' is not eligible for safe execution. "
+                f"Local agent '{display_model}' is not eligible for safe execution. "
                 "Only Claude CLI is currently supported. "
                 "Switch to a remote API or use model=claude.",
             )
         if model in detected:
+            if not os.environ.get("ANTHROPIC_API_KEY", "").strip():
+                return AISettingsValidationResult(
+                    False,
+                    "Restricted Claude CLI mode requires ANTHROPIC_API_KEY "
+                    "in the process environment.",
+                )
             return AISettingsValidationResult(True, f"Local agent ready: {model}.")
         return AISettingsValidationResult(
             False,
