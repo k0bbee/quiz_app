@@ -9,6 +9,25 @@ from core.document_parser import DocumentParser
 
 
 class DocumentParserQualityTests(unittest.TestCase):
+    def test_source_paths_skip_symbolic_linked_course_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            safe = root / "safe.md"
+            linked = root / "linked.md"
+            safe.write_text("safe course content", encoding="utf-8")
+            linked.write_text("simulated linked content", encoding="utf-8")
+            original_is_symlink = Path.is_symlink
+
+            def is_symlink(path):
+                if path == linked:
+                    return True
+                return original_is_symlink(path)
+
+            with patch.object(Path, "is_symlink", is_symlink):
+                paths = DocumentParser().source_paths(str(root))
+
+        self.assertEqual([safe], paths)
+
     def test_explicit_data_folder_root_is_not_skipped_as_its_own_ancestor(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "data"

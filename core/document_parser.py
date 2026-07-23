@@ -115,7 +115,7 @@ class DocumentParser:
         return [
             path
             for path in sorted(root.rglob("*"), key=_source_sort_key)
-            if path.is_file()
+            if _is_safe_source_path(path, root)
             and not path.name.startswith("~$")
             and not self._should_skip_path(path, root=root)
             and path.suffix.lower() in SUPPORTED_EXTENSIONS
@@ -468,6 +468,17 @@ def _decode_text_bytes(raw: bytes) -> tuple[str, str]:
         except UnicodeDecodeError:
             continue
     return raw.decode("utf-8", errors="replace"), "UTF-8 with replacement characters"
+
+
+def _is_safe_source_path(path: Path, root: Path) -> bool:
+    """Accept only regular files whose resolved path stays inside *root*."""
+    try:
+        if path.is_symlink() or not path.is_file():
+            return False
+        path.resolve().relative_to(root.resolve())
+        return True
+    except (OSError, RuntimeError, ValueError):
+        return False
 
 
 def _source_sort_key(path: Path) -> tuple[int, str, str]:
