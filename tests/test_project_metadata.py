@@ -46,6 +46,14 @@ class ProjectMetadataTests(unittest.TestCase):
                 for reference in private_tool_references:
                     self.assertNotIn(reference, readme)
 
+    def test_public_metadata_does_not_link_historical_personal_identity(self):
+        public_metadata = "\n".join(
+            Path(path).read_text(encoding="utf-8")
+            for path in ("COPYRIGHT.md", "README.md", "README.en.md")
+        ).lower()
+
+        self.assertNotIn("historical-identity", public_metadata)
+
 
 if __name__ == "__main__":
     unittest.main()
