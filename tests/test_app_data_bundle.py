@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from core.app_data_bundle import (
+    canonical_bundle_target,
     export_app_data_bundle,
     import_app_data_bundle,
     LOCAL_ONLY_SETTING_KEYS,
@@ -18,6 +19,18 @@ from core.input_limits import InputLimitError
 
 
 class AppDataBundleTests(unittest.TestCase):
+    def test_bundle_targets_reject_nonportable_windows_segments(self):
+        invalid = (
+            "courses/report.txt:payload.txt",
+            "courses/NUL.txt",
+            "courses/alias. /file.txt",
+            "courses/trailing./file.txt",
+        )
+
+        for name in invalid:
+            with self.subTest(name=name):
+                self.assertIsNone(canonical_bundle_target(name))
+
     def test_oversized_archive_is_rejected_before_zip_open(self):
         from core.input_limits import MAX_BUNDLE_ARCHIVE_BYTES
 
