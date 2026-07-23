@@ -163,16 +163,16 @@ class CourseProjectManager:
         current_course_file: str | Path | None = None,
     ):
         self._dir = projects_dir
-        self._injected_current_course_file = (
-            Path(current_course_file) if current_course_file is not None else None
+        self._current_course_path = (
+            Path(current_course_file)
+            if current_course_file is not None
+            else Path(projects_dir).parent / Path(CURRENT_COURSE_FILE).name
         )
         os.makedirs(self._dir, exist_ok=True)
 
     @property
     def _current_course_file(self) -> Path:
-        if self._injected_current_course_file is not None:
-            return self._injected_current_course_file
-        return Path(CURRENT_COURSE_FILE)
+        return self._current_course_path
 
     @property
     def directory(self) -> str:
