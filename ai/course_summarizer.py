@@ -61,7 +61,6 @@ class CourseSummaryGenerator:
                 continue
             material_lines.append(
                 f"## Source: {doc.title} ({doc.extension})\n"
-                f"Path: {doc.path}\n"
                 f"Warnings: {'; '.join(doc.warnings) if doc.warnings else 'none'}\n\n"
                 f"{excerpt}"
             )

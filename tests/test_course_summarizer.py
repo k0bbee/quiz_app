@@ -72,6 +72,27 @@ class FakeProfileGenerator:
 
 
 class CourseSummaryGeneratorTests(unittest.TestCase):
+    def test_llm_summary_prompt_does_not_expose_absolute_source_paths(self):
+        private_path = r"C:\Users\student\Downloads\private-course\lecture.md"
+        messages = CourseSummaryGenerator.build_messages(
+            "Course",
+            [
+                ExtractedDocument(
+                    path=private_path,
+                    title="lecture",
+                    extension=".md",
+                    text="Course content",
+                )
+            ],
+            [],
+            "# Local summary",
+        )
+
+        prompt = messages[-1]["content"]
+        self.assertIn("Source: lecture (.md)", prompt)
+        self.assertNotIn(private_path, prompt)
+        self.assertNotIn(r"C:\Users\student", prompt)
+
     def test_course_initializer_accepts_a_shared_build_pipeline(self):
         self.assertIn(
             "build_pipeline",
