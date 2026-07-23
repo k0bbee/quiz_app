@@ -8,6 +8,7 @@ sanitized environment) is enforced in a single reviewable module.
 from __future__ import annotations
 
 import os
+import signal
 import shutil
 import subprocess
 import tempfile
@@ -137,6 +138,19 @@ def _windows_cmd_wrap(command: list[str]) -> list[str]:
     return command
 
 
+def _process_isolation_kwargs(platform: str) -> dict:
+    """Return Popen options matching the platform's tree-kill strategy."""
+    if platform == "nt":
+        return {
+            "creationflags": getattr(
+                subprocess,
+                "CREATE_NEW_PROCESS_GROUP",
+                0,
+            ),
+        }
+    return {"start_new_session": True}
+
+
 def run_local_agent(
     agent_name: str,
     prompt: str,
@@ -171,11 +185,6 @@ def run_local_agent(
     env = sanitized_child_environment(os.environ, preserve_anthropic_key=True)
     workspace = Path(tempfile.mkdtemp(prefix="quiz-local-agent-"))
     launch_command = _windows_cmd_wrap(command) if os.name == "nt" else command
-    creationflags = (
-        getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-        if os.name == "nt"
-        else 0
-    )
 
     try:
         proc = subprocess.Popen(
@@ -188,7 +197,7 @@ def run_local_agent(
             errors="replace",
             cwd=str(workspace),
             env=env,
-            creationflags=creationflags,
+            **_process_isolation_kwargs(os.name),
         )
         try:
             stdout_data, stderr_data = "", ""
@@ -227,12 +236,52 @@ def run_local_agent(
         shutil.rmtree(workspace, ignore_errors=True)
 
 
-def _terminate_process(proc: subprocess.Popen) -> None:
+def _terminate_process(
+    proc: subprocess.Popen,
+    *,
+    platform: str | None = None,
+) -> None:
     """Best-effort termination of a subprocess and its children."""
-    try:
-        proc.kill()
-    except Exception:
-        pass
+    platform = platform or os.name
+    tree_terminated = False
+
+    if platform == "nt":
+        try:
+            system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
+            if not system_root:
+                raise OSError("Windows system directory is unavailable")
+            taskkill = Path(system_root) / "System32" / "taskkill.exe"
+            result = subprocess.run(
+                [
+                    str(taskkill),
+                    "/PID",
+                    str(proc.pid),
+                    "/T",
+                    "/F",
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+                shell=False,
+            )
+            tree_terminated = result.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            tree_terminated = False
+    else:
+        try:
+            os.killpg(os.getpgid(proc.pid), getattr(signal, "SIGKILL", 9))
+            tree_terminated = True
+        except (AttributeError, OSError, ProcessLookupError):
+            tree_terminated = False
+
+    if not tree_terminated:
+        try:
+            if proc.poll() is None:
+                proc.kill()
+        except Exception:
+            pass
     try:
         proc.wait(timeout=2)
     except Exception:
