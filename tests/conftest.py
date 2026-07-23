@@ -52,6 +52,8 @@ def pytest_collection_modifyitems(config, items):
         item_path = Path(str(getattr(item, "path", getattr(item, "fspath", ""))))
         if _is_qt_test_file(str(item_path)):
             item.add_marker(pytest.mark.qt)
+        if item_path.name.startswith("test_copyright_"):
+            item.add_marker(pytest.mark.full)
         if item.get_closest_marker("full") and not config.getoption("--run-full"):
             item.add_marker(skip_full)
 
