@@ -14,9 +14,74 @@ from core.app_data_bundle import (
     LOCAL_ONLY_SETTING_KEYS,
 )
 from core.background_task import BackgroundTaskCancelled, TaskControl
+from core.input_limits import InputLimitError
 
 
 class AppDataBundleTests(unittest.TestCase):
+    def test_oversized_archive_is_rejected_before_zip_open(self):
+        from core.input_limits import MAX_BUNDLE_ARCHIVE_BYTES
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bundle = root / "oversized.quizdata"
+            bundle.write_bytes(b"not opened")
+            oversized_stat = SimpleNamespace(
+                st_size=MAX_BUNDLE_ARCHIVE_BYTES + 1,
+            )
+
+            with patch.object(Path, "stat", return_value=oversized_stat), \
+                 patch("core.app_data_bundle.zipfile.ZipFile") as zip_file:
+                with self.assertRaises(InputLimitError) as context:
+                    import_app_data_bundle(bundle, root / "data")
+
+            zip_file.assert_not_called()
+            self.assertEqual("DATA-IMPORT-002", context.exception.code)
+
+    def test_manifest_must_be_a_json_object(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bundle = root / "invalid-manifest.quizdata"
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", "[]")
+
+            with self.assertRaisesRegex(ValueError, "manifest"):
+                import_app_data_bundle(bundle, root / "data")
+
+    def test_manifest_is_read_with_a_dedicated_small_budget(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bundle = root / "large-manifest.quizdata"
+            manifest = {
+                "format": "quiz_app_data_bundle",
+                "version": 1,
+                "padding": "x" * 4096,
+            }
+            with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("manifest.json", json.dumps(manifest))
+
+            with patch("core.input_limits.MAX_BUNDLE_MANIFEST_BYTES", 128):
+                with self.assertRaises(InputLimitError) as context:
+                    import_app_data_bundle(bundle, root / "data")
+
+            self.assertEqual("DATA-IMPORT-006", context.exception.code)
+
+    def test_export_uses_the_same_member_allowlist_as_import(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            data_dir = root / "data"
+            source_dir = data_dir / "courses" / "course-a" / "source"
+            source_dir.mkdir(parents=True)
+            (source_dir / "notes.txt").write_text("safe", encoding="utf-8")
+            (source_dir / "payload.exe").write_bytes(b"unsafe")
+            bundle = root / "export.quizdata"
+
+            export_app_data_bundle(data_dir, bundle)
+
+            with zipfile.ZipFile(bundle) as archive:
+                names = archive.namelist()
+            self.assertIn("courses/course-a/source/notes.txt", names)
+            self.assertNotIn("courses/course-a/source/payload.exe", names)
+
     def test_cancelled_export_preserves_existing_bundle_and_removes_staging_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

@@ -86,6 +86,7 @@ def export_app_data_bundle(
             (path, path.relative_to(source_dir).as_posix())
             for path in sorted(p for p in directory.rglob("*") if p.is_file())
             if path.name not in SECRET_FILENAMES | DERIVED_FILENAMES
+            and _is_allowed_bundle_member(path.relative_to(source_dir).as_posix())
         )
     for filename in DATA_FILES:
         path = source_dir / filename
@@ -99,6 +100,8 @@ def export_app_data_bundle(
         "includes": [*DATA_DIRECTORIES, *DATA_FILES],
         "excludes": sorted([*SECRET_FILENAMES, *LOCAL_ONLY_SETTING_KEYS]),
     }
+    manifest_bytes = json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8")
+    _validate_export_budget(files, len(manifest_bytes))
 
     temporary_path: Path | None = None
     try:
@@ -111,7 +114,7 @@ def export_app_data_bundle(
             temporary_path = Path(temporary_file.name)
 
         with zipfile.ZipFile(temporary_path, "w", zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+            archive.writestr("manifest.json", manifest_bytes)
             total = len(files)
             for index, (path, archive_name) in enumerate(files, start=1):
                 _report(task, "exporting", index, total, archive_name)
@@ -123,6 +126,15 @@ def export_app_data_bundle(
                 else:
                     archive.write(path, archive_name)
 
+        from core.input_limits import InputLimitError, MAX_BUNDLE_ARCHIVE_BYTES
+        archive_size = temporary_path.stat().st_size
+        if archive_size > MAX_BUNDLE_ARCHIVE_BYTES:
+            raise InputLimitError(
+                "DATA-EXPORT-004",
+                f"导出包大小 {archive_size} 字节，超出 {MAX_BUNDLE_ARCHIVE_BYTES} 字节上限。",
+                f"Export bundle is {archive_size} bytes, exceeding the "
+                f"{MAX_BUNDLE_ARCHIVE_BYTES}-byte limit.",
+            )
         _report(task, "committing", total, total, bundle_path.name)
         os.replace(temporary_path, bundle_path)
         temporary_path = None
@@ -153,7 +165,17 @@ def import_app_data_bundle(
         backup_dir = transaction_dir / "backup"
 
         _report(task, "validating", detail=str(bundle_path))
+        from core.input_limits import InputLimitError, MAX_BUNDLE_ARCHIVE_BYTES
+        bundle_stat = Path(bundle_path).stat()
+        if bundle_stat.st_size > MAX_BUNDLE_ARCHIVE_BYTES:
+            raise InputLimitError(
+                "DATA-IMPORT-002",
+                f"导入包大小 {bundle_stat.st_size} 字节，超出 {MAX_BUNDLE_ARCHIVE_BYTES} 字节上限。",
+                f"Bundle archive is {bundle_stat.st_size} bytes, exceeding "
+                f"the {MAX_BUNDLE_ARCHIVE_BYTES}-byte limit.",
+            )
         with zipfile.ZipFile(bundle_path) as archive:
+            _validate_zip_budget(archive.infolist())
             _validate_manifest(archive)
             staged_files, skipped, ignored_settings = _prepare_bundle(
                 archive,
@@ -196,7 +218,6 @@ def _prepare_bundle(
     seen: set[str] = set()
 
     members = archive.infolist()
-    _validate_zip_budget(members)
     total = sum(not info.is_dir() and info.filename != "manifest.json" for info in members)
     current = 0
     for info in members:
@@ -378,12 +399,37 @@ def _portable_settings(path: Path) -> dict:
 
 
 def _validate_manifest(archive: zipfile.ZipFile) -> None:
+    from core.input_limits import (
+        InputLimitError,
+        MAX_BUNDLE_MANIFEST_BYTES,
+    )
+
     if sum(info.filename == "manifest.json" for info in archive.infolist()) != 1:
         raise ValueError("Invalid quiz app data bundle manifest")
+    info = archive.getinfo("manifest.json")
+    if info.file_size > MAX_BUNDLE_MANIFEST_BYTES:
+        raise InputLimitError(
+            "DATA-IMPORT-006",
+            f"导入包清单大小 {info.file_size} 字节，超出 {MAX_BUNDLE_MANIFEST_BYTES} 字节上限。",
+            f"Bundle manifest is {info.file_size} bytes, exceeding the "
+            f"{MAX_BUNDLE_MANIFEST_BYTES}-byte limit.",
+        )
     try:
-        manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
-    except (KeyError, json.JSONDecodeError) as exc:
+        with archive.open(info, "r") as manifest_file:
+            raw = manifest_file.read(MAX_BUNDLE_MANIFEST_BYTES + 1)
+        if len(raw) > MAX_BUNDLE_MANIFEST_BYTES:
+            raise InputLimitError(
+                "DATA-IMPORT-006",
+                "导入包清单超过允许的读取上限。",
+                "Bundle manifest exceeds the bounded read limit.",
+            )
+        manifest = json.loads(raw.decode("utf-8"))
+    except InputLimitError:
+        raise
+    except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("Invalid quiz app data bundle manifest") from exc
+    if not isinstance(manifest, dict):
+        raise ValueError("Invalid quiz app data bundle manifest: expected JSON object")
     if manifest.get("format") != BUNDLE_FORMAT:
         raise ValueError("Unsupported data bundle format")
     if manifest.get("version") != BUNDLE_VERSION:
@@ -481,3 +527,44 @@ def _validate_zip_budget(infos: list) -> None:
         # read limits provide the actual security boundary.
         compress_size = info.compress_size
         _ = compress_size  # reserved for future advisory logging
+
+
+def _validate_export_budget(files: list[tuple[Path, str]], manifest_size: int) -> None:
+    """Reject an export that would exceed the corresponding import budgets."""
+    from core.input_limits import (
+        InputLimitError,
+        MAX_BUNDLE_ENTRY_BYTES,
+        MAX_BUNDLE_MANIFEST_BYTES,
+        MAX_BUNDLE_MEMBERS,
+        MAX_BUNDLE_TOTAL_BYTES,
+    )
+
+    if manifest_size > MAX_BUNDLE_MANIFEST_BYTES:
+        raise InputLimitError(
+            "DATA-EXPORT-003",
+            "导出包清单超过大小上限。",
+            "Export manifest exceeds its size limit.",
+        )
+    if len(files) + 1 > MAX_BUNDLE_MEMBERS:
+        raise InputLimitError(
+            "DATA-EXPORT-003",
+            f"导出包成员数超过 {MAX_BUNDLE_MEMBERS} 个上限。",
+            f"Export bundle exceeds the {MAX_BUNDLE_MEMBERS}-member limit.",
+        )
+
+    total = manifest_size
+    for path, archive_name in files:
+        size = path.stat().st_size
+        if size > MAX_BUNDLE_ENTRY_BYTES:
+            raise InputLimitError(
+                "DATA-EXPORT-004",
+                f"文件 {archive_name} 超出单成员大小上限。",
+                f"Export member {archive_name} exceeds the per-entry size limit.",
+            )
+        total += size
+        if total > MAX_BUNDLE_TOTAL_BYTES:
+            raise InputLimitError(
+                "DATA-EXPORT-004",
+                "导出包总大小超过上限。",
+                "Export bundle exceeds the total uncompressed size limit.",
+            )

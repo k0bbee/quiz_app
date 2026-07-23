@@ -18,8 +18,10 @@ class InputLimitError(ValueError):
 
 # ── ZIP / archive budgets (used by app_data_bundle) ────────────────
 
+MAX_BUNDLE_ARCHIVE_BYTES = 512 * 1024 * 1024    # 512 MiB compressed on disk
+MAX_BUNDLE_MANIFEST_BYTES = 64 * 1024            # 64 KiB
 MAX_BUNDLE_MEMBERS = 5_000
-MAX_BUNDLE_ENTRY_BYTES = 64 * 1024 * 1024       # 64 MiB
+MAX_BUNDLE_ENTRY_BYTES = 256 * 1024 * 1024      # 256 MiB (matches MAX_DOCUMENT_BYTES)
 MAX_BUNDLE_TOTAL_BYTES = 1024 * 1024 * 1024     # 1 GiB
 MAX_ZIP_COMPRESSION_RATIO = 200  # advisory warning only — not a blocking gate
 

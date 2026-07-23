@@ -7,11 +7,27 @@ from unittest.mock import Mock, patch
 from core.past_exam_course_matcher import match_exam_to_courses
 from core.past_exam_importer import PastExamImporter
 from core.document_parser import ExtractedDocument
+from core.input_limits import InputLimitError
 from models.past_exam import PastExamContent, PastExamManager, PastExamRecord
 from models.course_project import CourseTopic
 
 
 class PastExamImportTests(unittest.TestCase):
+    def test_oversized_source_is_rejected_before_hashing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "oversized.pdf"
+            source.write_bytes(b"%PDF oversized")
+            manager = PastExamManager(root / "past-exams")
+            importer = PastExamImporter(manager, self._course_manager([]))
+
+            with patch("core.input_limits.MAX_DOCUMENT_BYTES", 1), \
+                 patch("core.past_exam_importer._sha256_file") as hash_file:
+                with self.assertRaises(InputLimitError):
+                    importer.import_file(source)
+
+            hash_file.assert_not_called()
+
     def test_manager_round_trips_record_content_and_hash_lookup(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = PastExamManager(tmpdir)

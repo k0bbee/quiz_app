@@ -39,11 +39,21 @@ class PastExamImporter:
         manual_course_id: str | None = None,
         task=None,
     ) -> PastExamImportResult:
+        from core.input_limits import InputLimitError, MAX_DOCUMENT_BYTES
+
         source = Path(source_path)
         if not source.exists() or not source.is_file():
             raise FileNotFoundError(f"Historical exam file not found: {source}")
         if source.suffix.lower() not in SUPPORTED_EXTENSIONS:
             raise ValueError(f"Unsupported historical exam file type: {source.suffix}")
+        source_size = source.stat().st_size
+        if source_size > MAX_DOCUMENT_BYTES:
+            raise InputLimitError(
+                "PAST-EXAM-IMPORT-002",
+                f"历史试卷文件大小 {source_size} 字节，超出 {MAX_DOCUMENT_BYTES} 字节上限。",
+                f"Historical exam file is {source_size} bytes, exceeding "
+                f"the {MAX_DOCUMENT_BYTES}-byte limit.",
+            )
 
         source_hash = _sha256_file(source, task=task)
         duplicate = self.manager.find_by_hash(source_hash)

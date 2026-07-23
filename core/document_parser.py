@@ -169,12 +169,20 @@ class DocumentParser:
         return doc
 
     def _parse_text(self, path: Path) -> ExtractedDocument:
-        raw = path.read_bytes()
+        from core.input_limits import MAX_DOCUMENT_BYTES
+        with path.open("rb") as source:
+            raw = source.read(MAX_DOCUMENT_BYTES + 1)
+        warnings = []
+        if len(raw) > MAX_DOCUMENT_BYTES:
+            raw = raw[:MAX_DOCUMENT_BYTES]
+            warnings.append(
+                f"Text file grew beyond {MAX_DOCUMENT_BYTES} bytes while reading; truncated."
+            )
         text, encoding = _decode_text_bytes(raw)
         text = _normalize_text(text)
-        warnings = []
         if encoding != "UTF-8":
             warnings.append(f"Text encoding fallback used: {encoding}")
+        text = _clamp_text_length(text, warnings)
         return ExtractedDocument(
             str(path),
             path.stem,
@@ -185,8 +193,15 @@ class DocumentParser:
         )
 
     def _parse_pptx(self, path: Path, task: TaskControl | None = None) -> ExtractedDocument:
+        from core.input_limits import (
+            MAX_OFFICE_XML_ENTRY_BYTES,
+            MAX_OFFICE_XML_TOTAL_BYTES,
+        )
+
         pages: list[str] = []
         warnings: list[str] = []
+        xml_total = 0
+        text_total = 0
         try:
             with zipfile.ZipFile(path) as zf:
                 slide_names = sorted(
@@ -196,31 +211,78 @@ class DocumentParser:
                 for index, slide_name in enumerate(slide_names, start=1):
                     if task is not None:
                         task.report("parsing_page", index, len(slide_names), path.name)
-                    xml = zf.read(slide_name)
-                    page = _extract_xml_text(xml)
+                    info = zf.getinfo(slide_name)
+                    if info.file_size > MAX_OFFICE_XML_ENTRY_BYTES:
+                        warnings.append(
+                            f"Slide XML {slide_name} size {info.file_size} exceeds limit; skipped"
+                        )
+                        continue
+                    xml_total += info.file_size
+                    if xml_total > MAX_OFFICE_XML_TOTAL_BYTES:
+                        warnings.append("Cumulative Office XML size exceeded; stopping")
+                        break
+                    xml = _read_zip_member_bounded(
+                        zf, info, MAX_OFFICE_XML_ENTRY_BYTES
+                    )
+                    from core.input_limits import MAX_EXTRACTED_TEXT_CHARS
+                    page = _extract_xml_text(
+                        xml,
+                        max_chars=max(0, MAX_EXTRACTED_TEXT_CHARS - text_total),
+                    )
+                    page, text_total, truncated = _take_text_with_budget(
+                        page, text_total, warnings, "PPTX"
+                    )
                     if page:
                         pages.append(page)
+                    if truncated:
+                        break
         except Exception as exc:
             warnings.append(f"Failed to parse PPTX: {exc}")
         text = "\n\n".join(f"[Slide {i + 1}]\n{page}" for i, page in enumerate(pages))
-        return ExtractedDocument(str(path), path.stem, ".pptx", _normalize_text(text), pages, warnings)
+        text = _clamp_text_length(text, warnings)
+        return ExtractedDocument(str(path), path.stem, ".pptx", text, pages, warnings)
 
     def _parse_docx(self, path: Path) -> ExtractedDocument:
+        from core.input_limits import (
+            MAX_EXTRACTED_TEXT_CHARS,
+            MAX_OFFICE_XML_ENTRY_BYTES,
+        )
+
         warnings: list[str] = []
         paragraphs: list[str] = []
         try:
             with zipfile.ZipFile(path) as zf:
-                xml = zf.read("word/document.xml")
-                paragraphs = _extract_docx_paragraphs(xml)
+                info = zf.getinfo("word/document.xml")
+                if info.file_size > MAX_OFFICE_XML_ENTRY_BYTES:
+                    warnings.append(
+                        f"DOCX XML size {info.file_size} exceeds limit"
+                    )
+                    return ExtractedDocument(
+                        str(path), path.stem, ".docx", "",
+                        warnings=warnings,
+                    )
+                xml = _read_zip_member_bounded(
+                    zf, info, MAX_OFFICE_XML_ENTRY_BYTES
+                )
+                paragraphs, truncated = _extract_docx_paragraphs(
+                    xml,
+                    max_chars=MAX_EXTRACTED_TEXT_CHARS,
+                )
+                if truncated:
+                    warnings.append(
+                        "DOCX extracted text exceeded the character budget; truncated."
+                    )
         except Exception as exc:
             warnings.append(f"Failed to parse DOCX: {exc}")
         text = _normalize_text("\n".join(paragraphs))
+        text = _clamp_text_length(text, warnings)
         return ExtractedDocument(str(path), path.stem, ".docx", text, [text] if text else [], warnings)
 
     def _parse_pdf(self, path: Path, task: TaskControl | None = None) -> ExtractedDocument:
         warnings: list[str] = []
         pages: list[str] = []
         numbered_pages: list[tuple[int, str]] = []
+        text_total = 0
         try:
             import pypdfium2 as pdfium  # type: ignore
 
@@ -249,15 +311,27 @@ class DocumentParser:
                                 close_text_page()
                         if text:
                             normalized = _normalize_text(text)
-                            pages.append(normalized)
-                            numbered_pages.append((i + 1, normalized))
+                            normalized, text_total, truncated = _take_text_with_budget(
+                                normalized, text_total, warnings, "PDF"
+                            )
+                            if normalized:
+                                pages.append(normalized)
+                                numbered_pages.append((i + 1, normalized))
+                            if truncated:
+                                break
                         else:
                             warnings.append(f"Page {i + 1} has no extractable text")
                             ocr_text = _ocr_pdf_page(page, i + 1, warnings)
                             if ocr_text:
                                 normalized = _normalize_text(ocr_text)
-                                pages.append(normalized)
-                                numbered_pages.append((i + 1, normalized))
+                                normalized, text_total, truncated = _take_text_with_budget(
+                                    normalized, text_total, warnings, "PDF"
+                                )
+                                if normalized:
+                                    pages.append(normalized)
+                                    numbered_pages.append((i + 1, normalized))
+                                if truncated:
+                                    break
                     finally:
                         close_page = getattr(page, "close", None)
                         if callable(close_page):
@@ -274,23 +348,38 @@ class DocumentParser:
             f"[Page {page_number}]\n{page_text}"
             for page_number, page_text in numbered_pages
         )
-        return ExtractedDocument(str(path), path.stem, ".pdf", _normalize_text(text), pages, warnings)
+        text = _normalize_text(text)
+        text = _clamp_text_length(text, warnings)
+        return ExtractedDocument(str(path), path.stem, ".pdf", text, pages, warnings)
 
 
-def _extract_xml_text(xml_bytes: bytes) -> str:
+def _extract_xml_text(xml_bytes: bytes, max_chars: int | None = None) -> str:
     """Extract all text nodes from Office XML."""
     root = ET.fromstring(xml_bytes)
     chunks = []
+    total = 0
     for node in root.iter():
         if node.tag.endswith("}t") and node.text:
-            chunks.append(node.text)
+            value = node.text
+            if max_chars is not None:
+                remaining = max_chars - total
+                if remaining <= 0:
+                    break
+                value = value[:remaining]
+            chunks.append(value)
+            total += len(value)
     return _normalize_text("\n".join(chunks))
 
 
-def _extract_docx_paragraphs(xml_bytes: bytes) -> list[str]:
+def _extract_docx_paragraphs(
+    xml_bytes: bytes,
+    max_chars: int | None = None,
+) -> tuple[list[str], bool]:
     """Extract DOCX paragraph text in document order."""
     root = ET.fromstring(xml_bytes)
     paragraphs = []
+    total = 0
+    truncated = False
     for para in root.iter():
         if not para.tag.endswith("}p"):
             continue
@@ -300,8 +389,63 @@ def _extract_docx_paragraphs(xml_bytes: bytes) -> list[str]:
                 chunks.append(node.text)
         text = _normalize_text("".join(chunks))
         if text:
+            if max_chars is not None:
+                remaining = max_chars - total
+                if remaining <= 0:
+                    truncated = True
+                    break
+                if len(text) > remaining:
+                    text = text[:remaining]
+                    truncated = True
             paragraphs.append(text)
-    return paragraphs
+            total += len(text)
+            if truncated:
+                break
+    return paragraphs, truncated
+
+
+def _read_zip_member_bounded(
+    archive: zipfile.ZipFile,
+    info: zipfile.ZipInfo,
+    limit: int,
+) -> bytes:
+    """Read at most *limit* bytes even if archive metadata changes."""
+    with archive.open(info, "r") as member:
+        data = member.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError(f"Office XML member {info.filename} exceeds {limit} bytes")
+    return data
+
+
+def _take_text_with_budget(
+    text: str,
+    used: int,
+    warnings: list[str],
+    source: str,
+) -> tuple[str, int, bool]:
+    """Return a text slice that fits the cumulative extraction budget."""
+    from core.input_limits import MAX_EXTRACTED_TEXT_CHARS
+
+    remaining = MAX_EXTRACTED_TEXT_CHARS - used
+    if remaining <= 0:
+        warnings.append(f"{source} extracted text budget reached; remaining pages skipped.")
+        return "", used, True
+    if len(text) > remaining:
+        warnings.append(f"{source} extracted text budget reached; content truncated.")
+        return text[:remaining], MAX_EXTRACTED_TEXT_CHARS, True
+    return text, used + len(text), False
+
+
+def _clamp_text_length(text: str, warnings: list[str]) -> str:
+    """Truncate *text* with a warning when it exceeds the character budget."""
+    from core.input_limits import MAX_EXTRACTED_TEXT_CHARS
+    if len(text) > MAX_EXTRACTED_TEXT_CHARS:
+        warnings.append(
+            f"Extracted text length {len(text)} exceeds limit "
+            f"of {MAX_EXTRACTED_TEXT_CHARS}; truncated."
+        )
+        return text[:MAX_EXTRACTED_TEXT_CHARS]
+    return text
 
 
 def _normalize_text(text: str) -> str:

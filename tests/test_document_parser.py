@@ -1,6 +1,7 @@
 import tempfile
 import types
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -159,6 +160,104 @@ class DocumentParserQualityTests(unittest.TestCase):
 
 
 class DocumentParserBudgetTests(unittest.TestCase):
+    def test_oversized_docx_xml_is_rejected_before_member_read(self):
+        from core.input_limits import MAX_OFFICE_XML_ENTRY_BYTES
+
+        info = types.SimpleNamespace(
+            filename="word/document.xml",
+            file_size=MAX_OFFICE_XML_ENTRY_BYTES + 1,
+        )
+
+        class FakeArchive:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+            def getinfo(self, _name):
+                return info
+
+            def open(self, *_args, **_kwargs):
+                raise AssertionError("oversized XML must not be opened")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "oversized.docx"
+            path.write_bytes(b"PK")
+            with patch("core.document_parser.zipfile.ZipFile", return_value=FakeArchive()):
+                document = DocumentParser().parse_file(path)
+
+        self.assertEqual("", document.text)
+        self.assertIn("exceeds limit", "\n".join(document.warnings))
+
+    def test_docx_xml_is_read_through_a_bounded_stream(self):
+        xml = (
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            "<w:body><w:p><w:r><w:t>bounded text</w:t></w:r></w:p></w:body>"
+            "</w:document>"
+        ).encode("utf-8")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "bounded.docx"
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("word/document.xml", xml)
+
+            with patch.object(zipfile.ZipFile, "read", side_effect=AssertionError("unbounded read")):
+                document = DocumentParser().parse_file(path)
+
+        self.assertEqual("bounded text", document.text)
+
+    def test_pptx_pages_stop_at_extracted_text_budget(self):
+        slide_xml = (
+            '<p:sld xmlns:p="urn:p" xmlns:a="urn:a">'
+            "<a:t>abcdefgh</a:t></p:sld>"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "bounded.pptx"
+            with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("ppt/slides/slide1.xml", slide_xml)
+                archive.writestr("ppt/slides/slide2.xml", slide_xml)
+
+            with patch("core.input_limits.MAX_EXTRACTED_TEXT_CHARS", 10):
+                document = DocumentParser().parse_file(path)
+
+        self.assertLessEqual(sum(map(len, document.pages)), 10)
+        self.assertIn("text", "\n".join(document.warnings).lower())
+
+    def test_pdf_pages_stop_at_extracted_text_budget(self):
+        class FakeTextPage:
+            def get_text_range(self):
+                return "abcdefgh"
+
+            def close(self):
+                pass
+
+        class FakePage:
+            def get_textpage(self):
+                return FakeTextPage()
+
+            def close(self):
+                pass
+
+        class FakePdf:
+            def __len__(self):
+                return 2
+
+            def __getitem__(self, _index):
+                return FakePage()
+
+            def close(self):
+                pass
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "bounded.pdf"
+            path.write_bytes(b"%PDF")
+            with patch("pypdfium2.PdfDocument", return_value=FakePdf()), \
+                 patch("core.input_limits.MAX_EXTRACTED_TEXT_CHARS", 10):
+                document = DocumentParser().parse_file(path)
+
+        self.assertLessEqual(sum(map(len, document.pages)), 10)
+        self.assertIn("text", "\n".join(document.warnings).lower())
+
     def test_oversized_file_is_rejected_with_warning(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "huge.pdf"
