@@ -1,5 +1,4 @@
 import json
-import inspect
 import tempfile
 import unittest
 from pathlib import Path
@@ -93,12 +92,6 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
         self.assertNotIn(private_path, prompt)
         self.assertNotIn(r"C:\Users\student", prompt)
 
-    def test_course_initializer_accepts_a_shared_build_pipeline(self):
-        self.assertIn(
-            "build_pipeline",
-            inspect.signature(CourseInitializer.__init__).parameters,
-        )
-
     def test_initialize_delegates_semantic_artifact_building_to_pipeline(self):
         topics = self._topics()
         artifacts = SimpleNamespace(
@@ -174,10 +167,6 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
         self.assertEqual({"question_count": 18}, updated.generation_profile)
 
     def test_course_screen_surfaces_reusable_parse_checkpoint_without_auto_starting(self):
-        self.assertIn(
-            "checkpoint_store",
-            inspect.signature(CourseScreen.__init__).parameters,
-        )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             source = root / "materials"

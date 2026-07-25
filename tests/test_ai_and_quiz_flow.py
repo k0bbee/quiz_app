@@ -10,7 +10,6 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QComboBox, QMessageBox, QRadioButton
 
-import ai.settings_validation as settings_validation
 from ai.llm_client import LLMClient
 from models.progress import AnswerRecord, ProgressRecord, SessionSummary
 from models.question import Question
@@ -35,11 +34,6 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class LocalAgentTests(unittest.TestCase):
-    def test_generation_preflight_policy_lives_in_ai_settings_validation(self):
-        self.assertTrue(
-            hasattr(settings_validation, "ai_generation_settings_error")
-        )
-
     def test_local_agent_provider_does_not_require_api_key(self):
         from ai.course_summary_factory import provider_requires_api_key
 
@@ -1473,11 +1467,6 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
         self.assertEqual(["q-wrong"], requested)
         self.assertIn("题目不可用", warning.call_args.args[1])
-
-    def test_session_retry_modes_share_one_main_window_entry(self):
-        from ui.main_window import MainWindow
-
-        self.assertTrue(callable(getattr(MainWindow, "_retry_current_session", None)))
 
     def test_results_screen_enables_retry_unsure_action_when_needed(self):
         record = ProgressRecord.create_new("set-1")

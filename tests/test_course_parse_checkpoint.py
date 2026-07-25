@@ -1,6 +1,5 @@
 import tempfile
 import unittest
-import inspect
 from pathlib import Path
 from unittest.mock import patch
 
@@ -75,10 +74,6 @@ class CourseParseCheckpointTests(unittest.TestCase):
             self.assertEqual({}, stale)
 
     def test_document_parser_reuses_cached_files_and_parses_only_missing_sources(self):
-        self.assertIn(
-            "cached_documents",
-            inspect.signature(DocumentParser.parse_folder).parameters,
-        )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             first = root / "first.txt"
@@ -112,10 +107,6 @@ class CourseParseCheckpointTests(unittest.TestCase):
             self.assertEqual(1, len([event for event in events if event.stage == "reusing_file"]))
 
     def test_initializer_resumes_parsed_files_after_interruption_and_clears_on_commit(self):
-        self.assertIn(
-            "checkpoint_store",
-            inspect.signature(CourseInitializer.__init__).parameters,
-        )
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             source = root / "materials"

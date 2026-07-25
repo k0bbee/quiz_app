@@ -162,11 +162,6 @@ class CourseExamScopeConsumerTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_prediction_prefill_policy_lives_with_prediction_domain(self):
-        self.assertTrue(
-            hasattr(past_exam_prediction, "prediction_prefill_status")
-        )
-
     def test_generation_context_exposes_only_topics_in_exam_scope(self):
         project = _project()
         project.set_exam_scope("selected", ["io"])

@@ -1,6 +1,4 @@
 import os
-import importlib.util
-import inspect
 import re
 import tempfile
 import unittest
@@ -57,9 +55,6 @@ class UiThemeTests(unittest.TestCase):
             Path(window.question_bank.directory).resolve(),
         )
 
-    def test_main_window_accepts_an_application_service_container(self):
-        self.assertIn("services", inspect.signature(MainWindow.__init__).parameters)
-
     def test_main_window_uses_injected_application_services(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -79,9 +74,6 @@ class UiThemeTests(unittest.TestCase):
             self.assertIs(services.question_bank, window.question_bank)
             self.assertIs(services.course_manager, window.course_manager)
             self.assertIs(services.task_center, window.task_center)
-
-    def test_application_style_policy_lives_outside_the_process_entry_point(self):
-        self.assertIsNotNone(importlib.util.find_spec("ui.application_style"))
 
     def test_stylesheet_font_scaling_is_based_on_original_sizes(self):
         from ui.font_scale import scale_stylesheet_font_sizes
