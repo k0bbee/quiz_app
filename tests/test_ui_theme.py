@@ -1252,13 +1252,28 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("qcheckbox#quizuncertaincheck:checked", qss)
         self.assertIn("qcheckbox#quizreviewcheck:checked", qss)
 
-    def test_quiz_mode_selector_uses_compact_checked_and_focus_states(self):
+    def test_selection_controls_define_selected_hover_and_focus_states(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
 
-        self.assertIn("qpushbutton#quizmodeoption", qss)
-        self.assertIn("qpushbutton#quizmodeoption:checked", qss)
-        self.assertIn("qpushbutton#quizmodeoption:hover", qss)
-        self.assertIn("qpushbutton#quizmodeoption:focus", qss)
+        selectors = {
+            "quiz_mode": (
+                "qpushbutton#quizmodeoption",
+                "qpushbutton#quizmodeoption:checked",
+                "qpushbutton#quizmodeoption:hover",
+                "qpushbutton#quizmodeoption:focus",
+            ),
+            "review_tabs": (
+                "qtabwidget::pane",
+                "qtabbar::tab:selected",
+                "qtabbar::tab:hover",
+                "qtabbar::tab:focus",
+            ),
+        }
+
+        for control, required_selectors in selectors.items():
+            with self.subTest(control=control):
+                for selector in required_selectors:
+                    self.assertIn(selector, qss)
 
     def test_main_flow_pages_use_theme_button_roles(self):
         for path in (
@@ -1361,14 +1376,6 @@ class UiThemeTests(unittest.TestCase):
             ordering.down_btn,
         ):
             self.assertNotRegex(button.text(), r"[^\w\s]")
-
-    def test_review_tabs_have_dark_selected_hover_and_focus_states(self):
-        qss = Path("style.qss").read_text(encoding="utf-8").lower()
-
-        self.assertIn("qtabwidget::pane", qss)
-        self.assertIn("qtabbar::tab:selected", qss)
-        self.assertIn("qtabbar::tab:hover", qss)
-        self.assertIn("qtabbar::tab:focus", qss)
 
     def test_course_and_matching_widgets_use_theme_roles(self):
         self.assertNotIn(".setStyleSheet(", Path("ui/screens/course_screen.py").read_text(encoding="utf-8"))
