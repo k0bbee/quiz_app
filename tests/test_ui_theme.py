@@ -46,6 +46,17 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class UiThemeTests(unittest.TestCase):
+    def test_default_main_window_uses_isolated_services_during_qt_tests(self):
+        from config import QUESTIONS_DIR
+
+        window = MainWindow()
+        self.addCleanup(window.close)
+
+        self.assertNotEqual(
+            Path(QUESTIONS_DIR).resolve(),
+            Path(window.question_bank.directory).resolve(),
+        )
+
     def test_main_window_accepts_an_application_service_container(self):
         self.assertIn("services", inspect.signature(MainWindow.__init__).parameters)
 

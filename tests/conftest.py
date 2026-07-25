@@ -106,14 +106,39 @@ def _isolate_qt_settings_and_secrets(request, monkeypatch):
         return
 
     from core.secrets_manager import SecretsManager
+    from core.application_services import ApplicationServices
+    from core.background_task_center import BackgroundTaskCenter
+    from core.mastery_overrides import MasteryOverrideStore
+    from core.progress_tracker import ProgressManager
+    from core.quiz_snapshot_manager import QuizSnapshotManager
+    from models.course_project import CourseProjectManager
+    from models.past_exam import PastExamManager
+    from models.question import QuestionBank
+    from models.question_set import SetManager
     from ui.screens import settings_screen
 
     secrets = _InMemorySecrets()
     with tempfile.TemporaryDirectory(prefix="quiz-app-qt-test-") as temp_dir:
+        root = Path(temp_dir)
+        services = ApplicationServices(
+            question_bank=QuestionBank(str(root / "questions")),
+            set_manager=SetManager(str(root / "sets")),
+            progress_manager=ProgressManager(str(root / "progress")),
+            snapshot_manager=QuizSnapshotManager(str(root / "snapshots")),
+            mastery_overrides=MasteryOverrideStore(root / "mastery.json"),
+            course_manager=CourseProjectManager(str(root / "courses")),
+            past_exam_manager=PastExamManager(root / "past-exams"),
+            task_center=BackgroundTaskCenter(root / "tasks.json"),
+        )
         monkeypatch.setattr(
             settings_screen,
             "SETTINGS_FILE",
-            str(Path(temp_dir) / "settings.json"),
+            str(root / "settings.json"),
+        )
+        monkeypatch.setattr(
+            ApplicationServices,
+            "default",
+            classmethod(lambda cls: services),
         )
         monkeypatch.setattr(
             SecretsManager,
