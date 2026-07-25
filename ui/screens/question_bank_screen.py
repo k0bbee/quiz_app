@@ -100,14 +100,15 @@ class QuestionBankScreen(QWidget):
         self,
         question_bank: QuestionBank,
         set_manager: SetManager | None = None,
-        course_manager: CourseProjectManager | None = None,
+        *,
+        course_manager: CourseProjectManager,
         parent=None,
         task_center=None,
     ):
         super().__init__(parent)
         self.question_bank = question_bank
         self.set_manager = set_manager
-        self.course_manager = course_manager or CourseProjectManager()
+        self.course_manager = course_manager
         self.task_center = task_center
         self.lang_manager = LanguageManager.instance()
         self.page_size = 25

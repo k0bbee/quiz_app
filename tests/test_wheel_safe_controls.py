@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -18,6 +19,7 @@ from ui.widgets.wheel_safe_controls import (
     WheelSafeSlider,
     WheelSafeSpinBox,
 )
+from models.course_project import CourseProjectManager
 from models.question import QuestionBank
 from models.question_set import SetManager
 
@@ -129,7 +131,11 @@ class WheelSafeControlTests(unittest.TestCase):
 
     def test_question_bank_filters_are_wheel_safe(self):
         with tempfile.TemporaryDirectory() as questions_dir, tempfile.TemporaryDirectory() as sets_dir:
-            screen = QuestionBankScreen(QuestionBank(questions_dir), SetManager(sets_dir))
+            screen = QuestionBankScreen(
+                QuestionBank(questions_dir),
+                SetManager(sets_dir),
+                course_manager=CourseProjectManager(str(Path(questions_dir) / "courses")),
+            )
 
             self.assertIsInstance(screen.set_filter, WheelSafeComboBox)
             self.assertIsInstance(screen.difficulty_filter, WheelSafeComboBox)

@@ -7,6 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
 
+from models.course_project import CourseProjectManager
 from models.question import QuestionBank
 from models.question_set import SetManager
 from ui.screens.question_bank_screen import QuestionBankScreen
@@ -22,6 +23,7 @@ class SearchDebounceTests(unittest.TestCase):
             screen = QuestionBankScreen(
                 QuestionBank(str(Path(tmpdir) / "questions")),
                 SetManager(str(Path(tmpdir) / "sets")),
+                course_manager=CourseProjectManager(str(Path(tmpdir) / "courses")),
             )
             self.addCleanup(screen.close)
 

@@ -54,6 +54,30 @@ class ManualQualityScanWorker:
 
 
 class QuestionBankCleanupTests(unittest.TestCase):
+    def test_question_bank_screen_requires_course_manager(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+
+            with self.assertRaises(TypeError):
+                QuestionBankScreen(question_bank)
+
+    def _screen(
+        self,
+        root: str | Path,
+        question_bank: QuestionBank,
+        *,
+        set_manager: SetManager | None = None,
+        course_manager: CourseProjectManager | None = None,
+        task_center=None,
+    ) -> QuestionBankScreen:
+        return QuestionBankScreen(
+            question_bank,
+            set_manager=set_manager,
+            course_manager=course_manager
+            or CourseProjectManager(str(Path(root) / "courses")),
+            task_center=task_center,
+        )
+
     def _question(self, qid: str, topic: str = "cache") -> Question:
         return Question(
             question_id=qid,
@@ -164,7 +188,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             manual = self._question("q-manual")
             question_bank.save_many([course_a, course_b, manual])
 
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
             screen.set_current_course("course-a")
             screen.refresh()
 
@@ -185,7 +209,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             set_manager.save(self._set("set-a", ["q1", "q3"]))
             set_manager.save(self._set("set-b", ["q2"]))
 
-            screen = QuestionBankScreen(question_bank, set_manager=set_manager)
+            screen = self._screen(tmpdir, question_bank, set_manager=set_manager)
             idx = screen.set_filter.findData("set-a")
             self.assertGreaterEqual(idx, 0)
 
@@ -201,7 +225,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
     def test_question_bank_screen_assigns_new_manual_question_to_current_course(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
             screen.set_current_course("course-a")
             screen._new_question()
 
@@ -230,7 +254,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             qset = self._set("set-a", ["q1", "q2"])
             set_manager.save(qset)
 
-            screen = QuestionBankScreen(question_bank, set_manager=set_manager)
+            screen = self._screen(tmpdir, question_bank, set_manager=set_manager)
             screen.refresh()
             for row in range(screen.question_list.count()):
                 item = screen.question_list.item(row)
@@ -254,7 +278,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             qset = self._set("set-empty-after-delete", ["q1", "q2"])
             set_manager.save(qset)
 
-            screen = QuestionBankScreen(question_bank, set_manager=set_manager)
+            screen = self._screen(tmpdir, question_bank, set_manager=set_manager)
             for row in range(screen.question_list.count()):
                 item = screen.question_list.item(row)
                 if item.data(Qt.ItemDataRole.UserRole) in {"q1", "q2"}:
@@ -281,7 +305,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             )
             question_bank.save(noisy)
 
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
             item = screen.question_list.item(0)
 
             self.assertLessEqual(len(item.text()), 96)
@@ -300,7 +324,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             question.bilingual["en"]["stem"] = "What is the core flow of interrupt-driven I/O?"
             question_bank.save(question)
 
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
             item = screen.question_list.item(0)
 
             self.assertIn("Interrupt-driven I/O", item.text())
@@ -313,7 +337,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             question = self._question("q-first", "cache")
             question_bank.save(question)
 
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
 
             self.assertEqual("q-first", screen.current_question_id)
             self.assertIn('"question_id": "q-first"', screen.editor.toPlainText())
@@ -327,7 +351,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             question.bilingual["zh"]["stem"] = "中断驱动 I/O 如何减少忙等？"
             question_bank.save(question)
 
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
 
             self.assertIs(screen.detail_stack.currentWidget(), screen.form_editor)
             self.assertEqual("q-form", screen.current_question_id)
@@ -342,7 +366,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
             question_bank.save(self._question("q-advanced", "cache"))
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
 
             screen.editor_mode_btn.click()
             self.assertIs(screen.detail_stack.currentWidget(), screen.editor)
@@ -386,7 +410,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 correct_answer=[["left_dma", "right_direct"]],
                 topic="io",
             ))
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
             screen.form_editor.matching_table.item(0, 4).setText("Direct memory transfer")
 
             with (
@@ -408,7 +432,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
             question_bank.save(self._question("q-first", "cache"))
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
 
             screen.search_input.setText("no-matching-question")
             screen._reset_and_refresh()
@@ -425,7 +449,8 @@ class QuestionBankCleanupTests(unittest.TestCase):
         self.addCleanup(lang_manager.set_language, previous_lang)
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            screen = QuestionBankScreen(
+            screen = self._screen(
+                tmpdir,
                 QuestionBank(str(Path(tmpdir) / "questions")),
             )
 
@@ -452,7 +477,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             ]
             question_bank.save(question)
 
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
             item = screen.question_list.item(0)
             screen.question_list.setCurrentItem(item)
             screen._on_selection_changed()
@@ -484,7 +509,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             weak_plan.metadata["source_refs"] = [{"chunk_id": "source-0003"}]
 
             question_bank.save_many([exact, missing, fallback, weak_plan])
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
 
             def visible_ids() -> set[str]:
                 return {
@@ -515,7 +540,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             bank = QuestionBank(str(root / "questions"))
             bank.save_many([self._question("q1"), self._question("q2")])
             center = BackgroundTaskCenter(root / "tasks.json")
-            screen = QuestionBankScreen(bank, task_center=center)
+            screen = self._screen(tmpdir, bank, task_center=center)
             worker = ManualQualityScanWorker()
 
             with patch(
@@ -546,7 +571,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             bank = QuestionBank(str(Path(tmpdir) / "questions"))
             bank.save_many([self._question("clean"), self._question("broken")])
-            screen = QuestionBankScreen(bank)
+            screen = self._screen(tmpdir, bank)
             worker = ManualQualityScanWorker()
             report = QuestionQualityScanReport(
                 scanned_count=2,
@@ -610,7 +635,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             biased.correct_answer = "A"
             question_bank.save(biased)
 
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
             quality_idx = screen.quality_filter.findData("quality_warnings")
             screen.quality_filter.setCurrentIndex(quality_idx)
 
@@ -625,7 +650,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
             question_bank.save_many([self._question("q1"), self._question("q2")])
 
-            screen = QuestionBankScreen(question_bank)
+            screen = self._screen(tmpdir, question_bank)
             self.assertEqual(
                 QAbstractItemView.SelectionMode.ExtendedSelection,
                 screen.question_list.selectionMode(),
@@ -651,7 +676,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             qset = self._set("set-a", ["q1", "q2", "q3"])
             set_manager.save(qset)
 
-            screen = QuestionBankScreen(question_bank, set_manager=set_manager)
+            screen = self._screen(tmpdir, question_bank, set_manager=set_manager)
             changed = []
             screen.question_bank_changed.connect(lambda: changed.append(True))
             for row in range(screen.question_list.count()):

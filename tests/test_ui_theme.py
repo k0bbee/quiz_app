@@ -611,7 +611,10 @@ class UiThemeTests(unittest.TestCase):
     def test_course_bank_and_generation_dialog_buttons_have_semantic_roles(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             course = CourseScreen(CourseProjectManager(str(Path(tmpdir) / "courses")))
-            bank = QuestionBankScreen(QuestionBank(str(Path(tmpdir) / "questions")))
+            bank = QuestionBankScreen(
+                QuestionBank(str(Path(tmpdir) / "questions")),
+                course_manager=CourseProjectManager(str(Path(tmpdir) / "courses")),
+            )
             dialog = AIGenerationDialog(
                 "# Course",
                 {"ai_provider": "openai", "ai_base_url": "https://api.openai.com/v1", "ai_model": "gpt-4.1-mini"},
