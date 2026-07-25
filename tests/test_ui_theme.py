@@ -74,6 +74,7 @@ class UiThemeTests(unittest.TestCase):
             self.assertIs(services.question_bank, window.question_bank)
             self.assertIs(services.course_manager, window.course_manager)
             self.assertIs(services.task_center, window.task_center)
+            self.assertIs(services.set_manager, window.progress_screen.set_manager)
 
     def test_stylesheet_font_scaling_is_based_on_original_sizes(self):
         from ui.font_scale import scale_stylesheet_font_sizes
@@ -1100,7 +1101,11 @@ class UiThemeTests(unittest.TestCase):
 
             topic = TopicSelectionScreen(SetManager(str(root / "sets")), progress_manager)
             results = ResultsScreen()
-            progress = ProgressDashboard(progress_manager, question_bank)
+            progress = ProgressDashboard(
+                progress_manager,
+                question_bank,
+                set_manager=SetManager(str(root / "sets")),
+            )
             main_window = MainWindow()
 
         self.assertEqual("secondaryButton", topic.export_btn.objectName())

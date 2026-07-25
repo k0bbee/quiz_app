@@ -54,6 +54,20 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             topic=topic,
         )
 
+    def _make_progress_dashboard(
+        self,
+        root,
+        progress_manager,
+        question_bank,
+        **kwargs,
+    ) -> ProgressDashboard:
+        return ProgressDashboard(
+            progress_manager,
+            question_bank,
+            set_manager=SetManager(str(Path(root) / "sets")),
+            **kwargs,
+        )
+
     def test_quiz_screen_supports_question_preview_filter_and_free_navigation(self):
         language_manager = LanguageManager.instance()
         previous_language = language_manager.current
@@ -1994,7 +2008,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
             progress_manager.save(record)
 
-            screen = ProgressDashboard(progress_manager, question_bank)
+            screen = self._make_progress_dashboard(
+                tmpdir, progress_manager, question_bank
+            )
             screen.set_current_course("course-a")
             screen.refresh()
 
@@ -2049,7 +2065,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             progress_manager.save(record)
             question_bank = SearchOnlyQuestionBank([question])
 
-            screen = ProgressDashboard(progress_manager, question_bank)
+            screen = self._make_progress_dashboard(
+                tmpdir, progress_manager, question_bank
+            )
             screen.set_current_course("course-a")
             screen.refresh()
 
@@ -2073,7 +2091,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 record.summary = SessionSummary.compute([], total_questions=1, total_time=10)
                 progress_manager.save(record)
 
-            screen = ProgressDashboard(progress_manager, question_bank)
+            screen = self._make_progress_dashboard(
+                tmpdir, progress_manager, question_bank
+            )
             screen.refresh()
 
             self.assertEqual(6, screen.recent_list.count())
@@ -2103,7 +2123,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 record.summary = SessionSummary.compute([], total_questions=1, total_time=10)
                 progress_manager.save(record)
 
-            screen = ProgressDashboard(progress_manager, question_bank)
+            screen = self._make_progress_dashboard(
+                tmpdir, progress_manager, question_bank
+            )
             screen.refresh()
 
             self.assertTrue(screen.recent_list.isVisibleTo(screen))
@@ -2162,7 +2184,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             record.summary = SessionSummary.compute(record.answers, total_questions=3, total_time=30)
             progress_manager.save(record)
 
-            screen = ProgressDashboard(progress_manager, question_bank)
+            screen = self._make_progress_dashboard(
+                tmpdir, progress_manager, question_bank
+            )
             screen.set_current_course("course-a")
             screen.refresh()
 
@@ -2203,7 +2227,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             record.summary = SessionSummary.compute(record.answers, 1, 10)
             progress_manager.save(record)
 
-            screen = ProgressDashboard(
+            screen = self._make_progress_dashboard(
+                tmpdir,
                 progress_manager,
                 question_bank,
                 course_manager=course_manager,
@@ -2280,7 +2305,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
             progress_manager.save(record)
 
-            screen = ProgressDashboard(progress_manager, question_bank)
+            screen = self._make_progress_dashboard(
+                tmpdir, progress_manager, question_bank
+            )
             screen.set_current_course("course-a")
             screen.refresh()
 
@@ -2335,7 +2362,12 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
             progress_manager.save(record)
 
-            screen = ProgressDashboard(progress_manager, question_bank, mastery_overrides=mastery_overrides)
+            screen = self._make_progress_dashboard(
+                tmpdir,
+                progress_manager,
+                question_bank,
+                mastery_overrides=mastery_overrides,
+            )
             screen.set_current_course("course-a")
             screen.refresh()
 
@@ -2387,7 +2419,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             ]
             record.summary = SessionSummary.compute(record.answers, total_questions=1, total_time=10)
             progress_manager.save(record)
-            screen = ProgressDashboard(progress_manager, question_bank)
+            screen = self._make_progress_dashboard(
+                tmpdir, progress_manager, question_bank
+            )
             screen.set_current_course("course-a")
             screen.refresh()
 
@@ -2420,7 +2454,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.addCleanup(language_manager.set_language, previous_language)
         language_manager.set_language("zh")
         with tempfile.TemporaryDirectory() as tmpdir:
-            screen = ProgressDashboard(
+            screen = self._make_progress_dashboard(
+                tmpdir,
                 ProgressManager(str(Path(tmpdir) / "progress")),
                 QuestionBank(str(Path(tmpdir) / "questions")),
             )
@@ -2462,7 +2497,12 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             mastery_overrides = MasteryOverrideStore(root / "mastery_overrides.json")
             mastery_overrides.mark_topic_mastered("course-a", "cache")
 
-            screen = ProgressDashboard(progress_manager, question_bank, mastery_overrides=mastery_overrides)
+            screen = self._make_progress_dashboard(
+                root,
+                progress_manager,
+                question_bank,
+                mastery_overrides=mastery_overrides,
+            )
             screen.set_current_course("course-a")
 
             # Two-step: first click arms, second click executes
@@ -2477,7 +2517,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             progress_manager = ProgressManager(str(root / "progress"))
             question_bank = QuestionBank(str(root / "questions"))
 
-            screen = ProgressDashboard(progress_manager, question_bank)
+            screen = self._make_progress_dashboard(
+                root, progress_manager, question_bank
+            )
             original_text = screen.reset_btn.text()
 
             # First click — arms the button, does NOT reset

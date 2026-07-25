@@ -89,6 +89,7 @@ class MainWindow(QMainWindow):
         self.progress_screen = ProgressDashboard(
             self.progress_manager,
             self.question_bank,
+            set_manager=self.set_manager,
             mastery_overrides=self.mastery_overrides,
             course_manager=self.course_manager,
         )
