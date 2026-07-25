@@ -5,7 +5,11 @@ import zipfile
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from core.document_parser import DocumentParser
+from core.document_parser import (
+    DocumentParser,
+    ExtractedDocument,
+    _is_auxiliary_text_document,
+)
 from core.input_limits import InputLimitError
 
 
@@ -78,25 +82,14 @@ class DocumentParserQualityTests(unittest.TestCase):
             "Cache mapping explains how a byte address is split into tag, set, "
             "and byte offset. This lecture text is intentionally repeated so "
             "duplicate imported copies can be detected reliably.\n"
-        ) * 8
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "2. Cache mapping.md").write_text(repeated, encoding="utf-8")
             (root / "diff.md").write_text(repeated, encoding="utf-8")
             (root / "2. Cache mapping copy.md").write_text(repeated, encoding="utf-8")
-            (root / "standard.md").write_text("HC Computer System 出题标准 " * 20, encoding="utf-8")
-            (root / "marking-rubric.md").write_text(
-                "marking rubric grading feedback answer key " * 20,
-                encoding="utf-8",
-            )
-            (root / "复习辅助.md").write_text("课程内容整理标准 辅助提示词模板 " * 20, encoding="utf-8")
-            (root / "课程内容.md").write_text("核心概念 推演流程 答题要点 " * 20, encoding="utf-8")
-            (root / "例题与讲解.md").write_text("用途：把高频考点转化为可推理的题。变式提示 " * 20, encoding="utf-8")
-            (root / "考前40分钟中文摘要.md").write_text(
-                "依据：模拟卷与课程内容的高频核心概念。最后 40 分钟优先级 " * 20,
-                encoding="utf-8",
-            )
+            (root / "课程内容.md").write_text("核心概念 推演流程 答题要点", encoding="utf-8")
             (root / "data").mkdir()
             (root / "data" / "course-20260617_summary.md").write_text(repeated, encoding="utf-8")
 
@@ -104,6 +97,22 @@ class DocumentParserQualityTests(unittest.TestCase):
 
         self.assertEqual([Path(doc.path).name for doc in docs], ["2. Cache mapping.md"])
         self.assertTrue(docs[0].warnings == [] or all("duplicate" not in w.lower() for w in docs[0].warnings))
+        auxiliary_cases = {
+            "question standard": "HC Computer System 出题标准",
+            "english rubric": "marking rubric grading feedback answer key",
+            "review helper": "课程内容整理标准 辅助提示词模板",
+            "worked examples": "用途：把高频考点转化为可推理的题。变式提示",
+            "last-minute summary": "依据：模拟卷与课程内容的高频核心概念。最后 40 分钟优先级",
+        }
+        for title, text in auxiliary_cases.items():
+            with self.subTest(auxiliary=title):
+                document = ExtractedDocument(
+                    path=f"{title}.md",
+                    title=title,
+                    extension=".md",
+                    text=text,
+                )
+                self.assertTrue(_is_auxiliary_text_document(document))
 
     def test_pdf_empty_text_page_records_ocr_unavailable_warning(self):
         class FakeTextPage:
