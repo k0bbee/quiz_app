@@ -90,7 +90,7 @@ class CourseIndexCacheTests(unittest.TestCase):
         for term in ("dna", "atp", "protein", "enzyme", "rna"):
             self.assertIn(term, terms)
 
-    def test_retrieval_uses_project_topic_keywords_to_respect_selected_topic(self):
+    def test_retrieval_uses_project_topic_keywords_for_title_and_topic_id(self):
         summary = (
             "## Cache Mapping\n"
             "This high-level overview names cache mapping but omits address field details.\n\n"
@@ -123,14 +123,16 @@ class CourseIndexCacheTests(unittest.TestCase):
             updated_at="2026-06-26T00:00:00+00:00",
         )
 
-        context = course_index.retrieve_course_context(
-            project,
-            ["cache mapping"],
-            max_chars=260,
-        )
+        for selected_topic in ("cache mapping", "cache_mapping"):
+            with self.subTest(selected_topic=selected_topic):
+                context = course_index.retrieve_course_context(
+                    project,
+                    [selected_topic],
+                    max_chars=260,
+                )
 
-        self.assertIn("Address Breakdown", context)
-        self.assertIn("byte offset", context)
+                self.assertIn("Address Breakdown", context)
+                self.assertIn("byte offset", context)
 
     def test_course_index_preserves_parent_topic_for_repeated_subheadings(self):
         summary = (
@@ -198,48 +200,6 @@ class CourseIndexCacheTests(unittest.TestCase):
         self.assertNotIn("RAID", context)
         self.assertNotIn("seek time", context.lower())
         self.assertNotIn("File allocation", context)
-
-    def test_retrieval_matches_project_topic_keywords_by_topic_id(self):
-        summary = (
-            "## Cache Mapping\n"
-            "This high-level overview names cache mapping but omits address field details.\n\n"
-            "## Address Breakdown\n"
-            "The tag, set index, and byte offset determine lookup behavior.\n"
-        )
-        project = CourseProject(
-            course_id="course-topic-id-keywords",
-            title="Systems",
-            source_folder="",
-            summary_markdown=summary,
-            summary_path="",
-            topics=[
-                CourseTopic(
-                    topic_id="cache_mapping",
-                    title="Cache Mapping",
-                    keywords=["tag", "set index", "byte offset"],
-                    source_files=["summary.md"],
-                )
-            ],
-            documents=[
-                {
-                    "path": "summary.md",
-                    "title": "summary",
-                    "extension": ".md",
-                    "_course_index": course_index.build_course_index(summary),
-                }
-            ],
-            created_at="2026-06-26T00:00:00+00:00",
-            updated_at="2026-06-26T00:00:00+00:00",
-        )
-
-        context = course_index.retrieve_course_context(
-            project,
-            ["cache_mapping"],
-            max_chars=180,
-        )
-
-        self.assertIn("Address Breakdown", context)
-        self.assertIn("byte offset", context)
 
     def test_retrieval_balances_long_matching_chunks_with_later_key_details(self):
         summary = (
