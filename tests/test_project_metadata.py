@@ -12,43 +12,63 @@ class ProjectMetadataTests(unittest.TestCase):
         self.assertIn("pytesseract", requirements)
         self.assertIn("keyring", requirements)
 
-    def test_readme_documents_ocr_runtime_prerequisites(self):
+    def test_readme_documents_installation_runtime_and_environment_diagnostics(self):
         readme = Path("README.md").read_text(encoding="utf-8").lower()
+        required_fragments = (
+            "tesseract",
+            "chi_sim",
+            "无可提取文本",
+            "winget install -e --id ub-mannheim.tesseractocr",
+            "choco install tesseract",
+            "data/tessdata",
+            "python -m pip install -r requirements.txt",
+            "python scripts/check_environment.py",
+            "设置 → 运行环境 → 检查环境",
+            "练习默认题量/难度/计时器",
+            "windows dpapi",
+            "keyring backend",
+        )
 
-        self.assertIn("tesseract", readme)
-        self.assertIn("chi_sim", readme)
-        self.assertIn("无可提取文本", readme)
-        self.assertIn("winget install -e --id ub-mannheim.tesseractocr", readme)
-        self.assertIn("choco install tesseract", readme)
-        self.assertIn("data/tessdata", readme)
+        for fragment in required_fragments:
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, readme)
 
-    def test_readme_documents_install_and_environment_diagnostics(self):
-        readme = Path("README.md").read_text(encoding="utf-8").lower()
-
-        self.assertIn("python -m pip install -r requirements.txt", readme)
-        self.assertIn("python scripts/check_environment.py", readme)
-        self.assertIn("设置 → 运行环境 → 检查环境", readme)
-        self.assertIn("练习默认题量/难度/计时器", readme)
-        self.assertIn("windows dpapi", readme)
-        self.assertIn("keyring backend", readme)
-
-    def test_readmes_document_opt_in_current_events(self):
+    def test_readmes_document_opt_in_network_and_safe_task_recovery(self):
         chinese = Path("README.md").read_text(encoding="utf-8")
         english = Path("README.en.md").read_text(encoding="utf-8")
+        contracts = (
+            (
+                "current_events",
+                chinese,
+                ("打开窗口不会自动联网", "只有勾选材料进入出题"),
+            ),
+            (
+                "current_events",
+                english,
+                (
+                    "opening the dialog never starts a search",
+                    "only selected items enter generation",
+                ),
+            ),
+            (
+                "task_recovery",
+                chinese,
+                ("“打开任务页面”只导航", "只有恢复字段完整时"),
+            ),
+            (
+                "task_recovery",
+                english,
+                (
+                    "Open Task Page only navigates",
+                    "recovery metadata is complete",
+                ),
+            ),
+        )
 
-        self.assertIn("打开窗口不会自动联网", chinese)
-        self.assertIn("只有勾选材料进入出题", chinese)
-        self.assertIn("opening the dialog never starts a search", english)
-        self.assertIn("only selected items enter generation", english)
-
-    def test_readmes_document_safe_task_recovery(self):
-        chinese = Path("README.md").read_text(encoding="utf-8")
-        english = Path("README.en.md").read_text(encoding="utf-8")
-
-        self.assertIn("“打开任务页面”只导航", chinese)
-        self.assertIn("只有恢复字段完整时", chinese)
-        self.assertIn("Open Task Page only navigates", english)
-        self.assertIn("recovery metadata is complete", english)
+        for feature, document, fragments in contracts:
+            with self.subTest(feature=feature, fragments=fragments):
+                for fragment in fragments:
+                    self.assertIn(fragment, document)
 
     def test_public_readmes_do_not_document_local_copyright_application_tools(self):
         private_tool_references = (
