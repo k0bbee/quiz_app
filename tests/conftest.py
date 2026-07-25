@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import re
 import tempfile
 from functools import lru_cache
 from pathlib import Path
@@ -9,6 +10,9 @@ import pytest
 
 
 _QT_IMPORT_PATTERNS = ("from PyQt6", "import PyQt6")
+_QT_FILE_MARKER_PATTERN = re.compile(
+    r"(?m)^\s*pytestmark\s*=\s*pytest\.mark\.qt\s*$"
+)
 
 
 def pytest_addoption(parser):
@@ -35,7 +39,9 @@ def _is_qt_test_file(path_text: str) -> bool:
         text = path.read_text(encoding="utf-8")
     except OSError:
         return False
-    return any(pattern in text for pattern in _QT_IMPORT_PATTERNS)
+    return any(pattern in text for pattern in _QT_IMPORT_PATTERNS) or bool(
+        _QT_FILE_MARKER_PATTERN.search(text)
+    )
 
 
 def pytest_ignore_collect(collection_path, config):

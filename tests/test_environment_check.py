@@ -35,7 +35,40 @@ class EnvironmentCheckTests(unittest.TestCase):
         self.assertEqual(1, unhealthy.exit_code)
 
     def test_collector_checks_required_packages_and_writable_data_directory(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+        class Backend:
+            priority = 1
+
+        class KeyringModule:
+            @staticmethod
+            def get_keyring():
+                return Backend()
+
+        def import_module(name):
+            return KeyringModule() if name == "keyring" else object()
+
+        versions = {
+            "PyQt6": "6.11.0",
+            "requests": "2.34.2",
+            "keyring": "25.7.0",
+            "pypdfium2": "5.12.1",
+            "Pillow": "12.3.0",
+            "pytesseract": "0.3.13",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             patch(
+                 "core.environment_check.importlib.metadata.version",
+                 side_effect=lambda name: versions[name],
+             ), \
+             patch(
+                 "core.environment_check._check_tesseract",
+                 return_value=CheckResult(
+                     "Tesseract OCR", True, False, "available"
+                 ),
+             ), \
+             patch(
+                 "core.environment_check.importlib.import_module",
+                 side_effect=import_module,
+             ):
             report = collect_environment_report(Path(tmpdir))
 
         by_name = {check.name: check for check in report.checks}
@@ -109,7 +142,14 @@ class EnvironmentCheckTests(unittest.TestCase):
         previous_argv = sys.argv
         self.addCleanup(setattr, sys, "argv", previous_argv)
         sys.argv = ["check_environment.py", "--json"]
-        with redirect_stdout(output):
+        report = EnvironmentReport((
+            CheckResult("Python", True, True, "3.12.0"),
+            CheckResult("data directory", True, True, "writable"),
+        ))
+        with patch(
+            "scripts.check_environment.collect_environment_report",
+            return_value=report,
+        ), redirect_stdout(output):
             exit_code = environment_check_main()
 
         rendered = output.getvalue()

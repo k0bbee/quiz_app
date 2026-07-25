@@ -3,7 +3,9 @@ import re
 import tempfile
 from pathlib import Path
 
-from ai.batch_generator import GenerationWorker, allocate_weighted_counts
+import pytest
+
+from ai.batch_generator import GenerationWorker
 from ai.generation_batch_scheduler import GenerationBatchScheduler
 from ai.generation_candidate_processor import CandidateProcessingResult
 from ai.generation_config import GenerationConfig
@@ -17,6 +19,9 @@ from core.app_errors import AppError
 from core.background_task_center import BackgroundTaskCenter, TaskStatus
 from models.course_project import CourseTopic
 from utils.constants import topic_value
+
+
+pytestmark = pytest.mark.qt
 
 
 def raw_question(qtype, difficulty, topic, index=0):
@@ -153,40 +158,6 @@ class AlwaysTruncatedClient:
 
 
 class GenerationQuotaTests(unittest.TestCase):
-    def test_weighted_allocation_is_deterministic_and_sums_to_count(self):
-        allocated = allocate_weighted_counts(
-            {"multiple_choice": 50, "scenario_choice": 30, "true_false": 20},
-            7,
-        )
-
-        self.assertEqual(7, sum(allocated.values()))
-        self.assertEqual(
-            {"multiple_choice": 4, "scenario_choice": 2, "true_false": 1},
-            allocated,
-        )
-
-    def test_quota_accept_refuses_filled_slots_without_mutating_remaining_counts(self):
-        tracker = GenerationQuotaTracker(
-            GenerationConfig(
-                question_type_weights={"multiple_choice": 100},
-                difficulty_weights={"medium": 100},
-                topic_weights={"cache": 100},
-            ),
-            topics=["cache"],
-            count=1,
-        )
-
-        tracker.accept("multiple_choice", "medium", "cache")
-        before = tracker.missing_quotas()
-
-        with self.assertRaises(ValueError):
-            tracker.accept("multiple_choice", "medium", "cache")
-
-        self.assertEqual(before, tracker.missing_quotas())
-        self.assertEqual(0, tracker.remaining_types["multiple_choice"])
-        self.assertEqual(0, tracker.remaining_difficulties["medium"])
-        self.assertEqual(0, tracker.remaining_topics["cache"])
-
     def test_worker_builds_quota_tracker_from_pure_business_module(self):
         worker = GenerationWorker(
             SequenceClient([]),

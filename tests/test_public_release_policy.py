@@ -12,6 +12,22 @@ class PublicReleasePolicyTests(unittest.TestCase):
         text = gitignore.read_text(encoding="utf-8")
         self.assertIn("*.quizdata", text, "*.quizdata must be listed in .gitignore")
 
+    def test_local_agent_and_test_workspaces_are_ignored(self):
+        text = (self._root / ".gitignore").read_text(encoding="utf-8")
+
+        for pattern in (
+            ".agents/",
+            ".codex/",
+            "/.test-tmp/",
+            "/.test_tmp/",
+            "/.sandbox-tmp/",
+            "/tmp*/",
+            "/.github/copilot-instructions.md",
+            "/.github/instructions/",
+        ):
+            with self.subTest(pattern=pattern):
+                self.assertIn(pattern, text)
+
     def test_security_workflow_exists_and_runs_pytest_and_pip_audit(self):
         workflow = self._root / ".github/workflows/security.yml"
         self.assertTrue(workflow.exists(), "security.yml must exist")
@@ -27,6 +43,22 @@ class PublicReleasePolicyTests(unittest.TestCase):
         self.assertIn("pytest-timeout", text)
         self.assertIn("pytest -vv", text)
         self.assertIn("--timeout=", text)
+
+    def test_security_workflow_runs_core_tests_without_qt_on_linux(self):
+        workflow = self._root / ".github/workflows/security.yml"
+        text = workflow.read_text(encoding="utf-8")
+
+        self.assertIn("core-tests:", text)
+        self.assertIn("runs-on: ubuntu-latest", text)
+        self.assertIn("requirements-core-test.txt", text)
+        self.assertIn('pytest -m "not qt"', text)
+
+        core_requirements = self._root / "requirements-core-test.txt"
+        self.assertTrue(core_requirements.exists())
+        self.assertNotIn(
+            "pyqt",
+            core_requirements.read_text(encoding="utf-8").lower(),
+        )
 
     def test_release_dependencies_are_pinned_and_audited(self):
         lock_file = self._root / "requirements-release.txt"

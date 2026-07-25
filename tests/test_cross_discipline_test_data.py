@@ -21,7 +21,6 @@ from core.cross_discipline_test_data import (
 )
 from core.course_index import attach_index_to_project, build_source_index
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
-from core.quiz_engine import QuizSession
 from models.question import QuestionBank
 from models.question_set import SetManager
 from utils.constants import Difficulty, QuestionType
@@ -70,6 +69,8 @@ class CrossDisciplineTestDataTests(unittest.TestCase):
 
     @pytest.mark.full
     def test_seed_pack_builds_ten_runnable_cross_discipline_courses(self):
+        from core.quiz_engine import QuizSession
+
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir) / "cross-discipline-data"
             source_root = Path(tmpdir) / "original-sources"
