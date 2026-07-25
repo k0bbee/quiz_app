@@ -7,6 +7,7 @@ sanitized environment) is enforced in a single reviewable module.
 
 from __future__ import annotations
 
+import ntpath
 import os
 import signal
 import shutil
@@ -143,12 +144,15 @@ def _windows_cmd_wrap(command: list[str]) -> list[str]:
 def _process_isolation_kwargs(platform: str) -> dict:
     """Return Popen options matching the platform's tree-kill strategy."""
     if platform == "nt":
+        windows_process_group_flag = getattr(
+            subprocess,
+            "CREATE_NEW_PROCESS_GROUP",
+            None,
+        )
         return {
-            "creationflags": getattr(
-                subprocess,
-                "CREATE_NEW_PROCESS_GROUP",
-                0,
-            ),
+            # subprocess only exposes this Windows SDK constant on Windows.
+            # Keep platform simulation deterministic on Linux CI as well.
+            "creationflags": windows_process_group_flag or 0x00000200,
         }
     return {"start_new_session": True}
 
@@ -308,10 +312,10 @@ def _terminate_process(
             system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
             if not system_root:
                 raise OSError("Windows system directory is unavailable")
-            taskkill = Path(system_root) / "System32" / "taskkill.exe"
+            taskkill = ntpath.join(system_root, "System32", "taskkill.exe")
             result = subprocess.run(
                 [
-                    str(taskkill),
+                    taskkill,
                     "/PID",
                     str(proc.pid),
                     "/T",

@@ -271,10 +271,21 @@ class LocalAgentRunnerTests(unittest.TestCase):
         posix = local_agent_runner._process_isolation_kwargs("posix")
 
         self.assertEqual(
-            subprocess.CREATE_NEW_PROCESS_GROUP,
+            0x00000200,
             windows["creationflags"],
         )
         self.assertEqual({"start_new_session": True}, posix)
+
+    def test_windows_process_isolation_is_host_independent(self):
+        with patch.object(
+            local_agent_runner.subprocess,
+            "CREATE_NEW_PROCESS_GROUP",
+            None,
+            create=True,
+        ):
+            windows = local_agent_runner._process_isolation_kwargs("nt")
+
+        self.assertEqual(0x00000200, windows["creationflags"])
 
     def test_missing_claude_auth_is_rejected_before_process_start(self):
         with patch.dict(os.environ, {}, clear=True), \
