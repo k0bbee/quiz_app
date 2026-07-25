@@ -79,16 +79,23 @@ class EnvironmentCheckTests(unittest.TestCase):
         self.assertIn("secure API key persistence", by_name)
 
     def test_collector_exposes_remediation_for_missing_required_python_packages(self):
-        original_import_module = __import__("importlib").import_module
+        class Backend:
+            priority = 1
+
+        class KeyringModule:
+            @staticmethod
+            def get_keyring():
+                return Backend()
 
         def import_module(name):
             if name == "requests":
                 raise ModuleNotFoundError("No module named requests")
-            return original_import_module(name)
+            return KeyringModule() if name == "keyring" else object()
 
         with tempfile.TemporaryDirectory() as tmpdir, \
-             patch("core.environment_check.importlib.import_module", side_effect=import_module), \
-             patch("core.environment_check._check_tesseract", return_value=CheckResult("Tesseract OCR", True, False, "available")):
+             patch("core.environment_check.importlib.metadata.version", return_value="99.0"), \
+             patch("core.environment_check._check_tesseract", return_value=CheckResult("Tesseract OCR", True, False, "available")), \
+             patch("core.environment_check.importlib.import_module", side_effect=import_module):
             report = collect_environment_report(Path(tmpdir))
 
         by_name = {check.name: check for check in report.checks}
@@ -109,8 +116,6 @@ class EnvironmentCheckTests(unittest.TestCase):
         self.assertIn("Fix: " + result.remediation, format_environment_report(EnvironmentReport((result,))))
 
     def test_key_persistence_checks_expose_remediation_when_no_backend_is_available(self):
-        original_import_module = __import__("importlib").import_module
-
         class NullKeyring:
             priority = 0
 
@@ -120,14 +125,13 @@ class EnvironmentCheckTests(unittest.TestCase):
                 return NullKeyring()
 
         def import_module(name):
-            if name == "keyring":
-                return FakeKeyringModule()
-            return original_import_module(name)
+            return FakeKeyringModule() if name == "keyring" else object()
 
         with tempfile.TemporaryDirectory() as tmpdir, \
-             patch("core.environment_check.importlib.import_module", side_effect=import_module), \
+             patch("core.environment_check.importlib.metadata.version", return_value="99.0"), \
              patch("core.environment_check.WindowsDPAPISecretStore.is_available", return_value=False), \
-             patch("core.environment_check._check_tesseract", return_value=CheckResult("Tesseract OCR", True, False, "available")):
+             patch("core.environment_check._check_tesseract", return_value=CheckResult("Tesseract OCR", True, False, "available")), \
+             patch("core.environment_check.importlib.import_module", side_effect=import_module):
             report = collect_environment_report(Path(tmpdir))
 
         by_name = {check.name: check for check in report.checks}
