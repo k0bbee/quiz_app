@@ -35,16 +35,16 @@ class ProgressDashboard(QWidget):
         parent=None,
         *,
         set_manager: SetManager,
-        mastery_overrides: MasteryOverrideStore | None = None,
-        course_manager: CourseProjectManager | None = None,
+        mastery_overrides: MasteryOverrideStore,
+        course_manager: CourseProjectManager,
     ):
         super().__init__(parent)
         self.progress_manager = progress_manager
         self.question_bank = question_bank
         self.set_manager = set_manager
         self.lang_manager = LanguageManager.instance()
-        self.mastery_overrides = mastery_overrides or MasteryOverrideStore()
-        self.course_manager = course_manager or CourseProjectManager()
+        self.mastery_overrides = mastery_overrides
+        self.course_manager = course_manager
         self._current_course_id = ""
         self._current_project = None
         self._recent_history_expanded = False

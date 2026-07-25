@@ -61,10 +61,19 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         question_bank,
         **kwargs,
     ) -> ProgressDashboard:
+        root = Path(root)
+        kwargs.setdefault(
+            "mastery_overrides",
+            MasteryOverrideStore(root / "mastery_overrides.json"),
+        )
+        kwargs.setdefault(
+            "course_manager",
+            CourseProjectManager(str(root / "courses")),
+        )
         return ProgressDashboard(
             progress_manager,
             question_bank,
-            set_manager=SetManager(str(Path(root) / "sets")),
+            set_manager=SetManager(str(root / "sets")),
             **kwargs,
         )
 

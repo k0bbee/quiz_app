@@ -516,6 +516,10 @@ class UiThemeTests(unittest.TestCase):
                     progress_manager,
                     question_bank,
                     set_manager=SetManager(str(root / "sets")),
+                    mastery_overrides=MasteryOverrideStore(
+                        root / "mastery_overrides.json"
+                    ),
+                    course_manager=CourseProjectManager(str(root / "courses")),
                 ),
             )
 
@@ -1137,6 +1141,10 @@ class UiThemeTests(unittest.TestCase):
                 progress_manager,
                 question_bank,
                 set_manager=SetManager(str(root / "sets")),
+                mastery_overrides=MasteryOverrideStore(
+                    root / "mastery_overrides.json"
+                ),
+                course_manager=CourseProjectManager(str(root / "courses")),
             )
             main_window = MainWindow()
 
