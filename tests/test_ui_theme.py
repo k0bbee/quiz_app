@@ -261,12 +261,16 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual(main_window.SCREEN_QUIZ, main_window.stack.currentIndex())
         self.assertTrue(main_window.settings_window.isVisible())
 
-    def test_context_header_keeps_background_tasks_reachable(self):
+    def test_main_window_routes_context_actions_to_existing_flows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            center = BackgroundTaskCenter(Path(tmpdir) / "tasks.json")
+            center = BackgroundTaskCenter(Path(tmpdir) / "generation-tasks.json")
             task = center.create(kind="question_generation", title="Generate questions")
             center.fail(task.task_id, "provider timeout")
+            generate_patch = patch.object(MainWindow, "_on_ai_generate")
+            generate = generate_patch.start()
+            self.addCleanup(generate_patch.stop)
             main_window = MainWindow()
+            self.addCleanup(main_window.close)
             self.addCleanup(main_window.lang_manager.set_language, "zh")
             main_window.task_center = center
             main_window.lang_manager.set_language("en")
@@ -284,10 +288,8 @@ class UiThemeTests(unittest.TestCase):
             )
             dialog_type.return_value.exec.assert_called_once_with()
 
-    def test_task_center_reopens_course_import_with_safe_prefilled_context(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            center = BackgroundTaskCenter(Path(tmpdir) / "tasks.json")
-            task = center.create(
+            import_center = BackgroundTaskCenter(Path(tmpdir) / "import-tasks.json")
+            import_task = import_center.create(
                 kind="course_import",
                 title="Import Physics",
                 metadata={
@@ -295,12 +297,11 @@ class UiThemeTests(unittest.TestCase):
                     "course_title": "Physics",
                 },
             )
-            center.fail(task.task_id, "application closed")
-            main_window = MainWindow()
-            main_window.task_center = center
+            import_center.fail(import_task.task_id, "application closed")
+            main_window.task_center = import_center
 
             reopened = getattr(main_window, "_open_task_context", lambda _task_id: False)(
-                task.task_id
+                import_task.task_id
             )
 
             self.assertTrue(reopened)
@@ -308,6 +309,20 @@ class UiThemeTests(unittest.TestCase):
             self.assertEqual("C:/courses/physics", main_window._course_screen.folder_input.text())
             self.assertEqual("Physics", main_window._course_screen.title_input.text())
             self.assertFalse(main_window._course_screen.import_group.isHidden())
+
+            prediction_handler = Mock()
+            main_window._on_generate_predicted_exam = prediction_handler
+            prediction = object()
+            main_window._get_past_exam_screen().prediction_requested.emit(
+                "course-a",
+                prediction,
+            )
+            prediction_handler.assert_called_once_with("course-a", prediction)
+
+            main_window._get_course_screen().generate_questions_requested.emit(
+                "course-a"
+            )
+            generate.assert_called_once_with()
 
     def test_generation_task_recovery_rebuilds_the_confirmed_exam_plan(self):
         metadata = {
@@ -375,17 +390,6 @@ class UiThemeTests(unittest.TestCase):
         main_window.navigate_to(main_window.SCREEN_HOME, confirm_current=False)
         self.assertFalse(main_window.navigation_sidebar.isHidden())
         self.assertTrue(main_window.context_back_btn.isHidden())
-
-    def test_historical_exam_prediction_is_routed_to_main_generation_flow(self):
-        main_window = MainWindow()
-        handler = Mock()
-        main_window._on_generate_predicted_exam = handler
-
-        screen = main_window._get_past_exam_screen()
-        prediction = object()
-        screen.prediction_requested.emit("course-a", prediction)
-
-        handler.assert_called_once_with("course-a", prediction)
 
     def test_close_event_confirms_before_closing_active_quiz(self):
         main_window = MainWindow()
@@ -684,14 +688,6 @@ class UiThemeTests(unittest.TestCase):
 
         self.assertEqual("course-b", manager.current_id)
         self.assertEqual(["course-b"], requested)
-
-    def test_main_window_routes_course_generation_to_existing_dialog_flow(self):
-        with patch.object(MainWindow, "_on_ai_generate") as generate:
-            main_window = MainWindow()
-
-            main_window._get_course_screen().generate_questions_requested.emit("course-a")
-
-        generate.assert_called_once_with()
 
     def test_empty_course_workspace_explains_the_next_action(self):
         class Manager:
