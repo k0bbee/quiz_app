@@ -7,6 +7,10 @@ __pycache__/
 .ruff_cache/
 .coverage
 htmlcov/
+/.test-tmp/
+/.test_tmp/
+/.sandbox-tmp/
+/tmp*/
 
 # Virtual environments and local tooling
 .venv/
@@ -20,6 +24,10 @@ env/
 .vscode/
 .idea/
 .claude/
+.agents/
+.codex/
+/.github/copilot-instructions.md
+/.github/instructions/
 
 # Application runtime data
 data/
