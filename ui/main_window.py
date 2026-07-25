@@ -4,8 +4,7 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow, QStackedWidget, QDialog,
-    QMessageBox, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QFileDialog,
-    QFrame, QLabel, QButtonGroup, QSizePolicy,
+    QMessageBox, QWidget, QPushButton, QFileDialog,
 )
 from PyQt6.QtCore import QTimer, Qt
 
@@ -28,6 +27,7 @@ from ui.generation_launch_controller import (
     generation_launch_copy,
 )
 from ui.session_retry_presenter import session_retry_copy
+from ui.shell import AppShell
 from config import APP_NAME, APP_NAME_EN
 
 from ui.screens.home_screen import HomeScreen
@@ -175,128 +175,56 @@ class MainWindow(QMainWindow):
         return self._past_exam_screen
 
     def _create_application_shell(self):
-        shell = QWidget()
-        shell.setObjectName("applicationShell")
-        shell_layout = QHBoxLayout(shell)
-        shell_layout.setContentsMargins(0, 0, 0, 0)
-        shell_layout.setSpacing(0)
-
-        self.navigation_sidebar = QFrame()
-        self.navigation_sidebar.setObjectName("applicationSidebar")
-        self.navigation_sidebar.setMinimumWidth(168)
-        self.navigation_sidebar.setMaximumWidth(168)
-        sidebar_layout = QVBoxLayout(self.navigation_sidebar)
-        sidebar_layout.setContentsMargins(14, 20, 14, 20)
-        sidebar_layout.setSpacing(6)
-
-        self.sidebar_title = QLabel("")
-        self.sidebar_title.setObjectName("sidebarTitle")
-        sidebar_layout.addWidget(self.sidebar_title)
-        sidebar_layout.addSpacing(20)
-
-        self._workspace_group = QButtonGroup(self)
-        self._workspace_group.setExclusive(True)
-        self.home_nav_btn = self._create_sidebar_button("home", self.SCREEN_HOME)
-        self.learning_nav_btn = self._create_sidebar_button("learning", self.SCREEN_TOPIC_SELECTION)
-        self.courses_nav_btn = self._create_sidebar_button("courses", self.SCREEN_COURSES)
-        self.library_nav_btn = self._create_sidebar_button("library", self.SCREEN_QUESTION_BANK)
-        for button in self.navigation_buttons():
-            sidebar_layout.addWidget(button)
-        sidebar_layout.addStretch(1)
-
-        self.sidebar_utility_separator = QFrame()
-        self.sidebar_utility_separator.setObjectName("sidebarUtilitySeparator")
-        self.sidebar_utility_separator.setFrameShape(QFrame.Shape.HLine)
-        sidebar_layout.addWidget(self.sidebar_utility_separator)
-        self.settings_nav_btn = QPushButton("")
-        self.settings_nav_btn.setObjectName("sidebarUtilityButton")
-        self.settings_nav_btn.setProperty("workspace", "settings")
-        self.settings_nav_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-        self.settings_nav_btn.clicked.connect(self.open_settings)
-        sidebar_layout.addWidget(self.settings_nav_btn)
-
-        content = QWidget()
-        content.setObjectName("applicationContent")
-        content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(0)
-
-        self.context_header = QFrame()
-        self.context_header.setObjectName("contextHeader")
-        header_layout = QHBoxLayout(self.context_header)
-        header_layout.setContentsMargins(24, 12, 24, 12)
-        header_layout.setSpacing(8)
-
-        self.context_back_btn = QPushButton("")
-        self.context_back_btn.setObjectName("contextBackButton")
-        self.context_back_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-        self.context_back_btn.clicked.connect(self.navigate_back)
-        header_layout.addWidget(self.context_back_btn)
-
-        self.context_title = QLabel("")
-        self.context_title.setObjectName("contextTitle")
-        self.context_title.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-        header_layout.addWidget(self.context_title)
-
-        self.topics_tab_btn = self._create_context_tab(self.SCREEN_TOPIC_SELECTION)
-        self.progress_tab_btn = self._create_context_tab(self.SCREEN_PROGRESS)
-        self.bank_tab_btn = self._create_context_tab(self.SCREEN_QUESTION_BANK)
-        self.past_exams_tab_btn = self._create_context_tab(self.SCREEN_PAST_EXAMS)
-        for button in self._all_context_tabs():
-            header_layout.addWidget(button)
-        self.incorrect_review_btn = QPushButton("")
-        self.incorrect_review_btn.setObjectName("contextActionButton")
-        self.incorrect_review_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-        self.incorrect_review_btn.clicked.connect(self._on_practice_incorrect)
-        header_layout.addWidget(self.incorrect_review_btn)
-        self.task_center_btn = QPushButton("")
-        self.task_center_btn.setObjectName("contextActionButton")
-        self.task_center_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-        self.task_center_btn.clicked.connect(self._open_task_center)
-        header_layout.addWidget(self.task_center_btn)
-
-        content_layout.addWidget(self.context_header)
-        content_layout.addWidget(self.stack, 1)
-        shell_layout.addWidget(self.navigation_sidebar)
-        shell_layout.addWidget(content, 1)
-        self.setCentralWidget(shell)
-
-    def _create_sidebar_button(self, workspace: str, screen_index: int) -> QPushButton:
-        button = QPushButton("")
-        button.setObjectName("sidebarNavButton")
-        button.setProperty("workspace", workspace)
-        button.setCheckable(True)
-        button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-        button.clicked.connect(lambda _checked=False, index=screen_index: self.navigate_to(index))
-        self._workspace_group.addButton(button)
-        return button
-
-    def _create_context_tab(self, screen_index: int) -> QPushButton:
-        button = QPushButton("")
-        button.setObjectName("contextTabButton")
-        button.setCheckable(True)
-        button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-        button.clicked.connect(lambda _checked=False, index=screen_index: self.navigate_to(index))
-        return button
+        self.app_shell = AppShell(
+            self.stack,
+            workspace_routes=(
+                ("home_nav_btn", "home", self.SCREEN_HOME),
+                ("learning_nav_btn", "learning", self.SCREEN_TOPIC_SELECTION),
+                ("courses_nav_btn", "courses", self.SCREEN_COURSES),
+                ("library_nav_btn", "library", self.SCREEN_QUESTION_BANK),
+            ),
+            context_routes=(
+                ("topics_tab_btn", self.SCREEN_TOPIC_SELECTION),
+                ("progress_tab_btn", self.SCREEN_PROGRESS),
+                ("bank_tab_btn", self.SCREEN_QUESTION_BANK),
+                ("past_exams_tab_btn", self.SCREEN_PAST_EXAMS),
+            ),
+            navigate=self.navigate_to,
+            open_settings=self.open_settings,
+            navigate_back=self.navigate_back,
+            practice_incorrect=self._on_practice_incorrect,
+            open_task_center=self._open_task_center,
+        )
+        for attribute in (
+            "navigation_sidebar",
+            "sidebar_title",
+            "sidebar_utility_separator",
+            "settings_nav_btn",
+            "context_header",
+            "context_back_btn",
+            "context_title",
+            "incorrect_review_btn",
+            "task_center_btn",
+            "home_nav_btn",
+            "learning_nav_btn",
+            "courses_nav_btn",
+            "library_nav_btn",
+            "topics_tab_btn",
+            "progress_tab_btn",
+            "bank_tab_btn",
+            "past_exams_tab_btn",
+        ):
+            setattr(self, attribute, getattr(self.app_shell, attribute))
+        self.setCentralWidget(self.app_shell)
 
     def navigation_buttons(self) -> tuple[QPushButton, ...]:
-        return (
-            self.home_nav_btn,
-            self.learning_nav_btn,
-            self.courses_nav_btn,
-            self.library_nav_btn,
-        )
+        return self.app_shell.navigation_buttons()
 
     def _all_context_tabs(self) -> tuple[QPushButton, ...]:
-        return (
-            self.topics_tab_btn,
-            self.progress_tab_btn,
-            self.bank_tab_btn,
-            self.past_exams_tab_btn,
-        )
+        return self.app_shell.all_context_tabs()
 
     def context_tabs(self) -> tuple[QPushButton, ...]:
-        return tuple(button for button in self._all_context_tabs() if not button.isHidden())
+        return self.app_shell.context_tabs()
 
     def _connect_signals(self):
         # Home screen
