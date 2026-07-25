@@ -172,40 +172,9 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("qlistwidget#settingsnavlist", qss)
         self.assertIn("qlistwidget#settingsnavlist::item:selected", qss)
 
-    def test_menus_avoid_sticky_focus_chrome_and_sidebar_has_keyboard_focus_ring(self):
-        qss = Path("style.qss").read_text(encoding="utf-8").lower()
-
-        menu_active_rule = re.search(
-            r"qmenubar::item:pressed,\s*qmenubar::item:open\s*\{(?P<body>[^}]*)\}",
-            qss,
-            flags=re.DOTALL,
-        )
-        menu_selected_rule = re.search(
-            r"qmenubar::item:selected,\s*qtoolbar qpushbutton:hover\s*\{(?P<body>[^}]*)\}",
-            qss,
-            flags=re.DOTALL,
-        )
-        self.assertIsNotNone(menu_active_rule)
-        self.assertIsNotNone(menu_selected_rule)
-        self.assertNotIn("#094771", menu_active_rule.group("body"))
-        self.assertNotIn("#007fd4", menu_selected_rule.group("body"))
-        sidebar_focus_rule = re.search(
-            r"qpushbutton#sidebarnavbutton:focus\s*\{(?P<body>[^}]*)\}",
-            qss,
-            flags=re.DOTALL,
-        )
-        self.assertIsNotNone(sidebar_focus_rule)
-        self.assertIn("#007fd4", sidebar_focus_rule.group("body"))
-        self.assertNotIn("border-color: transparent", sidebar_focus_rule.group("body"))
-
-        main_window = MainWindow()
-
-        self.assertEqual(Qt.FocusPolicy.NoFocus, main_window.menuBar().focusPolicy())
-        for button in main_window.navigation_buttons():
-            self.assertEqual(Qt.FocusPolicy.TabFocus, button.focusPolicy())
-
     def test_main_navigation_uses_left_workspaces_and_context_tabs(self):
         main_window = MainWindow()
+        self.addCleanup(main_window.close)
         self.addCleanup(main_window.lang_manager.set_language, "zh")
         main_window.lang_manager.set_language("en")
 
@@ -239,6 +208,8 @@ class UiThemeTests(unittest.TestCase):
         for button in buttons:
             self.assertNotRegex(button.text(), r"[^\w\s]")
             self.assertTrue(button.isCheckable())
+            self.assertEqual(Qt.FocusPolicy.TabFocus, button.focusPolicy())
+        self.assertEqual(Qt.FocusPolicy.NoFocus, main_window.menuBar().focusPolicy())
         self.assertEqual("Settings", main_window.settings_nav_btn.text())
         self.assertEqual("settings", main_window.settings_nav_btn.property("workspace"))
         self.assertFalse(main_window.settings_nav_btn.isCheckable())
@@ -266,9 +237,6 @@ class UiThemeTests(unittest.TestCase):
         self.assertIs(main_window.past_exam_manager, main_window._past_exam_screen.manager)
         self.assertIs(main_window.course_manager, main_window._past_exam_screen.course_manager)
 
-    def test_settings_opens_as_utility_window_without_replacing_workspace(self):
-        main_window = MainWindow()
-        self.addCleanup(main_window.close)
         main_window.navigate_to(main_window.SCREEN_PROGRESS)
         current_screen = main_window.stack.currentIndex()
 
@@ -282,10 +250,8 @@ class UiThemeTests(unittest.TestCase):
         self.assertTrue(main_window.settings_window.isVisible())
         self.assertFalse(hasattr(main_window, "SCREEN_SETTINGS"))
 
-    def test_opening_settings_does_not_interrupt_active_quiz(self):
-        main_window = MainWindow()
-        self.addCleanup(main_window.close)
-        main_window.stack.setCurrentIndex(main_window.SCREEN_QUIZ)
+        main_window.settings_window.close()
+        main_window.navigate_to(main_window.SCREEN_QUIZ)
         main_window.quiz_screen.confirm_exit = Mock(return_value=False)
 
         main_window.settings_nav_btn.click()
@@ -375,10 +341,15 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual(50, plan.question_type_weights["multiple_choice"])
         self.assertEqual(100, plan.topic_weights["cache"])
 
-    def test_top_navigation_confirms_before_leaving_active_quiz(self):
+    def test_focus_mode_navigation_guards_active_quiz_and_restores_shell(self):
         main_window = MainWindow()
-        main_window.stack.setCurrentIndex(main_window.SCREEN_QUIZ)
+        self.addCleanup(main_window.close)
         main_window.quiz_screen.confirm_exit = Mock(return_value=False)
+
+        main_window.navigate_to(main_window.SCREEN_QUIZ)
+        self.assertTrue(main_window.navigation_sidebar.isHidden())
+        self.assertFalse(main_window.context_header.isHidden())
+        self.assertFalse(main_window.context_back_btn.isHidden())
 
         main_window.navigate_to(main_window.SCREEN_HOME)
 
@@ -392,16 +363,11 @@ class UiThemeTests(unittest.TestCase):
 
         main_window.quiz_screen.confirm_exit.assert_called_once()
         self.assertEqual(main_window.SCREEN_HOME, main_window.stack.currentIndex())
-
-    def test_quiz_and_results_use_focus_mode_without_global_sidebar(self):
-        main_window = MainWindow()
-        main_window.quiz_screen.confirm_exit = Mock(return_value=True)
+        self.assertFalse(main_window.navigation_sidebar.isHidden())
+        self.assertTrue(main_window.context_back_btn.isHidden())
 
         main_window.navigate_to(main_window.SCREEN_QUIZ)
-
         self.assertTrue(main_window.navigation_sidebar.isHidden())
-        self.assertFalse(main_window.context_header.isHidden())
-        self.assertFalse(main_window.context_back_btn.isHidden())
 
         main_window.navigate_to(main_window.SCREEN_RESULTS, confirm_current=False)
         self.assertTrue(main_window.navigation_sidebar.isHidden())

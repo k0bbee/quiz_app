@@ -99,6 +99,35 @@ class StyleContractTests(unittest.TestCase):
         ):
             self.assertIn(selector, self.qss)
 
+        menu_active_rule = re.search(
+            r"qmenubar::item:pressed,\s*qmenubar::item:open\s*"
+            r"\{(?P<body>[^}]*)\}",
+            self.qss,
+            flags=re.DOTALL,
+        )
+        menu_selected_rule = re.search(
+            r"qmenubar::item:selected,\s*qtoolbar qpushbutton:hover\s*"
+            r"\{(?P<body>[^}]*)\}",
+            self.qss,
+            flags=re.DOTALL,
+        )
+        self.assertIsNotNone(menu_active_rule)
+        self.assertIsNotNone(menu_selected_rule)
+        self.assertNotIn("#094771", menu_active_rule.group("body"))
+        self.assertNotIn("#007fd4", menu_selected_rule.group("body"))
+
+        sidebar_focus_rule = re.search(
+            r"qpushbutton#sidebarnavbutton:focus\s*\{(?P<body>[^}]*)\}",
+            self.qss,
+            flags=re.DOTALL,
+        )
+        self.assertIsNotNone(sidebar_focus_rule)
+        self.assertIn("#007fd4", sidebar_focus_rule.group("body"))
+        self.assertNotIn(
+            "border-color: transparent",
+            sidebar_focus_rule.group("body"),
+        )
+
     def test_contextual_controls_define_visible_state_feedback(self):
         for selector in (
             'qpushbutton[homeaction="primary"]:hover',
