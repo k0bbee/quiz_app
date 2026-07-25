@@ -12,6 +12,30 @@ permissions:
   contents: read
 
 jobs:
+  pyqt-wheel-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python 3.13
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Download Linux PyQt6 wheels
+        run: |
+          python -m pip install --upgrade pip
+          mkdir wheelhouse
+          python -m pip download --only-binary=:all: --dest wheelhouse \
+            PyQt6==6.11.0 \
+            PyQt6-Qt6==6.11.1 \
+            PyQt6-sip==13.11.1
+      - name: Upload PyQt6 wheelhouse
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyqt6-linux-py313
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+          retention-days: 1
+
   core-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 10
