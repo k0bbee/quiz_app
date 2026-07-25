@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: main
       - name: Set up Python 3.13
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
@@ -33,6 +36,17 @@ jobs:
         with:
           name: pyqt6-linux-py313
           path: wheelhouse/*.whl
+          if-no-files-found: error
+          retention-days: 1
+      - name: Upload main source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: quiz-app-main-source
+          path: |
+            .
+            !.git/**
+            !wheelhouse/**
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
 
