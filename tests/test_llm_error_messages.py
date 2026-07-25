@@ -255,57 +255,46 @@ class LLMErrorMessageTests(unittest.TestCase):
         self.assertIn("response_format", post.call_args_list[0].kwargs["json"])
         self.assertNotIn("response_format", post.call_args_list[1].kwargs["json"])
 
-    def test_json_extraction_ignores_trailing_braced_explanation_after_object(self):
+    def test_json_extraction_handles_surrounding_braces_and_fence_content(self):
         client = LLMClient(
             api_key="sk-test",
             base_url="https://api.example.com/v1",
             model="model",
         )
-        text = (
-            'Here is the JSON:\n{"questions": [{"stem": "I/O interrupt"}]}\n'
-            'Note: avoid placeholders such as {not json} in the final answer.'
+        cases = (
+            (
+                "trailing_braced_explanation",
+                'Here is the JSON:\n{"questions": [{"stem": "I/O interrupt"}]}\n'
+                "Note: avoid placeholders such as {not json} in the final answer.",
+                {"questions": [{"stem": "I/O interrupt"}]},
+            ),
+            (
+                "invalid_leading_placeholder",
+                "I will structure the answer as {summary} first.\n"
+                'Actual JSON:\n{"questions": [{"stem": "I/O interrupt"}]}',
+                {"questions": [{"stem": "I/O interrupt"}]},
+            ),
+            (
+                "inline_backticks_in_json_fence",
+                "```json\n"
+                '{"questions": [{"stem": "What does ``` mean in Markdown?"}]}\n'
+                "```",
+                {"questions": [{"stem": "What does ``` mean in Markdown?"}]},
+            ),
         )
 
-        with patch.object(client, "generate", return_value=text):
-            result = client.generate_with_json([{"role": "user", "content": "Return JSON."}], max_retries=1)
+        for case, text, expected in cases:
+            with self.subTest(case=case), patch.object(
+                client,
+                "generate",
+                return_value=text,
+            ):
+                result = client.generate_with_json(
+                    [{"role": "user", "content": "Return JSON."}],
+                    max_retries=1,
+                )
 
-        self.assertEqual({"questions": [{"stem": "I/O interrupt"}]}, result)
-
-    def test_json_extraction_skips_invalid_leading_brace_placeholder(self):
-        client = LLMClient(
-            api_key="sk-test",
-            base_url="https://api.example.com/v1",
-            model="model",
-        )
-        text = (
-            "I will structure the answer as {summary} first.\n"
-            'Actual JSON:\n{"questions": [{"stem": "I/O interrupt"}]}'
-        )
-
-        with patch.object(client, "generate", return_value=text):
-            result = client.generate_with_json([{"role": "user", "content": "Return JSON."}], max_retries=1)
-
-        self.assertEqual({"questions": [{"stem": "I/O interrupt"}]}, result)
-
-    def test_json_extraction_handles_inline_backticks_inside_json_fence(self):
-        client = LLMClient(
-            api_key="sk-test",
-            base_url="https://api.example.com/v1",
-            model="model",
-        )
-        text = (
-            "```json\n"
-            '{"questions": [{"stem": "What does ``` mean in Markdown?"}]}\n'
-            "```"
-        )
-
-        with patch.object(client, "generate", return_value=text):
-            result = client.generate_with_json([{"role": "user", "content": "Return JSON."}], max_retries=1)
-
-        self.assertEqual(
-            {"questions": [{"stem": "What does ``` mean in Markdown?"}]},
-            result,
-        )
+                self.assertEqual(expected, result)
 
     def test_generate_with_json_rejects_top_level_non_object(self):
         client = LLMClient(
