@@ -3,7 +3,7 @@ import types
 import unittest
 import zipfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from core.document_parser import DocumentParser
 from core.input_limits import InputLimitError
@@ -388,10 +388,6 @@ class DocumentParserBudgetTests(unittest.TestCase):
             self.assertIn("exceeding limit", "\n".join(doc.warnings))
 
     def test_ocr_called_with_timeout(self):
-        try:
-            import pytesseract  # noqa: F401
-        except ImportError:
-            self.skipTest("pytesseract not available")
         page = types.SimpleNamespace()
         page.render = lambda scale: types.SimpleNamespace(
             width=100, height=100,
@@ -400,16 +396,21 @@ class DocumentParserBudgetTests(unittest.TestCase):
             ),
             close=None,
         )
+        fake_ocr = types.ModuleType("pytesseract")
+        fake_ocr.image_to_string = Mock(return_value="")
+        fake_pil = types.ModuleType("PIL")
+        fake_pil.Image = object()
 
-        with patch(
-            "pytesseract.image_to_string", return_value=""
-        ) as mock_ocr, patch(
+        with patch.dict(
+            "sys.modules",
+            {"pytesseract": fake_ocr, "PIL": fake_pil},
+        ), patch(
             "core.document_parser.configure_pytesseract", return_value=""
         ):
             from core.document_parser import _ocr_pdf_page
             _ocr_pdf_page(page, 1, [])
-            self.assertTrue(mock_ocr.called)
-            call_kwargs = mock_ocr.call_args.kwargs
+            self.assertTrue(fake_ocr.image_to_string.called)
+            call_kwargs = fake_ocr.image_to_string.call_args.kwargs
             self.assertIn("timeout", call_kwargs)
             self.assertGreater(call_kwargs["timeout"], 0)
 
