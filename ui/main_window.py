@@ -35,7 +35,7 @@ from ui.screens.topic_selection_screen import TopicSelectionScreen
 from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
 from ui.screens.progress_dashboard import ProgressDashboard
-from ui.screens.settings_screen import SettingsScreen
+from ui.settings_window import SettingsWindow
 from utils.constants import Difficulty, topic_value
 from ai.course_summary_factory import provider_requires_api_key as _provider_requires_api_key
 from ai.exam_plan import ExamGenerationPlan
@@ -53,10 +53,9 @@ class MainWindow(QMainWindow):
     SCREEN_QUIZ = 2
     SCREEN_RESULTS = 3
     SCREEN_PROGRESS = 4
-    SCREEN_SETTINGS = 5
-    SCREEN_COURSES = 6
-    SCREEN_QUESTION_BANK = 7
-    SCREEN_PAST_EXAMS = 8
+    SCREEN_COURSES = 5
+    SCREEN_QUESTION_BANK = 6
+    SCREEN_PAST_EXAMS = 7
 
     def __init__(self, services: ApplicationServices | None = None):
         super().__init__()
@@ -93,7 +92,8 @@ class MainWindow(QMainWindow):
             mastery_overrides=self.mastery_overrides,
             course_manager=self.course_manager,
         )
-        self.settings_screen = SettingsScreen(task_center=self.task_center)
+        self.settings_window = SettingsWindow(task_center=self.task_center, parent=self)
+        self.settings_screen = self.settings_window.screen
         self._course_screen = None
         self._question_bank_screen = None
         self._past_exam_screen = None
@@ -106,7 +106,6 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.quiz_screen)        # 2
         self.stack.addWidget(self.results_screen)     # 3
         self.stack.addWidget(self.progress_screen)    # 4
-        self.stack.addWidget(self.settings_screen)    # 5
 
         self._create_application_shell()
 
@@ -200,10 +199,20 @@ class MainWindow(QMainWindow):
         self.learning_nav_btn = self._create_sidebar_button("learning", self.SCREEN_TOPIC_SELECTION)
         self.courses_nav_btn = self._create_sidebar_button("courses", self.SCREEN_COURSES)
         self.library_nav_btn = self._create_sidebar_button("library", self.SCREEN_QUESTION_BANK)
-        self.settings_nav_btn = self._create_sidebar_button("settings", self.SCREEN_SETTINGS)
         for button in self.navigation_buttons():
             sidebar_layout.addWidget(button)
         sidebar_layout.addStretch(1)
+
+        self.sidebar_utility_separator = QFrame()
+        self.sidebar_utility_separator.setObjectName("sidebarUtilitySeparator")
+        self.sidebar_utility_separator.setFrameShape(QFrame.Shape.HLine)
+        sidebar_layout.addWidget(self.sidebar_utility_separator)
+        self.settings_nav_btn = QPushButton("")
+        self.settings_nav_btn.setObjectName("sidebarUtilityButton")
+        self.settings_nav_btn.setProperty("workspace", "settings")
+        self.settings_nav_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.settings_nav_btn.clicked.connect(self.open_settings)
+        sidebar_layout.addWidget(self.settings_nav_btn)
 
         content = QWidget()
         content.setObjectName("applicationContent")
@@ -275,7 +284,6 @@ class MainWindow(QMainWindow):
             self.learning_nav_btn,
             self.courses_nav_btn,
             self.library_nav_btn,
-            self.settings_nav_btn,
         )
 
     def _all_context_tabs(self) -> tuple[QPushButton, ...]:
@@ -296,7 +304,7 @@ class MainWindow(QMainWindow):
         self.home_screen.practice_incorrect.connect(self._on_practice_incorrect)
         self.home_screen.ai_generate.connect(self._on_ai_generate)
         self.home_screen.view_progress.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
-        self.home_screen.open_settings.connect(lambda: self.navigate_to(self.SCREEN_SETTINGS))
+        self.home_screen.open_settings.connect(self.open_settings)
         self.home_screen.manage_courses.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
         course_screen = self._get_course_screen()
         course_screen.current_course_changed.connect(self._on_course_changed)
@@ -419,7 +427,6 @@ class MainWindow(QMainWindow):
             self.SCREEN_COURSES: self.courses_nav_btn,
             self.SCREEN_QUESTION_BANK: self.library_nav_btn,
             self.SCREEN_PAST_EXAMS: self.library_nav_btn,
-            self.SCREEN_SETTINGS: self.settings_nav_btn,
         }.get(current)
         if workspace_button is not None:
             workspace_button.setChecked(True)
@@ -449,7 +456,6 @@ class MainWindow(QMainWindow):
             self.SCREEN_QUIZ: ("答题", "Quiz"),
             self.SCREEN_RESULTS: ("练习结果", "Results"),
             self.SCREEN_PROGRESS: ("学习", "Study"),
-            self.SCREEN_SETTINGS: ("设置", "Settings"),
             self.SCREEN_COURSES: ("课程", "Courses"),
             self.SCREEN_QUESTION_BANK: ("资料库", "Library"),
             self.SCREEN_PAST_EXAMS: ("资料库", "Library"),
@@ -461,6 +467,10 @@ class MainWindow(QMainWindow):
         self.context_back_btn.setVisible(is_focus_flow and bool(self._navigation_history))
         self.context_back_btn.setEnabled(bool(self._navigation_history))
         self._refresh_task_center_action()
+
+    def open_settings(self, section: str = "") -> None:
+        """Open settings as a utility window without leaving the workspace."""
+        self.settings_window.show_settings(section)
 
     def _refresh_task_center_action(self) -> None:
         """Keep the global task entry visible and surface tasks needing attention."""
@@ -507,18 +517,18 @@ class MainWindow(QMainWindow):
             if self.course_manager.set_current(course_id):
                 self._on_course_changed()
 
+        if destination == "settings_data":
+            self.open_settings("data")
+            return True
         destinations = {
             "courses": self.SCREEN_COURSES,
             "past_exams": self.SCREEN_PAST_EXAMS,
             "question_bank": self.SCREEN_QUESTION_BANK,
-            "settings_data": self.SCREEN_SETTINGS,
             "generation": self.SCREEN_COURSES,
         }
         screen = destinations.get(destination)
         if screen is None or not self.navigate_to(screen):
             return False
-        if destination == "settings_data":
-            self.settings_screen.show_data_management()
         return True
 
     def _retry_task_context(self, task_id: str) -> bool:
@@ -559,9 +569,7 @@ class MainWindow(QMainWindow):
         if destination == "question_bank":
             return self.navigate_to(self.SCREEN_QUESTION_BANK)
         if destination == "settings_data":
-            if not self.navigate_to(self.SCREEN_SETTINGS):
-                return False
-            self.settings_screen.show_data_management()
+            self.open_settings("data")
             return True
         if destination == "generation":
             course = self.course_manager.get(course_id) if course_id else self.course_manager.current()

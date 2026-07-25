@@ -1,7 +1,6 @@
 import os
 import tempfile
 import unittest
-from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,6 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
 
+from core.application_services import ApplicationServices
 from core.background_task_center import BackgroundTaskCenter
 from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
@@ -68,26 +68,37 @@ class ApplicationSmokeTests(unittest.TestCase):
             )
             self.assertTrue(set_manager.save(question_set))
 
-            with ExitStack() as stack:
-                stack.enter_context(patch("ui.main_window.QuestionBank", return_value=question_bank))
-                stack.enter_context(patch("ui.main_window.SetManager", return_value=set_manager))
-                stack.enter_context(patch("ui.main_window.ProgressManager", return_value=progress_manager))
-                stack.enter_context(patch("ui.main_window.QuizSnapshotManager", return_value=snapshot_manager))
-                stack.enter_context(patch("ui.main_window.CourseProjectManager", return_value=course_manager))
-                stack.enter_context(patch("ui.main_window.PastExamManager", return_value=past_exam_manager))
-                stack.enter_context(patch("ui.main_window.BackgroundTaskCenter", return_value=task_center))
-                stack.enter_context(patch("ui.main_window.MasteryOverrideStore", return_value=mastery))
-                window = MainWindow()
+            services = ApplicationServices(
+                question_bank=question_bank,
+                set_manager=set_manager,
+                progress_manager=progress_manager,
+                snapshot_manager=snapshot_manager,
+                mastery_overrides=mastery,
+                course_manager=course_manager,
+                past_exam_manager=past_exam_manager,
+                task_center=task_center,
+            )
+            with patch(
+                "ui.screens.settings_screen.SETTINGS_FILE",
+                str(root / "settings.json"),
+            ):
+                window = MainWindow(services)
 
                 for destination in (
                     window.SCREEN_COURSES,
                     window.SCREEN_QUESTION_BANK,
                     window.SCREEN_PAST_EXAMS,
-                    window.SCREEN_SETTINGS,
                     window.SCREEN_HOME,
                 ):
                     self.assertTrue(window.navigate_to(destination))
                     self.assertEqual(destination, window.stack.currentIndex())
+
+                current_workspace = window.stack.currentIndex()
+                window.open_settings()
+                _APP.processEvents()
+                self.assertEqual(current_workspace, window.stack.currentIndex())
+                self.assertTrue(window.settings_window.isVisible())
+                window.settings_window.close()
 
                 window._on_quiz_start(question_set.set_id, [question.question_id])
                 self.assertEqual(window.SCREEN_QUIZ, window.stack.currentIndex())

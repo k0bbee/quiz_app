@@ -297,16 +297,19 @@ class UiThemeTests(unittest.TestCase):
 
         buttons = main_window.navigation_buttons()
         self.assertEqual(
-            ["Home", "Study", "Courses", "Library", "Settings"],
+            ["Home", "Study", "Courses", "Library"],
             [button.text() for button in buttons],
         )
         self.assertEqual(
-            ["home", "learning", "courses", "library", "settings"],
+            ["home", "learning", "courses", "library"],
             [button.property("workspace") for button in buttons],
         )
         for button in buttons:
             self.assertNotRegex(button.text(), r"[^\w\s]")
             self.assertTrue(button.isCheckable())
+        self.assertEqual("Settings", main_window.settings_nav_btn.text())
+        self.assertEqual("settings", main_window.settings_nav_btn.property("workspace"))
+        self.assertFalse(main_window.settings_nav_btn.isCheckable())
 
         self.assertTrue(main_window.home_nav_btn.isChecked())
         self.assertFalse(main_window.context_back_btn.isVisible())
@@ -320,7 +323,6 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual("Review Incorrect", main_window.incorrect_review_btn.text())
         self.assertFalse(main_window.context_back_btn.isVisible())
 
-        main_window.navigate_to(main_window.SCREEN_SETTINGS)
         main_window.home_nav_btn.click()
         self.assertEqual(main_window.SCREEN_HOME, main_window.stack.currentIndex())
 
@@ -331,6 +333,35 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual(main_window.SCREEN_PAST_EXAMS, main_window.stack.currentIndex())
         self.assertIs(main_window.past_exam_manager, main_window._past_exam_screen.manager)
         self.assertIs(main_window.course_manager, main_window._past_exam_screen.course_manager)
+
+    def test_settings_opens_as_utility_window_without_replacing_workspace(self):
+        main_window = MainWindow()
+        self.addCleanup(main_window.close)
+        main_window.navigate_to(main_window.SCREEN_PROGRESS)
+        current_screen = main_window.stack.currentIndex()
+
+        main_window.settings_nav_btn.click()
+        _APP.processEvents()
+
+        self.assertEqual(current_screen, main_window.stack.currentIndex())
+        self.assertTrue(main_window.learning_nav_btn.isChecked())
+        self.assertFalse(main_window.settings_nav_btn.isCheckable())
+        self.assertEqual("sidebarUtilityButton", main_window.settings_nav_btn.objectName())
+        self.assertTrue(main_window.settings_window.isVisible())
+        self.assertFalse(hasattr(main_window, "SCREEN_SETTINGS"))
+
+    def test_opening_settings_does_not_interrupt_active_quiz(self):
+        main_window = MainWindow()
+        self.addCleanup(main_window.close)
+        main_window.stack.setCurrentIndex(main_window.SCREEN_QUIZ)
+        main_window.quiz_screen.confirm_exit = Mock(return_value=False)
+
+        main_window.settings_nav_btn.click()
+        _APP.processEvents()
+
+        main_window.quiz_screen.confirm_exit.assert_not_called()
+        self.assertEqual(main_window.SCREEN_QUIZ, main_window.stack.currentIndex())
+        self.assertTrue(main_window.settings_window.isVisible())
 
     def test_context_header_keeps_background_tasks_reachable(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -417,7 +448,7 @@ class UiThemeTests(unittest.TestCase):
         main_window.stack.setCurrentIndex(main_window.SCREEN_QUIZ)
         main_window.quiz_screen.confirm_exit = Mock(return_value=False)
 
-        main_window.navigate_to(main_window.SCREEN_SETTINGS)
+        main_window.navigate_to(main_window.SCREEN_HOME)
 
         main_window.quiz_screen.confirm_exit.assert_called_once()
         self.assertEqual(main_window.SCREEN_QUIZ, main_window.stack.currentIndex())
@@ -425,10 +456,10 @@ class UiThemeTests(unittest.TestCase):
         main_window.quiz_screen.confirm_exit.reset_mock()
         main_window.quiz_screen.confirm_exit.return_value = True
 
-        main_window.navigate_to(main_window.SCREEN_SETTINGS)
+        main_window.navigate_to(main_window.SCREEN_HOME)
 
         main_window.quiz_screen.confirm_exit.assert_called_once()
-        self.assertEqual(main_window.SCREEN_SETTINGS, main_window.stack.currentIndex())
+        self.assertEqual(main_window.SCREEN_HOME, main_window.stack.currentIndex())
 
     def test_quiz_and_results_use_focus_mode_without_global_sidebar(self):
         main_window = MainWindow()

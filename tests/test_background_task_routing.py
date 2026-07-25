@@ -64,17 +64,36 @@ class BackgroundTaskRoutingTests(unittest.TestCase):
             task_center=SimpleNamespace(get=Mock(return_value=snapshot)),
             course_manager=SimpleNamespace(get=Mock(return_value=None)),
             navigate_to=Mock(return_value=True),
-            settings_screen=SimpleNamespace(show_data_management=Mock()),
             SCREEN_COURSES=1,
             SCREEN_PAST_EXAMS=2,
             SCREEN_QUESTION_BANK=3,
-            SCREEN_SETTINGS=4,
         )
 
         opened = MainWindow._open_task_page(shell, "task-1")
 
         self.assertTrue(opened)
         shell.navigate_to.assert_called_once_with(shell.SCREEN_COURSES)
+
+    def test_open_data_task_uses_settings_utility_window(self):
+        snapshot = SimpleNamespace(
+            kind="app_data_export",
+            metadata={},
+        )
+        shell = SimpleNamespace(
+            task_center=SimpleNamespace(get=Mock(return_value=snapshot)),
+            course_manager=SimpleNamespace(get=Mock(return_value=None)),
+            navigate_to=Mock(return_value=True),
+            open_settings=Mock(),
+            SCREEN_COURSES=1,
+            SCREEN_PAST_EXAMS=2,
+            SCREEN_QUESTION_BANK=3,
+        )
+
+        opened = MainWindow._open_task_page(shell, "task-1")
+
+        self.assertTrue(opened)
+        shell.open_settings.assert_called_once_with("data")
+        shell.navigate_to.assert_not_called()
 
 
 if __name__ == "__main__":

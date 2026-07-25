@@ -60,6 +60,7 @@ python scripts/check_environment.py --json
 | Quiz sessions | Practice/exam modes, free previous/next navigation, paper preview on demand, uncertain/review markers, keyboard controls, and complete draft recovery |
 | Progress | Course-scoped statistics, mastery overrides, prioritized review, topic actions, and full progress reset |
 | Data portability | Export/import `.quizdata` packages containing courses, question banks, question sets, past-exam assets, drafts, progress, mastery overrides, and non-sensitive settings |
+| Settings | Open the utility entry at the bottom of the sidebar in a separate window without replacing the current study workspace |
 | Localization | Live Chinese/English UI switching with bilingual question content and explanations |
 
 Course-folder imports skip symbolic links and resolved paths outside the selected folder. One import accepts at most 2,000 supported files and 1 GiB of source data; larger collections must be split before import.

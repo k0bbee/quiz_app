@@ -683,6 +683,40 @@ QPushButton#sidebarNavButton:focus {
     border-color: #007fd4;
 }
 
+QFrame#sidebarUtilitySeparator {
+    color: #303030;
+    background-color: #303030;
+    border: none;
+    max-height: 1px;
+    margin: 4px 8px;
+}
+
+QPushButton#sidebarUtilityButton {
+    color: #9d9d9d;
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 8px 12px;
+    text-align: left;
+}
+
+QPushButton#sidebarUtilityButton:hover {
+    color: #ffffff;
+    background-color: #252526;
+    border-color: #383838;
+}
+
+QPushButton#sidebarUtilityButton:pressed {
+    background-color: #202020;
+    border-color: #5a5a5a;
+}
+
+QPushButton#sidebarUtilityButton:focus {
+    color: #ffffff;
+    background-color: #252526;
+    border-color: #007fd4;
+}
+
 QFrame#contextHeader {
     background-color: #1f1f1f;
     border: none;
