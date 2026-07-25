@@ -66,6 +66,8 @@ _ALLOWED_ENV_KEYS: frozenset[str] = frozenset({
 })
 
 _MAX_LOCAL_AGENT_OUTPUT_CHARS = 4 * 1024 * 1024
+_WINDOWS_CTRL_BREAK_EVENT = getattr(signal, "CTRL_BREAK_EVENT", 1)
+_WINDOWS_GROUP_STOP_GRACE_SECONDS = 0.2
 
 
 def resolve_local_agent_executable(agent_name: str) -> Path | None:
@@ -308,6 +310,17 @@ def _terminate_process(
     tree_terminated = False
 
     if platform == "nt":
+        # The child is launched in a dedicated process group. Ctrl-Break reaches
+        # that group in a few milliseconds and lets normal CLI wrappers stop
+        # their children without paying the cost of spawning taskkill first.
+        try:
+            if proc.poll() is None:
+                proc.send_signal(_WINDOWS_CTRL_BREAK_EVENT)
+                proc.wait(timeout=_WINDOWS_GROUP_STOP_GRACE_SECONDS)
+            tree_terminated = True
+        except (OSError, subprocess.SubprocessError):
+            tree_terminated = False
+    if platform == "nt" and not tree_terminated:
         try:
             system_root = os.environ.get("SystemRoot") or os.environ.get("WINDIR")
             if not system_root:

@@ -161,10 +161,24 @@ class LocalAgentRunnerTests(unittest.TestCase):
         with self.assertRaises((OSError, subprocess.SubprocessError, LocalAgentPolicyError)):
             run_local_agent("claude", "test", cancel_event=cancel_event, timeout=1)
 
+    def test_windows_termination_uses_process_group_break_before_taskkill(self):
+        proc = Mock(pid=4242)
+        proc.poll.return_value = None
+        proc.wait.return_value = 0
+
+        with patch("ai.local_agent_runner.subprocess.run") as run:
+            _terminate_process(proc, platform="nt")
+
+        proc.send_signal.assert_called_once_with(
+            local_agent_runner._WINDOWS_CTRL_BREAK_EVENT
+        )
+        run.assert_not_called()
+
     def test_windows_termination_uses_taskkill_for_entire_process_tree(self):
         proc = Mock(pid=4242)
         proc.poll.return_value = None
         proc.wait.return_value = 0
+        proc.send_signal.side_effect = OSError("console control unavailable")
         taskkill_result = Mock(returncode=0)
 
         with patch.dict(os.environ, {"SystemRoot": r"C:\Windows"}), \
