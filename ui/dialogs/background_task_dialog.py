@@ -27,6 +27,7 @@ class BackgroundTaskDialog(QDialog):
         self.task_center = task_center
         self.language = "zh" if language == "zh" else "en"
         self.requested_task_id = ""
+        self.requested_action = ""
         self._setup_ui()
         self._translate_ui()
         self.refresh()
@@ -82,6 +83,10 @@ class BackgroundTaskDialog(QDialog):
         self.cancel_task_btn.setObjectName("secondaryButton")
         self.cancel_task_btn.clicked.connect(self._cancel_selected)
         footer.addWidget(self.cancel_task_btn)
+        self.retry_btn = QPushButton()
+        self.retry_btn.setObjectName("secondaryButton")
+        self.retry_btn.clicked.connect(self._retry_selected)
+        footer.addWidget(self.retry_btn)
         self.dismiss_btn = QPushButton()
         self.dismiss_btn.setObjectName("secondaryButton")
         self.dismiss_btn.clicked.connect(self._dismiss_selected)
@@ -102,9 +107,9 @@ class BackgroundTaskDialog(QDialog):
         self.setWindowTitle("后台任务" if zh else "Background Tasks")
         self.heading_label.setText("后台任务" if zh else "Background Tasks")
         self.help_label.setText(
-            "这里汇总耗时操作。失败或中断的任务会优先显示；切换到全部记录可查看已完成任务。"
+            "这里汇总耗时操作。重试只恢复已校验的输入，不会自动执行；切换到全部记录可查看已完成任务。"
             if zh
-            else "Long-running operations appear here. Failed and interrupted tasks are prioritized; show all to review completed history."
+            else "Long-running operations appear here. Retry restores validated inputs without starting automatically; show all to review completed history."
         )
         self.attention_only_btn.setText("只看需处理" if zh else "Attention Only")
         self.task_list.setHeaderLabels(
@@ -113,6 +118,7 @@ class BackgroundTaskDialog(QDialog):
             else ["Task", "Type", "Status", "Progress", "Updated"]
         )
         self.cancel_task_btn.setText("取消任务" if zh else "Cancel Task")
+        self.retry_btn.setText("重试" if zh else "Retry")
         self.dismiss_btn.setText("移除记录" if zh else "Dismiss")
         self.open_task_btn.setText("打开任务页面" if zh else "Open Task Page")
         self.close_btn.setText("关闭" if zh else "Close")
@@ -141,6 +147,8 @@ class BackgroundTaskDialog(QDialog):
             item.setData(0, self.TASK_ID_ROLE + 2, task.can_cancel)
             item.setData(0, self.TASK_ID_ROLE + 3, task.can_dismiss)
             item.setData(0, self.TASK_ID_ROLE + 4, task.can_open)
+            item.setData(0, self.TASK_ID_ROLE + 5, task.can_retry)
+            item.setData(0, self.TASK_ID_ROLE + 6, task.retry_reason)
             self.task_list.addTopLevelItem(item)
             if task.task_id == selected_id:
                 selected_item = item
@@ -166,11 +174,20 @@ class BackgroundTaskDialog(QDialog):
         if item is None:
             self.detail_label.clear()
             self.cancel_task_btn.setEnabled(False)
+            self.retry_btn.setEnabled(False)
+            self.retry_btn.setToolTip("")
             self.dismiss_btn.setEnabled(False)
             self.open_task_btn.setEnabled(False)
             return
-        self.detail_label.setText(str(item.data(0, self.TASK_ID_ROLE + 1) or ""))
+        detail = str(item.data(0, self.TASK_ID_ROLE + 1) or "")
+        retry_reason = str(item.data(0, self.TASK_ID_ROLE + 6) or "")
+        if retry_reason:
+            retry_label = "重试不可用" if self.language == "zh" else "Retry unavailable"
+            detail = "\n".join(part for part in (detail, f"{retry_label}: {retry_reason}") if part)
+        self.detail_label.setText(detail)
         self.cancel_task_btn.setEnabled(bool(item.data(0, self.TASK_ID_ROLE + 2)))
+        self.retry_btn.setEnabled(bool(item.data(0, self.TASK_ID_ROLE + 5)))
+        self.retry_btn.setToolTip(retry_reason)
         self.dismiss_btn.setEnabled(bool(item.data(0, self.TASK_ID_ROLE + 3)))
         self.open_task_btn.setEnabled(bool(item.data(0, self.TASK_ID_ROLE + 4)))
 
@@ -180,6 +197,16 @@ class BackgroundTaskDialog(QDialog):
             return
         self.requested_task_id = self._selected_task_id()
         if self.requested_task_id:
+            self.requested_action = "open"
+            self.accept()
+
+    def _retry_selected(self) -> None:
+        item = self.task_list.currentItem()
+        if item is None or not bool(item.data(0, self.TASK_ID_ROLE + 5)):
+            return
+        self.requested_task_id = self._selected_task_id()
+        if self.requested_task_id:
+            self.requested_action = "retry"
             self.accept()
 
     def _cancel_selected(self) -> None:

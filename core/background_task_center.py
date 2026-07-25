@@ -30,6 +30,11 @@ class TaskStatus(str, Enum):
 
 
 _ACTIVE_STATUSES = {TaskStatus.RUNNING, TaskStatus.CANCELLING}
+_ORPHANED_ON_STARTUP_STATUSES = {
+    TaskStatus.QUEUED,
+    TaskStatus.RUNNING,
+    TaskStatus.CANCELLING,
+}
 _RETRYABLE_STATUSES = {
     TaskStatus.FAILED,
     TaskStatus.CANCELLED,
@@ -351,7 +356,7 @@ class BackgroundTaskCenter:
                     updated_at=self._clock(),
                 )
                 for task_id, snapshot in self._records.items()
-                if snapshot.status in _ACTIVE_STATUSES
+                if snapshot.status in _ORPHANED_ON_STARTUP_STATUSES
             }
             if not interrupted:
                 return

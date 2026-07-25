@@ -62,6 +62,21 @@ class BackgroundTaskCenterTests(unittest.TestCase):
             self.assertEqual((3, 9), (restored.progress.current, restored.progress.total))
             self.assertEqual("chapter3.pdf", restored.progress.detail)
 
+    def test_recovers_orphaned_queued_task_as_interrupted_on_startup(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "background_tasks.json"
+            center = BackgroundTaskCenter(path, id_factory=lambda: "task-1")
+            created = center.create(
+                kind="question_generation",
+                title="AI 出题",
+                metadata={"course_id": "course-os"},
+            )
+
+            restored = BackgroundTaskCenter(path).get(created.task_id)
+
+            self.assertEqual(TaskStatus.INTERRUPTED, restored.status)
+            self.assertEqual("queued", restored.progress.stage)
+
     def test_cancel_request_is_idempotent_and_invokes_runtime_hook_once(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             center = BackgroundTaskCenter(

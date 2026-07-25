@@ -74,6 +74,48 @@ class BackgroundTaskDialogTests(unittest.TestCase):
             self.assertEqual(task.task_id, dialog.requested_task_id)
             self.assertEqual(QDialog.DialogCode.Accepted, dialog.result())
 
+    def test_retry_restores_only_tasks_with_complete_safe_metadata(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ids = iter(["task-safe", "task-incomplete"])
+            center = BackgroundTaskCenter(
+                Path(tmpdir) / "tasks.json",
+                id_factory=lambda: next(ids),
+            )
+            safe = center.create(
+                kind="question_generation",
+                title="生成练习题",
+                metadata={
+                    "course_id": "course-os",
+                    "topic_ids": ["input_output"],
+                    "requested_count": 10,
+                },
+            )
+            center.fail(safe.task_id, "interrupted")
+            incomplete = center.create(
+                kind="question_generation",
+                title="缺失配置",
+                metadata={"course_id": "course-os"},
+            )
+            center.fail(incomplete.task_id, "interrupted")
+            dialog = BackgroundTaskDialog(center, language="zh")
+
+            items = {
+                dialog.task_list.topLevelItem(row).data(0, dialog.TASK_ID_ROLE):
+                dialog.task_list.topLevelItem(row)
+                for row in range(dialog.task_list.topLevelItemCount())
+            }
+            dialog.task_list.setCurrentItem(items[incomplete.task_id])
+            self.assertFalse(dialog.retry_btn.isEnabled())
+            self.assertIn("缺少安全恢复字段", dialog.detail_label.text())
+
+            dialog.task_list.setCurrentItem(items[safe.task_id])
+            self.assertTrue(dialog.retry_btn.isEnabled())
+            dialog.retry_btn.click()
+
+            self.assertEqual(safe.task_id, dialog.requested_task_id)
+            self.assertEqual("retry", dialog.requested_action)
+            self.assertEqual(QDialog.DialogCode.Accepted, dialog.result())
+
 
 if __name__ == "__main__":
     unittest.main()

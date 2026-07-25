@@ -17,6 +17,7 @@ from core.background_task_presenter import build_task_center_view, task_toolbar_
 from core.background_task_recovery import (
     generation_plan_from_task_metadata,
     task_destination,
+    task_retry_assessment,
 )
 from core.topic_display import topic_display_name
 from core.past_exam_prediction import prediction_prefill_status
@@ -486,8 +487,50 @@ class MainWindow(QMainWindow):
         dialog.exec()
         requested_task_id = str(getattr(dialog, "requested_task_id", "") or "")
         if requested_task_id:
-            self._open_task_context(requested_task_id)
+            action = str(getattr(dialog, "requested_action", "") or "")
+            if action == "retry":
+                self._retry_task_context(requested_task_id)
+            else:
+                self._open_task_page(requested_task_id)
         self._refresh_task_center_action()
+
+    def _open_task_page(self, task_id: str) -> bool:
+        """Navigate to a task owner without restoring or executing persisted inputs."""
+        try:
+            snapshot = self.task_center.get(task_id)
+        except (KeyError, OSError, ValueError):
+            return False
+        destination = task_destination(snapshot.kind)
+        metadata = snapshot.metadata or {}
+        course_id = str(metadata.get("course_id", "") or "")
+        if course_id and self.course_manager.get(course_id) is not None:
+            if self.course_manager.set_current(course_id):
+                self._on_course_changed()
+
+        destinations = {
+            "courses": self.SCREEN_COURSES,
+            "past_exams": self.SCREEN_PAST_EXAMS,
+            "question_bank": self.SCREEN_QUESTION_BANK,
+            "settings_data": self.SCREEN_SETTINGS,
+            "generation": self.SCREEN_COURSES,
+        }
+        screen = destinations.get(destination)
+        if screen is None or not self.navigate_to(screen):
+            return False
+        if destination == "settings_data":
+            self.settings_screen.show_data_management()
+        return True
+
+    def _retry_task_context(self, task_id: str) -> bool:
+        """Revalidate retry metadata, then restore inputs without auto-starting work."""
+        try:
+            snapshot = self.task_center.get(task_id)
+        except (KeyError, OSError, ValueError):
+            return False
+        assessment = task_retry_assessment(snapshot, self.lang_manager.current)
+        if not assessment.can_retry:
+            return False
+        return self._open_task_context(task_id)
 
     def _open_task_context(self, task_id: str) -> bool:
         """Return to the existing owner page and restore safe persisted inputs."""

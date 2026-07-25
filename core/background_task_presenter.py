@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-
 from core.background_task_center import TaskSnapshot, TaskStatus
-from core.background_task_recovery import task_destination
+from core.background_task_recovery import task_destination, task_retry_assessment
+from core.display_time import format_local_timestamp
 
 
 _ACTIVE = {TaskStatus.QUEUED, TaskStatus.RUNNING, TaskStatus.CANCELLING}
@@ -31,6 +30,8 @@ class TaskDisplayItem:
     can_cancel: bool
     can_dismiss: bool
     can_open: bool
+    can_retry: bool
+    retry_reason: str
     needs_attention: bool
 
 
@@ -80,6 +81,7 @@ def task_toolbar_text(attention_count: int, language: str) -> str:
 
 
 def _display_item(snapshot: TaskSnapshot, language: str) -> TaskDisplayItem:
+    retry = task_retry_assessment(snapshot, language)
     return TaskDisplayItem(
         task_id=snapshot.task_id,
         title=snapshot.title,
@@ -95,6 +97,8 @@ def _display_item(snapshot: TaskSnapshot, language: str) -> TaskDisplayItem:
         can_cancel=snapshot.status in _ACTIVE,
         can_dismiss=snapshot.status in _DISMISSIBLE,
         can_open=bool(task_destination(snapshot.kind)),
+        can_retry=retry.can_retry,
+        retry_reason=retry.reason,
         needs_attention=snapshot.status in _ATTENTION,
     )
 
@@ -119,14 +123,7 @@ def _progress_text(snapshot: TaskSnapshot) -> str:
 
 def _updated_text(value: str) -> str:
     """Format persisted ISO timestamps for compact local display only."""
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    try:
-        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        return parsed.astimezone().strftime("%Y-%m-%d %H:%M")
-    except ValueError:
-        return raw
+    return format_local_timestamp(value)
 
 
 def _status_text(status: TaskStatus, language: str) -> str:

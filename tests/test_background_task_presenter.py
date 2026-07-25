@@ -7,7 +7,17 @@ from core.background_task_presenter import build_task_center_view, task_toolbar_
 from core.background_task_recovery import task_destination
 
 
-def snapshot(task_id, status, *, current=0, total=0, detail="", error="", kind="question_generation"):
+def snapshot(
+    task_id,
+    status,
+    *,
+    current=0,
+    total=0,
+    detail="",
+    error="",
+    kind="question_generation",
+    metadata=None,
+):
     return TaskSnapshot(
         task_id=task_id,
         kind=kind,
@@ -16,6 +26,7 @@ def snapshot(task_id, status, *, current=0, total=0, detail="", error="", kind="
         created_at=f"2026-07-15T08:00:0{task_id[-1]}+00:00",
         updated_at=f"2026-07-15T08:00:0{task_id[-1]}+00:00",
         progress=TaskProgress("generating_questions", current, total, detail),
+        metadata=metadata or {},
         error=error,
     )
 
@@ -112,6 +123,46 @@ class BackgroundTaskPresenterTests(unittest.TestCase):
         self.assertEqual("settings_data", task_destination("app_data_import"))
         self.assertEqual("settings_data", task_destination("app_data_export"))
         self.assertEqual("question_bank", task_destination("question_bank_validation"))
+
+    def test_retry_requires_safe_recovery_metadata_and_explains_rejection(self):
+        recoverable = snapshot(
+            "task-1",
+            TaskStatus.INTERRUPTED,
+            metadata={
+                "course_id": "course-os",
+                "topic_ids": ["input_output"],
+                "requested_count": 10,
+            },
+        )
+        incomplete = snapshot(
+            "task-2",
+            TaskStatus.FAILED,
+            metadata={"course_id": "course-os"},
+        )
+        malformed = snapshot(
+            "task-3",
+            TaskStatus.FAILED,
+            metadata={
+                "course_id": "course-os",
+                "exam_plan": {"question_count": "many"},
+            },
+        )
+
+        view = build_task_center_view(
+            [recoverable, incomplete, malformed],
+            language="zh",
+            attention_only=False,
+        )
+        by_id = {item.task_id: item for item in view.items}
+
+        self.assertTrue(by_id["task-1"].can_retry)
+        self.assertEqual("", by_id["task-1"].retry_reason)
+        self.assertFalse(by_id["task-2"].can_retry)
+        self.assertIn("缺少", by_id["task-2"].retry_reason)
+        self.assertIn("出题方案", by_id["task-2"].retry_reason)
+        self.assertNotIn("exam_plan", by_id["task-2"].retry_reason)
+        self.assertFalse(by_id["task-3"].can_retry)
+        self.assertIn("无效", by_id["task-3"].retry_reason)
 
 
 if __name__ == "__main__":
