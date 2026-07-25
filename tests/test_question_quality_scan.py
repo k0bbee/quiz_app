@@ -108,15 +108,17 @@ class QuestionQualityScanTests(unittest.TestCase):
     def test_scan_batches_progress_events_but_keeps_final_count(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             bank = QuestionBank(str(Path(tmpdir) / "questions"))
-            bank.save_many([question(f"q-{index:03d}") for index in range(100)])
+            bank.save_many([question(f"q-{index:03d}") for index in range(26)])
             progress = []
 
             report = scan_question_bank_quality(bank, task=TaskControl(progress.append))
 
         validating = [item for item in progress if item.stage == "validating_question"]
-        self.assertEqual(100, report.scanned_count)
-        self.assertLessEqual(len(validating), 6)
-        self.assertEqual((100, 100), (validating[-1].current, validating[-1].total))
+        self.assertEqual(26, report.scanned_count)
+        self.assertEqual(
+            [(1, 26), (25, 26), (26, 26)],
+            [(item.current, item.total) for item in validating],
+        )
 
 
 if __name__ == "__main__":
