@@ -13,6 +13,7 @@ from core.today_learning_plan import (
     TodayLearningPlan,
     build_today_learning_plan,
 )
+from ui.components import PageHeader
 
 
 class HomeScreen(QWidget):
@@ -48,20 +49,16 @@ class HomeScreen(QWidget):
         main_layout.setContentsMargins(36, 28, 36, 28)
         main_layout.setSpacing(16)
 
-        # Title
-        self.title = QLabel(self.lang_manager.get_text(APP_NAME_ZH, APP_NAME_EN))
-        self.title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        self.title.setObjectName("screenTitle")
-        main_layout.addWidget(self.title)
-
-        # Subtitle
-        self.subtitle = QLabel(self.lang_manager.get_text(
-            "从课件生成总结、题库和自测练习",
-            "Generate summaries, question banks and self-tests from courseware"
-        ))
-        self.subtitle.setObjectName("homeSubtitle")
-        self.subtitle.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-        main_layout.addWidget(self.subtitle)
+        self.page_header = PageHeader(
+            self.lang_manager.get_text(APP_NAME_ZH, APP_NAME_EN),
+            self.lang_manager.get_text(
+                "从课件生成总结、题库和自测练习",
+                "Generate summaries, question banks and self-tests from courseware",
+            ),
+        )
+        self.title = self.page_header.title_label
+        self.subtitle = self.page_header.subtitle_label
+        main_layout.addWidget(self.page_header)
 
         # The visual center is a recommendation plus its course context, not a
         # grid of competing navigation actions.

@@ -15,6 +15,7 @@ from models.question import QuestionBank
 from models.question_set import SetManager
 from models.course_project import CourseProjectManager
 from core.topic_display import topic_display_name
+from ui.components import PageHeader
 from ui.widgets.source_refs_panel import SourceRefsPanel
 from utils.constants import topic_value
 from core.language_manager import LanguageManager
@@ -55,9 +56,9 @@ class ProgressDashboard(QWidget):
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(12)
 
-        self.title = QLabel()
-        self.title.setObjectName("screenTitle")
-        layout.addWidget(self.title)
+        self.page_header = PageHeader()
+        self.title = self.page_header.title_label
+        layout.addWidget(self.page_header)
 
         # Overall summary
         self.summary_group = QGroupBox()

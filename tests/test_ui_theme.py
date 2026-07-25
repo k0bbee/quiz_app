@@ -12,7 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QCloseEvent, QPalette
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QSplitter, QTextEdit
+from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QSplitter, QTextEdit, QWidget
 
 from core.language_manager import LanguageManager
 from core.background_task_center import BackgroundTaskCenter
@@ -504,6 +504,36 @@ class UiThemeTests(unittest.TestCase):
                 home.settings_btn,
             ):
                 self.assertEqual("secondary", button.property("homeAction"))
+
+    def test_home_and_progress_share_page_header_contract(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            progress_manager = ProgressManager(str(root / "progress"))
+            question_bank = QuestionBank(str(root / "questions"))
+            screens = (
+                HomeScreen(progress_manager, question_bank),
+                ProgressDashboard(
+                    progress_manager,
+                    question_bank,
+                    set_manager=SetManager(str(root / "sets")),
+                ),
+            )
+
+        headers = [
+            screen.findChild(QWidget, "pageHeader")
+            for screen in screens
+        ]
+        self.assertIsNotNone(headers[0])
+        self.assertIsNotNone(headers[1])
+        for screen, header in zip(screens, headers):
+            with self.subTest(screen=type(screen).__name__):
+                self.assertIsNotNone(header.findChild(QLabel, "screenTitle"))
+                self.assertIsNotNone(header.findChild(QLabel, "screenSubtitle"))
+
+        home_subtitle = headers[0].findChild(QLabel, "screenSubtitle")
+        progress_subtitle = headers[1].findChild(QLabel, "screenSubtitle")
+        self.assertFalse(home_subtitle.isHidden())
+        self.assertTrue(progress_subtitle.isHidden())
 
     def test_home_incorrect_action_stays_clickable_when_no_incorrect_questions_exist(self):
         with tempfile.TemporaryDirectory() as tmpdir:
