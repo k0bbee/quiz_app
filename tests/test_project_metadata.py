@@ -32,6 +32,24 @@ class ProjectMetadataTests(unittest.TestCase):
         self.assertIn("windows dpapi", readme)
         self.assertIn("keyring backend", readme)
 
+    def test_readmes_document_opt_in_current_events(self):
+        chinese = Path("README.md").read_text(encoding="utf-8")
+        english = Path("README.en.md").read_text(encoding="utf-8")
+
+        self.assertIn("打开窗口不会自动联网", chinese)
+        self.assertIn("只有勾选材料进入出题", chinese)
+        self.assertIn("opening the dialog never starts a search", english)
+        self.assertIn("only selected items enter generation", english)
+
+    def test_readmes_document_safe_task_recovery(self):
+        chinese = Path("README.md").read_text(encoding="utf-8")
+        english = Path("README.en.md").read_text(encoding="utf-8")
+
+        self.assertIn("“打开任务页面”只导航", chinese)
+        self.assertIn("只有恢复字段完整时", chinese)
+        self.assertIn("Open Task Page only navigates", english)
+        self.assertIn("recovery metadata is complete", english)
+
     def test_public_readmes_do_not_document_local_copyright_application_tools(self):
         private_tool_references = (
             "build_copyright_",

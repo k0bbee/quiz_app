@@ -37,10 +37,11 @@ python scripts/check_environment.py --json
 1. **Import course materials** — Open Course Management and select a folder containing PPTX, PDF, DOCX, Markdown, or text files.
 2. **Review the course summary and topics** — The application extracts document text, creates a summary, assigns stable topic IDs, and builds page- or slide-level source references.
 3. **Choose the exam scope** — Use every topic or select only the topics relevant to the current exam.
-4. **Generate questions** — Use course defaults, adjust question type/topic/difficulty weights, or describe the desired paper in natural language.
-5. **Review generated questions** — Check bilingual content, answers, source evidence, plan matching, and quality warnings before accepting questions.
-6. **Practice or simulate an exam** — Practice mode grades one question at a time; exam mode saves drafts and submits the whole paper at the end.
-7. **Review progress** — Inspect accuracy, topic mastery, uncertain answers, marked questions, and prioritized incorrect-question review.
+4. **Review current-event materials** (optional) — Explicitly search a public news index, inspect source and course relevance, and select individual items; opening the dialog never starts a search.
+5. **Generate questions** — Use course defaults, adjust question type/topic/difficulty weights, or describe the desired paper in natural language.
+6. **Review generated questions** — Check bilingual content, answers, source evidence, plan matching, and quality warnings before accepting questions.
+7. **Practice or simulate an exam** — Practice mode grades one question at a time; exam mode saves drafts and submits the whole paper at the end.
+8. **Review progress** — Inspect accuracy, topic mastery, uncertain answers, marked questions, and prioritized incorrect-question review.
 
 ## Main capabilities
 
@@ -51,6 +52,8 @@ python scripts/check_environment.py --json
 | Past exams | Import TXT/Markdown/PDF/DOCX/PPTX exams, apply OCR to scanned PDFs, assign a course, and build explainable exam profiles |
 | Question generation | Stream accepted questions one at a time, validate plan slots and source references, accept additional instructions while generation is running, and safely preserve partial results on cancellation |
 | Q&A review | Ask follow-up questions inside the selected course workspace using only the current exam scope, course summary, and original source evidence; requests remain cancellable and non-blocking |
+| Current-event materials | Explicitly search and manually review public news candidates, including low-relevance results; only selected items enter generation, and review metadata remains attached to generated questions |
+| Background tasks | Show long-running task stages and failures; Open Task Page only navigates, orphaned tasks become interrupted after restart, and Retry restores validated inputs only when recovery metadata is complete |
 | Question types | Multiple choice, true/false, scenario choice, matching, ordering, fill-in-the-blank, and short answer |
 | Question bank | Search and filter by set, topic, difficulty, and quality; create or edit every question type; multi-select and batch-delete questions |
 | Question sets | Rename sets, select multiple topics, create random practice sets, regenerate questions, and export one or more mock exams as UTF-8 Markdown |
