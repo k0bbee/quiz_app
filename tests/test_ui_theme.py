@@ -510,7 +510,7 @@ class UiThemeTests(unittest.TestCase):
             ):
                 self.assertEqual("secondary", button.property("homeAction"))
 
-    def test_home_and_progress_share_page_header_contract(self):
+    def test_workspace_pages_share_page_header_contract(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             progress_manager = ProgressManager(str(root / "progress"))
@@ -526,16 +526,19 @@ class UiThemeTests(unittest.TestCase):
                     ),
                     course_manager=CourseProjectManager(str(root / "courses")),
                 ),
+                QuestionBankScreen(
+                    question_bank,
+                    course_manager=CourseProjectManager(str(root / "courses")),
+                ),
             )
 
         headers = [
             screen.findChild(QWidget, "pageHeader")
             for screen in screens
         ]
-        self.assertIsNotNone(headers[0])
-        self.assertIsNotNone(headers[1])
         for screen, header in zip(screens, headers):
             with self.subTest(screen=type(screen).__name__):
+                self.assertIsNotNone(header)
                 self.assertIsNotNone(header.findChild(QLabel, "screenTitle"))
                 self.assertIsNotNone(header.findChild(QLabel, "screenSubtitle"))
 

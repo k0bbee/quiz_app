@@ -21,6 +21,7 @@ from core.question_validation import validate_question_quality
 from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
+from ui.components import PageHeader
 from ui.widgets.source_refs_panel import SourceRefsPanel
 from ui.widgets.question_form_editor import QuestionFormEditor
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
@@ -133,9 +134,11 @@ class QuestionBankScreen(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
 
-        self.title = QLabel(self.lang_manager.get_text("题库管理", "Question Bank"))
-        self.title.setObjectName("screenTitle")
-        layout.addWidget(self.title)
+        self.page_header = PageHeader(
+            self.lang_manager.get_text("题库管理", "Question Bank")
+        )
+        self.title = self.page_header.title_label
+        layout.addWidget(self.page_header)
 
         filter_row = QHBoxLayout()
         self.search_input = QLineEdit()
