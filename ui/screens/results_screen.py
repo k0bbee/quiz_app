@@ -26,13 +26,13 @@ class ResultsScreen(QWidget):
     practice_topic_requested = pyqtSignal(str)
     review_topic_requested = pyqtSignal(str)
 
-    def __init__(self, parent=None, course_manager: CourseProjectManager | None = None):
+    def __init__(self, parent=None, *, course_manager: CourseProjectManager):
         super().__init__(parent)
         self.current_record: ProgressRecord = None
         self._questions: dict = {}  # question_id -> Question (set externally)
         self._lang: str = "zh"
         self.lang_manager = LanguageManager.instance()
-        self.course_manager = course_manager or CourseProjectManager()
+        self.course_manager = course_manager
         self._course_project = None
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)

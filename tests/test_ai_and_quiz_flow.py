@@ -68,6 +68,15 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             **kwargs,
         )
 
+    def _make_results_screen(self) -> ResultsScreen:
+        temp_dir = tempfile.TemporaryDirectory(prefix="quiz-results-test-")
+        self.addCleanup(temp_dir.cleanup)
+        return ResultsScreen(
+            course_manager=CourseProjectManager(
+                str(Path(temp_dir.name) / "courses")
+            )
+        )
+
     def test_quiz_screen_supports_question_preview_filter_and_free_navigation(self):
         language_manager = LanguageManager.instance()
         previous_language = language_manager.current
@@ -1097,7 +1106,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         ]
         record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
 
-        screen = ResultsScreen()
+        screen = self._make_results_screen()
         screen.set_results(record, {}, "zh")
 
         self.assertIn("答对但不确定: 1", screen.stats_label.text())
@@ -1112,7 +1121,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         ]
         record.summary = SessionSummary.compute(record.answers, total_questions=3, total_time=30)
 
-        screen = ResultsScreen()
+        screen = self._make_results_screen()
         screen.set_results(record, {}, "zh")
 
         self.assertEqual((1, 1, 1), (
@@ -1169,7 +1178,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         ]
         record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
 
-        screen = ResultsScreen()
+        screen = self._make_results_screen()
         emitted = []
         screen.retry_unsure.connect(lambda: emitted.append(True))
         screen.set_results(record, {}, "zh")
@@ -1180,7 +1189,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertEqual([True], emitted)
 
     def test_results_screen_uses_one_primary_retry_and_compact_more_menu(self):
-        screen = ResultsScreen()
+        screen = self._make_results_screen()
 
         self.assertEqual("primaryButton", screen.retry_incorrect_btn.objectName())
         self.assertEqual("secondaryButton", screen.more_practice_btn.objectName())
@@ -1199,7 +1208,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         record.marked_review_question_ids = ["q2"]
         record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
 
-        screen = ResultsScreen()
+        screen = self._make_results_screen()
         emitted = []
         screen.retry_review.connect(lambda: emitted.append(True))
         screen.set_results(record, {}, "zh")
@@ -1229,7 +1238,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         ]
         record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
 
-        screen = ResultsScreen()
+        screen = self._make_results_screen()
         screen.set_results(record, {}, "zh")
 
         self.assertIn("下一步建议", screen.next_action_label.text())
@@ -1249,7 +1258,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             "q-cache": self._make_question("q-cache", "cache"),
             "q-io-2": self._make_question("q-io-2", "io"),
         }
-        screen = ResultsScreen()
+        screen = self._make_results_screen()
         emitted = []
         screen.review_topic_requested.connect(emitted.append)
 
@@ -1283,7 +1292,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             "q-cache": self._make_question("q-cache", "cache"),
             "q-io": self._make_question("q-io", "io"),
         }
-        screen = ResultsScreen()
+        screen = self._make_results_screen()
         emitted = []
         screen.practice_topic_requested.connect(emitted.append)
 
@@ -1314,7 +1323,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             AnswerRecord(question_id=question.question_id, index_in_session=0, user_answer="B", is_correct=False),
         ]
         record.summary = SessionSummary.compute(record.answers, total_questions=1, total_time=10)
-        screen = ResultsScreen()
+        screen = self._make_results_screen()
         screen.set_results(record, {question.question_id: question}, "zh")
         self.assertFalse(screen.next_action_btn.isHidden())
 
@@ -1331,7 +1340,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         ]
         record.summary = SessionSummary.compute(record.answers, total_questions=2, total_time=20)
 
-        screen = ResultsScreen()
+        screen = self._make_results_screen()
         screen.set_results(record, {}, "zh")
 
         self.assertTrue(screen.score_label.text().startswith("🔎 "))
@@ -1360,7 +1369,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         ]
         record.summary = SessionSummary.compute(record.answers, total_questions=1, total_time=10)
 
-        screen = ResultsScreen()
+        screen = self._make_results_screen()
         screen.set_results(record, {question.question_id: question}, "zh")
 
         card = screen.review_layout.itemAt(0).widget()
@@ -1385,7 +1394,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             "q3": self._make_question("q3"),
         }
 
-        screen = ResultsScreen()
+        screen = self._make_results_screen()
         screen.set_results(record, questions, "zh")
         self.assertGreater(screen.review_layout.count(), 1)
 

@@ -1130,7 +1130,9 @@ class UiThemeTests(unittest.TestCase):
             self.addCleanup(lang_manager.set_language, previous_lang)
 
             topic = TopicSelectionScreen(SetManager(str(root / "sets")), progress_manager)
-            results = ResultsScreen()
+            results = ResultsScreen(
+                course_manager=CourseProjectManager(str(root / "courses"))
+            )
             progress = ProgressDashboard(
                 progress_manager,
                 question_bank,
