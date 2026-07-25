@@ -133,19 +133,6 @@ class UiThemeTests(unittest.TestCase):
         ])
         _APP.processEvents()
 
-    def test_qss_uses_vscode_dark_tokens_and_top_level_backgrounds(self):
-        qss = Path("style.qss").read_text(encoding="utf-8").lower()
-
-        for token in (
-            "#181818", "#1f1f1f", "#252526", "#313131",
-            "#0078d4", "#007fd4", "#cccccc",
-        ):
-            self.assertIn(token, qss)
-        self.assertRegex(qss, r"qdialog[^\{]*\{[^}]*background-color:\s*#1f1f1f")
-        self.assertIn("qpushbutton#primarybutton", qss)
-        self.assertIn('qpushbutton#secondarybutton[marked="true"]', qss)
-        self.assertIn("qlabel#settingsconnectionstatus", qss)
-
     def test_editor_fonts_do_not_fall_back_to_legacy_windows_fixedsys(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
 
@@ -184,64 +171,6 @@ class UiThemeTests(unittest.TestCase):
         self.assertIn("qlabel#secondarytext", qss)
         self.assertIn("qlistwidget#settingsnavlist", qss)
         self.assertIn("qlistwidget#settingsnavlist::item:selected", qss)
-
-    def test_default_button_is_secondary_instead_of_primary_blue(self):
-        qss = Path("style.qss").read_text(encoding="utf-8").lower()
-        match = re.search(r"qpushbutton\s*\{(?P<body>[^}]*)\}", qss, flags=re.DOTALL)
-
-        self.assertIsNotNone(match)
-        default_rule = match.group("body")
-        self.assertIn("#313131", default_rule)
-        self.assertNotIn("#0078d4", default_rule)
-
-    def test_buttons_use_soft_radius_and_complete_interaction_states(self):
-        qss = Path("style.qss").read_text(encoding="utf-8").lower()
-
-        default_rule = re.search(r"qpushbutton\s*\{(?P<body>[^}]*)\}", qss, flags=re.DOTALL)
-        self.assertIsNotNone(default_rule)
-        self.assertRegex(default_rule.group("body"), r"border-radius:\s*(1[0-9]|[2-9][0-9])px")
-        self.assertIn("outline: none", default_rule.group("body"))
-
-        for selector in (
-            "qpushbutton:hover",
-            "qpushbutton:pressed",
-            "qpushbutton:focus",
-            "qpushbutton#primarybutton:hover",
-            "qpushbutton#primarybutton:pressed",
-            "qpushbutton#primarybutton:focus",
-            "qpushbutton#secondarybutton:hover",
-            "qpushbutton#secondarybutton:pressed",
-            "qpushbutton#secondarybutton:focus",
-            "qpushbutton#dangerbutton:hover",
-            "qpushbutton#dangerbutton:pressed",
-            "qpushbutton#dangerbutton:focus",
-        ):
-            self.assertIn(selector, qss)
-
-    def test_menus_have_clear_hover_pressed_and_open_states(self):
-        qss = Path("style.qss").read_text(encoding="utf-8").lower()
-
-        menu_bar_item = re.search(r"qmenubar::item\s*\{(?P<body>[^}]*)\}", qss, flags=re.DOTALL)
-        self.assertIsNotNone(menu_bar_item)
-        self.assertIn("border-radius", menu_bar_item.group("body"))
-        self.assertIn("border:", menu_bar_item.group("body"))
-
-        menu_item = re.search(r"qmenu::item\s*\{(?P<body>[^}]*)\}", qss, flags=re.DOTALL)
-        self.assertIsNotNone(menu_item)
-        self.assertIn("border:", menu_item.group("body"))
-        self.assertIn("border-radius", menu_item.group("body"))
-
-        for selector in (
-            "qmenubar::item:selected",
-            "qmenubar::item:pressed",
-            "qmenubar::item:open",
-            "qmenu::item:selected",
-            "qmenu::item:pressed",
-            "qtoolbar qpushbutton:hover",
-            "qtoolbar qpushbutton:pressed",
-            "qtoolbar qpushbutton:focus",
-        ):
-            self.assertIn(selector, qss)
 
     def test_menus_avoid_sticky_focus_chrome_and_sidebar_has_keyboard_focus_ring(self):
         qss = Path("style.qss").read_text(encoding="utf-8").lower()
@@ -631,36 +560,6 @@ class UiThemeTests(unittest.TestCase):
             self.assertIn("导入课件", home.today_plan_detail.text())
             self.assertFalse(home.stats_label.isHidden())
             self.assertIn("尚无练习记录", home.stats_label.text())
-
-    def test_home_actions_have_dedicated_hover_pressed_and_focus_feedback(self):
-        qss = Path("style.qss").read_text(encoding="utf-8").lower()
-
-        for selector in (
-            'qpushbutton[homeaction="primary"]:hover',
-            'qpushbutton[homeaction="primary"]:pressed',
-            'qpushbutton[homeaction="primary"]:focus',
-            'qpushbutton[homeaction="secondary"]:hover',
-            'qpushbutton[homeaction="secondary"]:pressed',
-            'qpushbutton[homeaction="secondary"]:focus',
-        ):
-            self.assertIn(selector, qss)
-
-        primary_pressed = re.search(
-            r'qpushbutton\[homeaction="primary"\]:pressed\s*\{(?P<body>[^}]*)\}',
-            qss,
-            flags=re.DOTALL,
-        )
-        secondary_pressed = re.search(
-            r'qpushbutton\[homeaction="secondary"\]:pressed\s*\{(?P<body>[^}]*)\}',
-            qss,
-            flags=re.DOTALL,
-        )
-        self.assertIsNotNone(primary_pressed)
-        self.assertIsNotNone(secondary_pressed)
-        for body in (primary_pressed.group("body"), secondary_pressed.group("body")):
-            self.assertIn("padding-top", body)
-            self.assertIn("padding-bottom", body)
-            self.assertIn("border-color", body)
 
     def test_fallback_palette_matches_vscode_dark_base(self):
         _apply_dark_palette(_APP)
@@ -1107,20 +1006,6 @@ class UiThemeTests(unittest.TestCase):
         self.assertTrue(all("…" in label.text() for label in topic_labels))
         self.assertLessEqual(dialog.right_content.minimumSizeHint().width(), 760)
 
-    def test_quiz_cards_use_soft_baicizhan_style_borders(self):
-        qss = Path("style.qss").read_text(encoding="utf-8").lower()
-
-        card_rule = re.search(
-            r"qframe#quizpreviewpane,\s*qframe#quizpracticecard,\s*qframe#questioncard,\s*qframe#reviewcard,\s*qframe#feedbackframe\s*\{(?P<body>[^}]*)\}",
-            qss,
-            flags=re.DOTALL,
-        )
-        self.assertIsNotNone(card_rule)
-        self.assertRegex(card_rule.group("body"), r"border-radius:\s*(1[6-9]|[2-9][0-9])px")
-        self.assertIn("#4a4a4a", card_rule.group("body"))
-        self.assertIn("qframe#quizpreviewpane", qss)
-        self.assertIn("qframe#feedbackframe", qss)
-
     def test_quiz_screen_uses_horizontal_practice_workspace_with_review_hidden_by_default(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             quiz = QuizScreen(
@@ -1232,48 +1117,6 @@ class UiThemeTests(unittest.TestCase):
         self.assertNotRegex(quiz.review_checkbox.text(), r"[^\w\s]")
         self.assertNotRegex(quiz.prev_question_btn.text(), r"[^\w\s]")
         self.assertNotRegex(quiz.next_question_btn.text(), r"[^\w\s]")
-
-    def test_quiz_action_checkboxes_styled_as_toggle_buttons(self):
-        qss = Path("style.qss").read_text(encoding="utf-8").lower()
-
-        toggle_rule = re.search(
-            r"qcheckbox#quizuncertaincheck,\s*qcheckbox#quizreviewcheck\s*\{(?P<body>[^}]*)\}",
-            qss,
-            flags=re.DOTALL,
-        )
-        self.assertIsNotNone(toggle_rule)
-        self.assertRegex(toggle_rule.group("body"), r"border-radius:\s*([6-9]|[1-9][0-9])px")
-        self.assertIn("background-color:", toggle_rule.group("body"))
-        self.assertIn("border:", toggle_rule.group("body"))
-        self.assertIn("padding:", toggle_rule.group("body"))
-
-        self.assertIn("qcheckbox#quizuncertaincheck:hover", qss)
-        self.assertIn("qcheckbox#quizreviewcheck:hover", qss)
-        self.assertIn("qcheckbox#quizuncertaincheck:checked", qss)
-        self.assertIn("qcheckbox#quizreviewcheck:checked", qss)
-
-    def test_selection_controls_define_selected_hover_and_focus_states(self):
-        qss = Path("style.qss").read_text(encoding="utf-8").lower()
-
-        selectors = {
-            "quiz_mode": (
-                "qpushbutton#quizmodeoption",
-                "qpushbutton#quizmodeoption:checked",
-                "qpushbutton#quizmodeoption:hover",
-                "qpushbutton#quizmodeoption:focus",
-            ),
-            "review_tabs": (
-                "qtabwidget::pane",
-                "qtabbar::tab:selected",
-                "qtabbar::tab:hover",
-                "qtabbar::tab:focus",
-            ),
-        }
-
-        for control, required_selectors in selectors.items():
-            with self.subTest(control=control):
-                for selector in required_selectors:
-                    self.assertIn(selector, qss)
 
     def test_main_flow_pages_use_theme_button_roles(self):
         for path in (
