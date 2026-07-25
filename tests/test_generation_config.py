@@ -1284,89 +1284,81 @@ class GenerationConfigTests(unittest.TestCase):
 
         self.assertIn("正在生成第 3/10 题", message)
 
-    def test_worker_rejects_choice_when_stem_leaks_correct_answer_keyword(self):
-        worker = GenerationWorker(
-            LLMClient(api_key="", base_url="local-agent://auto", model="codex"),
-            course_content="content",
-            topics=["input_output_improvements"],
-            count=1,
-            difficulty="medium",
-        )
-        raw = {
-            "type": "multiple_choice",
-            "difficulty": "medium",
-            "topic": "input_output_improvements",
-            "correct_answer": "C",
-            "bilingual": {
-                "zh": {
-                    "stem": "以下哪种 I/O 方式中，CPU 发送命令后继续执行其他工作，直到设备通过中断(Interrupt)通知完成？",
-                    "options": [
-                        "A. 轮询(Polling)",
-                        "B. 直接存储器访问(DMA)",
-                        "C. 中断驱动(Interrupt-driven) I/O",
-                        "D. 同步(Synchronous) I/O",
-                    ],
-                    "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
-                },
-                "en": {
-                    "stem": "Which I/O method lets the CPU continue until the device signals completion by interrupt?",
-                    "options": [
-                        "A. Polling",
-                        "B. Direct memory access",
-                        "C. Interrupt-driven I/O",
-                        "D. Synchronous I/O",
-                    ],
-                    "explanation": "This is a sufficiently detailed English explanation for why the answer is correct.",
-                },
+    def test_worker_rejects_choice_when_stem_leaks_answer_keyword(self):
+        cases = [
+            {
+                "topic": "input_output_improvements",
+                "correct_answer": "C",
+                "zh_stem": "以下哪种 I/O 方式中，CPU 发送命令后继续执行其他工作，直到设备通过中断(Interrupt)通知完成？",
+                "zh_options": [
+                    "A. 轮询(Polling)",
+                    "B. 直接存储器访问(DMA)",
+                    "C. 中断驱动(Interrupt-driven) I/O",
+                    "D. 同步(Synchronous) I/O",
+                ],
+                "en_stem": "Which I/O method lets the CPU continue until the device signals completion by interrupt?",
+                "en_options": [
+                    "A. Polling",
+                    "B. Direct memory access",
+                    "C. Interrupt-driven I/O",
+                    "D. Synchronous I/O",
+                ],
             },
-        }
-
-        ok, reason = worker._validate_raw_question(raw)
-
-        self.assertFalse(ok)
-        self.assertIn("answer keyword", reason)
-
-    def test_worker_rejects_choice_when_stem_leaks_core_cs_answer_keyword(self):
-        worker = GenerationWorker(
-            LLMClient(api_key="", base_url="local-agent://auto", model="codex"),
-            course_content="content",
-            topics=["virtual_memory"],
-            count=1,
-            difficulty="medium",
-        )
-        raw = {
-            "type": "multiple_choice",
-            "difficulty": "medium",
-            "topic": "virtual_memory",
-            "correct_answer": "B",
-            "bilingual": {
-                "zh": {
-                    "stem": "下列哪一项内存机制使用页表进行地址映射？",
-                    "options": [
-                        "A. 磁盘调度",
-                        "B. 虚拟内存",
-                        "C. 文件索引",
-                        "D. 网络路由",
-                    ],
-                    "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
-                },
-                "en": {
-                    "stem": "Which memory mechanism uses page tables to translate addresses?",
-                    "options": [
-                        "A. Disk scheduling",
-                        "B. Virtual memory",
-                        "C. File indexing",
-                        "D. Network routing",
-                    ],
-                    "explanation": "This is a sufficiently detailed English explanation for why the answer is correct.",
-                },
+            {
+                "topic": "virtual_memory",
+                "correct_answer": "B",
+                "zh_stem": "下列哪一项内存机制使用页表进行地址映射？",
+                "zh_options": [
+                    "A. 磁盘调度",
+                    "B. 虚拟内存",
+                    "C. 文件索引",
+                    "D. 网络路由",
+                ],
+                "en_stem": "Which memory mechanism uses page tables to translate addresses?",
+                "en_options": [
+                    "A. Disk scheduling",
+                    "B. Virtual memory",
+                    "C. File indexing",
+                    "D. Network routing",
+                ],
             },
-        }
+        ]
 
-        ok, reason = worker._validate_raw_question(raw)
+        for case in cases:
+            with self.subTest(topic=case["topic"]):
+                worker = GenerationWorker(
+                    LLMClient(api_key="", base_url="local-agent://auto", model="codex"),
+                    course_content="content",
+                    topics=[case["topic"]],
+                    count=1,
+                    difficulty="medium",
+                )
+                raw = {
+                    "type": "multiple_choice",
+                    "difficulty": "medium",
+                    "topic": case["topic"],
+                    "correct_answer": case["correct_answer"],
+                    "bilingual": {
+                        "zh": {
+                            "stem": case["zh_stem"],
+                            "options": case["zh_options"],
+                            "explanation": "这是一个足够长的中文解释，用来说明为什么答案正确。",
+                        },
+                        "en": {
+                            "stem": case["en_stem"],
+                            "options": case["en_options"],
+                            "explanation": (
+                                "This is a sufficiently detailed English explanation "
+                                "for why the answer is correct."
+                            ),
+                        },
+                    },
+                }
 
-        self.assertFalse(ok)
-        self.assertIn("answer keyword", reason)
+                ok, reason = worker._validate_raw_question(raw)
+
+                self.assertFalse(ok)
+                self.assertIn("answer keyword", reason)
 
     def test_local_agent_generation_start_does_not_read_persisted_api_key(self):
         class ForbiddenSecrets:
