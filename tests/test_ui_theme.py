@@ -180,6 +180,10 @@ class UiThemeTests(unittest.TestCase):
         main_window.lang_manager.set_language("en")
 
         self.assertEqual("AppShell", type(main_window.centralWidget()).__name__)
+        self.assertEqual(
+            "NavigationRouter",
+            type(getattr(main_window, "navigation_router", None)).__name__,
+        )
         self.assertFalse(hasattr(main_window, "toolbar"))
         self.assertEqual("applicationSidebar", main_window.navigation_sidebar.objectName())
         self.assertGreaterEqual(main_window.navigation_sidebar.minimumWidth(), 156)

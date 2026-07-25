@@ -27,6 +27,7 @@ from ui.generation_launch_controller import (
     generation_launch_copy,
 )
 from ui.session_retry_presenter import session_retry_copy
+from ui.navigation import NavigationRouter
 from ui.shell import AppShell
 from config import APP_NAME, APP_NAME_EN
 
@@ -76,6 +77,10 @@ class MainWindow(QMainWindow):
 
         # Central stacked widget
         self.stack = QStackedWidget()
+        self.navigation_router = NavigationRouter(
+            self.stack,
+            skip_history_from={self.SCREEN_QUIZ},
+        )
 
         # Create screens
         self.home_screen = HomeScreen(self.progress_manager, self.question_bank)
@@ -99,7 +104,6 @@ class MainWindow(QMainWindow):
         self._question_bank_screen = None
         self._past_exam_screen = None
         self._active_questions: dict = {}
-        self._navigation_history: list[int] = []
 
         # Management screens 6-8 are lazily created on first access.
         self.stack.addWidget(self.home_screen)       # 0
@@ -292,18 +296,12 @@ class MainWindow(QMainWindow):
 
     def navigate_to(self, screen_index: int, remember: bool = True, confirm_current: bool = True) -> bool:
         """Switch to a screen by index."""
-        current_index = self.stack.currentIndex()
-        leaving_quiz = current_index == self.SCREEN_QUIZ and screen_index != self.SCREEN_QUIZ
         if confirm_current and not self._confirm_current_navigation(screen_index):
             self._update_navigation_actions()
             return False
         if screen_index == self.SCREEN_PAST_EXAMS:
             self._get_past_exam_screen()
-        if remember and current_index >= 0 and current_index != screen_index:
-            if not leaving_quiz:
-                self._navigation_history.append(current_index)
-            self._navigation_history = self._navigation_history[-50:]
-        self.stack.setCurrentIndex(screen_index)
+        self.navigation_router.navigate(screen_index, remember=remember)
         # Refresh data on certain screens
         if screen_index == self.SCREEN_TOPIC_SELECTION:
             self._sync_topic_screen_course()
@@ -326,14 +324,14 @@ class MainWindow(QMainWindow):
 
     def navigate_back(self):
         """Return to the previous screen if navigation history exists."""
-        if not self._navigation_history:
+        previous = self.navigation_router.peek_back()
+        if previous is None:
             self._update_navigation_actions()
             return
-        previous = self._navigation_history[-1]
         if not self._confirm_current_navigation(previous):
             self._update_navigation_actions()
             return
-        self._navigation_history.pop()
+        self.navigation_router.discard_back()
         self.navigate_to(previous, remember=False, confirm_current=False)
 
     def _confirm_current_navigation(self, target_screen: int) -> bool:
@@ -393,8 +391,8 @@ class MainWindow(QMainWindow):
         self.context_title.setText(self.lang_manager.get_text(zh, en))
         is_focus_flow = current in {self.SCREEN_QUIZ, self.SCREEN_RESULTS}
         self.navigation_sidebar.setVisible(not is_focus_flow)
-        self.context_back_btn.setVisible(is_focus_flow and bool(self._navigation_history))
-        self.context_back_btn.setEnabled(bool(self._navigation_history))
+        self.context_back_btn.setVisible(is_focus_flow and self.navigation_router.can_go_back)
+        self.context_back_btn.setEnabled(self.navigation_router.can_go_back)
         self._refresh_task_center_action()
 
     def open_settings(self, section: str = "") -> None:
