@@ -23,6 +23,12 @@ def pytest_addoption(parser):
         default=False,
         help="run opt-in full workflow and large fixture tests",
     )
+    group.addoption(
+        "--run-copyright",
+        action="store_true",
+        default=False,
+        help="collect local software-copyright material tests",
+    )
 
 
 @lru_cache(maxsize=1)
@@ -44,8 +50,16 @@ def _is_qt_test_file(path_text: str) -> bool:
     )
 
 
+def _is_copyright_test_file(path_text: str) -> bool:
+    return Path(path_text).name.startswith("test_copyright_")
+
+
 def pytest_ignore_collect(collection_path, config):
-    """Skip Qt test collection entirely when PyQt6 is not installed."""
+    """Keep optional local workflows and unavailable Qt tests out of collection."""
+    if _is_copyright_test_file(str(collection_path)) and not config.getoption(
+        "--run-copyright"
+    ):
+        return True
     if _is_qt_test_file(str(collection_path)) and not _pyqt6_available():
         return True
     return None
@@ -58,9 +72,11 @@ def pytest_collection_modifyitems(config, items):
         item_path = Path(str(getattr(item, "path", getattr(item, "fspath", ""))))
         if _is_qt_test_file(str(item_path)):
             item.add_marker(pytest.mark.qt)
-        if item_path.name.startswith("test_copyright_"):
-            item.add_marker(pytest.mark.full)
-        if item.get_closest_marker("full") and not config.getoption("--run-full"):
+        is_copyright = _is_copyright_test_file(str(item_path))
+        if item.get_closest_marker("full") and not (
+            config.getoption("--run-full")
+            or (is_copyright and config.getoption("--run-copyright"))
+        ):
             item.add_marker(skip_full)
 
 
