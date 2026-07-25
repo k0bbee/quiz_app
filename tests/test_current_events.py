@@ -355,7 +355,7 @@ class CurrentEventsTests(unittest.TestCase):
         )
 
         prompt = material_pack_prompt(pack, max_chars=2000)
-        refs = material_pack_source_refs(pack)
+        refs = material_pack_source_refs(pack, course_project=law_project())
 
         self.assertIn("非可信外部材料", prompt)
         self.assertIn("Agency rule faces review", prompt)
@@ -364,6 +364,9 @@ class CurrentEventsTests(unittest.TestCase):
         self.assertEqual("current_event", refs[0]["source_kind"])
         self.assertEqual(selected.candidate_id, refs[0]["candidate_id"])
         self.assertEqual(selected.url, refs[0]["url"])
+        self.assertEqual(["administrative_law"], refs[0]["matched_topic_ids"])
+        self.assertEqual(["Administrative Law"], refs[0]["matched_topics"])
+        self.assertIn("regulation", refs[0]["matched_terms"])
         self.assertNotIn("chunk_id", refs[0])
 
 

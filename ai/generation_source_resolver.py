@@ -102,6 +102,13 @@ def sanitize_source_ref(ref) -> dict:
             "domain": str(ref.get("domain", "") or "").strip(),
             "seen_at": str(ref.get("seen_at", "") or "").strip(),
             "retrieved_at": str(ref.get("retrieved_at", "") or "").strip(),
+            "matched_topic_ids": _compact_string_list(
+                ref.get("matched_topic_ids", [])
+            ),
+            "matched_topics": _compact_string_list(
+                ref.get("matched_topics", [])
+            ),
+            "matched_terms": _compact_string_list(ref.get("matched_terms", [])),
             "excerpt": _compact_excerpt(ref.get("excerpt", "")),
             "content_hash": str(ref.get("content_hash", "") or "").strip(),
             "review_status": str(ref.get("review_status", "") or "").strip(),
@@ -173,3 +180,16 @@ def _matches_registered(ref: dict, registered: dict) -> bool:
 def _compact_excerpt(value, limit: int = 320) -> str:
     text = " ".join(str(value or "").split())
     return text if len(text) <= limit else text[:limit].rstrip() + "…"
+
+
+def _compact_string_list(value, limit: int = 12) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [
+        text
+        for text in (
+            " ".join(str(item or "").split())[:120]
+            for item in value[:limit]
+        )
+        if text
+    ]

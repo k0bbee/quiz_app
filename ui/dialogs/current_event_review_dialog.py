@@ -5,6 +5,7 @@ from __future__ import annotations
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QDialog,
+    QHeaderView,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -25,6 +26,7 @@ from core.current_events import (
     build_course_event_query,
     review_course_events,
 )
+from core.display_time import format_local_timestamp
 from core.language_manager import LanguageManager
 from ui.widgets.wheel_safe_controls import WheelSafeSpinBox
 
@@ -176,11 +178,19 @@ class CurrentEventReviewDialog(QDialog):
             if self.lang_manager.current == "zh"
             else ["Title", "Relevance", "Topics", "Source", "Reported", "Retrieved"]
         )
+        self._configure_candidate_columns()
         self.cancel_btn.setText(gm("取消", "Cancel"))
         self.save_btn.setText(gm("保存材料", "Save Materials"))
         self.save_generate_btn.setText(gm("保存并出题", "Save and Generate"))
         self._update_status_text()
         self._update_detail()
+
+    def _configure_candidate_columns(self) -> None:
+        header = self.candidate_list.header()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for column, width in ((1, 88), (2, 170), (3, 130), (4, 180), (5, 180)):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
+            self.candidate_list.setColumnWidth(column, width)
 
     def _start_search(self) -> None:
         query = self.query_input.text().strip()
@@ -256,24 +266,29 @@ class CurrentEventReviewDialog(QDialog):
     def _show_candidates(self, candidates: list) -> None:
         self._candidates = list(candidates)
         review = review_course_events(self.project, self._candidates)
+        topic_titles = {
+            topic.topic_id: topic.title
+            for topic in self.project.exam_topics()
+        }
         self.candidate_list.clear()
         for match in review:
             candidate = match.candidate
             item = QTreeWidgetItem([
                 candidate.title,
                 self._relevance_text(match.score),
-                ", ".join(match.topic_ids),
+                ", ".join(
+                    topic_titles.get(topic_id, topic_id)
+                    for topic_id in match.topic_ids
+                ),
                 candidate.domain,
-                candidate.seen_at,
-                candidate.retrieved_at,
+                format_local_timestamp(candidate.seen_at),
+                format_local_timestamp(candidate.retrieved_at),
             ])
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(0, Qt.CheckState.Unchecked)
             item.setData(0, self.CANDIDATE_ID_ROLE, candidate.candidate_id)
             item.setData(0, self.MATCH_ROLE, match)
             self.candidate_list.addTopLevelItem(item)
-        for column in range(self.candidate_list.columnCount()):
-            self.candidate_list.resizeColumnToContents(column)
         if self.candidate_list.topLevelItemCount():
             self.candidate_list.setCurrentItem(self.candidate_list.topLevelItem(0))
         self._update_status_text()
@@ -306,8 +321,8 @@ class CurrentEventReviewDialog(QDialog):
         gm = self.lang_manager.get_text
         self.detail_view.setPlainText("\n".join([
             f"{gm('来源', 'Source')}: {candidate.domain}",
-            f"{gm('报道时间', 'Reported')}: {candidate.seen_at}",
-            f"{gm('检索时间', 'Retrieved')}: {candidate.retrieved_at}",
+            f"{gm('报道时间', 'Reported')}: {format_local_timestamp(candidate.seen_at)}",
+            f"{gm('检索时间', 'Retrieved')}: {format_local_timestamp(candidate.retrieved_at)}",
             f"{gm('命中词', 'Matched terms')}: {', '.join(match.matched_terms) or gm('无', 'None')}",
             f"URL: {candidate.url}",
             "",

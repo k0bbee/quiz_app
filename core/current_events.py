@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import hashlib
 import html
-import ipaddress
 import json
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 import requests
 
 from core.app_errors import AppError
+from core.public_url import canonical_public_http_url
 from config import CURRENT_EVENT_MATERIALS_DIR
 from models.course_project import CourseProject, CourseTopic
 from utils.json_io import delete_json, list_json_files, read_json, sanitize_filename_part, write_json
@@ -24,15 +24,6 @@ from utils.logger import warning
 GDELT_CONTEXT_ENDPOINT = "https://api.gdeltproject.org/api/v2/context/context"
 _MAX_GDELT_RESPONSE_BYTES = 2 * 1024 * 1024
 _GDELT_RESPONSE_CHUNK_BYTES = 64 * 1024
-_TRACKING_QUERY_KEYS = {
-    "fbclid",
-    "gclid",
-    "mc_cid",
-    "mc_eid",
-    "ref_src",
-}
-
-
 class _GDELTResponseLimitError(ValueError):
     pass
 
@@ -94,7 +85,7 @@ class CurrentEventCandidate:
         query: str,
         retrieved_at: str,
     ) -> "CurrentEventCandidate":
-        canonical_url = _canonical_public_article_url(url)
+        canonical_url = canonical_public_http_url(url)
         if not canonical_url:
             raise ValueError("Current-event candidate requires a public HTTP(S) URL")
         candidate_id = "event-" + hashlib.sha256(canonical_url.encode("utf-8")).hexdigest()[:20]
@@ -450,11 +441,28 @@ def material_pack_prompt(pack: CurrentEventMaterialPack, max_chars: int = 8000) 
     return (header + "\n\n".join(blocks))[:total_limit]
 
 
-def material_pack_source_refs(pack: CurrentEventMaterialPack) -> list[dict]:
+def material_pack_source_refs(
+    pack: CurrentEventMaterialPack,
+    course_project: CourseProject | None = None,
+) -> list[dict]:
     """Return reviewed Web refs without pretending they are course chunks."""
+    matches_by_id = {}
+    topic_titles = {}
+    if course_project is not None:
+        topic_titles = {
+            topic.topic_id: topic.title
+            for topic in course_project.exam_topics()
+        }
+        matches_by_id = {
+            match.candidate.candidate_id: match
+            for match in review_course_events(
+                course_project,
+                list(pack.selected_candidates()),
+            )
+        }
     refs = []
     for candidate in pack.selected_candidates():
-        refs.append({
+        ref = {
             "source_kind": "current_event",
             "candidate_id": candidate.candidate_id,
             "url": candidate.url,
@@ -465,43 +473,22 @@ def material_pack_source_refs(pack: CurrentEventMaterialPack) -> list[dict]:
             "excerpt": candidate.context[:500],
             "content_hash": hashlib.sha256(candidate.context.encode("utf-8")).hexdigest()[:12],
             "review_status": "user_selected",
-        })
+        }
+        match = matches_by_id.get(candidate.candidate_id)
+        if match is not None:
+            ref["matched_topic_ids"] = list(match.topic_ids)
+            ref["matched_topics"] = [
+                topic_titles.get(topic_id, topic_id)
+                for topic_id in match.topic_ids
+            ]
+            ref["matched_terms"] = list(match.matched_terms)
+        refs.append(ref)
     return refs
 
 
 def _topic_terms(topic: CourseTopic) -> list[str]:
     values = [topic.title, *topic.aliases, *topic.keywords, topic.topic_id.replace("_", " ")]
     return [value.strip() for value in values if len(value.strip()) >= 3]
-
-
-def _canonical_public_article_url(value: str) -> str:
-    try:
-        parsed = urlsplit(str(value or "").strip())
-        port = parsed.port
-    except (TypeError, ValueError):
-        return ""
-    if parsed.scheme.lower() not in {"http", "https"} or not parsed.hostname:
-        return ""
-    if parsed.username is not None or parsed.password is not None:
-        return ""
-    host = parsed.hostname.casefold().rstrip(".")
-    if host in {"localhost", "localhost.localdomain"} or host.endswith(".local"):
-        return ""
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        address = None
-    if address is not None and not address.is_global:
-        return ""
-    netloc = host
-    if port is not None:
-        netloc += f":{port}"
-    query = urlencode([
-        (key, item)
-        for key, item in parse_qsl(parsed.query, keep_blank_values=True)
-        if not key.casefold().startswith("utm_") and key.casefold() not in _TRACKING_QUERY_KEYS
-    ])
-    return urlunsplit((parsed.scheme.lower(), netloc, parsed.path or "/", query, ""))
 
 
 def _deduplicate_candidates(candidates) -> list[CurrentEventCandidate]:

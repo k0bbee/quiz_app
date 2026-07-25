@@ -126,14 +126,24 @@ class CurrentEventReviewDialogTests(unittest.TestCase):
             dialog._show_candidates(candidates(project))
 
             self.assertEqual(2, dialog.candidate_list.topLevelItemCount())
+            self.assertGreaterEqual(dialog.candidate_list.columnWidth(4), 170)
+            self.assertGreaterEqual(dialog.candidate_list.columnWidth(5), 170)
             relevant = dialog.candidate_list.topLevelItem(0)
             low = dialog.candidate_list.topLevelItem(1)
             self.assertEqual(Qt.CheckState.Unchecked, relevant.checkState(0))
             self.assertIn("低相关", low.text(1))
             dialog.candidate_list.setCurrentItem(low)
             self.assertIn("weather.example", dialog.detail_view.toPlainText())
-            self.assertIn("2026-07-15T04:00:00+00:00", dialog.detail_view.toPlainText())
-            self.assertIn("2026-07-15T06:00:00+00:00", dialog.detail_view.toPlainText())
+            self.assertNotIn("T04:00:00+00:00", low.text(4))
+            self.assertNotIn("T06:00:00+00:00", low.text(5))
+            self.assertNotIn(
+                "T04:00:00+00:00",
+                dialog.detail_view.toPlainText(),
+            )
+            self.assertNotIn(
+                "T06:00:00+00:00",
+                dialog.detail_view.toPlainText(),
+            )
 
     def test_search_busy_state_locks_candidate_selection_and_save_actions(self):
         project = law_project()

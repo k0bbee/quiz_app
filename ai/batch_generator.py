@@ -226,7 +226,10 @@ class GenerationWorker(QThread):
             course_refs = []
             self._cached_source_refs_by_topic = {}
         event_refs = (
-            material_pack_source_refs(self.material_pack)
+            material_pack_source_refs(
+                self.material_pack,
+                course_project=self.course_project,
+            )
             if self.material_pack is not None
             else []
         )
