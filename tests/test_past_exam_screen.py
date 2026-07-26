@@ -97,6 +97,35 @@ class PastExamScreenTests(unittest.TestCase):
             )
             self.assertEqual("", screen._create_import_worker().manual_course_id)
 
+    def test_refresh_reloads_course_assignment_choices(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            courses = [
+                SimpleNamespace(course_id="course-a", title="Systems", topics=[]),
+            ]
+            course_manager = SimpleNamespace(
+                load_all=lambda: list(courses),
+                get=lambda course_id: next(
+                    (
+                        course
+                        for course in courses
+                        if course.course_id == course_id
+                    ),
+                    None,
+                ),
+            )
+            screen = PastExamScreen(PastExamManager(tmpdir), course_manager)
+            self.assertEqual(-1, screen.assignment_combo.findData("course-b"))
+
+            courses.append(
+                SimpleNamespace(course_id="course-b", title="Biology", topics=[])
+            )
+            screen.refresh()
+
+            self.assertGreaterEqual(
+                screen.assignment_combo.findData("course-b"),
+                0,
+            )
+
     def test_exam_import_persists_ocr_progress_and_completion(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

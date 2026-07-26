@@ -241,7 +241,6 @@ class PastExamScreen(QWidget):
         self.delete_btn.setText(gm("删除真题", "Delete Exam"))
         self.analyze_btn.setText(gm("分析真题", "Analyze Exam"))
         self.predict_btn.setText(gm("生成预测模拟卷", "Generate Predicted Exam"))
-        self._reload_course_choices()
         self.refresh()
 
     def _reload_course_choices(self):
@@ -297,6 +296,7 @@ class PastExamScreen(QWidget):
             combo.setCurrentIndex(index)
 
     def refresh(self):
+        self._reload_course_choices()
         selected_id = self._selected_exam_id()
         self.exam_list.clear()
         records = self.manager.load_all()
