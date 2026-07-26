@@ -634,6 +634,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             question_ids=[question.question_id],
         )
         started = {}
+        study_flow = types.SimpleNamespace(clear_active=Mock())
         shell = types.SimpleNamespace(
             lang_manager=LanguageManager.instance(),
             set_manager=types.SimpleNamespace(get=lambda set_id: qset),
@@ -641,6 +642,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             quiz_screen=types.SimpleNamespace(
                 start_quiz=lambda question_set, questions, **kwargs: started.update(kwargs)
             ),
+            study_flow=study_flow,
             _active_questions={},
             _show_timer_setting=lambda: False,
             SCREEN_QUIZ="quiz",
@@ -651,6 +653,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
         self.assertEqual("practice", started["submission_mode"])
         self.assertEqual("quiz", started["screen"])
+        study_flow.clear_active.assert_called_once_with()
 
     def test_quiz_mode_uses_inline_toggle_before_answering(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1950,32 +1953,6 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual(("cache",), intent.topic_ids)
             self.assertEqual(1, intent.question_count)
             self.assertEqual("today_plan", intent.source)
-
-    def test_main_window_preserves_today_topic_intent_for_study_setup(self):
-        from ui.main_window import MainWindow
-
-        intent = StudyIntent(
-            course_id="course-a",
-            action=StudyAction.PRACTICE_TOPIC,
-            topic_ids=("cache",),
-            question_count=6,
-            source="today_plan",
-        )
-        shell = types.SimpleNamespace(
-            _current_course_id=lambda: "course-a",
-            _pending_study_intent=None,
-            navigate_to=Mock(return_value=True),
-            SCREEN_TOPIC_SELECTION=4,
-            topic_screen=types.SimpleNamespace(
-                apply_study_intent=Mock(),
-            ),
-        )
-
-        MainWindow._on_study_requested(shell, intent)
-
-        self.assertIs(intent, shell._pending_study_intent)
-        shell.navigate_to.assert_called_once_with(shell.SCREEN_TOPIC_SELECTION)
-        shell.topic_screen.apply_study_intent.assert_called_once_with(intent)
 
     def test_home_screen_can_show_and_clear_resume_draft_action(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -3286,7 +3263,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 snapshot_manager=snapshot_manager,
                 results_screen=FakeResultsScreen(),
                 _active_questions={},
-                _active_study_intent=study_intent,
+                study_flow=types.SimpleNamespace(
+                    take_active_intent=Mock(return_value=study_intent),
+                ),
                 lang_manager=LanguageManager.instance(),
                 SCREEN_RESULTS=3,
                 navigate_to=lambda screen: shown.setdefault("screen", screen),
@@ -3297,7 +3276,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIsNone(snapshot_manager.get(snapshot.snapshot_id))
             self.assertEqual(record.progress_id, shown["record"].progress_id)
             self.assertIs(study_intent, shown["study_intent"])
-            self.assertIsNone(shell._active_study_intent)
+            shell.study_flow.take_active_intent.assert_called_once_with()
 
     def test_home_resume_draft_deletes_snapshot_when_questions_are_missing(self):
         from ui.main_window import MainWindow

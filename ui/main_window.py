@@ -21,13 +21,14 @@ from core.background_task_recovery import (
 from core.topic_display import topic_display_name
 from core.past_exam_prediction import prediction_prefill_status
 from core.session_retry import SessionRetryMode, session_retry_question_ids
-from core.study_intent import StudyAction, StudyIntent
+from core.study_intent import StudyIntent
 from ui.dialogs.background_task_dialog import BackgroundTaskDialog
 from ui.generation_launch_controller import (
     GenerationLaunchController,
     generation_launch_copy,
 )
 from ui.session_retry_presenter import session_retry_copy
+from ui.study_flow_controller import StudyFlowController
 from ui.navigation import NavigationRouter
 from ui.shell import AppShell
 from config import APP_NAME, APP_NAME_EN
@@ -109,8 +110,6 @@ class MainWindow(QMainWindow):
         self._question_bank_screen = None
         self._past_exam_screen = None
         self._active_questions: dict = {}
-        self._pending_study_intent: StudyIntent | None = None
-        self._active_study_intent: StudyIntent | None = None
 
         # Management screens 6-8 are lazily created on first access.
         self.stack.addWidget(self.home_screen)       # 0
@@ -120,6 +119,23 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.progress_screen)    # 4
 
         self._create_application_shell()
+        self.study_flow = StudyFlowController(
+            question_bank=self.question_bank,
+            course_manager=self.course_manager,
+            topic_screen=self.topic_screen,
+            quiz_screen=self.quiz_screen,
+            lang_manager=self.lang_manager,
+            navigate=self.navigate_to,
+            setup_screen_index=self.SCREEN_TOPIC_SELECTION,
+            quiz_screen_index=self.SCREEN_QUIZ,
+            courses_screen_index=self.SCREEN_COURSES,
+            current_course_id=self._current_course_id,
+            course_changed=self._on_course_changed,
+            resume_session=self._on_resume_abandoned,
+            review_questions=self._on_practice_incorrect,
+            generate_questions=self._on_ai_generate,
+            show_timer=self._show_timer_setting,
+        )
 
         # Keep the shell free of duplicate menu navigation.
         self.menuBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -240,7 +256,7 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         # Home screen
         self.home_screen.start_practice.connect(self._on_start_practice)
-        self.home_screen.study_requested.connect(self._on_study_requested)
+        self.home_screen.study_requested.connect(self.study_flow.handle_intent)
         self.home_screen.resume_practice.connect(self._on_resume_abandoned)
         self.home_screen.practice_incorrect.connect(self._on_practice_incorrect)
         self.home_screen.ai_generate.connect(self._on_ai_generate)
@@ -260,9 +276,7 @@ class MainWindow(QMainWindow):
         # Topic selection
         self.topic_screen.quiz_start.connect(self._on_quiz_start)
         self.topic_screen.study_start.connect(self._on_study_quiz_start)
-        self.topic_screen.generate_missing.connect(
-            self._on_generate_missing_study_questions
-        )
+        self.topic_screen.generate_missing.connect(self.study_flow.generate_missing)
         self.topic_screen.export_mock_exam.connect(self._on_export_mock_exam)
         self.topic_screen.export_mock_exams.connect(self._on_export_mock_exams)
         self.topic_screen.regenerate_questions.connect(self._on_regenerate_question_set)
@@ -278,7 +292,7 @@ class MainWindow(QMainWindow):
         self.results_screen.retry_unsure.connect(self._on_retry_unsure)
         self.results_screen.retry_review.connect(self._on_retry_review)
         self.results_screen.retry_all.connect(self._on_retry_all)
-        self.results_screen.study_requested.connect(self._on_study_requested)
+        self.results_screen.study_requested.connect(self.study_flow.handle_intent)
         self.results_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
         self.results_screen.review_topic_requested.connect(self._on_review_progress_topic)
         self.progress_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
@@ -529,52 +543,8 @@ class MainWindow(QMainWindow):
     # --- Slot handlers ---
 
     def _on_start_practice(self):
-        self._pending_study_intent = None
-        self.topic_screen.clear_study_intent()
+        self.study_flow.clear_setup()
         self.navigate_to(self.SCREEN_TOPIC_SELECTION)
-
-    def _on_study_requested(self, intent: StudyIntent) -> None:
-        """Route one complete home recommendation without losing its scope."""
-        if not isinstance(intent, StudyIntent):
-            return
-        if intent.course_id and intent.course_id != self._current_course_id():
-            if (
-                self.course_manager.get(intent.course_id) is not None
-                and self.course_manager.set_current(intent.course_id)
-            ):
-                self._on_course_changed()
-
-        if intent.action is StudyAction.RESUME_SESSION:
-            self._on_resume_abandoned()
-            return
-        if intent.action is StudyAction.REVIEW_QUESTIONS:
-            self._on_practice_incorrect(intent)
-            return
-        if intent.action in {
-            StudyAction.PRACTICE_TOPIC,
-            StudyAction.CUSTOM_PRACTICE,
-        }:
-            self._pending_study_intent = intent
-            if self.navigate_to(self.SCREEN_TOPIC_SELECTION):
-                self.topic_screen.apply_study_intent(intent)
-            return
-        if intent.action is StudyAction.GENERATE_MISSING:
-            initial_plan = None
-            if intent.topic_ids:
-                weight = max(1, 100 // len(intent.topic_ids))
-                topic_weights = {
-                    topic_id: weight for topic_id in intent.topic_ids
-                }
-                topic_weights[intent.topic_ids[-1]] += 100 - sum(topic_weights.values())
-                initial_plan = ExamGenerationPlan(
-                    question_count=max(1, intent.question_count),
-                    selected_topics=intent.topic_ids,
-                    topic_weights=topic_weights,
-                )
-            self._on_ai_generate(initial_plan=initial_plan)
-            return
-        if intent.action is StudyAction.IMPORT_COURSE:
-            self.navigate_to(self.SCREEN_COURSES)
 
     def _on_study_quiz_start(
         self,
@@ -582,51 +552,10 @@ class MainWindow(QMainWindow):
         question_ids: list[str],
     ) -> None:
         """Start the prefilled practice without asking for scope again."""
-        if not isinstance(intent, StudyIntent):
-            return
-        questions = self.question_bank.get_many(
+        self._active_questions = self.study_flow.start_prefilled(
+            intent,
             question_ids,
-            course_id=intent.course_id,
         )
-        if not questions:
-            return
-        self._pending_study_intent = None
-        self._active_study_intent = intent
-        self._active_questions = {
-            question.question_id: question for question in questions
-        }
-        if intent.topic_ids:
-            label = topic_display_name(
-                questions[0].topic,
-                self.course_manager.get(intent.course_id),
-                self.lang_manager.current,
-                questions[0].topic_title(),
-            )
-        else:
-            label = self.lang_manager.get_text("今日练习", "Today's Practice")
-        self.quiz_screen.start_quiz_custom(
-            questions,
-            label,
-            show_timer=self._show_timer_setting(),
-            submission_mode="practice",
-        )
-        self.navigate_to(self.SCREEN_QUIZ)
-
-    def _on_generate_missing_study_questions(
-        self,
-        intent: StudyIntent,
-        missing_count: int,
-    ) -> None:
-        """Open generation prefilled with only the missing study questions."""
-        if not isinstance(intent, StudyIntent) or missing_count <= 0:
-            return
-        self._on_study_requested(StudyIntent(
-            course_id=intent.course_id,
-            action=StudyAction.GENERATE_MISSING,
-            topic_ids=intent.topic_ids,
-            question_count=missing_count,
-            source=intent.source,
-        ))
 
     def _resume_abandoned_draft(self):
         """Return the latest resumable abandoned draft details, or None."""
@@ -765,6 +694,7 @@ class MainWindow(QMainWindow):
 
         submission_mode = "practice"
 
+        self.study_flow.clear_active()
         self._active_questions = {q.question_id: q for q in questions}
         self.quiz_screen.start_quiz(
             question_set,
@@ -893,9 +823,8 @@ class MainWindow(QMainWindow):
             progress_record,
             questions=self._active_questions,
             lang=self.lang_manager.current,
-            study_intent=getattr(self, "_active_study_intent", None),
+            study_intent=self.study_flow.take_active_intent(),
         )
-        self._active_study_intent = None
         self.navigate_to(self.SCREEN_RESULTS)
 
     def _on_retry_incorrect(self):
