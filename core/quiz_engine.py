@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import random
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Optional
-
-from PyQt6.QtCore import QObject, pyqtSignal
 
 from models.question import Question
 from models.question_set import QuestionSet
@@ -16,18 +15,31 @@ from core.grader import Grader
 from utils.constants import QuestionType, QuizState
 
 
-class QuizSession(QObject):
+class _EventSignal:
+    """Minimal synchronous event used by the Qt-free session model."""
+
+    def __init__(self) -> None:
+        self._subscribers: list[Callable[..., object]] = []
+
+    def connect(self, callback: Callable[..., object]) -> None:
+        if not callable(callback):
+            raise TypeError("event subscriber must be callable")
+        self._subscribers.append(callback)
+
+    def emit(self, *args: object) -> None:
+        for callback in tuple(self._subscribers):
+            callback(*args)
+
+
+class QuizSession:
     """Manages a single quiz attempt: navigation, grading, progress recording."""
 
-    # Signals
-    state_changed = pyqtSignal(str)  # QuizState value
-    question_changed = pyqtSignal(int, int)  # current_index, total
-    question_graded = pyqtSignal(str, bool)  # question_id, is_correct
-    session_completed = pyqtSignal(str)  # progress_id
-    error_occurred = pyqtSignal(str)  # error message
-
-    def __init__(self):
-        super().__init__()
+    def __init__(self) -> None:
+        self.state_changed = _EventSignal()
+        self.question_changed = _EventSignal()
+        self.question_graded = _EventSignal()
+        self.session_completed = _EventSignal()
+        self.error_occurred = _EventSignal()
         self._state = QuizState.NOT_STARTED
         self._set: Optional[QuestionSet] = None
         self._questions: list[Question] = []

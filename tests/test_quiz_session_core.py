@@ -1,3 +1,6 @@
+import builtins
+import importlib
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -9,6 +12,27 @@ from utils.constants import Difficulty, QuestionType, QuizState
 
 
 class QuizSessionCoreTests(unittest.TestCase):
+    def test_quiz_session_imports_and_emits_without_pyqt(self):
+        module_name = "core.quiz_engine"
+        loaded_module = sys.modules.pop(module_name)
+        real_import = builtins.__import__
+
+        def import_without_pyqt(name, *args, **kwargs):
+            if name == "PyQt6" or name.startswith("PyQt6."):
+                raise ModuleNotFoundError("PyQt6 intentionally unavailable")
+            return real_import(name, *args, **kwargs)
+
+        try:
+            with patch("builtins.__import__", side_effect=import_without_pyqt):
+                module = importlib.import_module(module_name)
+            errors = []
+            session = module.QuizSession()
+            session.error_occurred.connect(errors.append)
+            session.start_with_questions([])
+            self.assertEqual(["No questions available."], errors)
+        finally:
+            sys.modules[module_name] = loaded_module
+
     def _make_question(self, question_id: str, topic: str = "cache") -> Question:
         return Question(
             question_id=question_id,
