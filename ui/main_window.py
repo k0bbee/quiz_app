@@ -13,11 +13,6 @@ from core.language_manager import LanguageManager
 from core.question_set_regenerator import persist_new_question_set, persist_regenerated_question_set
 from core.question_set_builder import build_ai_question_set
 from core.background_task_presenter import build_task_center_view, task_toolbar_text
-from core.background_task_recovery import (
-    generation_plan_from_task_metadata,
-    task_destination,
-    task_retry_assessment,
-)
 from core.topic_display import topic_display_name
 from core.past_exam_prediction import prediction_prefill_status
 from core.session_retry import SessionRetryMode, session_retry_question_ids
@@ -29,6 +24,7 @@ from ui.generation_launch_controller import (
 )
 from ui.session_retry_presenter import session_retry_copy
 from ui.study_flow_controller import StudyFlowController
+from ui.task_recovery_controller import TaskRecoveryController
 from ui.navigation import NavigationRouter
 from ui.shell import AppShell
 from config import APP_NAME, APP_NAME_EN
@@ -135,6 +131,20 @@ class MainWindow(QMainWindow):
             review_questions=self._on_practice_incorrect,
             generate_questions=self._on_ai_generate,
             show_timer=self._show_timer_setting,
+        )
+        self.task_recovery = TaskRecoveryController(
+            task_center=self.task_center,
+            course_manager=self.course_manager,
+            current_language=lambda: self.lang_manager.current,
+            navigate=self.navigate_to,
+            open_settings=self.open_settings,
+            course_changed=self._on_course_changed,
+            get_course_screen=self._get_course_screen,
+            get_past_exam_screen=self._get_past_exam_screen,
+            generate_questions=self._on_ai_generate,
+            courses_screen_index=self.SCREEN_COURSES,
+            past_exams_screen_index=self.SCREEN_PAST_EXAMS,
+            question_bank_screen_index=self.SCREEN_QUESTION_BANK,
         )
 
         # Keep the shell free of duplicate menu navigation.
@@ -453,92 +463,10 @@ class MainWindow(QMainWindow):
         if requested_task_id:
             action = str(getattr(dialog, "requested_action", "") or "")
             if action == "retry":
-                self._retry_task_context(requested_task_id)
+                self.task_recovery.retry(requested_task_id)
             else:
-                self._open_task_page(requested_task_id)
+                self.task_recovery.open_page(requested_task_id)
         self._refresh_task_center_action()
-
-    def _open_task_page(self, task_id: str) -> bool:
-        """Navigate to a task owner without restoring or executing persisted inputs."""
-        try:
-            snapshot = self.task_center.get(task_id)
-        except (KeyError, OSError, ValueError):
-            return False
-        destination = task_destination(snapshot.kind)
-        metadata = snapshot.metadata or {}
-        course_id = str(metadata.get("course_id", "") or "")
-        if course_id and self.course_manager.get(course_id) is not None:
-            if self.course_manager.set_current(course_id):
-                self._on_course_changed()
-
-        if destination == "settings_data":
-            self.open_settings("data")
-            return True
-        destinations = {
-            "courses": self.SCREEN_COURSES,
-            "past_exams": self.SCREEN_PAST_EXAMS,
-            "question_bank": self.SCREEN_QUESTION_BANK,
-            "generation": self.SCREEN_COURSES,
-        }
-        screen = destinations.get(destination)
-        if screen is None or not self.navigate_to(screen):
-            return False
-        return True
-
-    def _retry_task_context(self, task_id: str) -> bool:
-        """Revalidate retry metadata, then restore inputs without auto-starting work."""
-        try:
-            snapshot = self.task_center.get(task_id)
-        except (KeyError, OSError, ValueError):
-            return False
-        assessment = task_retry_assessment(snapshot, self.lang_manager.current)
-        if not assessment.can_retry:
-            return False
-        return self._open_task_context(task_id)
-
-    def _open_task_context(self, task_id: str) -> bool:
-        """Return to the existing owner page and restore safe persisted inputs."""
-        try:
-            snapshot = self.task_center.get(task_id)
-        except (KeyError, OSError, ValueError):
-            return False
-        destination = task_destination(snapshot.kind)
-        metadata = snapshot.metadata or {}
-        course_id = str(metadata.get("course_id", "") or "")
-
-        if course_id and self.course_manager.get(course_id) is not None:
-            if self.course_manager.set_current(course_id):
-                self._on_course_changed()
-
-        if destination == "courses":
-            if not self.navigate_to(self.SCREEN_COURSES):
-                return False
-            self._get_course_screen().restore_task_context(snapshot)
-            return True
-        if destination == "past_exams":
-            if not self.navigate_to(self.SCREEN_PAST_EXAMS):
-                return False
-            self._get_past_exam_screen().restore_task_context(snapshot)
-            return True
-        if destination == "question_bank":
-            return self.navigate_to(self.SCREEN_QUESTION_BANK)
-        if destination == "settings_data":
-            self.open_settings("data")
-            return True
-        if destination == "generation":
-            course = self.course_manager.get(course_id) if course_id else self.course_manager.current()
-            if course is None:
-                return self.navigate_to(self.SCREEN_COURSES)
-            if not self.navigate_to(self.SCREEN_COURSES):
-                return False
-            self._get_course_screen().restore_task_context(snapshot)
-            self._on_ai_generate(
-                course_override=course,
-                initial_plan=generation_plan_from_task_metadata(metadata),
-                recovery_context=metadata,
-            )
-            return True
-        return False
 
     # --- Slot handlers ---
 

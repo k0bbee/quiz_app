@@ -305,10 +305,9 @@ class UiThemeTests(unittest.TestCase):
             )
             import_center.fail(import_task.task_id, "application closed")
             main_window.task_center = import_center
+            main_window.task_recovery.task_center = import_center
 
-            reopened = getattr(main_window, "_open_task_context", lambda _task_id: False)(
-                import_task.task_id
-            )
+            reopened = main_window.task_recovery.restore(import_task.task_id)
 
             self.assertTrue(reopened)
             self.assertEqual(main_window.SCREEN_COURSES, main_window.stack.currentIndex())
