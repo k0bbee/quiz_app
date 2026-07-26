@@ -1254,6 +1254,47 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertIn("下一步建议", screen.next_action_label.text())
         self.assertIn("先重做错题", screen.next_action_label.text())
 
+    def test_results_screen_preserves_study_intent_and_emits_repeat(self):
+        question = self._make_question("q-cache", "cache")
+        record = ProgressRecord.create_new("today-cache")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord(
+                question_id=question.question_id,
+                index_in_session=0,
+                user_answer="A",
+                is_correct=True,
+            )
+        ]
+        record.summary = SessionSummary.compute(record.answers, 1, 10)
+        intent = StudyIntent(
+            course_id="course-a",
+            action=StudyAction.PRACTICE_TOPIC,
+            topic_ids=("cache",),
+            question_count=1,
+            source="today_plan",
+        )
+        screen = self._make_results_screen()
+        requests = []
+        signal = getattr(screen, "study_requested", None)
+        self.assertIsNotNone(signal)
+        signal.connect(requests.append)
+        try:
+            screen.set_results(
+                record,
+                {question.question_id: question},
+                "zh",
+                study_intent=intent,
+            )
+        except TypeError as exc:
+            self.fail(f"results screen cannot preserve study intent: {exc}")
+
+        self.assertIs(intent, screen.current_study_intent)
+        self.assertFalse(screen.repeat_study_btn.isHidden())
+        self.assertIn("再练", screen.repeat_study_btn.text())
+        screen.repeat_study_btn.click()
+        self.assertEqual([intent], requests)
+
     def test_results_screen_recommends_action_for_topic_with_most_incorrect_answers(self):
         record = ProgressRecord.create_new("set-1")
         record.status = "completed"
@@ -3218,18 +3259,34 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             record = ProgressRecord.create_new(qset.set_id)
             record.status = "completed"
             shown = {}
+            study_intent = StudyIntent(
+                course_id="course-a",
+                action=StudyAction.PRACTICE_TOPIC,
+                topic_ids=("cache",),
+                question_count=1,
+                source="today_plan",
+            )
 
             class FakeResultsScreen:
-                def set_results(self, progress_record, questions, lang):
+                def set_results(
+                    self,
+                    progress_record,
+                    questions,
+                    lang,
+                    *,
+                    study_intent=None,
+                ):
                     shown["record"] = progress_record
                     shown["questions"] = questions
                     shown["lang"] = lang
+                    shown["study_intent"] = study_intent
 
             shell = types.SimpleNamespace(
                 progress_manager=progress_manager,
                 snapshot_manager=snapshot_manager,
                 results_screen=FakeResultsScreen(),
                 _active_questions={},
+                _active_study_intent=study_intent,
                 lang_manager=LanguageManager.instance(),
                 SCREEN_RESULTS=3,
                 navigate_to=lambda screen: shown.setdefault("screen", screen),
@@ -3239,6 +3296,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             self.assertIsNone(snapshot_manager.get(snapshot.snapshot_id))
             self.assertEqual(record.progress_id, shown["record"].progress_id)
+            self.assertIs(study_intent, shown["study_intent"])
+            self.assertIsNone(shell._active_study_intent)
 
     def test_home_resume_draft_deletes_snapshot_when_questions_are_missing(self):
         from ui.main_window import MainWindow

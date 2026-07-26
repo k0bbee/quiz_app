@@ -8,6 +8,7 @@ from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QAction
 
 from core.language_manager import LanguageManager
+from core.study_intent import StudyAction, StudyIntent
 from models.progress import ProgressRecord, AnswerRecord
 from ui.widgets.question_review_card import QuestionReviewCard
 from ui.widgets.progress_summary_bar import ProgressSummaryBar
@@ -25,6 +26,7 @@ class ResultsScreen(QWidget):
     retry_all = pyqtSignal()
     practice_topic_requested = pyqtSignal(str)
     review_topic_requested = pyqtSignal(str)
+    study_requested = pyqtSignal(object)
 
     def __init__(self, parent=None, *, course_manager: CourseProjectManager):
         super().__init__(parent)
@@ -34,6 +36,7 @@ class ResultsScreen(QWidget):
         self.lang_manager = LanguageManager.instance()
         self.course_manager = course_manager
         self._course_project = None
+        self.current_study_intent: StudyIntent | None = None
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -76,6 +79,14 @@ class ResultsScreen(QWidget):
         self.next_action_btn.setVisible(False)
         self.next_action_btn.clicked.connect(self._emit_next_action)
         layout.addWidget(self.next_action_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.repeat_study_btn = QPushButton()
+        self.repeat_study_btn.setObjectName("secondaryButton")
+        self.repeat_study_btn.hide()
+        self.repeat_study_btn.clicked.connect(self._emit_repeat_study)
+        layout.addWidget(
+            self.repeat_study_btn,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
         self._recommended_topic_id = ""
         self._recommended_action = ""
         self._course_project = self._resolve_course_project()
@@ -151,16 +162,32 @@ class ResultsScreen(QWidget):
 
         # Re-render results if a record is loaded
         if self.current_record is not None:
-            self.set_results(self.current_record, self._questions, self.lang_manager.current)
+            self.set_results(
+                self.current_record,
+                self._questions,
+                self.lang_manager.current,
+                study_intent=self.current_study_intent,
+            )
 
-    def set_results(self, record: ProgressRecord, questions: dict = None, lang: str = "zh"):
+    def set_results(
+        self,
+        record: ProgressRecord,
+        questions: dict = None,
+        lang: str = "zh",
+        *,
+        study_intent: StudyIntent | None = None,
+    ):
         """Display the results for a completed quiz session."""
         self.current_record = record
+        self.current_study_intent = (
+            study_intent if isinstance(study_intent, StudyIntent) else None
+        )
         self._questions = questions or {}
         self._lang = lang
         self._recommended_topic_id = ""
         self._recommended_action = ""
         self.next_action_btn.setVisible(False)
+        self.repeat_study_btn.setVisible(False)
         self._set_retry_action_state(False, False, False, False)
 
         if record is None:
@@ -283,6 +310,34 @@ class ResultsScreen(QWidget):
             has_review,
             bool(record.answers),
         )
+        self._update_repeat_study_action()
+
+    def _update_repeat_study_action(self) -> None:
+        intent = self.current_study_intent
+        if intent is None:
+            self.repeat_study_btn.hide()
+            return
+        if intent.action is StudyAction.PRACTICE_TOPIC:
+            text = self.lang_manager.get_text(
+                "再练该主题",
+                "Practice This Topic Again",
+            )
+        elif intent.source == "today_plan":
+            text = self.lang_manager.get_text(
+                "继续今日计划",
+                "Continue Today's Plan",
+            )
+        else:
+            text = self.lang_manager.get_text(
+                "再次练习",
+                "Practice Again",
+            )
+        self.repeat_study_btn.setText(text)
+        self.repeat_study_btn.show()
+
+    def _emit_repeat_study(self) -> None:
+        if self.current_study_intent is not None:
+            self.study_requested.emit(self.current_study_intent)
 
     def _set_retry_action_state(
         self,
