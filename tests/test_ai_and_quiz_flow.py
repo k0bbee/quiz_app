@@ -2040,6 +2040,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual("75%", screen.topic_table.item(0, 3).text())
             self.assertEqual("1/1", screen.topic_table.item(0, 4).text())
             self.assertEqual("", screen.recommendation_label.text())
+            self.assertTrue(screen.recommendation_label.isHidden())
 
     def test_progress_dashboard_reuses_course_search_results_for_topic_table(self):
         class SearchOnlyQuestionBank:
@@ -2212,6 +2213,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIn("Cache", screen.recommendation_label.text())
             self.assertNotIn("Process", screen.recommendation_label.text())
             self.assertNotIn("Virtual Memory", screen.recommendation_label.text())
+            self.assertFalse(screen.recommendation_label.isHidden())
             self.assertEqual("", screen.source_refs_label.text())
             self.assertTrue(screen.source_refs_label.isHidden())
 

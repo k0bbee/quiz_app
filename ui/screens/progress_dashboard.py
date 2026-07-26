@@ -231,6 +231,7 @@ class ProgressDashboard(QWidget):
             ))
             self.detail_label.clear()
             self.recommendation_label.clear()
+            self.recommendation_label.hide()
             self._set_source_refs([])
         else:
             partial_sessions = stats.get("partial_sessions", 0)
@@ -407,6 +408,7 @@ class ProgressDashboard(QWidget):
 
         if not labels:
             self.recommendation_label.clear()
+            self.recommendation_label.hide()
             self._set_source_refs([])
             return
 
@@ -415,6 +417,7 @@ class ProgressDashboard(QWidget):
             f"建议复习: {topics}",
             f"Suggested review: {topics}",
         ))
+        self.recommendation_label.show()
         self._set_source_refs(self._source_refs_for_topics(questions, set(recommended_topic_values)))
 
     def _set_source_refs(
