@@ -852,11 +852,14 @@ class CourseScreen(QWidget):
             self.refresh()
         self.generate_questions_requested.emit(course_id)
 
-    @staticmethod
-    def _create_current_event_dialog(project, parent=None):
+    def _create_current_event_dialog(self, project, parent=None):
         from ui.dialogs.current_event_review_dialog import CurrentEventReviewDialog
 
-        return CurrentEventReviewDialog(project, parent=parent)
+        return CurrentEventReviewDialog(
+            project,
+            parent=parent,
+            material_manager=self.current_event_manager,
+        )
 
     def _review_current_events(self):
         current_item = self.project_list.currentItem()

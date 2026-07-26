@@ -45,6 +45,25 @@ class AcceptedDialog:
 
 
 class CurrentEventCourseFlowTests(unittest.TestCase):
+    def test_default_review_dialog_uses_injected_material_manager(self):
+        project = law_project()
+        material_manager = object()
+        screen = CourseScreen(
+            Manager(project),
+            current_event_manager=material_manager,
+        )
+
+        with patch(
+            "ui.dialogs.current_event_review_dialog.CurrentEventReviewDialog"
+        ) as dialog_class:
+            screen._create_current_event_dialog(project, parent=screen)
+
+        dialog_class.assert_called_once_with(
+            project,
+            parent=screen,
+            material_manager=material_manager,
+        )
+
     def test_course_secondary_action_opens_review_for_selected_course(self):
         project = law_project()
         created = []
