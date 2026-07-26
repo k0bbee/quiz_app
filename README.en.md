@@ -49,7 +49,7 @@ python scripts/check_environment.py --json
 |---|---|
 | Home | A transparent next-action recommendation based on unfinished drafts, incorrect answers, weak topics, available question sets, and imported courses |
 | Course management | Multi-file course import, safe cancellation, summaries, stable topics, course renaming, exam-scope configuration, source navigation, and transactional merging of courses with their questions, sets, mastery, current-event materials, and past exams |
-| Past exams | Import TXT/Markdown/PDF/DOCX/PPTX exams, apply OCR to scanned PDFs, assign a course, and build explainable exam profiles |
+| Past exams | Import TXT/Markdown/PDF/DOCX/PPTX exams, apply OCR to scanned PDFs, assign a course, build explainable exam profiles, and delete app-managed records without touching the original external file |
 | Question generation | Stream accepted questions one at a time, validate plan slots and source references, accept additional instructions while generation is running, and safely preserve partial results on cancellation |
 | Q&A review | Ask follow-up questions inside the selected course workspace using only the current exam scope, course summary, and original source evidence; requests remain cancellable and non-blocking |
 | Current-event materials | Explicitly search and manually review public news candidates, including low-relevance results; only selected items enter generation, and review metadata remains attached to generated questions |
