@@ -1502,6 +1502,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 affected_set_ids=("set-a",),
                 progress_ids=("progress-a", "progress-b", "progress-c"),
                 snapshot_ids=("snapshot-a",),
+                past_exam_ids=("exam-a", "exam-b"),
             )
             language_manager = LanguageManager.instance()
             previous_language = language_manager.current
@@ -1514,6 +1515,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertIn("相关题集：1", text)
             self.assertIn("学习记录：3（始终保留）", text)
             self.assertIn("未完成草稿：1", text)
+            self.assertIn("历史真题：2（保留并解除课程归属）", text)
 
     def test_project_manager_current_returns_none_without_explicit_pointer(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -1087,6 +1087,7 @@ class CourseScreen(QWidget):
             self.set_manager,
             self.progress_manager,
             self.snapshot_manager,
+            self.past_exam_manager,
         )
         mode = self._choose_course_removal_mode(project, impact)
         if mode is None:
@@ -1099,6 +1100,7 @@ class CourseScreen(QWidget):
             set_manager=self.set_manager,
             progress_manager=self.progress_manager,
             snapshot_manager=self.snapshot_manager,
+            past_exam_manager=self.past_exam_manager,
         )
         if not result.success:
             rollback_note = ""
@@ -1214,14 +1216,17 @@ class CourseScreen(QWidget):
                 f"相关题目：{impact.question_count}\n"
                 f"相关题集：{impact.question_set_count}\n"
                 f"学习记录：{impact.progress_count}（始终保留）\n"
-                f"未完成草稿：{impact.snapshot_count}"
+                f"未完成草稿：{impact.snapshot_count}\n"
+                f"历史真题：{impact.past_exam_count}（保留并解除课程归属）"
             ),
             (
                 f"Delete course '{project.title}'\n\n"
                 f"Linked questions: {impact.question_count}\n"
                 f"Linked question sets: {impact.question_set_count}\n"
                 f"Learning records: {impact.progress_count} (always kept)\n"
-                f"Unfinished drafts: {impact.snapshot_count}"
+                f"Unfinished drafts: {impact.snapshot_count}\n"
+                f"Historical exams: {impact.past_exam_count} "
+                "(kept and unassigned)"
             ),
         )
 

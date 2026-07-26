@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 
 
@@ -17,6 +17,7 @@ class CourseAssetImpact:
     affected_set_ids: tuple[str, ...] = ()
     progress_ids: tuple[str, ...] = ()
     snapshot_ids: tuple[str, ...] = ()
+    past_exam_ids: tuple[str, ...] = ()
 
     @property
     def question_count(self) -> int:
@@ -33,6 +34,10 @@ class CourseAssetImpact:
     @property
     def snapshot_count(self) -> int:
         return len(self.snapshot_ids)
+
+    @property
+    def past_exam_count(self) -> int:
+        return len(self.past_exam_ids)
 
 
 class CourseRemovalMode(str, Enum):
@@ -57,6 +62,7 @@ def analyze_course_asset_impact(
     set_manager=None,
     progress_manager=None,
     snapshot_manager=None,
+    past_exam_manager=None,
 ) -> CourseAssetImpact:
     """Return direct and indirect assets linked to ``course_id``."""
     normalized_course_id = str(course_id or "").strip()
@@ -94,6 +100,13 @@ def analyze_course_asset_impact(
         if str(getattr(snapshot, "set_id", "") or "").strip() in affected_set_ids
     }
     snapshot_ids.discard("")
+    past_exam_ids = {
+        str(getattr(record, "exam_id", "") or "").strip()
+        for record in _load_all(past_exam_manager)
+        if str(getattr(record, "course_id", "") or "").strip()
+        == normalized_course_id
+    }
+    past_exam_ids.discard("")
 
     return CourseAssetImpact(
         course_id=normalized_course_id,
@@ -102,6 +115,7 @@ def analyze_course_asset_impact(
         affected_set_ids=tuple(sorted(affected_set_ids)),
         progress_ids=tuple(sorted(progress_ids)),
         snapshot_ids=tuple(sorted(snapshot_ids)),
+        past_exam_ids=tuple(sorted(past_exam_ids)),
     )
 
 
@@ -114,6 +128,7 @@ def remove_course_assets(
     set_manager=None,
     progress_manager=None,
     snapshot_manager=None,
+    past_exam_manager=None,
 ) -> CourseRemovalResult:
     """Apply one course-removal policy with compensating rollback on failure."""
     mode = CourseRemovalMode(mode)
@@ -123,6 +138,7 @@ def remove_course_assets(
         set_manager,
         progress_manager,
         snapshot_manager,
+        past_exam_manager,
     )
     project = course_manager.get(impact.course_id)
     if project is None:
@@ -133,6 +149,7 @@ def remove_course_assets(
     questions = _load_by_ids(question_bank, "get", impact.question_ids)
     question_sets = _load_by_ids(set_manager, "get", impact.affected_set_ids)
     snapshots = _load_by_ids(snapshot_manager, "get", impact.snapshot_ids)
+    past_exams = _load_by_ids(past_exam_manager, "get", impact.past_exam_ids)
 
     try:
         if mode is CourseRemovalMode.UNLINK_ASSETS:
@@ -153,6 +170,7 @@ def remove_course_assets(
                 set_manager,
                 snapshot_manager,
             )
+        _unlink_past_exams(past_exams, past_exam_manager)
         _require_success(
             course_manager.delete(impact.course_id),
             f"delete course {impact.course_id}",
@@ -164,10 +182,12 @@ def remove_course_assets(
             questions,
             question_sets,
             snapshots,
+            past_exams,
             course_manager,
             question_bank,
             set_manager,
             snapshot_manager,
+            past_exam_manager,
         )
         return CourseRemovalResult(
             False,
@@ -248,16 +268,34 @@ def _delete_linked_bank(
         )
 
 
+def _unlink_past_exams(past_exams, past_exam_manager):
+    if past_exam_manager is None:
+        return
+    for record in past_exams:
+        updated = replace(
+            record,
+            course_id="",
+            assignment_mode="unassigned",
+            analysis_status="pending",
+        )
+        _require_success(
+            past_exam_manager.save_record(updated),
+            f"unlink historical exam {record.exam_id}",
+        )
+
+
 def _restore_assets(
     project,
     was_current,
     questions,
     question_sets,
     snapshots,
+    past_exams,
     course_manager,
     question_bank,
     set_manager,
     snapshot_manager,
+    past_exam_manager,
 ) -> list[str]:
     errors: list[str] = []
     restore_groups = (
@@ -271,6 +309,15 @@ def _restore_assets(
         for item in items:
             try:
                 _require_success(manager.save(deepcopy(item)), f"restore {label}")
+            except Exception as exc:
+                errors.append(str(exc))
+    if past_exam_manager is not None:
+        for record in past_exams:
+            try:
+                _require_success(
+                    past_exam_manager.save_record(deepcopy(record)),
+                    f"restore historical exam {record.exam_id}",
+                )
             except Exception as exc:
                 errors.append(str(exc))
     try:
