@@ -1444,12 +1444,14 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             set_manager = Mock(name="set_manager")
             progress_manager = Mock(name="progress_manager")
             snapshot_manager = Mock(name="snapshot_manager")
+            past_exam_manager = Mock(name="past_exam_manager")
             screen = CourseScreen(
                 manager,
                 question_bank=question_bank,
                 set_manager=set_manager,
                 progress_manager=progress_manager,
                 snapshot_manager=snapshot_manager,
+                past_exam_manager=past_exam_manager,
             )
             screen.project_list.setCurrentRow(0)
             impact = CourseAssetImpact(
@@ -1481,6 +1483,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 set_manager,
                 progress_manager,
                 snapshot_manager,
+                past_exam_manager,
             )
             remove.assert_called_once_with(
                 project.course_id,
@@ -1490,6 +1493,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 set_manager=set_manager,
                 progress_manager=progress_manager,
                 snapshot_manager=snapshot_manager,
+                past_exam_manager=past_exam_manager,
             )
 
     def test_course_removal_impact_text_explains_counts_and_preserved_history(self):
