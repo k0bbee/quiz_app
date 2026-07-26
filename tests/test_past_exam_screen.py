@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QEvent
-from PyQt6.QtWidgets import QApplication, QSplitter
+from PyQt6.QtWidgets import QApplication, QMessageBox, QSplitter
 
 from core.background_task import TaskProgress
 from core.background_task_center import BackgroundTaskCenter, TaskStatus
@@ -62,10 +62,12 @@ class PastExamScreenTests(unittest.TestCase):
                 screen.browse_btn,
                 screen.import_btn,
                 screen.save_assignment_btn,
+                screen.delete_btn,
                 screen.analyze_btn,
                 screen.predict_btn,
             ):
                 self.assertTrue(button.icon().isNull())
+            self.assertEqual("dangerButton", screen.delete_btn.objectName())
 
     def test_import_worker_receives_manual_or_automatic_assignment(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -183,6 +185,27 @@ class PastExamScreenTests(unittest.TestCase):
             screen.assignment_combo.setCurrentIndex(screen.assignment_combo.findData(""))
             screen.save_assignment_btn.click()
             self.assertEqual("", manager.get(record.exam_id).course_id)
+
+    def test_user_can_confirm_deleting_an_imported_exam(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = PastExamManager(tmpdir)
+            record = self._record(course_id="course-a", assignment_mode="manual")
+            manager.save_record(record)
+            manager.save_content(
+                record.exam_id,
+                PastExamContent("Question one", ["Question one"]),
+            )
+            screen = PastExamScreen(manager, self._course_manager())
+
+            with patch(
+                "ui.screens.past_exam_screen.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ):
+                screen.delete_btn.click()
+
+            self.assertIsNone(manager.get(record.exam_id))
+            self.assertEqual(0, screen.exam_list.count())
+            self.assertFalse(screen.empty_label.isHidden())
 
     def test_shutdown_requests_cancellation_without_waiting(self):
         with tempfile.TemporaryDirectory() as tmpdir:

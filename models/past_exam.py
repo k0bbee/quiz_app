@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+import shutil
 import threading
 from typing import Optional
+from uuid import uuid4
 
 from config import PAST_EXAMS_DIR
 from utils.json_io import read_json, sanitize_filename_part, write_json
+from utils.logger import warning
 
 
 class PastExamStateConflict(RuntimeError):
@@ -327,6 +330,33 @@ class PastExamManager:
                     # The pending record status prevents stale analysis from being consumed.
                     pass
             return updated
+
+    def delete(self, exam_id: str) -> bool:
+        """Atomically remove one app-managed exam record and all linked files."""
+        with self._lock:
+            try:
+                exam_dir = self.exam_directory(exam_id)
+            except ValueError:
+                return False
+            if not exam_dir.is_dir():
+                return False
+            tombstone = self._dir.parent / (
+                f".{self._dir.name}-{exam_dir.name}-{uuid4().hex}.deleted"
+            )
+            try:
+                exam_dir.replace(tombstone)
+            except OSError as exc:
+                raise OSError(
+                    f"Failed to remove historical exam {exam_id}"
+                ) from exc
+        try:
+            shutil.rmtree(tombstone)
+        except OSError as exc:
+            warning(
+                f"Historical exam {exam_id} was removed but temporary cleanup "
+                f"failed: {exc}"
+            )
+        return True
 
     def resolve_source_path(self, record: PastExamRecord) -> Path:
         exam_dir = self.exam_directory(record.exam_id).resolve()

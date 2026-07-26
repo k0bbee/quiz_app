@@ -198,6 +198,10 @@ class PastExamScreen(QWidget):
         self.analysis_summary.setWordWrap(True)
         right_layout.addWidget(self.analysis_summary)
         analysis_actions = QHBoxLayout()
+        self.delete_btn = QPushButton()
+        self.delete_btn.setObjectName("dangerButton")
+        self.delete_btn.clicked.connect(self._delete_selected_exam)
+        analysis_actions.addWidget(self.delete_btn)
         analysis_actions.addStretch()
         self.analyze_btn = QPushButton()
         self.analyze_btn.setObjectName("secondaryButton")
@@ -234,6 +238,7 @@ class PastExamScreen(QWidget):
             "No historical exams yet. Choose a file above to import one.",
         ))
         self.save_assignment_btn.setText(gm("保存课程归属", "Save Course Assignment"))
+        self.delete_btn.setText(gm("删除真题", "Delete Exam"))
         self.analyze_btn.setText(gm("分析真题", "Analyze Exam"))
         self.predict_btn.setText(gm("生成预测模拟卷", "Generate Predicted Exam"))
         self._reload_course_choices()
@@ -473,6 +478,7 @@ class PastExamScreen(QWidget):
             for widget in (
                 self.assignment_combo,
                 self.save_assignment_btn,
+                self.delete_btn,
                 self.analyze_btn,
                 self.predict_btn,
             ):
@@ -482,6 +488,7 @@ class PastExamScreen(QWidget):
             if record is not None:
                 self.assignment_combo.setEnabled(True)
                 self.save_assignment_btn.setEnabled(True)
+                self.delete_btn.setEnabled(True)
                 self._show_analysis(record)
         self.progress_label.setVisible(busy)
         self.progress_bar.setVisible(busy)
@@ -533,6 +540,7 @@ class PastExamScreen(QWidget):
         self.content_preview.setPlainText(text)
         self.assignment_combo.setEnabled(True)
         self.save_assignment_btn.setEnabled(True)
+        self.delete_btn.setEnabled(True)
         self._show_analysis(record)
 
     def _show_analysis(self, record):
@@ -697,6 +705,52 @@ class PastExamScreen(QWidget):
             self.refresh()
             self._select_exam(exam_id)
 
+    def _delete_selected_exam(self):
+        exam_id = self._selected_exam_id()
+        record = self.manager.get(exam_id) if exam_id else None
+        if record is None:
+            return
+        answer = QMessageBox.question(
+            self,
+            self.lang_manager.get_text("删除真题", "Delete Exam"),
+            self.lang_manager.get_text(
+                (
+                    f"确定删除“{record.title}”吗？\n\n"
+                    "应用内保存的原文件副本、解析文本和分析画像会一并删除。"
+                    "最初选择的外部文件不会被删除。"
+                ),
+                (
+                    f"Delete '{record.title}'?\n\n"
+                    "The app-managed source copy, extracted text, and analysis "
+                    "profile will be deleted. The original external file will "
+                    "not be removed."
+                ),
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            deleted = self.manager.delete(exam_id)
+        except OSError as exc:
+            QMessageBox.critical(
+                self,
+                self.lang_manager.get_text("删除失败", "Delete Failed"),
+                str(exc),
+            )
+            return
+        if not deleted:
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text("记录不存在", "Record Not Found"),
+                self.lang_manager.get_text(
+                    "该真题记录已不存在，列表将刷新。",
+                    "This exam record no longer exists. The list will refresh.",
+                ),
+            )
+        self.refresh()
+
     def _selected_exam_id(self):
         item = self.exam_list.currentItem()
         return item.data(Qt.ItemDataRole.UserRole) if item else ""
@@ -715,7 +769,9 @@ class PastExamScreen(QWidget):
         self.analysis_summary.clear()
         self.assignment_combo.setEnabled(False)
         self.save_assignment_btn.setEnabled(False)
+        self.delete_btn.setEnabled(False)
         self.analyze_btn.setEnabled(False)
+        self.predict_btn.setEnabled(False)
 
     def cancel_active_task(self):
         if self._task_bridge is not None:

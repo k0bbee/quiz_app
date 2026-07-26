@@ -107,6 +107,33 @@ class PastExamImportTests(unittest.TestCase):
                 [(record.exam_id, record.title) for record in records],
             )
 
+    def test_manager_deletes_the_complete_exam_record_directory(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = PastExamManager(tmpdir)
+            record = PastExamRecord(
+                exam_id="exam-delete",
+                title="Delete Me",
+                source_filename="exam.pdf",
+                source_path="source/exam.pdf",
+                content_path="content.json",
+                source_sha256="delete-hash",
+                imported_at="2026-07-26T00:00:00+00:00",
+            )
+            self.assertTrue(manager.save_record(record))
+            self.assertTrue(manager.save_content(
+                record.exam_id,
+                PastExamContent("Question one", ["Question one"]),
+            ))
+            source = manager.exam_directory(record.exam_id) / record.source_path
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_bytes(b"%PDF")
+
+            self.assertTrue(manager.delete(record.exam_id))
+
+            self.assertIsNone(manager.get(record.exam_id))
+            self.assertFalse(manager.exam_directory(record.exam_id).exists())
+            self.assertFalse(manager.delete(record.exam_id))
+
     def test_course_matcher_auto_assigns_only_a_clear_explainable_match(self):
         systems = SimpleNamespace(
             course_id="course-systems",
