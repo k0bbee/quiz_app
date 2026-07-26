@@ -31,6 +31,7 @@ class TodayLearningPlan:
     draft_mode: str = ""
     weak_topic_id: str = ""
     weak_topic_title: str = ""
+    question_ids: tuple[str, ...] = ()
 
 
 def build_today_learning_plan(
@@ -67,6 +68,7 @@ def build_today_learning_plan(
             target_question_count=target,
             review_question_count=len(incorrect_ids),
             estimated_minutes=_estimated_minutes(target),
+            question_ids=incorrect_ids[:target],
         )
 
     if total_questions > 0:

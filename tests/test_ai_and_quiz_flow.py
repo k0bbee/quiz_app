@@ -21,6 +21,7 @@ from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.language_manager import LanguageManager
+from core.study_intent import StudyAction, StudyIntent
 from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.quiz_screen import QuizScreen
@@ -1883,6 +1884,54 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIn("历史错题 1 题", screen.stats_label.text())
             self.assertIn("题库总量 1 题", screen.stats_label.text())
 
+    def test_home_today_plan_emits_course_topic_and_count_intent(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            question = self._make_question("course-a-cache", "cache")
+            question.metadata["course_id"] = "course-a"
+            question_bank.save(question)
+            screen = HomeScreen(
+                ProgressManager(str(Path(tmpdir) / "progress")),
+                question_bank,
+            )
+            screen.set_current_course("course-a", "Systems")
+            requests = []
+            signal = getattr(screen, "study_requested", None)
+            self.assertIsNotNone(signal)
+            signal.connect(requests.append)
+
+            screen.start_btn.click()
+
+            self.assertEqual(1, len(requests))
+            intent = requests[0]
+            self.assertIs(StudyAction.PRACTICE_TOPIC, intent.action)
+            self.assertEqual("course-a", intent.course_id)
+            self.assertEqual(("cache",), intent.topic_ids)
+            self.assertEqual(1, intent.question_count)
+            self.assertEqual("today_plan", intent.source)
+
+    def test_main_window_preserves_today_topic_intent_for_study_setup(self):
+        from ui.main_window import MainWindow
+
+        intent = StudyIntent(
+            course_id="course-a",
+            action=StudyAction.PRACTICE_TOPIC,
+            topic_ids=("cache",),
+            question_count=6,
+            source="today_plan",
+        )
+        shell = types.SimpleNamespace(
+            _current_course_id=lambda: "course-a",
+            _pending_study_intent=None,
+            navigate_to=Mock(return_value=True),
+            SCREEN_TOPIC_SELECTION=4,
+        )
+
+        MainWindow._on_study_requested(shell, intent)
+
+        self.assertIs(intent, shell._pending_study_intent)
+        shell.navigate_to.assert_called_once_with(shell.SCREEN_TOPIC_SELECTION)
+
     def test_home_screen_can_show_and_clear_resume_draft_action(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             screen = HomeScreen(
@@ -1911,9 +1960,11 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             self.assertIn("继续练习", screen.start_btn.text())
             resumed = []
-            screen.resume_practice.connect(lambda: resumed.append(True))
+            screen.study_requested.connect(resumed.append)
             screen.start_btn.click()
-            self.assertEqual([True], resumed)
+            self.assertEqual(1, len(resumed))
+            self.assertIs(StudyAction.RESUME_SESSION, resumed[0].action)
+            self.assertEqual(13, resumed[0].question_count)
 
             screen.clear_resume_draft()
 
@@ -1940,13 +1991,16 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen = HomeScreen(progress_manager, question_bank)
             screen.set_current_course("course-a", "Systems")
             review_requests = []
-            screen.practice_incorrect.connect(lambda: review_requests.append(True))
+            screen.study_requested.connect(review_requests.append)
 
             self.assertIn("错题", screen.start_btn.text())
             self.assertIn("1", screen.today_plan_detail.text())
             screen.start_btn.click()
 
-            self.assertEqual([True], review_requests)
+            self.assertEqual(1, len(review_requests))
+            self.assertIs(StudyAction.REVIEW_QUESTIONS, review_requests[0].action)
+            self.assertEqual("course-a", review_requests[0].course_id)
+            self.assertEqual((question.question_id,), review_requests[0].question_ids)
 
     def test_home_primary_action_routes_new_users_to_course_import(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1955,13 +2009,14 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 QuestionBank(str(Path(tmpdir) / "questions")),
             )
             import_requests = []
-            screen.manage_courses.connect(lambda: import_requests.append(True))
+            screen.study_requested.connect(import_requests.append)
             screen.refresh()
 
             self.assertIn("导入", screen.start_btn.text())
             screen.start_btn.click()
 
-            self.assertEqual([True], import_requests)
+            self.assertEqual(1, len(import_requests))
+            self.assertIs(StudyAction.IMPORT_COURSE, import_requests[0].action)
 
     def test_progress_stats_can_filter_by_question_ids(self):
         with tempfile.TemporaryDirectory() as tmpdir:

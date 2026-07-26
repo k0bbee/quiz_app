@@ -7,6 +7,7 @@ from PyQt6.QtCore import pyqtSignal, Qt
 
 from config import APP_NAME_EN, APP_NAME_ZH
 from core.language_manager import LanguageManager
+from core.study_intent import StudyAction, StudyIntent
 from core.today_learning_plan import (
     DraftLearningState,
     LearningPlanAction,
@@ -26,6 +27,7 @@ class HomeScreen(QWidget):
     view_progress = pyqtSignal()
     open_settings = pyqtSignal()
     manage_courses = pyqtSignal()
+    study_requested = pyqtSignal(object)
 
     def __init__(self, progress_manager=None, question_bank=None, parent=None):
         super().__init__(parent)
@@ -522,14 +524,38 @@ class HomeScreen(QWidget):
             ))
 
     def _activate_today_plan(self):
+        self.study_requested.emit(self._today_study_intent())
+
+    def _today_study_intent(self) -> StudyIntent:
+        """Translate the visible recommendation into an executable request."""
         action = self._today_plan.action
         if action is LearningPlanAction.RESUME_DRAFT:
-            self.resume_practice.emit()
+            study_action = StudyAction.RESUME_SESSION
         elif action is LearningPlanAction.REVIEW_INCORRECT:
-            self.practice_incorrect.emit()
+            study_action = StudyAction.REVIEW_QUESTIONS
         elif action is LearningPlanAction.START_PRACTICE:
-            self.start_practice.emit()
+            study_action = (
+                StudyAction.PRACTICE_TOPIC
+                if self._today_plan.weak_topic_id
+                else StudyAction.CUSTOM_PRACTICE
+            )
         elif action is LearningPlanAction.GENERATE_QUESTIONS:
-            self.ai_generate.emit()
+            study_action = StudyAction.GENERATE_MISSING
         else:
-            self.manage_courses.emit()
+            study_action = StudyAction.IMPORT_COURSE
+        topic_ids = (
+            (self._today_plan.weak_topic_id,)
+            if self._today_plan.weak_topic_id
+            else ()
+        )
+        question_count = self._today_plan.target_question_count
+        if study_action is StudyAction.GENERATE_MISSING and question_count <= 0:
+            question_count = 10
+        return StudyIntent(
+            course_id=self._current_course_id,
+            action=study_action,
+            topic_ids=topic_ids,
+            question_ids=self._today_plan.question_ids,
+            question_count=question_count,
+            source="today_plan",
+        )

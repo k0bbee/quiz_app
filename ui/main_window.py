@@ -21,6 +21,7 @@ from core.background_task_recovery import (
 from core.topic_display import topic_display_name
 from core.past_exam_prediction import prediction_prefill_status
 from core.session_retry import SessionRetryMode, session_retry_question_ids
+from core.study_intent import StudyAction, StudyIntent
 from ui.dialogs.background_task_dialog import BackgroundTaskDialog
 from ui.generation_launch_controller import (
     GenerationLaunchController,
@@ -104,6 +105,7 @@ class MainWindow(QMainWindow):
         self._question_bank_screen = None
         self._past_exam_screen = None
         self._active_questions: dict = {}
+        self._pending_study_intent: StudyIntent | None = None
 
         # Management screens 6-8 are lazily created on first access.
         self.stack.addWidget(self.home_screen)       # 0
@@ -233,6 +235,7 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         # Home screen
         self.home_screen.start_practice.connect(self._on_start_practice)
+        self.home_screen.study_requested.connect(self._on_study_requested)
         self.home_screen.resume_practice.connect(self._on_resume_abandoned)
         self.home_screen.practice_incorrect.connect(self._on_practice_incorrect)
         self.home_screen.ai_generate.connect(self._on_ai_generate)
@@ -517,6 +520,48 @@ class MainWindow(QMainWindow):
 
     def _on_start_practice(self):
         self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+
+    def _on_study_requested(self, intent: StudyIntent) -> None:
+        """Route one complete home recommendation without losing its scope."""
+        if not isinstance(intent, StudyIntent):
+            return
+        if intent.course_id and intent.course_id != self._current_course_id():
+            if (
+                self.course_manager.get(intent.course_id) is not None
+                and self.course_manager.set_current(intent.course_id)
+            ):
+                self._on_course_changed()
+
+        if intent.action is StudyAction.RESUME_SESSION:
+            self._on_resume_abandoned()
+            return
+        if intent.action is StudyAction.REVIEW_QUESTIONS:
+            self._on_practice_incorrect(intent)
+            return
+        if intent.action in {
+            StudyAction.PRACTICE_TOPIC,
+            StudyAction.CUSTOM_PRACTICE,
+        }:
+            self._pending_study_intent = intent
+            self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+            return
+        if intent.action is StudyAction.GENERATE_MISSING:
+            initial_plan = None
+            if intent.topic_ids:
+                weight = max(1, 100 // len(intent.topic_ids))
+                topic_weights = {
+                    topic_id: weight for topic_id in intent.topic_ids
+                }
+                topic_weights[intent.topic_ids[-1]] += 100 - sum(topic_weights.values())
+                initial_plan = ExamGenerationPlan(
+                    question_count=max(1, intent.question_count),
+                    selected_topics=intent.topic_ids,
+                    topic_weights=topic_weights,
+                )
+            self._on_ai_generate(initial_plan=initial_plan)
+            return
+        if intent.action is StudyAction.IMPORT_COURSE:
+            self.navigate_to(self.SCREEN_COURSES)
 
     def _resume_abandoned_draft(self):
         """Return the latest resumable abandoned draft details, or None."""
@@ -836,10 +881,14 @@ class MainWindow(QMainWindow):
         )
         self.navigate_to(self.SCREEN_QUIZ)
 
-    def _on_practice_incorrect(self):
+    def _on_practice_incorrect(self, intent: StudyIntent | None = None):
         """Start a quiz session from all historical incorrect questions."""
         gm = self.lang_manager.get_text
-        incorrect_ids = self.progress_manager.get_prioritized_review_question_ids()
+        incorrect_ids = (
+            list(intent.question_ids)
+            if isinstance(intent, StudyIntent) and intent.question_ids
+            else self.progress_manager.get_prioritized_review_question_ids()
+        )
         if not incorrect_ids:
             QMessageBox.information(
                 self,
@@ -859,6 +908,8 @@ class MainWindow(QMainWindow):
                 question for question in questions
                 if not mastery_overrides.is_topic_mastered(course_id, question.topic)
             ]
+        if isinstance(intent, StudyIntent) and intent.question_count > 0:
+            questions = questions[:intent.question_count]
         if not questions:
             QMessageBox.warning(
                 self,
