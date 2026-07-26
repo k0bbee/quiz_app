@@ -85,7 +85,11 @@ class MainWindow(QMainWindow):
 
         # Create screens
         self.home_screen = HomeScreen(self.progress_manager, self.question_bank)
-        self.topic_screen = TopicSelectionScreen(self.set_manager, self.progress_manager)
+        self.topic_screen = TopicSelectionScreen(
+            self.set_manager,
+            self.progress_manager,
+            question_bank=self.question_bank,
+        )
         self.quiz_screen = QuizScreen(
             self.question_bank,
             self.progress_manager,
@@ -106,6 +110,7 @@ class MainWindow(QMainWindow):
         self._past_exam_screen = None
         self._active_questions: dict = {}
         self._pending_study_intent: StudyIntent | None = None
+        self._active_study_intent: StudyIntent | None = None
 
         # Management screens 6-8 are lazily created on first access.
         self.stack.addWidget(self.home_screen)       # 0
@@ -254,6 +259,10 @@ class MainWindow(QMainWindow):
 
         # Topic selection
         self.topic_screen.quiz_start.connect(self._on_quiz_start)
+        self.topic_screen.study_start.connect(self._on_study_quiz_start)
+        self.topic_screen.generate_missing.connect(
+            self._on_generate_missing_study_questions
+        )
         self.topic_screen.export_mock_exam.connect(self._on_export_mock_exam)
         self.topic_screen.export_mock_exams.connect(self._on_export_mock_exams)
         self.topic_screen.regenerate_questions.connect(self._on_regenerate_question_set)
@@ -519,6 +528,8 @@ class MainWindow(QMainWindow):
     # --- Slot handlers ---
 
     def _on_start_practice(self):
+        self._pending_study_intent = None
+        self.topic_screen.clear_study_intent()
         self.navigate_to(self.SCREEN_TOPIC_SELECTION)
 
     def _on_study_requested(self, intent: StudyIntent) -> None:
@@ -543,7 +554,8 @@ class MainWindow(QMainWindow):
             StudyAction.CUSTOM_PRACTICE,
         }:
             self._pending_study_intent = intent
-            self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+            if self.navigate_to(self.SCREEN_TOPIC_SELECTION):
+                self.topic_screen.apply_study_intent(intent)
             return
         if intent.action is StudyAction.GENERATE_MISSING:
             initial_plan = None
@@ -562,6 +574,58 @@ class MainWindow(QMainWindow):
             return
         if intent.action is StudyAction.IMPORT_COURSE:
             self.navigate_to(self.SCREEN_COURSES)
+
+    def _on_study_quiz_start(
+        self,
+        intent: StudyIntent,
+        question_ids: list[str],
+    ) -> None:
+        """Start the prefilled practice without asking for scope again."""
+        if not isinstance(intent, StudyIntent):
+            return
+        questions = self.question_bank.get_many(
+            question_ids,
+            course_id=intent.course_id,
+        )
+        if not questions:
+            return
+        self._pending_study_intent = None
+        self._active_study_intent = intent
+        self._active_questions = {
+            question.question_id: question for question in questions
+        }
+        if intent.topic_ids:
+            label = topic_display_name(
+                questions[0].topic,
+                self.course_manager.get(intent.course_id),
+                self.lang_manager.current,
+                questions[0].topic_title(),
+            )
+        else:
+            label = self.lang_manager.get_text("今日练习", "Today's Practice")
+        self.quiz_screen.start_quiz_custom(
+            questions,
+            label,
+            show_timer=self._show_timer_setting(),
+            submission_mode="practice",
+        )
+        self.navigate_to(self.SCREEN_QUIZ)
+
+    def _on_generate_missing_study_questions(
+        self,
+        intent: StudyIntent,
+        missing_count: int,
+    ) -> None:
+        """Open generation prefilled with only the missing study questions."""
+        if not isinstance(intent, StudyIntent) or missing_count <= 0:
+            return
+        self._on_study_requested(StudyIntent(
+            course_id=intent.course_id,
+            action=StudyAction.GENERATE_MISSING,
+            topic_ids=intent.topic_ids,
+            question_count=missing_count,
+            source=intent.source,
+        ))
 
     def _resume_abandoned_draft(self):
         """Return the latest resumable abandoned draft details, or None."""

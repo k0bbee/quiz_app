@@ -12,6 +12,8 @@ from PyQt6.QtGui import QColor
 
 from utils.constants import topic_label, topic_value
 from core.language_manager import LanguageManager
+from core.study_intent import StudyAction, StudyIntent
+from models.question import QuestionBank
 from models.question_set import SetManager
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 
@@ -23,15 +25,27 @@ class TopicSelectionScreen(QWidget):
     export_mock_exam = pyqtSignal(str)  # set_id
     export_mock_exams = pyqtSignal(list)  # set_ids
     regenerate_questions = pyqtSignal(str)  # set_id
-    def __init__(self, set_manager: SetManager, progress_manager=None, parent=None):
+    study_start = pyqtSignal(object, list)  # StudyIntent, question_ids
+    generate_missing = pyqtSignal(object, int)  # StudyIntent, missing count
+
+    def __init__(
+        self,
+        set_manager: SetManager,
+        progress_manager=None,
+        *,
+        question_bank: QuestionBank | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.set_manager = set_manager
         self.progress_manager = progress_manager
+        self.question_bank = question_bank
         self.lang_manager = LanguageManager.instance()
         self._all_sets = []
         self._current_course_id = ""
         self._current_course_title = ""
         self._updating_topic_filter = False
+        self._study_intent: StudyIntent | None = None
         self.search_debounce_timer = QTimer(self)
         self.search_debounce_timer.setSingleShot(True)
         self.search_debounce_timer.setInterval(250)
@@ -53,6 +67,12 @@ class TopicSelectionScreen(QWidget):
         self.course_context_label.setWordWrap(True)
         layout.addWidget(self.course_context_label)
         self._update_course_context_label()
+
+        self.study_intent_banner = QLabel()
+        self.study_intent_banner.setObjectName("studyIntentBanner")
+        self.study_intent_banner.setWordWrap(True)
+        self.study_intent_banner.hide()
+        layout.addWidget(self.study_intent_banner)
 
         # Filters
         filter_layout = QHBoxLayout()
@@ -123,6 +143,14 @@ class TopicSelectionScreen(QWidget):
         self.start_btn.clicked.connect(self._start_quiz)
         self.start_btn.setEnabled(False)
         self.export_btn.setEnabled(False)
+        self.generate_missing_btn = QPushButton()
+        self.generate_missing_btn.setObjectName("secondaryButton")
+        self.generate_missing_btn.setMinimumHeight(40)
+        self.generate_missing_btn.clicked.connect(
+            self._request_missing_generation
+        )
+        self.generate_missing_btn.hide()
+        btn_layout.addWidget(self.generate_missing_btn)
         btn_layout.addWidget(self.start_btn)
 
         layout.addLayout(btn_layout)
@@ -137,6 +165,7 @@ class TopicSelectionScreen(QWidget):
         self.regenerate_btn.setText(self.lang_manager.get_text("重新生成题目", "Regenerate Questions"))
         self.rename_btn.setText(self.lang_manager.get_text("重命名", "Rename"))
         self.start_btn.setText(self.lang_manager.get_text("开始答题", "Start Quiz"))
+        self._update_study_intent_state()
         self.refresh()
 
     def _on_set_selected(self, current, previous):
@@ -199,6 +228,11 @@ class TopicSelectionScreen(QWidget):
 
     def _start_quiz(self):
         """Emit signal to start the quiz with selected set."""
+        if self._study_intent is not None:
+            question_ids = self._study_question_ids()
+            if question_ids:
+                self.study_start.emit(self._study_intent, question_ids)
+            return
         set_ids = self._selected_set_ids()
         if len(set_ids) != 1:
             return
@@ -208,6 +242,13 @@ class TopicSelectionScreen(QWidget):
         if qset and qset.question_count > 0:
             self.quiz_start.emit(set_id, qset.questions)
 
+    def _request_missing_generation(self) -> None:
+        intent = self._study_intent
+        if intent is None:
+            return
+        missing = max(0, intent.question_count - len(self._study_question_ids()))
+        if missing:
+            self.generate_missing.emit(intent, missing)
 
     def _export_selected_set(self):
         """Emit signal to export selected question sets as mock exams."""
@@ -273,6 +314,53 @@ class TopicSelectionScreen(QWidget):
         self._update_course_context_label()
         if hasattr(self, "set_list"):
             self.refresh()
+
+    def apply_study_intent(self, intent: StudyIntent) -> None:
+        """Prefill this setup page from a complete study request."""
+        if not isinstance(intent, StudyIntent) or intent.action not in {
+            StudyAction.PRACTICE_TOPIC,
+            StudyAction.CUSTOM_PRACTICE,
+        }:
+            return
+        self._study_intent = intent
+        if intent.course_id and intent.course_id != self._current_course_id:
+            self._current_course_id = intent.course_id
+            self._current_course_title = ""
+            self._update_course_context_label()
+        self.refresh()
+        if intent.topic_ids:
+            wanted = set(intent.topic_ids)
+            self._updating_topic_filter = True
+            try:
+                model = self.topic_filter.model()
+                for row in range(self.topic_filter.count()):
+                    topic = self.topic_filter.itemData(row)
+                    item = model.item(row)
+                    if item is None:
+                        continue
+                    checked = (
+                        topic is not None and topic_value(topic) in wanted
+                    )
+                    item.setCheckState(
+                        Qt.CheckState.Checked
+                        if checked
+                        else Qt.CheckState.Unchecked
+                    )
+            finally:
+                self._updating_topic_filter = False
+            self._update_topic_filter_label()
+            self._render_sets()
+        self._update_study_intent_state()
+
+    def clear_study_intent(self) -> None:
+        self._study_intent = None
+        self.study_intent_banner.clear()
+        self.study_intent_banner.hide()
+        self.generate_missing_btn.hide()
+        self.start_btn.setText(
+            self.lang_manager.get_text("开始答题", "Start Quiz")
+        )
+        self._on_set_selection_changed()
 
     def _update_course_context_label(self):
         """Show which course scope the question set list currently uses."""
@@ -340,6 +428,7 @@ class TopicSelectionScreen(QWidget):
         self.regenerate_btn.setHidden(True)
         self.rename_btn.setEnabled(False)
         self.info_label.clear()
+        self._update_study_intent_state()
 
     def _schedule_search_render(self):
         """Debounce free-text search to avoid rerendering on every keystroke."""
@@ -392,6 +481,68 @@ class TopicSelectionScreen(QWidget):
             self.regenerate_btn.setEnabled(False)
             self.regenerate_btn.setHidden(True)
             self.rename_btn.setEnabled(False)
+        self._update_study_intent_state()
+
+    def _study_question_ids(self) -> list[str]:
+        intent = self._study_intent
+        if intent is None or self.question_bank is None:
+            return []
+        limit = max(1, intent.question_count)
+        if intent.question_ids:
+            questions = self.question_bank.get_many(
+                intent.question_ids,
+                course_id=intent.course_id,
+            )
+            return [question.question_id for question in questions[:limit]]
+        question_ids = []
+        seen = set()
+        for topic_id in intent.topic_ids:
+            questions = self.question_bank.filter_by_topic(
+                topic_id,
+                course_id=intent.course_id,
+            )
+            for question in questions:
+                if question.question_id in seen:
+                    continue
+                seen.add(question.question_id)
+                question_ids.append(question.question_id)
+                if len(question_ids) >= limit:
+                    return question_ids
+        if not intent.topic_ids:
+            return list(self.question_bank.question_ids(
+                course_id=intent.course_id,
+            ))[:limit]
+        return question_ids
+
+    def _update_study_intent_state(self) -> None:
+        intent = self._study_intent
+        if intent is None or not hasattr(self, "start_btn"):
+            return
+        question_ids = self._study_question_ids()
+        topic_names = []
+        wanted = set(intent.topic_ids)
+        for row in range(self.topic_filter.count()):
+            topic = self.topic_filter.itemData(row)
+            if topic is not None and topic_value(topic) in wanted:
+                topic_names.append(self.topic_filter.itemText(row))
+        topic_text = ", ".join(topic_names or intent.topic_ids)
+        count = len(question_ids)
+        self.study_intent_banner.setText(self.lang_manager.get_text(
+            f"今日计划 · {topic_text or '综合练习'} · 已准备 {count}/{intent.question_count} 题",
+            f"Today's plan · {topic_text or 'Mixed practice'} · {count}/{intent.question_count} questions ready",
+        ))
+        self.study_intent_banner.show()
+        self.start_btn.setText(self.lang_manager.get_text(
+            f"开始 {count} 题",
+            f"Start {count} Questions",
+        ))
+        self.start_btn.setEnabled(bool(question_ids))
+        missing = max(0, intent.question_count - count)
+        self.generate_missing_btn.setText(self.lang_manager.get_text(
+            f"补生成 {missing} 题",
+            f"Generate {missing} More",
+        ))
+        self.generate_missing_btn.setVisible(missing > 0)
 
     def _completed_progress_by_set(self) -> dict[str, list]:
         """Return completed progress records grouped by set id using one bulk load."""

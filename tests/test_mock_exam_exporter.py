@@ -11,7 +11,8 @@ from PyQt6.QtWidgets import QApplication, QAbstractItemView
 from PyQt6.QtCore import Qt
 
 from core.mock_exam_exporter import MockExamExporter, render_mock_exam_markdown
-from models.question import Question
+from core.study_intent import StudyAction, StudyIntent
+from models.question import Question, QuestionBank
 from models.question_set import QuestionSet
 from models.progress import ProgressRecord, SessionSummary
 from utils.constants import Difficulty, QuestionType
@@ -206,6 +207,82 @@ class MockExamExporterTests(unittest.TestCase):
 
             self.assertEqual([qset.set_id], emitted_singles)
             self.assertEqual([], emitted_batches)
+
+    def test_study_setup_prefills_topic_count_and_direct_question_scope(self):
+        from models.question_set import SetManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            manager = SetManager(str(root / "sets"))
+            question_bank = QuestionBank(str(root / "questions"))
+            question = self._make_questions()[0]
+            question.metadata["course_id"] = "course-os"
+            question_bank.save(question)
+            try:
+                screen = TopicSelectionScreen(
+                    manager,
+                    question_bank=question_bank,
+                )
+            except TypeError as exc:
+                self.fail(f"study setup cannot receive a question bank: {exc}")
+            intent = StudyIntent(
+                course_id="course-os",
+                action=StudyAction.PRACTICE_TOPIC,
+                topic_ids=("cache",),
+                question_count=1,
+                source="today_plan",
+            )
+            requests = []
+            signal = getattr(screen, "study_start", None)
+            self.assertIsNotNone(signal)
+            signal.connect(lambda emitted_intent, ids: requests.append(
+                (emitted_intent, ids)
+            ))
+
+            screen.apply_study_intent(intent)
+
+            self.assertFalse(screen.study_intent_banner.isHidden())
+            self.assertIn("cache", screen.study_intent_banner.text().lower())
+            self.assertIn("1", screen.start_btn.text())
+            self.assertTrue(screen.start_btn.isEnabled())
+            screen.start_btn.click()
+            self.assertEqual([(intent, [question.question_id])], requests)
+
+    def test_study_setup_offers_generation_when_topic_is_short(self):
+        from models.question_set import SetManager
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            question = self._make_questions()[0]
+            question.metadata["course_id"] = "course-os"
+            question_bank.save(question)
+            screen = TopicSelectionScreen(
+                SetManager(str(root / "sets")),
+                question_bank=question_bank,
+            )
+            intent = StudyIntent(
+                course_id="course-os",
+                action=StudyAction.PRACTICE_TOPIC,
+                topic_ids=("cache",),
+                question_count=4,
+                source="today_plan",
+            )
+            generate_requests = []
+            signal = getattr(screen, "generate_missing", None)
+            self.assertIsNotNone(signal)
+            signal.connect(lambda emitted_intent, count: generate_requests.append(
+                (emitted_intent, count)
+            ))
+
+            screen.apply_study_intent(intent)
+
+            button = getattr(screen, "generate_missing_btn", None)
+            self.assertIsNotNone(button)
+            self.assertFalse(button.isHidden())
+            self.assertIn("3", button.text())
+            button.click()
+            self.assertEqual([(intent, 3)], generate_requests)
 
     def test_topic_selection_screen_marks_empty_set_and_blocks_start_and_export(self):
         from models.question_set import SetManager

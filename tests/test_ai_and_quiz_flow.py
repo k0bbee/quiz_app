@@ -1925,12 +1925,16 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             _pending_study_intent=None,
             navigate_to=Mock(return_value=True),
             SCREEN_TOPIC_SELECTION=4,
+            topic_screen=types.SimpleNamespace(
+                apply_study_intent=Mock(),
+            ),
         )
 
         MainWindow._on_study_requested(shell, intent)
 
         self.assertIs(intent, shell._pending_study_intent)
         shell.navigate_to.assert_called_once_with(shell.SCREEN_TOPIC_SELECTION)
+        shell.topic_screen.apply_study_intent.assert_called_once_with(intent)
 
     def test_home_screen_can_show_and_clear_resume_draft_action(self):
         with tempfile.TemporaryDirectory() as tmpdir:
