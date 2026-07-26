@@ -15,7 +15,7 @@ from core.background_task_center import BackgroundTaskCenter
 from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
-from models.course_project import CourseProjectManager
+from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from models.past_exam import PastExamManager
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
@@ -39,6 +39,18 @@ class ApplicationSmokeTests(unittest.TestCase):
             past_exam_manager = PastExamManager(root / "past_exams")
             task_center = BackgroundTaskCenter(root / "tasks.json")
             mastery = MasteryOverrideStore(root / "mastery.json")
+            course = CourseProject(
+                course_id="smoke-course",
+                title="真实启动课程",
+                source_folder=str(root / "materials"),
+                summary_markdown="# 真实启动课程",
+                summary_path="",
+                topics=[CourseTopic("smoke", "启动测试")],
+                documents=[],
+                created_at="2026-07-26T00:00:00+00:00",
+                updated_at="2026-07-26T00:00:00+00:00",
+            )
+            self.assertTrue(course_manager.save(course))
 
             question = Question(
                 question_id="smoke-q1",
@@ -58,6 +70,10 @@ class ApplicationSmokeTests(unittest.TestCase):
                 },
                 correct_answer="A",
                 topic="smoke",
+                metadata={
+                    "course_id": course.course_id,
+                    "topic_title": "启动测试",
+                },
             )
             self.assertTrue(question_bank.save(question))
             question_set = QuestionSet.create_new(
@@ -66,6 +82,7 @@ class ApplicationSmokeTests(unittest.TestCase):
                 topics=["smoke"],
                 question_ids=[question.question_id],
             )
+            question_set.metadata["course_id"] = course.course_id
             self.assertTrue(set_manager.save(question_set))
 
             services = ApplicationServices(
@@ -100,7 +117,20 @@ class ApplicationSmokeTests(unittest.TestCase):
                 self.assertTrue(window.settings_window.isVisible())
                 window.settings_window.close()
 
-                window._on_quiz_start(question_set.set_id, [question.question_id])
+                window.home_screen.start_btn.click()
+                _APP.processEvents()
+                self.assertEqual(
+                    window.SCREEN_TOPIC_SELECTION,
+                    window.stack.currentIndex(),
+                )
+                self.assertIn(
+                    "启动测试",
+                    window.topic_screen.study_intent_banner.text(),
+                )
+                self.assertTrue(window.topic_screen.start_btn.isEnabled())
+
+                window.topic_screen.start_btn.click()
+                _APP.processEvents()
                 self.assertEqual(window.SCREEN_QUIZ, window.stack.currentIndex())
                 window.quiz_screen.answer_area.set_answer("A")
                 window.quiz_screen.next_question_btn.click()
@@ -112,7 +142,20 @@ class ApplicationSmokeTests(unittest.TestCase):
                 records = progress_manager.load_all()
                 self.assertEqual(1, len(records))
                 self.assertEqual(1, records[0].summary.correct)
-                self.assertEqual(question_set.set_id, records[0].set_id)
+                self.assertTrue(records[0].set_id.startswith("set-"))
+                self.assertNotEqual(question_set.set_id, records[0].set_id)
+                self.assertFalse(window.results_screen.repeat_study_btn.isHidden())
+
+                window.results_screen.repeat_study_btn.click()
+                _APP.processEvents()
+                self.assertEqual(
+                    window.SCREEN_TOPIC_SELECTION,
+                    window.stack.currentIndex(),
+                )
+                self.assertIn(
+                    "启动测试",
+                    window.topic_screen.study_intent_banner.text(),
+                )
 
                 window.deleteLater()
                 _APP.processEvents()

@@ -217,7 +217,11 @@ class MockExamExporterTests(unittest.TestCase):
             question_bank = QuestionBank(str(root / "questions"))
             question = self._make_questions()[0]
             question.metadata["course_id"] = "course-os"
+            question.metadata["topic_title"] = "高速缓存"
             question_bank.save(question)
+            qset = self._make_question_set()
+            qset.metadata["course_id"] = "course-os"
+            manager.save(qset)
             try:
                 screen = TopicSelectionScreen(
                     manager,
@@ -242,7 +246,7 @@ class MockExamExporterTests(unittest.TestCase):
             screen.apply_study_intent(intent)
 
             self.assertFalse(screen.study_intent_banner.isHidden())
-            self.assertIn("cache", screen.study_intent_banner.text().lower())
+            self.assertIn("高速缓存", screen.study_intent_banner.text())
             self.assertIn("1", screen.start_btn.text())
             self.assertTrue(screen.start_btn.isEnabled())
             screen.start_btn.click()

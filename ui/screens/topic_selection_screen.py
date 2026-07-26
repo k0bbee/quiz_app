@@ -397,8 +397,12 @@ class TopicSelectionScreen(QWidget):
             for topic in qs.topics:
                 if topic not in seen_topics:
                     seen_topics.append(topic)
+        topic_titles = self._indexed_topic_titles()
         for topic in sorted(seen_topics, key=topic_value):
-            self.topic_filter.addItem(topic_label(topic, lang), topic)
+            self.topic_filter.addItem(
+                topic_titles.get(topic_value(topic), topic_label(topic, lang)),
+                topic,
+            )
             self._configure_topic_filter_item(
                 self.topic_filter.count() - 1,
                 checked=topic_value(topic) in current_topics,
@@ -429,6 +433,20 @@ class TopicSelectionScreen(QWidget):
         self.rename_btn.setEnabled(False)
         self.info_label.clear()
         self._update_study_intent_state()
+
+    def _indexed_topic_titles(self) -> dict[str, str]:
+        """Return course-scoped display titles without exposing stable IDs."""
+        if self.question_bank is None:
+            return {}
+        titles: dict[str, str] = {}
+        for topic_id, topic_title in self.question_bank.topic_index(
+            course_id=self._current_course_id,
+        ).values():
+            stable_id = str(topic_id or "").strip()
+            display_title = str(topic_title or "").strip()
+            if stable_id and display_title:
+                titles.setdefault(stable_id, display_title)
+        return titles
 
     def _schedule_search_render(self):
         """Debounce free-text search to avoid rerendering on every keystroke."""
