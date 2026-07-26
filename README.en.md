@@ -67,6 +67,8 @@ Course-folder imports skip symbolic links and resolved paths outside the selecte
 
 Course merging retains the selected target identity and removes source courses only after every linked-data write succeeds. Failures or cancellation trigger rollback; migrated past exams must be analyzed again before their profiles are reused.
 
+Deleting a course reports its linked questions, sets, progress, drafts, and past exams before confirmation. Past-exam records and their source copies are preserved but become unassigned and require analysis again; a failed course deletion restores their prior assignment state.
+
 ## Weight configuration
 
 Question type, difficulty, and topic values are relative weights. Users do not need to make them sum to 100. For example, raw topic weights of `100` and `80` become effective shares of approximately `56%` and `44%`.
