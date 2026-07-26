@@ -7,6 +7,7 @@ from core.current_events import (
     CurrentEventMaterialManager,
     CurrentEventMaterialPack,
 )
+from core.background_task import TaskControl
 from core.mastery_overrides import MasteryOverrideStore
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from models.past_exam import PastExamManager, PastExamRecord
@@ -221,6 +222,34 @@ class CourseMergeTests(unittest.TestCase):
                 real_set_manager.get(question_set.set_id).metadata["course_id"],
             )
             self.assertEqual(source.course_id, course_manager.current().course_id)
+
+    def test_merge_honors_cancellation_before_writing(self):
+        from core.course_merge import merge_courses
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            course_manager = CourseProjectManager(root / "courses")
+            target = self._project("course-target", "Target", "io")
+            source = self._project("course-source", "Source", "memory")
+            self.assertTrue(course_manager.save(target, make_current=False))
+            self.assertTrue(course_manager.save(source, make_current=True))
+            task = TaskControl()
+            task.cancel()
+
+            result = merge_courses(
+                target.course_id,
+                [source.course_id],
+                course_manager=course_manager,
+                task=task,
+            )
+
+            self.assertFalse(result.success)
+            self.assertTrue(result.cancelled)
+            self.assertIsNotNone(course_manager.get(source.course_id))
+            self.assertEqual(["io"], [
+                topic.topic_id
+                for topic in course_manager.get(target.course_id).topics
+            ])
 
 
 if __name__ == "__main__":

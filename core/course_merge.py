@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
+from core.background_task import BackgroundTaskCancelled
 from core.current_events import CurrentEventMaterialPack
 from models.course_project import CourseProject, CourseTopic
 
@@ -20,6 +21,7 @@ class CourseMergeResult:
     question_set_count: int = 0
     past_exam_count: int = 0
     current_event_pack_count: int = 0
+    cancelled: bool = False
     error: str = ""
     rollback_errors: tuple[str, ...] = ()
 
@@ -34,6 +36,7 @@ def merge_courses(
     past_exam_manager=None,
     mastery_overrides=None,
     current_event_manager=None,
+    task=None,
 ) -> CourseMergeResult:
     """Merge sources into one retained course, rolling back on any failure."""
     target_id = str(target_course_id or "").strip()
@@ -47,6 +50,15 @@ def merge_courses(
         "target_course_id": target_id,
         "source_course_ids": source_ids,
     }
+    try:
+        _check_cancelled(task)
+    except BackgroundTaskCancelled as exc:
+        return CourseMergeResult(
+            False,
+            **base_result,
+            cancelled=True,
+            error=str(exc),
+        )
     target = course_manager.get(target_id) if target_id else None
     sources = [course_manager.get(course_id) for course_id in source_ids]
     if target is None:
@@ -131,17 +143,40 @@ def merge_courses(
                 overwritten_packs[pack.pack_id] = deepcopy(existing)
 
     try:
+        _report(task, "merging_courses", 0, 1, target.title)
         _require(course_manager.save(merged, make_current=False), "save merged course")
-        for question in migrated_questions:
+        for index, question in enumerate(migrated_questions, start=1):
+            _report(
+                task,
+                "merging_questions",
+                index - 1,
+                len(migrated_questions),
+                question.question_id,
+            )
             _require(question_bank.save(question), f"move question {question.question_id}")
-        for question_set in migrated_sets:
+        for index, question_set in enumerate(migrated_sets, start=1):
+            _report(
+                task,
+                "merging_sets",
+                index - 1,
+                len(migrated_sets),
+                question_set.set_id,
+            )
             _require(set_manager.save(question_set), f"move question set {question_set.set_id}")
-        for record in migrated_exams:
+        for index, record in enumerate(migrated_exams, start=1):
+            _report(
+                task,
+                "merging_exams",
+                index - 1,
+                len(migrated_exams),
+                record.exam_id,
+            )
             _require(
                 past_exam_manager.save_record(record),
                 f"move historical exam {record.exam_id}",
             )
         if mastery_overrides is not None:
+            _report(task, "merging_mastery", 0, 1)
             combined_mastery = set().union(*mastery_before.values())
             replacements = {target_id: combined_mastery}
             replacements.update({course_id: set() for course_id in source_ids})
@@ -149,19 +184,35 @@ def merge_courses(
                 mastery_overrides.replace_course_topics(replacements),
                 "move mastery overrides",
             )
-        for pack in migrated_packs:
+        for index, pack in enumerate(migrated_packs, start=1):
+            _report(
+                task,
+                "merging_materials",
+                index - 1,
+                len(migrated_packs),
+                pack.pack_id,
+            )
             _require(
                 current_event_manager.save(pack),
                 f"move current-event pack {pack.pack_id}",
             )
         for pack in source_packs:
+            _check_cancelled(task)
             _require(
                 current_event_manager.delete(pack.pack_id),
                 f"remove old current-event pack {pack.pack_id}",
             )
-        for course_id in source_ids:
+        for index, course_id in enumerate(source_ids, start=1):
+            _report(
+                task,
+                "deleting_merged_sources",
+                index - 1,
+                len(source_ids),
+                course_id,
+            )
             _require(course_manager.delete(course_id), f"delete source course {course_id}")
         if current_before_id in {target_id, *source_ids}:
+            _check_cancelled(task)
             _require(course_manager.set_current(target_id), "activate merged course")
     except Exception as exc:
         rollback_errors = _rollback(
@@ -184,10 +235,13 @@ def merge_courses(
         return CourseMergeResult(
             False,
             **base_result,
+            cancelled=isinstance(exc, BackgroundTaskCancelled),
             error=str(exc),
             rollback_errors=tuple(rollback_errors),
         )
 
+    if task is not None:
+        task.complete("saved", target_id)
     return CourseMergeResult(
         True,
         **base_result,
@@ -384,6 +438,22 @@ def _rollback(
 def _require(success, action: str) -> None:
     if not success:
         raise OSError(f"Failed to {action}")
+
+
+def _check_cancelled(task) -> None:
+    if task is not None:
+        task.check_cancelled()
+
+
+def _report(
+    task,
+    stage: str,
+    current: int = 0,
+    total: int = 0,
+    detail: str = "",
+) -> None:
+    if task is not None:
+        task.report(stage, current=current, total=total, detail=detail)
 
 
 def _unique(values) -> list[str]:

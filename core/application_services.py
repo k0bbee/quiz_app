@@ -15,6 +15,7 @@ from config import (
     QUIZ_SNAPSHOTS_DIR,
 )
 from core.background_task_center import BackgroundTaskCenter
+from core.current_events import CurrentEventMaterialManager
 from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
@@ -35,6 +36,7 @@ class ApplicationServices:
     mastery_overrides: MasteryOverrideStore
     course_manager: CourseProjectManager
     past_exam_manager: PastExamManager
+    current_event_manager: CurrentEventMaterialManager
     task_center: BackgroundTaskCenter
 
     @classmethod
@@ -48,5 +50,6 @@ class ApplicationServices:
             mastery_overrides=MasteryOverrideStore(MASTERY_OVERRIDES_FILE),
             course_manager=CourseProjectManager(COURSES_DIR),
             past_exam_manager=PastExamManager(PAST_EXAMS_DIR),
+            current_event_manager=CurrentEventMaterialManager(),
             task_center=BackgroundTaskCenter(BACKGROUND_TASKS_FILE),
         )
