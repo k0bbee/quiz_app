@@ -1445,6 +1445,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             progress_manager = Mock(name="progress_manager")
             snapshot_manager = Mock(name="snapshot_manager")
             past_exam_manager = Mock(name="past_exam_manager")
+            current_event_manager = Mock(name="current_event_manager")
             screen = CourseScreen(
                 manager,
                 question_bank=question_bank,
@@ -1452,6 +1453,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 progress_manager=progress_manager,
                 snapshot_manager=snapshot_manager,
                 past_exam_manager=past_exam_manager,
+                current_event_manager=current_event_manager,
             )
             screen.project_list.setCurrentRow(0)
             impact = CourseAssetImpact(
@@ -1484,6 +1486,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 progress_manager,
                 snapshot_manager,
                 past_exam_manager,
+                current_event_manager,
             )
             remove.assert_called_once_with(
                 project.course_id,
@@ -1494,6 +1497,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 progress_manager=progress_manager,
                 snapshot_manager=snapshot_manager,
                 past_exam_manager=past_exam_manager,
+                current_event_manager=current_event_manager,
             )
 
     def test_course_removal_impact_text_explains_counts_and_preserved_history(self):
@@ -1507,6 +1511,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 progress_ids=("progress-a", "progress-b", "progress-c"),
                 snapshot_ids=("snapshot-a",),
                 past_exam_ids=("exam-a", "exam-b"),
+                current_event_pack_ids=("pack-a",),
             )
             language_manager = LanguageManager.instance()
             previous_language = language_manager.current
@@ -1520,6 +1525,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertIn("学习记录：3（始终保留）", text)
             self.assertIn("未完成草稿：1", text)
             self.assertIn("历史真题：2（保留并解除课程归属）", text)
+            self.assertIn("热点材料：1（随课程删除）", text)
 
     def test_project_manager_current_returns_none_without_explicit_pointer(self):
         with tempfile.TemporaryDirectory() as tmpdir:

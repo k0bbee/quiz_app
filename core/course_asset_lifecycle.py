@@ -18,6 +18,7 @@ class CourseAssetImpact:
     progress_ids: tuple[str, ...] = ()
     snapshot_ids: tuple[str, ...] = ()
     past_exam_ids: tuple[str, ...] = ()
+    current_event_pack_ids: tuple[str, ...] = ()
 
     @property
     def question_count(self) -> int:
@@ -38,6 +39,10 @@ class CourseAssetImpact:
     @property
     def past_exam_count(self) -> int:
         return len(self.past_exam_ids)
+
+    @property
+    def current_event_pack_count(self) -> int:
+        return len(self.current_event_pack_ids)
 
 
 class CourseRemovalMode(str, Enum):
@@ -63,6 +68,7 @@ def analyze_course_asset_impact(
     progress_manager=None,
     snapshot_manager=None,
     past_exam_manager=None,
+    current_event_manager=None,
 ) -> CourseAssetImpact:
     """Return direct and indirect assets linked to ``course_id``."""
     normalized_course_id = str(course_id or "").strip()
@@ -107,6 +113,13 @@ def analyze_course_asset_impact(
         == normalized_course_id
     }
     past_exam_ids.discard("")
+    current_event_pack_ids = {
+        str(getattr(pack, "pack_id", "") or "").strip()
+        for pack in _load_all(current_event_manager)
+        if str(getattr(pack, "course_id", "") or "").strip()
+        == normalized_course_id
+    }
+    current_event_pack_ids.discard("")
 
     return CourseAssetImpact(
         course_id=normalized_course_id,
@@ -116,6 +129,7 @@ def analyze_course_asset_impact(
         progress_ids=tuple(sorted(progress_ids)),
         snapshot_ids=tuple(sorted(snapshot_ids)),
         past_exam_ids=tuple(sorted(past_exam_ids)),
+        current_event_pack_ids=tuple(sorted(current_event_pack_ids)),
     )
 
 
@@ -129,6 +143,7 @@ def remove_course_assets(
     progress_manager=None,
     snapshot_manager=None,
     past_exam_manager=None,
+    current_event_manager=None,
 ) -> CourseRemovalResult:
     """Apply one course-removal policy with compensating rollback on failure."""
     mode = CourseRemovalMode(mode)
@@ -139,6 +154,7 @@ def remove_course_assets(
         progress_manager,
         snapshot_manager,
         past_exam_manager,
+        current_event_manager,
     )
     project = course_manager.get(impact.course_id)
     if project is None:
@@ -150,6 +166,11 @@ def remove_course_assets(
     question_sets = _load_by_ids(set_manager, "get", impact.affected_set_ids)
     snapshots = _load_by_ids(snapshot_manager, "get", impact.snapshot_ids)
     past_exams = _load_by_ids(past_exam_manager, "get", impact.past_exam_ids)
+    current_event_packs = _load_by_ids(
+        current_event_manager,
+        "get",
+        impact.current_event_pack_ids,
+    )
 
     try:
         if mode is CourseRemovalMode.UNLINK_ASSETS:
@@ -171,6 +192,10 @@ def remove_course_assets(
                 snapshot_manager,
             )
         _unlink_past_exams(past_exams, past_exam_manager)
+        _delete_current_event_packs(
+            current_event_packs,
+            current_event_manager,
+        )
         _require_success(
             course_manager.delete(impact.course_id),
             f"delete course {impact.course_id}",
@@ -183,11 +208,13 @@ def remove_course_assets(
             question_sets,
             snapshots,
             past_exams,
+            current_event_packs,
             course_manager,
             question_bank,
             set_manager,
             snapshot_manager,
             past_exam_manager,
+            current_event_manager,
         )
         return CourseRemovalResult(
             False,
@@ -284,6 +311,16 @@ def _unlink_past_exams(past_exams, past_exam_manager):
         )
 
 
+def _delete_current_event_packs(packs, current_event_manager):
+    if current_event_manager is None:
+        return
+    for pack in packs:
+        _require_success(
+            current_event_manager.delete(pack.pack_id),
+            f"delete current-event material pack {pack.pack_id}",
+        )
+
+
 def _restore_assets(
     project,
     was_current,
@@ -291,11 +328,13 @@ def _restore_assets(
     question_sets,
     snapshots,
     past_exams,
+    current_event_packs,
     course_manager,
     question_bank,
     set_manager,
     snapshot_manager,
     past_exam_manager,
+    current_event_manager,
 ) -> list[str]:
     errors: list[str] = []
     restore_groups = (
@@ -317,6 +356,15 @@ def _restore_assets(
                 _require_success(
                     past_exam_manager.save_record(deepcopy(record)),
                     f"restore historical exam {record.exam_id}",
+                )
+            except Exception as exc:
+                errors.append(str(exc))
+    if current_event_manager is not None:
+        for pack in current_event_packs:
+            try:
+                _require_success(
+                    current_event_manager.save(deepcopy(pack)),
+                    f"restore current-event material pack {pack.pack_id}",
                 )
             except Exception as exc:
                 errors.append(str(exc))

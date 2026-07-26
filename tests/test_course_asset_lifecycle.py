@@ -70,6 +70,11 @@ class _PastExamManager(_StoreManager):
         return self.save(item)
 
 
+class _CurrentEventManager(_StoreManager):
+    def __init__(self, items):
+        super().__init__(items, "pack_id")
+
+
 class CourseAssetLifecycleTests(unittest.TestCase):
     def test_impact_follows_direct_course_links_and_indirect_set_references(self):
         questions = _Manager([
@@ -108,6 +113,10 @@ class CourseAssetLifecycleTests(unittest.TestCase):
             SimpleNamespace(exam_id="exam-course", course_id="course-a"),
             SimpleNamespace(exam_id="exam-other", course_id="course-b"),
         ])
+        current_events = _Manager([
+            SimpleNamespace(pack_id="pack-course", course_id="course-a"),
+            SimpleNamespace(pack_id="pack-other", course_id="course-b"),
+        ])
 
         impact = analyze_course_asset_impact(
             "course-a",
@@ -116,6 +125,7 @@ class CourseAssetLifecycleTests(unittest.TestCase):
             progress,
             snapshots,
             past_exams,
+            current_events,
         )
 
         self.assertEqual(("q-course-1", "q-course-2"), impact.question_ids)
@@ -124,11 +134,13 @@ class CourseAssetLifecycleTests(unittest.TestCase):
         self.assertEqual(("progress-direct", "progress-mixed"), impact.progress_ids)
         self.assertEqual(("snapshot-direct", "snapshot-mixed"), impact.snapshot_ids)
         self.assertEqual(("exam-course",), impact.past_exam_ids)
+        self.assertEqual(("pack-course",), impact.current_event_pack_ids)
         self.assertEqual(2, impact.question_count)
         self.assertEqual(2, impact.question_set_count)
         self.assertEqual(2, impact.progress_count)
         self.assertEqual(2, impact.snapshot_count)
         self.assertEqual(1, impact.past_exam_count)
+        self.assertEqual(1, impact.current_event_pack_count)
 
     def test_impact_supports_missing_optional_managers(self):
         impact = analyze_course_asset_impact("course-a", None, None, None, None)
@@ -161,6 +173,9 @@ class CourseAssetLifecycleTests(unittest.TestCase):
         self.assertEqual("", exam.course_id)
         self.assertEqual("unassigned", exam.assignment_mode)
         self.assertEqual("pending", exam.analysis_status)
+        self.assertIsNone(
+            managers["current_event_manager"].get("pack-course")
+        )
         self.assertEqual(2, len(managers["progress_manager"].items))
         self.assertEqual(2, len(managers["snapshot_manager"].items))
 
@@ -185,6 +200,9 @@ class CourseAssetLifecycleTests(unittest.TestCase):
         self.assertEqual(
             "",
             managers["past_exam_manager"].get("exam-course").course_id,
+        )
+        self.assertIsNone(
+            managers["current_event_manager"].get("pack-course")
         )
 
     def test_failed_cleanup_restores_every_asset(self):
@@ -218,6 +236,9 @@ class CourseAssetLifecycleTests(unittest.TestCase):
         restored_exam = managers["past_exam_manager"].get("exam-course")
         self.assertEqual("course-a", restored_exam.course_id)
         self.assertEqual("complete", restored_exam.analysis_status)
+        self.assertIsNotNone(
+            managers["current_event_manager"].get("pack-course")
+        )
 
     @staticmethod
     def _lifecycle_managers():
@@ -283,6 +304,10 @@ class CourseAssetLifecycleTests(unittest.TestCase):
                 analysis_status="complete",
             ),
         ]
+        current_events = [
+            SimpleNamespace(pack_id="pack-course", course_id="course-a"),
+            SimpleNamespace(pack_id="pack-other", course_id="course-b"),
+        ]
         return {
             "course_manager": _CourseManager([course], current_id="course-a"),
             "question_bank": _StoreManager(questions, "question_id"),
@@ -290,6 +315,7 @@ class CourseAssetLifecycleTests(unittest.TestCase):
             "progress_manager": _StoreManager(progress, "progress_id"),
             "snapshot_manager": _StoreManager(snapshots, "snapshot_id"),
             "past_exam_manager": _PastExamManager(past_exams),
+            "current_event_manager": _CurrentEventManager(current_events),
         }
 
 
