@@ -48,7 +48,7 @@ python scripts/check_environment.py --json
 | Area | Capability |
 |---|---|
 | Home | A transparent next-action recommendation based on unfinished drafts, incorrect answers, weak topics, available question sets, and imported courses |
-| Course management | Multi-file course import, safe cancellation, summaries, stable topics, course renaming, exam-scope configuration, and source navigation |
+| Course management | Multi-file course import, safe cancellation, summaries, stable topics, course renaming, exam-scope configuration, source navigation, and transactional merging of courses with their questions, sets, mastery, current-event materials, and past exams |
 | Past exams | Import TXT/Markdown/PDF/DOCX/PPTX exams, apply OCR to scanned PDFs, assign a course, and build explainable exam profiles |
 | Question generation | Stream accepted questions one at a time, validate plan slots and source references, accept additional instructions while generation is running, and safely preserve partial results on cancellation |
 | Q&A review | Ask follow-up questions inside the selected course workspace using only the current exam scope, course summary, and original source evidence; requests remain cancellable and non-blocking |
@@ -64,6 +64,8 @@ python scripts/check_environment.py --json
 | Localization | Live Chinese/English UI switching with bilingual question content and explanations |
 
 Course-folder imports skip symbolic links and resolved paths outside the selected folder. One import accepts at most 2,000 supported files and 1 GiB of source data; larger collections must be split before import.
+
+Course merging retains the selected target identity and removes source courses only after every linked-data write succeeds. Failures or cancellation trigger rollback; migrated past exams must be analyzed again before their profiles are reused.
 
 ## Weight configuration
 
