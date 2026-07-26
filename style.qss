@@ -207,6 +207,16 @@ QPushButton[homeAction="primary"]:focus {
     border-color: #8cc8ff;
 }
 
+QPushButton#primaryButton:disabled,
+QPushButton#homeStartBtn:disabled,
+QPushButton#dialogGenerateBtn:disabled,
+QPushButton#dialogSaveBtn:disabled,
+QPushButton[homeAction="primary"]:disabled {
+    color: #656565;
+    background-color: #252526;
+    border-color: #2b2b2b;
+}
+
 QPushButton[homeAction="secondary"] {
     min-height: 42px;
     padding: 9px 16px;

@@ -68,6 +68,27 @@ class StyleContractTests(unittest.TestCase):
         ):
             self.assertIn(selector, self.qss)
 
+    def test_primary_buttons_restore_disabled_colors_after_role_rules(self):
+        disabled_rule = re.search(
+            r"qpushbutton#primarybutton:disabled,\s*"
+            r"qpushbutton#homestartbtn:disabled,\s*"
+            r"qpushbutton#dialoggeneratebtn:disabled,\s*"
+            r"qpushbutton#dialogsavebtn:disabled,\s*"
+            r'qpushbutton\[homeaction="primary"\]:disabled\s*'
+            r"\{(?P<body>[^}]*)\}",
+            self.qss,
+            flags=re.DOTALL,
+        )
+
+        self.assertIsNotNone(disabled_rule)
+        self.assertIn("color: #656565", disabled_rule.group("body"))
+        self.assertIn("background-color: #252526", disabled_rule.group("body"))
+        self.assertIn("border-color: #2b2b2b", disabled_rule.group("body"))
+        self.assertGreater(
+            disabled_rule.start(),
+            self.qss.index('qpushbutton[homeaction="primary"]'),
+        )
+
     def test_menus_define_shape_and_complete_interaction_states(self):
         menu_bar_item = re.search(
             r"qmenubar::item\s*\{(?P<body>[^}]*)\}",
