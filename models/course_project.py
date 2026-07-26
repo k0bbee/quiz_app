@@ -67,6 +67,7 @@ class CourseProject:
     generation_profile_warning: str = ""
     exam_scope_mode: str = "all"
     exam_scope_topic_ids: list[str] = field(default_factory=list)
+    merged_course_ids: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Normalize persisted scope data without breaking legacy projects."""
@@ -75,6 +76,12 @@ class CourseProject:
         self.exam_scope_topic_ids = self._ordered_topic_ids(self.exam_scope_topic_ids)
         if self.exam_scope_mode == "all":
             self.exam_scope_topic_ids = []
+        self.merged_course_ids = list(dict.fromkeys(
+            str(course_id or "").strip()
+            for course_id in self.merged_course_ids
+            if str(course_id or "").strip()
+            and str(course_id or "").strip() != self.course_id
+        ))
 
     def exam_topics(self) -> list[CourseTopic]:
         """Return course topics currently included in the exam scope."""
@@ -129,6 +136,7 @@ class CourseProject:
             "generation_profile_warning": self.generation_profile_warning,
             "exam_scope_mode": self.exam_scope_mode,
             "exam_scope_topic_ids": list(self.exam_scope_topic_ids),
+            "merged_course_ids": list(self.merged_course_ids),
         }
 
     @classmethod
@@ -150,6 +158,7 @@ class CourseProject:
             generation_profile_warning=data.get("generation_profile_warning", ""),
             exam_scope_mode=data.get("exam_scope_mode", "all"),
             exam_scope_topic_ids=list(data.get("exam_scope_topic_ids", []) or []),
+            merged_course_ids=list(data.get("merged_course_ids", []) or []),
         )
 
 

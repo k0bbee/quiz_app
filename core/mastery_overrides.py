@@ -54,6 +54,23 @@ class MasteryOverrideStore:
         """Remove all mastery overrides."""
         return write_json(self._path, {"courses": {}})
 
+    def replace_course_topics(self, replacements: dict[str, set[str]]) -> bool:
+        """Replace several course overrides with one atomic file write."""
+        data = self._load()
+        courses = data.setdefault("courses", {})
+        for course_id, topics in replacements.items():
+            course_key = self._course_key(course_id)
+            normalized = sorted({
+                self._topic_key(topic)
+                for topic in topics
+                if self._topic_key(topic)
+            })
+            if normalized:
+                courses[course_key] = normalized
+            else:
+                courses.pop(course_key, None)
+        return write_json(self._path, data)
+
     def _load(self) -> dict:
         data = read_json(self._path) or {}
         if not isinstance(data, dict):
