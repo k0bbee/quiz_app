@@ -4,7 +4,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from core.secrets_manager import SecretsManager
 
@@ -406,15 +406,15 @@ class SecretsManagerTests(unittest.TestCase):
                 json.dumps({"ai_api_key": "legacy-key-2"}), encoding="utf-8"
             )
             # keyring write succeeds but readback returns different value.
-            readback_values = ["legacy-key-2", "mismatch"]
+            readback_values = [None, "mismatch"]
 
             def fake_get_password(service, account):
                 return readback_values.pop(0)
 
+            fake_keyring = Mock()
+            fake_keyring.get_password.side_effect = fake_get_password
             with patch("core.secrets_manager.KEYRING_AVAILABLE", True), \
-                 patch("core.secrets_manager.keyring.set_password"), \
-                 patch("core.secrets_manager.keyring.get_password",
-                       side_effect=fake_get_password), \
+                 patch("core.secrets_manager.keyring", fake_keyring), \
                  patch("core.secrets_manager.SETTINGS_FILE", settings_file), \
                  patch("core.secrets_manager.DPAPI_STORE",
                        FakeDPAPIStore(available=False)):
@@ -422,6 +422,7 @@ class SecretsManagerTests(unittest.TestCase):
                 key = manager.get_key()
 
             self.assertEqual("legacy-key-2", key)
+            fake_keyring.set_password.assert_called_once()
             remaining = json.loads(Path(settings_file).read_text(encoding="utf-8"))
             self.assertIn("ai_api_key", remaining,
                           "plaintext must survive when readback fails")
