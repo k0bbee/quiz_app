@@ -67,7 +67,7 @@ Course-folder imports skip symbolic links and resolved paths outside the selecte
 
 Course merging retains the selected target identity and removes source courses only after every linked-data write succeeds. Failures or cancellation trigger rollback; migrated past exams must be analyzed again before their profiles are reused.
 
-Deleting a course reports its linked questions, sets, progress, drafts, past exams, and current-event packs before confirmation. Past-exam records and their source copies are preserved but become unassigned and require analysis again; course-specific current-event packs are deleted. A failed course deletion restores both kinds of data. Archived results remain viewable when their original questions or set no longer exist, but unavailable retry actions are disabled with an explanation.
+Deleting a course reports its linked questions, sets, progress, drafts, past exams, and current-event packs before confirmation. Past-exam records and their source copies are preserved but become unassigned and require analysis again; course-specific current-event packs are deleted. A failed course deletion restores both kinds of data. Newly completed sessions preserve course, set, and per-question review snapshots; double-click a recent session on the Progress page, or select it and press Enter, to reopen it. Stems, submitted and correct answers, explanations, and source references remain reviewable when the original questions or set no longer exist, while unavailable retry actions are disabled with an explanation.
 
 ## Weight configuration
 
