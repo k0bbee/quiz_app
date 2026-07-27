@@ -8,6 +8,10 @@ from core.course_asset_lifecycle import (
     remove_course_assets,
 )
 from models.past_exam import PastExamRecord
+from models.progress import AnswerRecord, ProgressRecord
+from models.question import Question
+from models.question_set import QuestionSet
+from utils.constants import Difficulty, QuestionType
 
 
 class _Manager:
@@ -76,6 +80,43 @@ class _CurrentEventManager(_StoreManager):
 
 
 class CourseAssetLifecycleTests(unittest.TestCase):
+    def test_impact_classifies_completed_history_archive_state(self):
+        progress = _Manager([
+            SimpleNamespace(
+                progress_id="progress-complete",
+                set_id="set-deleted",
+                status="completed",
+                course_id_snapshot="course-a",
+                archive_status="complete",
+            ),
+            SimpleNamespace(
+                progress_id="progress-incomplete",
+                set_id="set-deleted",
+                status="completed",
+                course_id_snapshot="course-a",
+                archive_status="incomplete",
+            ),
+            SimpleNamespace(
+                progress_id="progress-legacy",
+                set_id="set-deleted",
+                status="completed",
+                course_id_snapshot="course-a",
+                archive_status="legacy",
+            ),
+        ])
+
+        impact = analyze_course_asset_impact(
+            "course-a",
+            progress_manager=progress,
+        )
+
+        self.assertEqual(("progress-complete",), impact.complete_archive_ids)
+        self.assertEqual(("progress-incomplete",), impact.incomplete_archive_ids)
+        self.assertEqual(("progress-legacy",), impact.legacy_archive_ids)
+        self.assertEqual(1, impact.complete_archive_count)
+        self.assertEqual(1, impact.incomplete_archive_count)
+        self.assertEqual(1, impact.legacy_archive_count)
+
     def test_impact_uses_historical_course_identity_after_question_set_is_gone(self):
         progress = _Manager([
             SimpleNamespace(
@@ -107,6 +148,96 @@ class CourseAssetLifecycleTests(unittest.TestCase):
         self.assertEqual(("progress-draft",), impact.draft_progress_ids)
         self.assertEqual(1, impact.progress_count)
         self.assertEqual(1, impact.draft_progress_count)
+
+    def test_course_removal_archives_legacy_history_before_deleting_course(self):
+        managers = self._archive_lifecycle_managers()
+
+        result = remove_course_assets(
+            "course-a",
+            CourseRemovalMode.KEEP_ASSETS,
+            **managers,
+        )
+
+        self.assertTrue(result.success, result.error)
+        stored = managers["progress_manager"].get("progress-legacy")
+        self.assertEqual("complete", stored.archive_status)
+        self.assertEqual(1, stored.archive_schema_version)
+        self.assertEqual("设备如何通知 CPU？", stored.question_snapshots[0].stem)
+        self.assertEqual(1, result.impact.complete_archive_count)
+        self.assertEqual(0, result.impact.legacy_archive_count)
+
+    @staticmethod
+    def _archive_lifecycle_managers():
+        course = SimpleNamespace(course_id="course-a", title="操作系统")
+        question = Question(
+            question_id="q-io",
+            type=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": {
+                    "stem": "设备如何通知 CPU？",
+                    "options": ["A. 中断", "B. 轮询"],
+                    "explanation": "设备通过中断通知 CPU。",
+                },
+                "en": {
+                    "stem": "How does a device notify the CPU?",
+                    "options": ["A. Interrupt", "B. Polling"],
+                    "explanation": "The device raises an interrupt.",
+                },
+            },
+            correct_answer="A",
+            topic="input-output",
+            metadata={
+                "course_id": "course-a",
+                "course_title": "操作系统",
+            },
+        )
+        question_set = QuestionSet(
+            set_id="set-io",
+            title={"zh": "I/O 专项", "en": "I/O Practice"},
+            description={"zh": "", "en": ""},
+            topics=["input-output"],
+            difficulty=Difficulty.MEDIUM,
+            estimated_minutes=10,
+            questions=["q-io"],
+            metadata={
+                "course_id": "course-a",
+                "course_title": "操作系统",
+            },
+        )
+        progress = ProgressRecord(
+            progress_id="progress-legacy",
+            set_id="set-io",
+            language="zh",
+            started_at="2026-07-01T00:00:00+00:00",
+            completed_at="2026-07-01T00:10:00+00:00",
+            status="completed",
+            answers=[AnswerRecord("q-io", 0, "A", True)],
+            archive_status="legacy",
+        )
+        return {
+            "course_manager": _CourseManager([course], current_id="course-a"),
+            "question_bank": _StoreManager([question], "question_id"),
+            "set_manager": _StoreManager([question_set], "set_id"),
+            "progress_manager": _StoreManager([progress], "progress_id"),
+        }
+
+    def test_course_removal_stops_when_legacy_archive_cannot_be_saved(self):
+        managers = self._archive_lifecycle_managers()
+        managers["progress_manager"].save = lambda _record: False
+
+        result = remove_course_assets(
+            "course-a",
+            CourseRemovalMode.DELETE_LINKED_BANK,
+            **managers,
+        )
+
+        self.assertFalse(result.success)
+        self.assertIn("Failed to prepare completed history archives", result.error)
+        self.assertIsNotNone(managers["course_manager"].get("course-a"))
+        self.assertIsNotNone(managers["question_bank"].get("q-io"))
+        stored = managers["progress_manager"].get("progress-legacy")
+        self.assertEqual("legacy", stored.archive_status)
 
     def test_course_removal_cancels_drafts_but_preserves_completed_history(self):
         managers = self._lifecycle_managers()

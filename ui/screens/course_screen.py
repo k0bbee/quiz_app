@@ -1241,7 +1241,10 @@ class CourseScreen(QWidget):
                 f"删除课程“{project.title}”\n\n"
                 f"相关题目：{impact.question_count}\n"
                 f"相关题集：{impact.question_set_count}\n"
-                f"学习记录：{impact.progress_count}（不可变复盘快照始终保留）\n"
+                f"学习记录：{impact.progress_count}（完整归档 "
+                f"{impact.complete_archive_count}，残缺归档 "
+                f"{impact.incomplete_archive_count}，删除前待迁移 "
+                f"{impact.legacy_archive_count}）\n"
                 f"未完成草稿：{impact.unfinished_draft_count}（删除课程时取消）\n"
                 f"历史真题：{impact.past_exam_count}（保留并解除课程归属）\n"
                 f"热点材料：{impact.current_event_pack_count}（随课程删除）"
@@ -1251,7 +1254,9 @@ class CourseScreen(QWidget):
                 f"Linked questions: {impact.question_count}\n"
                 f"Linked question sets: {impact.question_set_count}\n"
                 f"Learning records: {impact.progress_count} "
-                "(immutable review snapshots are always kept)\n"
+                f"(complete archives {impact.complete_archive_count}, "
+                f"incomplete archives {impact.incomplete_archive_count}, "
+                f"migrate before deletion {impact.legacy_archive_count})\n"
                 f"Unfinished drafts: {impact.unfinished_draft_count} "
                 "(cancelled when the course is deleted)\n"
                 f"Historical exams: {impact.past_exam_count} "
@@ -1268,26 +1273,54 @@ class CourseScreen(QWidget):
     ) -> str:
         drafts = impact.unfinished_draft_count
         mode = CourseRemovalMode(mode)
+        archive_note = self._course_archive_preparation_text(impact)
         if mode is CourseRemovalMode.KEEP_ASSETS:
             return self.lang_manager.get_text(
-                f"题目和题集原样保留；{drafts} 个未完成草稿将取消。完成历史仍可复盘。",
+                f"题目和题集原样保留；{drafts} 个未完成草稿将取消。"
+                f"完成历史仍可复盘。{archive_note[0]}",
                 f"Questions and sets remain unchanged; {drafts} unfinished draft(s) "
-                "will be cancelled. Completed history remains reviewable.",
+                f"will be cancelled. Completed history remains reviewable. {archive_note[1]}",
             )
         if mode is CourseRemovalMode.UNLINK_ASSETS:
             return self.lang_manager.get_text(
                 f"保留题目和题集，但移除课程归属和来源定位；{drafts} 个未完成草稿将取消。"
-                "完成历史仍可复盘。",
+                f"完成历史仍可复盘。{archive_note[0]}",
                 "Keep questions and sets, but remove course ownership and source locations; "
                 f"{drafts} unfinished draft(s) will be cancelled. Completed history remains "
-                "reviewable.",
+                f"reviewable. {archive_note[1]}",
             )
         return self.lang_manager.get_text(
             f"删除关联题目并清理题集；{drafts} 个未完成草稿将取消。"
-            "完成历史仍可复盘，但原题删除后不能重练。",
+            f"完成历史仍可复盘，但原题删除后不能重练。{archive_note[0]}",
             f"Delete linked questions and clean affected sets; {drafts} unfinished draft(s) "
             "will be cancelled. Completed history remains reviewable, but deleted questions "
-            "cannot be retried.",
+            f"cannot be retried. {archive_note[1]}",
+        )
+
+    @staticmethod
+    def _course_archive_preparation_text(impact) -> tuple[str, str]:
+        zh_parts = []
+        en_parts = []
+        if impact.legacy_archive_count:
+            zh_parts.append(f"删除前先迁移 {impact.legacy_archive_count} 条旧历史")
+            en_parts.append(
+                f"migrate {impact.legacy_archive_count} legacy record(s) before deletion"
+            )
+        if impact.incomplete_archive_count:
+            zh_parts.append(
+                f"{impact.incomplete_archive_count} 条残缺历史保留明确标记"
+            )
+            en_parts.append(
+                f"keep {impact.incomplete_archive_count} incomplete archive(s) marked"
+            )
+        if not zh_parts:
+            return (
+                "历史归档状态已明确。",
+                "Historical archive status is explicit.",
+            )
+        return (
+            "；".join(zh_parts) + "。",
+            "; ".join(en_parts) + ".",
         )
 
     def _on_regen_done(self, result):

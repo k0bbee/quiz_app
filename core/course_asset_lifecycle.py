@@ -6,6 +6,9 @@ from copy import deepcopy
 from dataclasses import dataclass, replace
 from enum import Enum
 
+from core.progress_archive import ProgressArchiveMigrator
+from models.progress import ProgressRecord
+
 
 @dataclass(frozen=True)
 class CourseAssetImpact:
@@ -16,6 +19,9 @@ class CourseAssetImpact:
     direct_set_ids: tuple[str, ...] = ()
     affected_set_ids: tuple[str, ...] = ()
     progress_ids: tuple[str, ...] = ()
+    complete_archive_ids: tuple[str, ...] = ()
+    incomplete_archive_ids: tuple[str, ...] = ()
+    legacy_archive_ids: tuple[str, ...] = ()
     draft_progress_ids: tuple[str, ...] = ()
     snapshot_ids: tuple[str, ...] = ()
     past_exam_ids: tuple[str, ...] = ()
@@ -32,6 +38,18 @@ class CourseAssetImpact:
     @property
     def progress_count(self) -> int:
         return len(self.progress_ids)
+
+    @property
+    def complete_archive_count(self) -> int:
+        return len(self.complete_archive_ids)
+
+    @property
+    def incomplete_archive_count(self) -> int:
+        return len(self.incomplete_archive_ids)
+
+    @property
+    def legacy_archive_count(self) -> int:
+        return len(self.legacy_archive_ids)
 
     @property
     def snapshot_count(self) -> int:
@@ -104,6 +122,9 @@ def analyze_course_asset_impact(
             affected_set_ids.add(set_id)
 
     progress_ids: set[str] = set()
+    complete_archive_ids: set[str] = set()
+    incomplete_archive_ids: set[str] = set()
+    legacy_archive_ids: set[str] = set()
     draft_progress_ids: set[str] = set()
     for record in _load_all(progress_manager):
         set_id = str(getattr(record, "set_id", "") or "").strip()
@@ -120,6 +141,15 @@ def analyze_course_asset_impact(
             draft_progress_ids.add(progress_id)
         else:
             progress_ids.add(progress_id)
+            archive_status = str(
+                getattr(record, "archive_status", "") or ""
+            ).strip()
+            if archive_status == "complete":
+                complete_archive_ids.add(progress_id)
+            elif archive_status == "incomplete":
+                incomplete_archive_ids.add(progress_id)
+            else:
+                legacy_archive_ids.add(progress_id)
     snapshot_ids = {
         str(getattr(snapshot, "snapshot_id", "") or "").strip()
         for snapshot in _load_all(snapshot_manager)
@@ -147,6 +177,9 @@ def analyze_course_asset_impact(
         direct_set_ids=tuple(sorted(direct_set_ids)),
         affected_set_ids=tuple(sorted(affected_set_ids)),
         progress_ids=tuple(sorted(progress_ids)),
+        complete_archive_ids=tuple(sorted(complete_archive_ids)),
+        incomplete_archive_ids=tuple(sorted(incomplete_archive_ids)),
+        legacy_archive_ids=tuple(sorted(legacy_archive_ids)),
         draft_progress_ids=tuple(sorted(draft_progress_ids)),
         snapshot_ids=tuple(sorted(snapshot_ids)),
         past_exam_ids=tuple(sorted(past_exam_ids)),
@@ -168,6 +201,24 @@ def remove_course_assets(
 ) -> CourseRemovalResult:
     """Apply one course-removal policy with compensating rollback on failure."""
     mode = CourseRemovalMode(mode)
+    impact = analyze_course_asset_impact(
+        course_id,
+        question_bank,
+        set_manager,
+        progress_manager,
+        snapshot_manager,
+        past_exam_manager,
+        current_event_manager,
+    )
+    archive_error = migrate_impacted_progress_archives(
+        impact,
+        course_manager=course_manager,
+        question_bank=question_bank,
+        set_manager=set_manager,
+        progress_manager=progress_manager,
+    )
+    if archive_error:
+        return CourseRemovalResult(False, impact, archive_error)
     impact = analyze_course_asset_impact(
         course_id,
         question_bank,
@@ -256,6 +307,47 @@ def remove_course_assets(
         )
 
     return CourseRemovalResult(True, impact)
+
+
+def migrate_impacted_progress_archives(
+    impact: CourseAssetImpact,
+    *,
+    course_manager,
+    question_bank,
+    set_manager,
+    progress_manager,
+) -> str:
+    if (
+        progress_manager is None
+        or question_bank is None
+        or set_manager is None
+    ):
+        return ""
+    records = [
+        record
+        for record in _load_by_ids(
+            progress_manager,
+            "get",
+            impact.progress_ids,
+        )
+        if isinstance(record, ProgressRecord)
+    ]
+    if not records:
+        return ""
+    migrator = ProgressArchiveMigrator(
+        progress_manager=progress_manager,
+        question_bank=question_bank,
+        set_manager=set_manager,
+        course_manager=course_manager,
+    )
+    try:
+        results = migrator.migrate_all(records)
+    except Exception as exc:
+        return f"Failed to prepare completed history archives: {exc}"
+    errors = [result.error for result in results if result.error]
+    if errors:
+        return f"Failed to prepare completed history archives: {errors[0]}"
+    return ""
 
 
 _COURSE_METADATA_KEYS = {

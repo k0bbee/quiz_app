@@ -1509,6 +1509,9 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 question_ids=("q1", "q2"),
                 affected_set_ids=("set-a",),
                 progress_ids=("progress-a", "progress-b", "progress-c"),
+                complete_archive_ids=("progress-a",),
+                incomplete_archive_ids=("progress-b",),
+                legacy_archive_ids=("progress-c",),
                 draft_progress_ids=("progress-draft",),
                 snapshot_ids=("snapshot-a",),
                 past_exam_ids=("exam-a", "exam-b"),
@@ -1523,7 +1526,10 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
 
             self.assertIn("相关题目：2", text)
             self.assertIn("相关题集：1", text)
-            self.assertIn("学习记录：3（不可变复盘快照始终保留）", text)
+            self.assertIn(
+                "学习记录：3（完整归档 1，残缺归档 1，删除前待迁移 1）",
+                text,
+            )
             self.assertIn("未完成草稿：2（删除课程时取消）", text)
             self.assertIn("历史真题：2（保留并解除课程归属）", text)
             self.assertIn("热点材料：1（随课程删除）", text)
@@ -1536,6 +1542,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 question_ids=("q1", "q2"),
                 affected_set_ids=("set-a",),
                 progress_ids=("progress-a",),
+                legacy_archive_ids=("progress-a",),
                 draft_progress_ids=("progress-draft",),
                 snapshot_ids=("snapshot-a",),
             )
@@ -1563,6 +1570,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertIn("不能重练", delete_text)
             for text in (keep_text, unlink_text, delete_text):
                 self.assertIn("2 个未完成草稿将取消", text)
+                self.assertIn("删除前先迁移 1 条旧历史", text)
 
     def test_project_manager_current_returns_none_without_explicit_pointer(self):
         with tempfile.TemporaryDirectory() as tmpdir:
