@@ -1,5 +1,7 @@
 """Results screen — score display, per-question review, retry options."""
 
+import copy
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QScrollArea, QFrame, QMenu
@@ -9,10 +11,11 @@ from PyQt6.QtGui import QAction
 
 from core.language_manager import LanguageManager
 from core.study_intent import StudyAction, StudyIntent
-from models.progress import ProgressRecord, AnswerRecord
+from models.progress import ProgressRecord, AnswerRecord, QuestionReviewSnapshot
+from models.question import Question
 from ui.widgets.question_review_card import QuestionReviewCard
 from ui.widgets.progress_summary_bar import ProgressSummaryBar
-from utils.constants import topic_value
+from utils.constants import Difficulty, QuestionType, topic_value
 from core.topic_display import topic_display_name
 from models.course_project import CourseProjectManager
 
@@ -32,6 +35,7 @@ class ResultsScreen(QWidget):
         super().__init__(parent)
         self.current_record: ProgressRecord = None
         self._questions: dict = {}  # question_id -> Question (set externally)
+        self._review_questions: dict = {}
         self._lang: str = "zh"
         self.lang_manager = LanguageManager.instance()
         self.course_manager = course_manager
@@ -191,6 +195,14 @@ class ResultsScreen(QWidget):
             study_intent if isinstance(study_intent, StudyIntent) else None
         )
         self._questions = questions or {}
+        self._review_questions = dict(self._questions)
+        for snapshot in getattr(record, "question_snapshots", []) or []:
+            if not isinstance(snapshot, QuestionReviewSnapshot):
+                continue
+            self._review_questions.setdefault(
+                snapshot.question_id,
+                self._question_from_snapshot(snapshot),
+            )
         self._retry_question_ids = set(self._questions)
         self._can_retry_all = bool(self._questions)
         self._lang = lang
@@ -270,7 +282,7 @@ class ResultsScreen(QWidget):
         self._clear_reviews()
         for i, answer in enumerate(record.answers):
             card = QuestionReviewCard()
-            q = self._questions.get(answer.question_id)
+            q = self._review_questions.get(answer.question_id)
             if q:
                 card.set_result(
                     i,
@@ -279,7 +291,11 @@ class ResultsScreen(QWidget):
                     answer.is_correct,
                     lang,
                     skipped=answer.skipped,
-                    course_project=self._course_project,
+                    course_project=(
+                        self._course_project
+                        if answer.question_id in self._questions
+                        else None
+                    ),
                 )
             else:
                 # Minimal card without question data
@@ -329,7 +345,7 @@ class ResultsScreen(QWidget):
         ):
             self.next_action_btn.hide()
             self.next_action_label.setText(self.lang_manager.get_text(
-                "该课程或题目集已删除。原题已不可用，当前记录只能查看，无法重新练习。",
+                "该课程或题目集已删除。历史内容仍可复盘，但原题已不可用，无法重新练习。",
                 "The course or question set was deleted. This archived result can be "
                 "reviewed, but the original questions can no longer be retried.",
             ))
@@ -411,7 +427,7 @@ class ResultsScreen(QWidget):
         for answer in record.answers:
             if answer.skipped:
                 continue
-            question = self._questions.get(answer.question_id)
+            question = self._review_questions.get(answer.question_id)
             if question is None:
                 continue
             topic_id = topic_value(question.topic)
@@ -501,6 +517,34 @@ class ResultsScreen(QWidget):
     def set_questions(self, questions: dict):
         """Provide question data for review rendering."""
         self._questions = questions
+        self._review_questions = dict(questions or {})
+
+    @staticmethod
+    def _question_from_snapshot(snapshot: QuestionReviewSnapshot) -> Question:
+        try:
+            question_type = QuestionType(snapshot.question_type)
+        except ValueError:
+            question_type = QuestionType.MULTIPLE_CHOICE
+        content = {
+            "stem": snapshot.stem,
+            "options": copy.deepcopy(snapshot.options),
+            "explanation": snapshot.explanation,
+        }
+        return Question(
+            question_id=snapshot.question_id,
+            type=question_type,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": copy.deepcopy(content),
+                "en": copy.deepcopy(content),
+            },
+            correct_answer=copy.deepcopy(snapshot.correct_answer),
+            topic=snapshot.topic_id or "general",
+            metadata={
+                "topic_title": snapshot.topic_title,
+                "source_refs": copy.deepcopy(snapshot.source_refs),
+            },
+        )
 
     def _resolve_course_project(self):
         course_ids = {
@@ -524,7 +568,7 @@ class ResultsScreen(QWidget):
 
     def _build_topic_summary(self, record: ProgressRecord, lang: str) -> str:
         """Build a compact per-topic accuracy summary for the completed session."""
-        if not self._questions:
+        if not self._review_questions:
             return self.lang_manager.get_text(
                 "题目详情不可用于主题细分。",
                 "Question details were not available for topic breakdown."
@@ -534,7 +578,7 @@ class ResultsScreen(QWidget):
         for answer in record.answers:
             if answer.skipped:
                 continue
-            question = self._questions.get(answer.question_id)
+            question = self._review_questions.get(answer.question_id)
             if not question:
                 continue
             topic = question.topic
@@ -553,7 +597,11 @@ class ResultsScreen(QWidget):
         parts = []
         for topic, value in sorted(stats.items(), key=lambda item: topic_value(item[0])):
             question = next(
-                (q for q in self._questions.values() if topic_value(q.topic) == topic_value(topic)),
+                (
+                    q
+                    for q in self._review_questions.values()
+                    if topic_value(q.topic) == topic_value(topic)
+                ),
                 None,
             )
             label = topic_display_name(

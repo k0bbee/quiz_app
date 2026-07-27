@@ -10,7 +10,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QComboBox, QMessageBox, QRadioButton
 
-from models.progress import AnswerRecord, ProgressRecord, SessionSummary
+from models.progress import (
+    AnswerRecord,
+    ProgressRecord,
+    QuestionReviewSnapshot,
+    SessionSummary,
+)
 from models.question import Question
 from models.question import QuestionBank
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
@@ -1172,6 +1177,53 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertFalse(screen.retry_all_action.isEnabled())
         self.assertFalse(screen.more_practice_btn.isEnabled())
         self.assertIn("原题已不可用", screen.next_action_label.text())
+
+    def test_results_screen_reviews_snapshot_when_original_question_is_deleted(self):
+        record = ProgressRecord.create_new("set-deleted")
+        record.status = "completed"
+        record.set_title_snapshot = "I/O 专项"
+        record.course_title_snapshot = "操作系统"
+        record.answers = [
+            AnswerRecord(
+                question_id="q-deleted",
+                index_in_session=0,
+                user_answer="A",
+                is_correct=False,
+            )
+        ]
+        record.summary = SessionSummary.compute(record.answers, 1, 10)
+        record.question_snapshots = [
+            QuestionReviewSnapshot(
+                question_id="q-deleted",
+                question_type="multiple_choice",
+                topic_id="input-output",
+                topic_title="输入输出",
+                stem="哪种方式由设备主动通知 CPU？",
+                options=["A. 轮询", "B. 中断"],
+                correct_answer="B",
+                explanation="中断由设备在完成后通知 CPU。",
+                source_refs=[
+                    {
+                        "source_file": "lecture.pdf",
+                        "page_or_slide": 8,
+                    }
+                ],
+            )
+        ]
+        screen = self._make_results_screen()
+
+        screen.set_results(record, {}, "zh")
+        screen.set_retry_availability([], can_retry_all=False)
+
+        card = screen.review_layout.itemAt(0).widget()
+        self.assertEqual("哪种方式由设备主动通知 CPU？", card.stem_label.text())
+        self.assertIn("A. 轮询", card.answer_info.text())
+        self.assertIn("B. 中断", card.answer_info.text())
+        self.assertIn("中断由设备在完成后通知 CPU。", card.explanation_label.text())
+        self.assertIn("lecture.pdf", card.source_label.text())
+        self.assertIn("输入输出: 0/1", screen.topic_stats_label.text())
+        self.assertFalse(screen.retry_incorrect_btn.isEnabled())
+        self.assertIn("仍可复盘", screen.next_action_label.text())
 
     def test_retry_incorrect_excludes_skipped_answers(self):
         from ui.main_window import MainWindow
