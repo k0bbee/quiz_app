@@ -46,6 +46,24 @@ jobs:
           include-hidden-files: true
           retention-days: 1
 
+  pyqt-wheel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python 3.13
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: Download PyQt6 wheel set
+        run: |
+          python -m pip download --only-binary=:all: --dest wheels PyQt6
+      - name: Upload PyQt6 wheel set
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyqt6-linux-py313
+          path: wheels/*.whl
+          retention-days: 1
+
   test-and-audit:
     runs-on: windows-latest
     timeout-minutes: 20
