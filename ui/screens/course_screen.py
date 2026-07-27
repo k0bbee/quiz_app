@@ -1144,25 +1144,25 @@ class CourseScreen(QWidget):
             (
                 CourseRemovalMode.KEEP_ASSETS,
                 self.lang_manager.get_text("仅删除课程资料", "Delete Course Only"),
-                self.lang_manager.get_text(
-                    "保留题目、题集、学习记录和草稿；以后仍可独立练习。",
-                    "Keep questions, sets, learning records, and drafts for independent practice.",
+                self._course_removal_mode_text(
+                    CourseRemovalMode.KEEP_ASSETS,
+                    impact,
                 ),
             ),
             (
                 CourseRemovalMode.UNLINK_ASSETS,
                 self.lang_manager.get_text("解除关联并删除课程", "Unlink and Delete Course"),
-                self.lang_manager.get_text(
-                    "保留全部练习数据，但移除课程与来源定位信息。",
-                    "Keep all practice data but remove course and source-location links.",
+                self._course_removal_mode_text(
+                    CourseRemovalMode.UNLINK_ASSETS,
+                    impact,
                 ),
             ),
             (
                 CourseRemovalMode.DELETE_LINKED_BANK,
                 self.lang_manager.get_text("删除课程及关联题库", "Delete Course and Linked Bank"),
-                self.lang_manager.get_text(
-                    "删除关联题目并清理题集和草稿；学习记录仍会保留。",
-                    "Delete linked questions and clean sets and drafts; learning records remain.",
+                self._course_removal_mode_text(
+                    CourseRemovalMode.DELETE_LINKED_BANK,
+                    impact,
                 ),
             ),
         )
@@ -1220,8 +1220,8 @@ class CourseScreen(QWidget):
                 f"删除课程“{project.title}”\n\n"
                 f"相关题目：{impact.question_count}\n"
                 f"相关题集：{impact.question_set_count}\n"
-                f"学习记录：{impact.progress_count}（始终保留）\n"
-                f"未完成草稿：{impact.snapshot_count}\n"
+                f"学习记录：{impact.progress_count}（不可变复盘快照始终保留）\n"
+                f"未完成草稿：{impact.unfinished_draft_count}（删除课程时取消）\n"
                 f"历史真题：{impact.past_exam_count}（保留并解除课程归属）\n"
                 f"热点材料：{impact.current_event_pack_count}（随课程删除）"
             ),
@@ -1229,13 +1229,44 @@ class CourseScreen(QWidget):
                 f"Delete course '{project.title}'\n\n"
                 f"Linked questions: {impact.question_count}\n"
                 f"Linked question sets: {impact.question_set_count}\n"
-                f"Learning records: {impact.progress_count} (always kept)\n"
-                f"Unfinished drafts: {impact.snapshot_count}\n"
+                f"Learning records: {impact.progress_count} "
+                "(immutable review snapshots are always kept)\n"
+                f"Unfinished drafts: {impact.unfinished_draft_count} "
+                "(cancelled when the course is deleted)\n"
                 f"Historical exams: {impact.past_exam_count} "
                 "(kept and unassigned)\n"
                 f"Current-event packs: {impact.current_event_pack_count} "
                 "(deleted with the course)"
             ),
+        )
+
+    def _course_removal_mode_text(
+        self,
+        mode: CourseRemovalMode,
+        impact,
+    ) -> str:
+        drafts = impact.unfinished_draft_count
+        mode = CourseRemovalMode(mode)
+        if mode is CourseRemovalMode.KEEP_ASSETS:
+            return self.lang_manager.get_text(
+                f"题目和题集原样保留；{drafts} 个未完成草稿将取消。完成历史仍可复盘。",
+                f"Questions and sets remain unchanged; {drafts} unfinished draft(s) "
+                "will be cancelled. Completed history remains reviewable.",
+            )
+        if mode is CourseRemovalMode.UNLINK_ASSETS:
+            return self.lang_manager.get_text(
+                f"保留题目和题集，但移除课程归属和来源定位；{drafts} 个未完成草稿将取消。"
+                "完成历史仍可复盘。",
+                "Keep questions and sets, but remove course ownership and source locations; "
+                f"{drafts} unfinished draft(s) will be cancelled. Completed history remains "
+                "reviewable.",
+            )
+        return self.lang_manager.get_text(
+            f"删除关联题目并清理题集；{drafts} 个未完成草稿将取消。"
+            "完成历史仍可复盘，但原题删除后不能重练。",
+            f"Delete linked questions and clean affected sets; {drafts} unfinished draft(s) "
+            "will be cancelled. Completed history remains reviewable, but deleted questions "
+            "cannot be retried.",
         )
 
     def _on_regen_done(self, result):

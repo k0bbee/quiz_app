@@ -1509,6 +1509,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 question_ids=("q1", "q2"),
                 affected_set_ids=("set-a",),
                 progress_ids=("progress-a", "progress-b", "progress-c"),
+                draft_progress_ids=("progress-draft",),
                 snapshot_ids=("snapshot-a",),
                 past_exam_ids=("exam-a", "exam-b"),
                 current_event_pack_ids=("pack-a",),
@@ -1522,10 +1523,46 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
 
             self.assertIn("相关题目：2", text)
             self.assertIn("相关题集：1", text)
-            self.assertIn("学习记录：3（始终保留）", text)
-            self.assertIn("未完成草稿：1", text)
+            self.assertIn("学习记录：3（不可变复盘快照始终保留）", text)
+            self.assertIn("未完成草稿：2（删除课程时取消）", text)
             self.assertIn("历史真题：2（保留并解除课程归属）", text)
             self.assertIn("热点材料：1（随课程删除）", text)
+
+    def test_course_removal_mode_text_distinguishes_review_from_retry(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = CourseScreen(CourseProjectManager(str(Path(tmpdir) / "projects")))
+            impact = CourseAssetImpact(
+                course_id="course-a",
+                question_ids=("q1", "q2"),
+                affected_set_ids=("set-a",),
+                progress_ids=("progress-a",),
+                draft_progress_ids=("progress-draft",),
+                snapshot_ids=("snapshot-a",),
+            )
+            language_manager = LanguageManager.instance()
+            previous_language = language_manager.current
+            self.addCleanup(language_manager.set_language, previous_language)
+            language_manager.set_language("zh")
+
+            keep_text = screen._course_removal_mode_text(
+                CourseRemovalMode.KEEP_ASSETS,
+                impact,
+            )
+            unlink_text = screen._course_removal_mode_text(
+                CourseRemovalMode.UNLINK_ASSETS,
+                impact,
+            )
+            delete_text = screen._course_removal_mode_text(
+                CourseRemovalMode.DELETE_LINKED_BANK,
+                impact,
+            )
+
+            self.assertIn("题目和题集原样保留", keep_text)
+            self.assertIn("移除课程归属和来源定位", unlink_text)
+            self.assertIn("历史仍可复盘", delete_text)
+            self.assertIn("不能重练", delete_text)
+            for text in (keep_text, unlink_text, delete_text):
+                self.assertIn("2 个未完成草稿将取消", text)
 
     def test_project_manager_current_returns_none_without_explicit_pointer(self):
         with tempfile.TemporaryDirectory() as tmpdir:
