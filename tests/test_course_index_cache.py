@@ -363,6 +363,47 @@ class CourseIndexCacheTests(unittest.TestCase):
 
         self.assertEqual([], refs)
 
+    def test_source_ref_excerpt_stays_focused_on_the_query_after_resolution(self):
+        project = CourseProject(
+            course_id="course-focused-source",
+            title="Mechanics",
+            source_folder="",
+            summary_markdown="## Energy\nMechanical energy conservation.",
+            summary_path="",
+            topics=[
+                CourseTopic(
+                    topic_id="energy",
+                    title="Energy",
+                    keywords=["mechanical energy", "conservative force"],
+                    source_files=[],
+                )
+            ],
+            documents=[
+                {
+                    "path": "mechanics.pdf",
+                    "title": "Mechanics",
+                    "extension": ".pdf",
+                    "pages": [
+                        ("unrelated preface material " * 30)
+                        + "Mechanical energy remains constant when only "
+                        "conservative forces do work."
+                    ],
+                }
+            ],
+            created_at="2026-07-27T00:00:00+00:00",
+            updated_at="2026-07-27T00:00:00+00:00",
+        )
+
+        refs = course_index.retrieve_course_source_refs(
+            project,
+            ["mechanical energy", "conservative forces"],
+            limit=1,
+        )
+        resolved = course_index.resolve_course_source_ref(project, refs[0])
+
+        self.assertIn("Mechanical energy remains constant", refs[0]["excerpt"])
+        self.assertIn("Mechanical energy remains constant", resolved["excerpt"])
+
     def test_retrieval_context_does_not_include_unrelated_source_fallback_chunks(self):
         project = CourseProject(
             course_id="course-context-unrelated-source",

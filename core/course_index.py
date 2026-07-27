@@ -198,7 +198,7 @@ def retrieve_course_source_refs(
         terms.extend(_expanded_terms(topic_keywords.get(topic.lower(), [])))
     term_set = {term.lower() for term in terms if term}
     scored = _score_source_chunks(source_chunks, topic_keys, term_set, allow_fallback=False)
-    return [chunk.to_ref() for _, chunk in scored[:limit]]
+    return [_focused_source_ref(chunk, term_set) for _, chunk in scored[:limit]]
 
 
 def resolve_course_source_ref(project: CourseProject, source_ref: dict) -> dict:
@@ -571,6 +571,16 @@ def _source_chunks_for_project(project: CourseProject) -> list[SourceChunk]:
 
 def _resolved_ref(chunk: SourceChunk, original_ref: dict) -> dict:
     ref = chunk.to_ref()
+    original_excerpt = " ".join(
+        str(original_ref.get("excerpt", "") or "").split()
+    )
+    excerpt_body = original_excerpt.strip("…").strip()
+    chunk_text = " ".join(chunk.text.split())
+    if (
+        len(excerpt_body) >= 24
+        and excerpt_body.casefold() in chunk_text.casefold()
+    ):
+        ref["excerpt"] = original_excerpt
     old_chunk_id = str(original_ref.get("chunk_id", "") or "").strip()
     if old_chunk_id and old_chunk_id != chunk.chunk_id:
         ref["resolved_from_chunk_id"] = old_chunk_id
@@ -625,6 +635,13 @@ def _score_source_chunks(
     if not scored and allow_fallback and not selected_topic_keys:
         scored = [(1, chunk) for chunk in source_chunks[:3]]
     return sorted(scored, key=lambda item: item[0], reverse=True)
+
+
+def _focused_source_ref(chunk: SourceChunk, term_set: set[str]) -> dict:
+    ref = chunk.to_ref()
+    compact_text = " ".join(chunk.text.split())
+    ref["excerpt"] = _focused_excerpt(compact_text, term_set, 320)
+    return ref
 
 
 def _source_file_name(document: dict) -> str:
