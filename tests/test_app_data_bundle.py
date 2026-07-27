@@ -16,9 +16,45 @@ from core.app_data_bundle import (
 )
 from core.background_task import BackgroundTaskCancelled, TaskControl
 from core.input_limits import InputLimitError
+from core.progress_tracker import ProgressManager
+from models.progress import ProgressRecord, QuestionReviewSnapshot
 
 
 class AppDataBundleTests(unittest.TestCase):
+    def test_bundle_round_trip_preserves_quiz_review_snapshots(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "source"
+            manager = ProgressManager(str(source / "progress"))
+            record = ProgressRecord.create_new("set-deleted")
+            record.set_title_snapshot = "I/O 专项"
+            record.course_title_snapshot = "操作系统"
+            record.question_snapshots = [
+                QuestionReviewSnapshot(
+                    question_id="q-io",
+                    question_type="multiple_choice",
+                    topic_id="input-output",
+                    topic_title="输入输出",
+                    stem="哪种方式由设备主动通知 CPU？",
+                    options=["A. 轮询", "B. 中断"],
+                    correct_answer="B",
+                    explanation="设备通过中断通知 CPU。",
+                    source_refs=[{"source_file": "lecture.pdf", "page_or_slide": 8}],
+                )
+            ]
+            manager.save(record)
+
+            bundle = export_app_data_bundle(source, root / "history.quizdata")
+            target = root / "target"
+            import_app_data_bundle(bundle, target)
+            loaded = ProgressManager(str(target / "progress")).get(record.progress_id)
+
+            self.assertIsNotNone(loaded)
+            self.assertEqual("I/O 专项", loaded.set_title_snapshot)
+            self.assertEqual("操作系统", loaded.course_title_snapshot)
+            self.assertEqual("哪种方式由设备主动通知 CPU？", loaded.question_snapshots[0].stem)
+            self.assertEqual("lecture.pdf", loaded.question_snapshots[0].source_refs[0]["source_file"])
+
     def test_bundle_targets_reject_nonportable_windows_segments(self):
         invalid = (
             "courses/report.txt:payload.txt",
