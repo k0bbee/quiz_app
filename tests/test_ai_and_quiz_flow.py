@@ -92,6 +92,20 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             )
         )
 
+    @staticmethod
+    def _make_course(course_id: str, title: str) -> CourseProject:
+        return CourseProject(
+            course_id=course_id,
+            title=title,
+            source_folder="",
+            summary_markdown=f"# {title}",
+            summary_path="",
+            topics=[CourseTopic(f"{course_id}-topic", title)],
+            documents=[],
+            created_at="2026-07-01T00:00:00+00:00",
+            updated_at="2026-07-01T00:00:00+00:00",
+        )
+
     def test_quiz_screen_supports_question_preview_filter_and_free_navigation(self):
         language_manager = LanguageManager.instance()
         previous_language = language_manager.current
@@ -1128,6 +1142,90 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         screen.set_results(record, {}, "zh")
 
         self.assertIn("答对但不确定: 1", screen.stats_label.text())
+
+    def test_results_screen_recomputes_course_context_for_displayed_questions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+            course_a = self._make_course("course-a", "课程 A")
+            course_b = self._make_course("course-b", "课程 B")
+            self.assertTrue(manager.save(course_a, make_current=True))
+            self.assertTrue(manager.save(course_b, make_current=False))
+            screen = ResultsScreen(course_manager=manager)
+            question = self._make_question("q-b")
+            question.metadata["course_id"] = course_b.course_id
+            record = ProgressRecord.create_new("set-b")
+            record.status = "completed"
+            record.course_id_snapshot = course_b.course_id
+            record.answers = [AnswerRecord("q-b", 0, "A", True)]
+            record.summary = SessionSummary.compute(record.answers, 1, 10)
+
+            screen.set_results(record, {"q-b": question}, "zh")
+
+            self.assertEqual(course_b.course_id, screen._course_project.course_id)
+
+    def test_results_screen_does_not_borrow_current_course_for_deleted_history(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+            current = self._make_course("course-current", "当前课程")
+            self.assertTrue(manager.save(current, make_current=True))
+            screen = ResultsScreen(course_manager=manager)
+            record = ProgressRecord.create_new("set-deleted")
+            record.status = "completed"
+            record.course_id_snapshot = "course-deleted"
+            record.course_title_snapshot = "已删除课程"
+            record.answers = []
+            record.summary = SessionSummary.compute([], 0, 0)
+
+            screen.set_results(record, {}, "zh")
+
+            self.assertIsNone(screen._course_project)
+
+    def test_results_screen_leaves_cross_course_custom_practice_unbound(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+            course_a = self._make_course("course-a", "课程 A")
+            course_b = self._make_course("course-b", "课程 B")
+            self.assertTrue(manager.save(course_a, make_current=True))
+            self.assertTrue(manager.save(course_b, make_current=False))
+            screen = ResultsScreen(course_manager=manager)
+            question_a = self._make_question("q-a")
+            question_a.metadata["course_id"] = course_a.course_id
+            question_b = self._make_question("q-b")
+            question_b.metadata["course_id"] = course_b.course_id
+            record = ProgressRecord.create_new("set-custom")
+            record.status = "completed"
+            record.course_id_snapshot = course_a.course_id
+            record.answers = [
+                AnswerRecord("q-a", 0, "A", True),
+                AnswerRecord("q-b", 1, "A", True),
+            ]
+            record.summary = SessionSummary.compute(record.answers, 2, 20)
+
+            screen.set_results(
+                record,
+                {"q-a": question_a, "q-b": question_b},
+                "zh",
+            )
+
+            self.assertIsNone(screen._course_project)
+
+    def test_results_screen_uses_study_intent_when_record_has_no_course_identity(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+            course = self._make_course("course-intent", "意图课程")
+            self.assertTrue(manager.save(course, make_current=False))
+            screen = ResultsScreen(course_manager=manager)
+            record = ProgressRecord.create_new("set-custom")
+            record.status = "completed"
+            record.summary = SessionSummary.compute([], 0, 0)
+            intent = StudyIntent(
+                course_id=course.course_id,
+                action=StudyAction.CUSTOM_PRACTICE,
+            )
+
+            screen.set_results(record, {}, "zh", study_intent=intent)
+
+            self.assertEqual(course.course_id, screen._course_project.course_id)
 
     def test_results_screen_distinguishes_skipped_from_incorrect(self):
         record = ProgressRecord.create_new("set-1")

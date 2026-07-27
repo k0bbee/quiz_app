@@ -11,7 +11,7 @@ from PyQt6.QtGui import QAction
 
 from core.language_manager import LanguageManager
 from core.study_intent import StudyAction, StudyIntent
-from models.progress import ProgressRecord, AnswerRecord, QuestionReviewSnapshot
+from models.progress import ProgressRecord, QuestionReviewSnapshot
 from models.question import Question
 from ui.widgets.question_review_card import QuestionReviewCard
 from ui.widgets.progress_summary_bar import ProgressSummaryBar
@@ -102,7 +102,6 @@ class ResultsScreen(QWidget):
         )
         self._recommended_topic_id = ""
         self._recommended_action = ""
-        self._course_project = self._resolve_course_project()
 
         # Divider
         line = QFrame()
@@ -202,6 +201,7 @@ class ResultsScreen(QWidget):
             study_intent if isinstance(study_intent, StudyIntent) else None
         )
         self._questions = questions or {}
+        self._course_project = self._resolve_course_project(record)
         self._review_questions = dict(self._questions)
         for snapshot in getattr(record, "question_snapshots", []) or []:
             if not isinstance(snapshot, QuestionReviewSnapshot):
@@ -563,15 +563,29 @@ class ResultsScreen(QWidget):
             },
         )
 
-    def _resolve_course_project(self):
+    def _resolve_course_project(self, record: ProgressRecord | None = None):
+        if self.course_manager is None:
+            return None
         course_ids = {
             str((question.metadata or {}).get("course_id", "") or "").strip()
             for question in self._questions.values()
         }
         course_ids.discard("")
+        if len(course_ids) > 1:
+            return None
         if len(course_ids) == 1:
             return self.course_manager.get(next(iter(course_ids)))
-        return self.course_manager.current()
+        record_course_id = str(
+            getattr(record, "course_id_snapshot", "") or ""
+        ).strip()
+        if record_course_id:
+            return self.course_manager.get(record_course_id)
+        intent_course_id = str(
+            getattr(self.current_study_intent, "course_id", "") or ""
+        ).strip()
+        if intent_course_id:
+            return self.course_manager.get(intent_course_id)
+        return None
 
     def _clear_reviews(self):
         """Remove all review cards from the layout."""
