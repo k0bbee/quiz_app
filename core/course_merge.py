@@ -8,6 +8,10 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 
 from core.background_task import BackgroundTaskCancelled
+from core.course_asset_lifecycle import (
+    analyze_course_asset_impact,
+    migrate_impacted_progress_archives,
+)
 from core.current_events import CurrentEventMaterialPack
 from models.course_project import CourseProject, CourseTopic
 
@@ -33,6 +37,7 @@ def merge_courses(
     course_manager,
     question_bank=None,
     set_manager=None,
+    progress_manager=None,
     past_exam_manager=None,
     mastery_overrides=None,
     current_event_manager=None,
@@ -67,6 +72,36 @@ def merge_courses(
         return CourseMergeResult(False, **base_result, error="Select at least one source course")
     if any(source is None for source in sources):
         return CourseMergeResult(False, **base_result, error="A source course no longer exists")
+
+    try:
+        for source_id in source_ids:
+            _check_cancelled(task)
+            impact = analyze_course_asset_impact(
+                source_id,
+                question_bank,
+                set_manager,
+                progress_manager,
+            )
+            archive_error = migrate_impacted_progress_archives(
+                impact,
+                course_manager=course_manager,
+                question_bank=question_bank,
+                set_manager=set_manager,
+                progress_manager=progress_manager,
+            )
+            if archive_error:
+                return CourseMergeResult(
+                    False,
+                    **base_result,
+                    error=archive_error,
+                )
+    except BackgroundTaskCancelled as exc:
+        return CourseMergeResult(
+                False,
+                **base_result,
+                cancelled=True,
+                error=str(exc),
+        )
 
     original_projects = [deepcopy(target), *(deepcopy(source) for source in sources)]
     current = course_manager.current()

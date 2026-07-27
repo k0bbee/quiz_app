@@ -132,6 +132,9 @@ class CourseMergeDialog(QDialog):
         question_count = unique_count("question_ids")
         set_count = unique_count("affected_set_ids")
         history_count = unique_count("progress_ids")
+        complete_archive_count = unique_count("complete_archive_ids")
+        incomplete_archive_count = unique_count("incomplete_archive_ids")
+        legacy_archive_count = unique_count("legacy_archive_ids")
         draft_count = (
             unique_count("draft_progress_ids")
             + unique_count("snapshot_ids")
@@ -143,6 +146,8 @@ class CourseMergeDialog(QDialog):
             (
                 f"并入“{target_title}”\n"
                 f"题目：{question_count}　题集：{set_count}　完成历史：{history_count}\n"
+                f"完整归档：{complete_archive_count}　残缺归档："
+                f"{incomplete_archive_count}　合并前待迁移：{legacy_archive_count}\n"
                 f"未完成草稿：{draft_count}　历史真题：{past_exam_count}　热点材料：{event_count}\n"
                 "题目和题集迁移到保留课程；未完成草稿随完整迁移的题目继续保留。"
                 "历史发生时的课程身份保持不变，重练仍取决于迁移后的实时题库。"
@@ -151,6 +156,9 @@ class CourseMergeDialog(QDialog):
                 f"Merge into '{target_title}'\n"
                 f"Questions: {question_count}  Sets: {set_count}  "
                 f"Completed history: {history_count}\n"
+                f"Complete archives: {complete_archive_count}  "
+                f"Incomplete archives: {incomplete_archive_count}  "
+                f"Migrate before merge: {legacy_archive_count}\n"
                 f"Unfinished drafts: {draft_count}  Historical exams: {past_exam_count}  "
                 f"Current-event packs: {event_count}\n"
                 "Questions and sets move to the retained course; unfinished drafts remain "

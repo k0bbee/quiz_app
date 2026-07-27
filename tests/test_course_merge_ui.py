@@ -60,6 +60,9 @@ class CourseMergeDialogTests(unittest.TestCase):
             question_ids=("q1", "q2"),
             affected_set_ids=("set-1",),
             progress_ids=("progress-1", "progress-2", "progress-3"),
+            complete_archive_ids=("progress-1",),
+            incomplete_archive_ids=("progress-2",),
+            legacy_archive_ids=("progress-3",),
             draft_progress_ids=("progress-draft",),
             snapshot_ids=("snapshot-1",),
             past_exam_ids=("exam-1",),
@@ -77,6 +80,9 @@ class CourseMergeDialogTests(unittest.TestCase):
         self.assertIn("题目：2", text)
         self.assertIn("题集：1", text)
         self.assertIn("完成历史：3", text)
+        self.assertIn("完整归档：1", text)
+        self.assertIn("残缺归档：1", text)
+        self.assertIn("合并前待迁移：1", text)
         self.assertIn("未完成草稿：2", text)
         self.assertIn("历史发生时的课程身份保持不变", text)
         self.assertIn("Course A", text)

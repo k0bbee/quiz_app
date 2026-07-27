@@ -9,8 +9,10 @@ from core.current_events import (
 )
 from core.background_task import TaskControl
 from core.mastery_overrides import MasteryOverrideStore
+from core.progress_tracker import ProgressManager
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from models.past_exam import PastExamManager, PastExamRecord
+from models.progress import AnswerRecord, ProgressRecord
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
 from utils.constants import Difficulty, QuestionType
@@ -177,6 +179,71 @@ class CourseMergeTests(unittest.TestCase):
             self.assertEqual(1, result.question_set_count)
             self.assertEqual(1, result.past_exam_count)
             self.assertEqual(1, result.current_event_pack_count)
+
+    def test_merge_archives_source_course_history_before_reassigning_assets(self):
+        from core.course_merge import merge_courses
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            course_manager = CourseProjectManager(root / "courses")
+            question_bank = QuestionBank(str(root / "questions"))
+            set_manager = SetManager(str(root / "sets"))
+            progress_manager = ProgressManager(str(root / "progress"))
+            target = self._project("course-target", "Target", "io")
+            source = self._project("course-source", "Source", "memory")
+            self.assertTrue(course_manager.save(target, make_current=False))
+            self.assertTrue(course_manager.save(source, make_current=True))
+            question = self._question(source.course_id, "memory")
+            question.metadata["course_title"] = source.title
+            self.assertTrue(question_bank.save(question))
+            question_set = QuestionSet.create_new(
+                title={"zh": "来源题集", "en": "Source Set"},
+                description={"zh": "", "en": ""},
+                topics=["memory"],
+                question_ids=[question.question_id],
+            )
+            question_set.metadata.update({
+                "course_id": source.course_id,
+                "course_title": source.title,
+            })
+            self.assertTrue(set_manager.save(question_set))
+            record = ProgressRecord(
+                progress_id="progress-source",
+                set_id=question_set.set_id,
+                language="zh",
+                started_at="2026-07-01T00:00:00+00:00",
+                completed_at="2026-07-01T00:10:00+00:00",
+                status="completed",
+                answers=[
+                    AnswerRecord(
+                        question.question_id,
+                        0,
+                        "A",
+                        True,
+                    )
+                ],
+                archive_status="legacy",
+            )
+            self.assertTrue(progress_manager.save(record))
+
+            try:
+                result = merge_courses(
+                    target.course_id,
+                    [source.course_id],
+                    course_manager=course_manager,
+                    question_bank=question_bank,
+                    set_manager=set_manager,
+                    progress_manager=progress_manager,
+                )
+            except TypeError:
+                self.fail("merge_courses does not accept progress_manager")
+
+            self.assertTrue(result.success, result.error)
+            stored = progress_manager.get(record.progress_id)
+            self.assertEqual("complete", stored.archive_status)
+            self.assertEqual(source.course_id, stored.course_id_snapshot)
+            self.assertEqual(source.title, stored.course_title_snapshot)
+            self.assertEqual("题目", stored.question_snapshots[0].stem)
 
     def test_merge_rolls_back_before_deleting_source_when_asset_save_fails(self):
         from core.course_merge import merge_courses

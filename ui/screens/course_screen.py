@@ -961,6 +961,7 @@ class CourseScreen(QWidget):
             course_manager=self.manager,
             question_bank=self.question_bank,
             set_manager=self.set_manager,
+            progress_manager=self.progress_manager,
             past_exam_manager=self.past_exam_manager,
             mastery_overrides=self.mastery_overrides,
             current_event_manager=self.current_event_manager,
