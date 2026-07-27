@@ -16,6 +16,7 @@ class CourseAssetImpact:
     direct_set_ids: tuple[str, ...] = ()
     affected_set_ids: tuple[str, ...] = ()
     progress_ids: tuple[str, ...] = ()
+    draft_progress_ids: tuple[str, ...] = ()
     snapshot_ids: tuple[str, ...] = ()
     past_exam_ids: tuple[str, ...] = ()
     current_event_pack_ids: tuple[str, ...] = ()
@@ -35,6 +36,14 @@ class CourseAssetImpact:
     @property
     def snapshot_count(self) -> int:
         return len(self.snapshot_ids)
+
+    @property
+    def draft_progress_count(self) -> int:
+        return len(self.draft_progress_ids)
+
+    @property
+    def unfinished_draft_count(self) -> int:
+        return self.draft_progress_count + self.snapshot_count
 
     @property
     def past_exam_count(self) -> int:
@@ -94,12 +103,23 @@ def analyze_course_asset_impact(
         if is_direct or contains_course_question:
             affected_set_ids.add(set_id)
 
-    progress_ids = {
-        str(getattr(record, "progress_id", "") or "").strip()
-        for record in _load_all(progress_manager)
-        if str(getattr(record, "set_id", "") or "").strip() in affected_set_ids
-    }
-    progress_ids.discard("")
+    progress_ids: set[str] = set()
+    draft_progress_ids: set[str] = set()
+    for record in _load_all(progress_manager):
+        set_id = str(getattr(record, "set_id", "") or "").strip()
+        historical_course_id = str(
+            getattr(record, "course_id_snapshot", "") or ""
+        ).strip()
+        if set_id not in affected_set_ids and historical_course_id != normalized_course_id:
+            continue
+        progress_id = str(getattr(record, "progress_id", "") or "").strip()
+        if not progress_id:
+            continue
+        status = str(getattr(record, "status", "completed") or "completed").strip()
+        if status in {"abandoned", "in_progress"}:
+            draft_progress_ids.add(progress_id)
+        else:
+            progress_ids.add(progress_id)
     snapshot_ids = {
         str(getattr(snapshot, "snapshot_id", "") or "").strip()
         for snapshot in _load_all(snapshot_manager)
@@ -127,6 +147,7 @@ def analyze_course_asset_impact(
         direct_set_ids=tuple(sorted(direct_set_ids)),
         affected_set_ids=tuple(sorted(affected_set_ids)),
         progress_ids=tuple(sorted(progress_ids)),
+        draft_progress_ids=tuple(sorted(draft_progress_ids)),
         snapshot_ids=tuple(sorted(snapshot_ids)),
         past_exam_ids=tuple(sorted(past_exam_ids)),
         current_event_pack_ids=tuple(sorted(current_event_pack_ids)),
@@ -164,6 +185,11 @@ def remove_course_assets(
     was_current = getattr(current, "course_id", "") == impact.course_id
     questions = _load_by_ids(question_bank, "get", impact.question_ids)
     question_sets = _load_by_ids(set_manager, "get", impact.affected_set_ids)
+    draft_progress_records = _load_by_ids(
+        progress_manager,
+        "get",
+        impact.draft_progress_ids,
+    )
     snapshots = _load_by_ids(snapshot_manager, "get", impact.snapshot_ids)
     past_exams = _load_by_ids(past_exam_manager, "get", impact.past_exam_ids)
     current_event_packs = _load_by_ids(
@@ -173,6 +199,12 @@ def remove_course_assets(
     )
 
     try:
+        _delete_drafts(
+            draft_progress_records,
+            snapshots,
+            progress_manager,
+            snapshot_manager,
+        )
         if mode is CourseRemovalMode.UNLINK_ASSETS:
             _unlink_course_assets(
                 impact,
@@ -186,10 +218,8 @@ def remove_course_assets(
                 impact,
                 deepcopy(questions),
                 deepcopy(question_sets),
-                deepcopy(snapshots),
                 question_bank,
                 set_manager,
-                snapshot_manager,
             )
         _unlink_past_exams(past_exams, past_exam_manager)
         _delete_current_event_packs(
@@ -206,12 +236,14 @@ def remove_course_assets(
             was_current,
             questions,
             question_sets,
+            draft_progress_records,
             snapshots,
             past_exams,
             current_event_packs,
             course_manager,
             question_bank,
             set_manager,
+            progress_manager,
             snapshot_manager,
             past_exam_manager,
             current_event_manager,
@@ -253,10 +285,8 @@ def _delete_linked_bank(
     impact,
     questions,
     question_sets,
-    snapshots,
     question_bank,
     set_manager,
-    snapshot_manager,
 ):
     direct_set_ids = set(impact.direct_set_ids)
     course_question_ids = set(impact.question_ids)
@@ -288,11 +318,26 @@ def _delete_linked_bank(
             question_bank.delete(question.question_id),
             f"delete question {question.question_id}",
         )
-    for snapshot in snapshots:
-        _require_success(
-            snapshot_manager.delete(snapshot.snapshot_id),
-            f"delete quiz draft {snapshot.snapshot_id}",
-        )
+
+
+def _delete_drafts(
+    draft_progress_records,
+    snapshots,
+    progress_manager,
+    snapshot_manager,
+):
+    if progress_manager is not None:
+        for record in draft_progress_records:
+            _require_success(
+                progress_manager.delete(record.progress_id),
+                f"delete progress draft {record.progress_id}",
+            )
+    if snapshot_manager is not None:
+        for snapshot in snapshots:
+            _require_success(
+                snapshot_manager.delete(snapshot.snapshot_id),
+                f"delete quiz draft {snapshot.snapshot_id}",
+            )
 
 
 def _unlink_past_exams(past_exams, past_exam_manager):
@@ -326,12 +371,14 @@ def _restore_assets(
     was_current,
     questions,
     question_sets,
+    draft_progress_records,
     snapshots,
     past_exams,
     current_event_packs,
     course_manager,
     question_bank,
     set_manager,
+    progress_manager,
     snapshot_manager,
     past_exam_manager,
     current_event_manager,
@@ -340,6 +387,7 @@ def _restore_assets(
     restore_groups = (
         (question_bank, questions, "question"),
         (set_manager, question_sets, "question set"),
+        (progress_manager, draft_progress_records, "progress draft"),
         (snapshot_manager, snapshots, "quiz draft"),
     )
     for manager, items, label in restore_groups:

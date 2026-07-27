@@ -76,6 +76,61 @@ class _CurrentEventManager(_StoreManager):
 
 
 class CourseAssetLifecycleTests(unittest.TestCase):
+    def test_impact_uses_historical_course_identity_after_question_set_is_gone(self):
+        progress = _Manager([
+            SimpleNamespace(
+                progress_id="progress-completed",
+                set_id="set-deleted",
+                status="completed",
+                course_id_snapshot="course-a",
+            ),
+            SimpleNamespace(
+                progress_id="progress-draft",
+                set_id="set-deleted",
+                status="abandoned",
+                course_id_snapshot="course-a",
+            ),
+            SimpleNamespace(
+                progress_id="progress-other",
+                set_id="set-deleted",
+                status="completed",
+                course_id_snapshot="course-b",
+            ),
+        ])
+
+        impact = analyze_course_asset_impact(
+            "course-a",
+            progress_manager=progress,
+        )
+
+        self.assertEqual(("progress-completed",), impact.progress_ids)
+        self.assertEqual(("progress-draft",), impact.draft_progress_ids)
+        self.assertEqual(1, impact.progress_count)
+        self.assertEqual(1, impact.draft_progress_count)
+
+    def test_course_removal_cancels_drafts_but_preserves_completed_history(self):
+        managers = self._lifecycle_managers()
+        managers["progress_manager"].save(
+            SimpleNamespace(
+                progress_id="progress-draft",
+                set_id="set-direct",
+                status="abandoned",
+            )
+        )
+
+        result = remove_course_assets(
+            "course-a",
+            CourseRemovalMode.UNLINK_ASSETS,
+            **managers,
+        )
+
+        self.assertTrue(result.success, result.error)
+        self.assertEqual(
+            {"progress-direct", "progress-mixed"},
+            set(managers["progress_manager"].items),
+        )
+        self.assertEqual({}, managers["snapshot_manager"].items)
+
     def test_impact_follows_direct_course_links_and_indirect_set_references(self):
         questions = _Manager([
             SimpleNamespace(question_id="q-course-1", metadata={"course_id": "course-a"}),
@@ -150,7 +205,7 @@ class CourseAssetLifecycleTests(unittest.TestCase):
         self.assertEqual(0, impact.progress_count)
         self.assertEqual(0, impact.snapshot_count)
 
-    def test_unlink_mode_preserves_assets_and_removes_course_specific_metadata(self):
+    def test_unlink_mode_preserves_completed_assets_and_cancels_drafts(self):
         managers = self._lifecycle_managers()
 
         result = remove_course_assets(
@@ -177,7 +232,7 @@ class CourseAssetLifecycleTests(unittest.TestCase):
             managers["current_event_manager"].get("pack-course")
         )
         self.assertEqual(2, len(managers["progress_manager"].items))
-        self.assertEqual(2, len(managers["snapshot_manager"].items))
+        self.assertEqual(0, len(managers["snapshot_manager"].items))
 
     def test_delete_bank_mode_prunes_sets_and_drafts_but_preserves_history(self):
         managers = self._lifecycle_managers()
@@ -207,6 +262,13 @@ class CourseAssetLifecycleTests(unittest.TestCase):
 
     def test_failed_cleanup_restores_every_asset(self):
         managers = self._lifecycle_managers()
+        managers["progress_manager"].save(
+            SimpleNamespace(
+                progress_id="progress-draft",
+                set_id="set-direct",
+                status="abandoned",
+            )
+        )
         question_bank = managers["question_bank"]
         real_delete = question_bank.delete
 
@@ -231,6 +293,9 @@ class CourseAssetLifecycleTests(unittest.TestCase):
         self.assertEqual(
             ["q-course", "q-other"],
             managers["set_manager"].get("set-mixed").questions,
+        )
+        self.assertIsNotNone(
+            managers["progress_manager"].get("progress-draft")
         )
         self.assertEqual(2, len(managers["snapshot_manager"].items))
         restored_exam = managers["past_exam_manager"].get("exam-course")
