@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -110,6 +111,52 @@ class SessionSummary:
 
 
 @dataclass
+class QuestionReviewSnapshot:
+    """Question content preserved for reviewing a historical quiz attempt."""
+
+    question_id: str
+    question_type: str
+    topic_id: str
+    topic_title: str
+    stem: str
+    options: object
+    correct_answer: object
+    explanation: str
+    source_refs: list[dict] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "question_id": self.question_id,
+            "question_type": self.question_type,
+            "topic_id": self.topic_id,
+            "topic_title": self.topic_title,
+            "stem": self.stem,
+            "options": copy.deepcopy(self.options),
+            "correct_answer": copy.deepcopy(self.correct_answer),
+            "explanation": self.explanation,
+            "source_refs": copy.deepcopy(self.source_refs),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> QuestionReviewSnapshot:
+        return cls(
+            question_id=str(data.get("question_id", "") or ""),
+            question_type=str(data.get("question_type", "") or ""),
+            topic_id=str(data.get("topic_id", "") or ""),
+            topic_title=str(data.get("topic_title", "") or ""),
+            stem=str(data.get("stem", "") or ""),
+            options=copy.deepcopy(data.get("options", [])),
+            correct_answer=copy.deepcopy(data.get("correct_answer")),
+            explanation=str(data.get("explanation", "") or ""),
+            source_refs=[
+                copy.deepcopy(ref)
+                for ref in (data.get("source_refs", []) or [])
+                if isinstance(ref, dict)
+            ],
+        )
+
+
+@dataclass
 class ProgressRecord:
     """Full progress record for one quiz session."""
 
@@ -122,6 +169,10 @@ class ProgressRecord:
     answers: list[AnswerRecord] = field(default_factory=list)
     summary: Optional[SessionSummary] = None
     marked_review_question_ids: list[str] = field(default_factory=list)
+    set_title_snapshot: str = ""
+    course_id_snapshot: str = ""
+    course_title_snapshot: str = ""
+    question_snapshots: list[QuestionReviewSnapshot] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -134,6 +185,12 @@ class ProgressRecord:
             "answers": [a.to_dict() for a in self.answers],
             "summary": self.summary.to_dict() if self.summary is not None else None,
             "marked_review_question_ids": list(self.marked_review_question_ids),
+            "set_title_snapshot": self.set_title_snapshot,
+            "course_id_snapshot": self.course_id_snapshot,
+            "course_title_snapshot": self.course_title_snapshot,
+            "question_snapshots": [
+                snapshot.to_dict() for snapshot in self.question_snapshots
+            ],
         }
 
     @classmethod
@@ -162,6 +219,14 @@ class ProgressRecord:
             answers=answers,
             summary=summary,
             marked_review_question_ids=list(data.get("marked_review_question_ids", [])),
+            set_title_snapshot=str(data.get("set_title_snapshot", "") or ""),
+            course_id_snapshot=str(data.get("course_id_snapshot", "") or ""),
+            course_title_snapshot=str(data.get("course_title_snapshot", "") or ""),
+            question_snapshots=[
+                QuestionReviewSnapshot.from_dict(snapshot)
+                for snapshot in (data.get("question_snapshots", []) or [])
+                if isinstance(snapshot, dict)
+            ],
         )
 
     @classmethod

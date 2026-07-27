@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from core.quiz_engine import QuizSession
-from models.progress import AnswerRecord, ProgressRecord
+from models.progress import AnswerRecord, ProgressRecord, QuestionReviewSnapshot
 from models.question import Question
 from models.question_set import QuestionSet
 from utils.constants import Difficulty, QuestionType, QuizState
@@ -165,6 +165,58 @@ class QuizSessionCoreTests(unittest.TestCase):
         loaded = ProgressRecord.from_dict(record.to_dict())
 
         self.assertEqual(["q1", "q3"], loaded.marked_review_question_ids)
+
+    def test_progress_record_round_trips_review_snapshots(self):
+        record = ProgressRecord.create_new("set-io", language="zh")
+        record.set_title_snapshot = "I/O 专项"
+        record.course_id_snapshot = "course-os"
+        record.course_title_snapshot = "操作系统"
+        record.question_snapshots = [
+            QuestionReviewSnapshot(
+                question_id="q-io-1",
+                question_type="multiple_choice",
+                topic_id="input-output",
+                topic_title="输入输出",
+                stem="哪种方式由设备主动通知 CPU？",
+                options=["A. 轮询", "B. 中断"],
+                correct_answer="B",
+                explanation="中断由设备在完成后通知 CPU。",
+                source_refs=[
+                    {
+                        "source_file": "lecture.pdf",
+                        "page_or_slide": 8,
+                        "excerpt": "设备完成后发出中断。",
+                    }
+                ],
+            )
+        ]
+
+        loaded = ProgressRecord.from_dict(record.to_dict())
+
+        self.assertEqual("I/O 专项", loaded.set_title_snapshot)
+        self.assertEqual("course-os", loaded.course_id_snapshot)
+        self.assertEqual("操作系统", loaded.course_title_snapshot)
+        self.assertEqual(1, len(loaded.question_snapshots))
+        snapshot = loaded.question_snapshots[0]
+        self.assertEqual("q-io-1", snapshot.question_id)
+        self.assertEqual(["A. 轮询", "B. 中断"], snapshot.options)
+        self.assertEqual("B", snapshot.correct_answer)
+        self.assertEqual("lecture.pdf", snapshot.source_refs[0]["source_file"])
+
+    def test_progress_record_loads_legacy_data_without_review_snapshots(self):
+        loaded = ProgressRecord.from_dict(
+            {
+                "progress_id": "progress-legacy",
+                "set_id": "set-legacy",
+                "language": "zh",
+                "started_at": "2026-07-01T00:00:00+00:00",
+            }
+        )
+
+        self.assertEqual("", loaded.set_title_snapshot)
+        self.assertEqual("", loaded.course_id_snapshot)
+        self.assertEqual("", loaded.course_title_snapshot)
+        self.assertEqual([], loaded.question_snapshots)
 
     def test_quiz_session_can_restore_order_answers_index_and_elapsed_time(self):
         question_set = QuestionSet.create_new(
