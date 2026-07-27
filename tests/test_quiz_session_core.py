@@ -218,6 +218,60 @@ class QuizSessionCoreTests(unittest.TestCase):
         self.assertEqual("", loaded.course_title_snapshot)
         self.assertEqual([], loaded.question_snapshots)
 
+    def test_completed_session_captures_course_set_and_question_review_content(self):
+        question = self._make_question("q-io-1", topic="input-output")
+        question.metadata.update(
+            {
+                "topic_title": "输入输出",
+                "source_refs": [
+                    {
+                        "source_file": "lecture.pdf",
+                        "page_or_slide": 8,
+                        "excerpt": "设备完成后发出中断。",
+                    }
+                ],
+            }
+        )
+        question_set = QuestionSet.create_new(
+            title={"zh": "I/O 专项", "en": "I/O Practice"},
+            description={"zh": "", "en": ""},
+            topics=["input-output"],
+            question_ids=[question.question_id],
+        )
+        question_set.metadata.update(
+            {
+                "course_id": "course-os",
+                "course_title": "操作系统",
+            }
+        )
+        session = QuizSession()
+        session.start_fixed_order(question_set, [question], language="zh")
+        session.submit_answer("A")
+
+        session.finalize()
+        record = session.get_progress_record()
+
+        self.assertEqual("I/O 专项", record.set_title_snapshot)
+        self.assertEqual("course-os", record.course_id_snapshot)
+        self.assertEqual("操作系统", record.course_title_snapshot)
+        self.assertEqual(1, len(record.question_snapshots))
+        snapshot = record.question_snapshots[0]
+        self.assertEqual("q-io-1?", snapshot.stem)
+        self.assertEqual(["A. 对", "B. 错"], snapshot.options)
+        self.assertEqual("A", snapshot.correct_answer)
+        self.assertEqual("解释说明", snapshot.explanation)
+        self.assertEqual("input-output", snapshot.topic_id)
+        self.assertEqual("输入输出", snapshot.topic_title)
+        self.assertEqual("lecture.pdf", snapshot.source_refs[0]["source_file"])
+
+        question.bilingual["zh"]["stem"] = "后来修改的题干"
+        question.metadata["source_refs"][0]["source_file"] = "changed.pdf"
+        question_set.title["zh"] = "后来修改的题集"
+
+        self.assertEqual("I/O 专项", record.set_title_snapshot)
+        self.assertEqual("q-io-1?", snapshot.stem)
+        self.assertEqual("lecture.pdf", snapshot.source_refs[0]["source_file"])
+
     def test_quiz_session_can_restore_order_answers_index_and_elapsed_time(self):
         question_set = QuestionSet.create_new(
             title={"zh": "测试", "en": "Test"},

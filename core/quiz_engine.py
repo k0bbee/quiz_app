@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import random
 import time
 from collections.abc import Callable
@@ -10,7 +11,12 @@ from typing import Optional
 
 from models.question import Question
 from models.question_set import QuestionSet
-from models.progress import AnswerRecord, ProgressRecord, SessionSummary
+from models.progress import (
+    AnswerRecord,
+    ProgressRecord,
+    QuestionReviewSnapshot,
+    SessionSummary,
+)
 from core.grader import Grader
 from utils.constants import QuestionType, QuizState
 
@@ -433,6 +439,10 @@ class QuizSession:
             status="completed",
             answers=list(self._answers),
             summary=summary,
+            set_title_snapshot=self._set_title_snapshot(),
+            course_id_snapshot=self._metadata_snapshot_value("course_id"),
+            course_title_snapshot=self._metadata_snapshot_value("course_title"),
+            question_snapshots=self._question_review_snapshots(),
         )
         # Store the record for later retrieval
         self._final_record = record
@@ -470,6 +480,69 @@ class QuizSession:
         """Switch display language mid-session."""
         if lang in ("zh", "en"):
             self._language = lang
+
+    def _set_title_snapshot(self) -> str:
+        if self._set is None:
+            return ""
+        return (
+            self._set.get_title(self._language)
+            or self._set.get_title("zh")
+            or self._set.get_title("en")
+        )
+
+    def _metadata_snapshot_value(self, key: str) -> str:
+        if self._set is not None:
+            value = str((self._set.metadata or {}).get(key, "") or "").strip()
+            if value:
+                return value
+        values = {
+            str((question.metadata or {}).get(key, "") or "").strip()
+            for question in self._questions
+        }
+        values.discard("")
+        return next(iter(values)) if len(values) == 1 else ""
+
+    def _question_review_snapshots(self) -> list[QuestionReviewSnapshot]:
+        snapshots = []
+        for question in self._questions:
+            metadata = question.metadata or {}
+            source_refs = metadata.get("source_refs", [])
+            snapshots.append(
+                QuestionReviewSnapshot(
+                    question_id=question.question_id,
+                    question_type=question.type.value,
+                    topic_id=question.topic_id(),
+                    topic_title=question.topic_title(),
+                    stem=self._localized_question_value(question, "get_stem"),
+                    options=copy.deepcopy(
+                        self._localized_question_value(question, "get_options")
+                    ),
+                    correct_answer=copy.deepcopy(question.correct_answer),
+                    explanation=self._localized_question_value(
+                        question,
+                        "get_explanation",
+                    ),
+                    source_refs=[
+                        copy.deepcopy(ref)
+                        for ref in (source_refs or [])
+                        if isinstance(ref, dict)
+                    ],
+                )
+            )
+        return snapshots
+
+    def _localized_question_value(self, question: Question, method_name: str):
+        getter = getattr(question, method_name)
+        value = getter(self._language)
+        if value not in ("", None, [], {}):
+            return value
+        for fallback in ("zh", "en"):
+            if fallback == self._language:
+                continue
+            value = getter(fallback)
+            if value not in ("", None, [], {}):
+                return value
+        return value
 
     # --- Internal ---
 
