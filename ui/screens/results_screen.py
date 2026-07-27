@@ -34,11 +34,16 @@ class ResultsScreen(QWidget):
     def __init__(self, parent=None, *, course_manager: CourseProjectManager):
         super().__init__(parent)
         self.current_record: ProgressRecord = None
-        self._questions: dict = {}  # question_id -> Question (set externally)
-        self._review_questions: dict = {}
+        self._questions: dict = {}  # Compatibility alias for live retry questions.
+        self._live_retry_questions: dict[str, Question] = {}
+        self._historical_questions: dict[str, Question] = {}
+        self._review_questions: dict[str, Question] = {}  # Compatibility alias.
+        self._snapshot_question_ids: set[str] = set()
         self._lang: str = "zh"
         self.lang_manager = LanguageManager.instance()
         self.course_manager = course_manager
+        self._historical_course_project = None
+        self._live_course_project = None
         self._course_project = None
         self.current_study_intent: StudyIntent | None = None
         self._retry_question_ids: set[str] = set()
@@ -200,18 +205,28 @@ class ResultsScreen(QWidget):
         self.current_study_intent = (
             study_intent if isinstance(study_intent, StudyIntent) else None
         )
-        self._questions = questions or {}
-        self._course_project = self._resolve_course_project(record)
-        self._review_questions = dict(self._questions)
+        self._live_retry_questions = dict(questions or {})
+        self._questions = self._live_retry_questions
+        self._live_course_project = self._resolve_live_course_project()
+        self._historical_course_project = self._resolve_historical_course_project(record)
+        self._course_project = self._historical_course_project
+        self._historical_questions = {}
+        self._snapshot_question_ids = set()
         for snapshot in getattr(record, "question_snapshots", []) or []:
             if not isinstance(snapshot, QuestionReviewSnapshot):
                 continue
-            self._review_questions.setdefault(
-                snapshot.question_id,
-                self._question_from_snapshot(snapshot),
+            question_id = str(snapshot.question_id or "").strip()
+            if not question_id:
+                continue
+            self._historical_questions[question_id] = self._question_from_snapshot(
+                snapshot
             )
-        self._retry_question_ids = set(self._questions)
-        self._can_retry_all = bool(self._questions)
+            self._snapshot_question_ids.add(question_id)
+        if not self._uses_archived_history(record):
+            self._historical_questions.update(self._live_retry_questions)
+        self._review_questions = self._historical_questions
+        self._retry_question_ids = set(self._live_retry_questions)
+        self._can_retry_all = bool(self._live_retry_questions)
         self._lang = lang
         self._recommended_topic_id = ""
         self._recommended_action = ""
@@ -309,9 +324,9 @@ class ResultsScreen(QWidget):
                     lang,
                     skipped=answer.skipped,
                     course_project=(
-                        self._course_project
-                        if answer.question_id in self._questions
-                        else None
+                        self._historical_course_project
+                        if answer.question_id in self._snapshot_question_ids
+                        else self._live_course_project
                     ),
                 )
             else:
@@ -533,8 +548,11 @@ class ResultsScreen(QWidget):
 
     def set_questions(self, questions: dict):
         """Provide question data for review rendering."""
-        self._questions = questions
-        self._review_questions = dict(questions or {})
+        self._live_retry_questions = dict(questions or {})
+        self._questions = self._live_retry_questions
+        self._historical_questions = dict(self._live_retry_questions)
+        self._review_questions = self._historical_questions
+        self._snapshot_question_ids = set()
 
     @staticmethod
     def _question_from_snapshot(snapshot: QuestionReviewSnapshot) -> Question:
@@ -563,12 +581,41 @@ class ResultsScreen(QWidget):
             },
         )
 
-    def _resolve_course_project(self, record: ProgressRecord | None = None):
+    @staticmethod
+    def _uses_archived_history(record: ProgressRecord | None) -> bool:
+        if record is None:
+            return False
+        if getattr(record, "question_snapshots", None):
+            return True
+        return str(getattr(record, "archive_status", "") or "").strip() in {
+            "complete",
+            "incomplete",
+            "legacy",
+        }
+
+    def _resolve_historical_course_project(
+        self,
+        record: ProgressRecord | None = None,
+    ):
+        if self.course_manager is None:
+            return None
+        if self._uses_archived_history(record):
+            record_course_id = str(
+                getattr(record, "course_id_snapshot", "") or ""
+            ).strip()
+            if record_course_id:
+                return self.course_manager.get(record_course_id)
+        return self._resolve_live_course_project(record)
+
+    def _resolve_live_course_project(
+        self,
+        record: ProgressRecord | None = None,
+    ):
         if self.course_manager is None:
             return None
         course_ids = {
             str((question.metadata or {}).get("course_id", "") or "").strip()
-            for question in self._questions.values()
+            for question in self._live_retry_questions.values()
         }
         course_ids.discard("")
         if len(course_ids) > 1:
@@ -586,6 +633,10 @@ class ResultsScreen(QWidget):
         if intent_course_id:
             return self.course_manager.get(intent_course_id)
         return None
+
+    def _resolve_course_project(self, record: ProgressRecord | None = None):
+        """Compatibility wrapper for the historical display context."""
+        return self._resolve_historical_course_project(record)
 
     def _clear_reviews(self):
         """Remove all review cards from the layout."""

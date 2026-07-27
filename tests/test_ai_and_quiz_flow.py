@@ -1324,6 +1324,101 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertFalse(screen.retry_incorrect_btn.isEnabled())
         self.assertIn("仍可复盘", screen.next_action_label.text())
 
+    def test_results_screen_prefers_historical_snapshot_after_live_question_edit(self):
+        live_question = self._make_question("q-edited")
+        live_question.bilingual["zh"] = {
+            "stem": "编辑后的题干",
+            "options": ["A. 新答案", "B. 旧答案"],
+            "explanation": "编辑后的解析",
+        }
+        live_question.correct_answer = "A"
+        record = ProgressRecord.create_new("set-history")
+        record.status = "completed"
+        record.archive_schema_version = 1
+        record.archive_status = "complete"
+        record.answers = [AnswerRecord("q-edited", 0, "B", True)]
+        record.summary = SessionSummary.compute(record.answers, 1, 10)
+        record.question_snapshots = [
+            QuestionReviewSnapshot(
+                question_id="q-edited",
+                question_type="multiple_choice",
+                topic_id="history-topic",
+                topic_title="历史主题",
+                stem="作答时的题干",
+                options=["A. 新答案", "B. 旧答案"],
+                correct_answer="B",
+                explanation="作答时的解析",
+            )
+        ]
+        screen = self._make_results_screen()
+
+        screen.set_results(record, {"q-edited": live_question}, "zh")
+
+        card = screen.review_layout.itemAt(0).widget()
+        self.assertEqual("作答时的题干", card.stem_label.text())
+        self.assertIn("正确答案: B. 旧答案", card.answer_info.text())
+        self.assertIn("作答时的解析", card.explanation_label.text())
+        self.assertNotIn("编辑后的", card.stem_label.text() + card.explanation_label.text())
+        self.assertTrue(screen.retry_all_action.isEnabled())
+
+    def test_results_screen_keeps_historical_course_context_after_live_reassignment(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+            historical_course = self._make_course("course-a", "历史课程 A")
+            live_course = self._make_course("course-b", "当前课程 B")
+            self.assertTrue(manager.save(historical_course, make_current=True))
+            self.assertTrue(manager.save(live_course, make_current=False))
+            live_question = self._make_question("q-moved")
+            live_question.metadata["course_id"] = live_course.course_id
+            record = ProgressRecord.create_new("set-history")
+            record.status = "completed"
+            record.archive_schema_version = 1
+            record.archive_status = "complete"
+            record.course_id_snapshot = historical_course.course_id
+            record.course_title_snapshot = historical_course.title
+            record.answers = [AnswerRecord("q-moved", 0, "A", True)]
+            record.summary = SessionSummary.compute(record.answers, 1, 10)
+            record.question_snapshots = [
+                QuestionReviewSnapshot(
+                    question_id="q-moved",
+                    question_type="multiple_choice",
+                    topic_id="historical-topic",
+                    topic_title="历史主题",
+                    stem="历史题干",
+                    options=["A. 正确", "B. 错误"],
+                    correct_answer="A",
+                    explanation="历史解析",
+                    source_refs=[{"source_file": "historical.pdf", "page_or_slide": 3}],
+                )
+            ]
+            screen = ResultsScreen(course_manager=manager)
+
+            screen.set_results(record, {"q-moved": live_question}, "zh")
+
+            card = screen.review_layout.itemAt(0).widget()
+            self.assertEqual(historical_course.course_id, screen._course_project.course_id)
+            self.assertEqual(historical_course.course_id, card._course_project.course_id)
+            self.assertEqual("历史课程 A", screen.context_label.text())
+
+    def test_results_screen_does_not_use_live_question_for_incomplete_history(self):
+        live_question = self._make_question("q-missing")
+        live_question.bilingual["zh"]["stem"] = "现在的题干不代表历史"
+        record = ProgressRecord.create_new("set-incomplete")
+        record.status = "completed"
+        record.archive_schema_version = 1
+        record.archive_status = "incomplete"
+        record.archive_missing_fields = ["question_snapshots:q-missing"]
+        record.answers = [AnswerRecord("q-missing", 0, "B", False)]
+        record.summary = SessionSummary.compute(record.answers, 1, 10)
+        screen = self._make_results_screen()
+
+        screen.set_results(record, {"q-missing": live_question}, "zh")
+
+        card = screen.review_layout.itemAt(0).widget()
+        self.assertIn("题目 q-missing", card.stem_label.text())
+        self.assertNotIn("现在的题干", card.stem_label.text())
+        self.assertTrue(screen.retry_incorrect_btn.isEnabled())
+
     def test_retry_incorrect_excludes_skipped_answers(self):
         from ui.main_window import MainWindow
 
