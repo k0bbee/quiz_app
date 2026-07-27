@@ -177,11 +177,21 @@ class CourseQAPanel(QWidget):
         self._request_token += 1
         request.cancel()
         self._active_request = None
+        if show_status:
+            if (
+                self.turns
+                and self.turns[-1].role == "user"
+                and self.turns[-1].content == request.question
+            ):
+                self.turns.pop()
+            if not self.input.toPlainText().strip():
+                self.input.setPlainText(request.question)
+            self._render_transcript()
         self._set_busy(False)
         if show_status:
             self.status_label.setText(self.lang_manager.get_text(
-                "已停止本次回答，已输入的问题仍保留在对话中。",
-                "This response was stopped. Your question remains in the conversation.",
+                "已停止本次回答，问题已恢复，可修改后重试。",
+                "This response was stopped. The question was restored so you can edit and retry.",
             ))
 
     def _send_question(self) -> None:

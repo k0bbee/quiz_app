@@ -289,7 +289,7 @@ class CourseQAPanelTests(unittest.TestCase):
         self.assertIn("\n", panel.input.toPlainText())
         self.assertEqual([], panel.turns)
 
-    def test_stop_releases_ui_and_discards_late_response(self):
+    def test_stop_restores_draft_and_discards_late_response(self):
         release = threading.Event()
         panel = CourseQAPanel(lambda _project: BlockingService(release))
         panel.set_course(project(selected=False))
@@ -298,6 +298,9 @@ class CourseQAPanelTests(unittest.TestCase):
         self.assertTrue(panel.is_busy)
 
         panel.stop_btn.click()
+        self.assertEqual([], panel.turns)
+        self.assertEqual("slow question", panel.input.toPlainText())
+        self.assertIn("修改后重试", panel.status_label.text())
         release.set()
 
         self.assertFalse(panel.is_busy)
