@@ -25,10 +25,14 @@ class FakeClient:
         self.response = response
         self.last_error = error
         self.calls = []
+        self.cancelled = False
 
     def generate(self, messages, **kwargs):
         self.calls.append((messages, kwargs))
         return self.response
+
+    def cancel(self):
+        self.cancelled = True
 
 
 def project(selected=True):
@@ -181,6 +185,14 @@ class CourseQAServiceTests(unittest.TestCase):
         self.assertIn(unique_question, final_prompt)
         self.assertLessEqual(len(final_prompt), 2000)
 
+    def test_cancel_interrupts_the_underlying_llm_client(self):
+        client = FakeClient()
+        service = CourseQAService(client, project(selected=False))
+
+        service.cancel()
+
+        self.assertTrue(client.cancelled)
+
 
 class ImmediateService:
     def ask(self, question, *, history, language):
@@ -207,6 +219,16 @@ class BlockingService:
     def ask(self, question, *, history, language):
         self.release.wait(timeout=2)
         return CourseQAResponse(answer="late answer", source_refs=())
+
+
+class CancellableBlockingService(BlockingService):
+    def __init__(self, release):
+        super().__init__(release)
+        self.cancelled = threading.Event()
+
+    def cancel(self):
+        self.cancelled.set()
+        self.release.set()
 
 
 class ErrorService:
@@ -326,6 +348,19 @@ class CourseQAPanelTests(unittest.TestCase):
         QTest.qWait(100)
         _APP.processEvents()
         self.assertNotIn("late answer", panel.transcript.toPlainText())
+
+    def test_stop_interrupts_the_underlying_course_service(self):
+        release = threading.Event()
+        service = CancellableBlockingService(release)
+        panel = CourseQAPanel(lambda _project: service)
+        panel.set_course(project(selected=False))
+        panel.input.setPlainText("stop the transport")
+        panel.send_btn.click()
+
+        panel.stop_btn.click()
+
+        self.assertTrue(service.cancelled.is_set())
+        self.assertTrue(self._wait_until(lambda: not panel.is_busy))
 
     def test_course_switch_retracts_pending_question_without_leaking_draft(self):
         release = threading.Event()

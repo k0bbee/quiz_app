@@ -47,6 +47,11 @@ class CourseQAService:
         self.max_history_turns = max(0, int(max_history_turns))
         self.max_context_chars = max(2000, int(max_context_chars))
 
+    def cancel(self) -> None:
+        cancel = getattr(self.client, "cancel", None)
+        if callable(cancel):
+            cancel()
+
     def ask(
         self,
         question: str,

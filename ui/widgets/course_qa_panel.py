@@ -57,6 +57,9 @@ class _CourseQARequest(QObject):
 
     def cancel(self) -> None:
         self._cancelled.set()
+        cancel = getattr(self.service, "cancel", None)
+        if callable(cancel):
+            cancel()
 
     def _run(self) -> None:
         try:
