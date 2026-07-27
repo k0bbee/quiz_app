@@ -177,16 +177,16 @@ class CourseQAPanel(QWidget):
         self._request_token += 1
         request.cancel()
         self._active_request = None
+        if (
+            self.turns
+            and self.turns[-1].role == "user"
+            and self.turns[-1].content == request.question
+        ):
+            self.turns.pop()
         if show_status:
-            if (
-                self.turns
-                and self.turns[-1].role == "user"
-                and self.turns[-1].content == request.question
-            ):
-                self.turns.pop()
             if not self.input.toPlainText().strip():
                 self.input.setPlainText(request.question)
-            self._render_transcript()
+        self._render_transcript()
         self._set_busy(False)
         if show_status:
             self.status_label.setText(self.lang_manager.get_text(

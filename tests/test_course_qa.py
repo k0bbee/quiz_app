@@ -309,6 +309,29 @@ class CourseQAPanelTests(unittest.TestCase):
         _APP.processEvents()
         self.assertNotIn("late answer", panel.transcript.toPlainText())
 
+    def test_course_switch_retracts_pending_question_without_leaking_draft(self):
+        release = threading.Event()
+        original = project(selected=False)
+        other = project(selected=False)
+        other.course_id = "biology"
+        other.title = "Biology"
+        panel = CourseQAPanel(lambda _project: BlockingService(release))
+        panel.set_course(original)
+        panel.input.setPlainText("question for systems")
+        panel.send_btn.click()
+
+        panel.set_course(other)
+
+        self.assertFalse(panel.is_busy)
+        self.assertEqual("", panel.input.toPlainText())
+        self.assertEqual([], panel.turns)
+        panel.set_course(original)
+        self.assertEqual([], panel.turns)
+        release.set()
+        QTest.qWait(100)
+        _APP.processEvents()
+        self.assertNotIn("late answer", panel.transcript.toPlainText())
+
     def test_failed_question_returns_to_input_and_does_not_pollute_history(self):
         panel = CourseQAPanel(lambda _project: ErrorService())
         panel.set_course(project(selected=False))
