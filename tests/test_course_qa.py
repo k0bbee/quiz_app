@@ -275,6 +275,8 @@ class CourseQAPanelTests(unittest.TestCase):
         self.assertTrue(self._wait_until(lambda: not panel.is_busy))
         self.assertEqual(["user", "assistant"], [turn.role for turn in panel.turns])
         self.assertIn("answer: Why interrupts?", panel.transcript.toPlainText())
+        self.assertIn("来源:", panel.transcript.toPlainText())
+        self.assertNotIn("Source Evidence", panel.transcript.toPlainText())
         self.assertIn("io.pdf", panel.transcript.toPlainText())
         self.assertEqual("", panel.input.toPlainText())
 

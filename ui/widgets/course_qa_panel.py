@@ -307,6 +307,7 @@ class CourseQAPanel(QWidget):
             if turn.source_refs:
                 formatted = format_source_refs(
                     list(turn.source_refs),
+                    label=gm("来源", "Source Evidence"),
                     language=self.lang_manager.current,
                 )
                 source_text = f"<div><small>{html.escape(formatted).replace(chr(10), '<br>')}</small></div>"
