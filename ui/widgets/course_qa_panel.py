@@ -136,6 +136,8 @@ class CourseQAPanel(QWidget):
 
     def set_course(self, course) -> None:
         if self.course is not None and course is not None and self.course.course_id == course.course_id:
+            if self.course != course:
+                self.stop_request(show_status=False)
             self.course = course
             self._render_transcript()
             if not self.is_busy:

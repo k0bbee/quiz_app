@@ -332,6 +332,23 @@ class CourseQAPanelTests(unittest.TestCase):
         _APP.processEvents()
         self.assertNotIn("late answer", panel.transcript.toPlainText())
 
+    def test_scope_update_cancels_answer_started_from_stale_course_state(self):
+        release = threading.Event()
+        panel = CourseQAPanel(lambda _project: BlockingService(release))
+        panel.set_course(project(selected=False))
+        panel.input.setPlainText("question before scope update")
+        panel.send_btn.click()
+
+        panel.set_course(project(selected=True))
+
+        self.assertFalse(panel.is_busy)
+        self.assertEqual("selected", panel.course.exam_scope_mode)
+        self.assertEqual([], panel.turns)
+        release.set()
+        QTest.qWait(100)
+        _APP.processEvents()
+        self.assertNotIn("late answer", panel.transcript.toPlainText())
+
     def test_failed_question_returns_to_input_and_does_not_pollute_history(self):
         panel = CourseQAPanel(lambda _project: ErrorService())
         panel.set_course(project(selected=False))
