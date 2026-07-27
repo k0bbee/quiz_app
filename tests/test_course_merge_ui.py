@@ -1,9 +1,13 @@
+import tempfile
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QDialog
 
-from models.course_project import CourseProject, CourseTopic
+from core.course_asset_lifecycle import CourseAssetImpact
+from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 
 
 def _project(course_id: str, title: str) -> CourseProject:
@@ -45,6 +49,81 @@ class CourseMergeDialogTests(unittest.TestCase):
         self.assertTrue(dialog.merge_btn.isEnabled())
         self.assertEqual(["course-c"], dialog.selected_source_ids())
         self.assertIn("Course A", dialog.target_label.text())
+
+    def test_dialog_summarizes_selected_assets_and_preserved_history_identity(self):
+        from ui.dialogs.course_merge_dialog import CourseMergeDialog
+
+        target = _project("course-a", "Course A")
+        source = _project("course-b", "Course B")
+        impact = CourseAssetImpact(
+            course_id=source.course_id,
+            question_ids=("q1", "q2"),
+            affected_set_ids=("set-1",),
+            progress_ids=("progress-1", "progress-2", "progress-3"),
+            draft_progress_ids=("progress-draft",),
+            snapshot_ids=("snapshot-1",),
+            past_exam_ids=("exam-1",),
+            current_event_pack_ids=("pack-1",),
+        )
+        dialog = CourseMergeDialog(
+            target,
+            [target, source],
+            impacts={source.course_id: impact},
+        )
+
+        dialog.source_list.item(0).setCheckState(Qt.CheckState.Checked)
+
+        text = dialog.impact_label.text()
+        self.assertIn("题目：2", text)
+        self.assertIn("题集：1", text)
+        self.assertIn("完成历史：3", text)
+        self.assertIn("未完成草稿：2", text)
+        self.assertIn("历史发生时的课程身份保持不变", text)
+        self.assertIn("Course A", text)
+
+    def test_course_screen_supplies_real_source_impacts_to_merge_dialog(self):
+        from ui.screens.course_screen import CourseScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+            target = _project("course-a", "Course A")
+            source = _project("course-b", "Course B")
+            manager.save(target, make_current=True)
+            manager.save(source, make_current=False)
+            captured = {}
+
+            def dialog_factory(
+                retained,
+                courses,
+                parent=None,
+                *,
+                impacts=None,
+            ):
+                captured["target"] = retained
+                captured["courses"] = courses
+                captured["impacts"] = impacts
+                return SimpleNamespace(
+                    exec=lambda: QDialog.DialogCode.Rejected,
+                )
+
+            screen = CourseScreen(
+                manager,
+                merge_dialog_factory=dialog_factory,
+            )
+            for row in range(screen.project_list.count()):
+                item = screen.project_list.item(row)
+                if item.data(Qt.ItemDataRole.UserRole) == target.course_id:
+                    screen.project_list.setCurrentRow(row)
+                    break
+
+            screen._merge_selected_project()
+
+            self.assertEqual(target.course_id, captured["target"].course_id)
+            self.assertIn(source.course_id, captured["impacts"])
+            self.assertEqual(
+                source.course_id,
+                captured["impacts"][source.course_id].course_id,
+            )
 
 
 if __name__ == "__main__":

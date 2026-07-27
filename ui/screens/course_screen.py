@@ -64,6 +64,7 @@ class CourseScreen(QWidget):
         task_center=None,
         qa_service_factory=None,
         current_event_dialog_factory=None,
+        merge_dialog_factory=None,
         checkpoint_store=None,
     ):
         super().__init__(parent)
@@ -80,6 +81,7 @@ class CourseScreen(QWidget):
         self.current_event_dialog_factory = (
             current_event_dialog_factory or self._create_current_event_dialog
         )
+        self.merge_dialog_factory = merge_dialog_factory or CourseMergeDialog
         self.checkpoint_store = checkpoint_store or CourseParseCheckpointStore(
             COURSE_CHECKPOINTS_DIR
         )
@@ -927,7 +929,25 @@ class CourseScreen(QWidget):
         courses = self.manager.load_all()
         if target is None or len(courses) < 2:
             return
-        dialog = CourseMergeDialog(target, courses, self)
+        impacts = {
+            course.course_id: analyze_course_asset_impact(
+                course.course_id,
+                self.question_bank,
+                self.set_manager,
+                self.progress_manager,
+                self.snapshot_manager,
+                self.past_exam_manager,
+                self.current_event_manager,
+            )
+            for course in courses
+            if course.course_id != target_id
+        }
+        dialog = self.merge_dialog_factory(
+            target,
+            courses,
+            parent=self,
+            impacts=impacts,
+        )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         source_ids = dialog.selected_source_ids()
