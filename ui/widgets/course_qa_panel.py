@@ -139,12 +139,20 @@ class CourseQAPanel(QWidget):
 
     def set_course(self, course) -> None:
         if self.course is not None and course is not None and self.course.course_id == course.course_id:
+            interrupted = False
             if self.course != course:
-                self.stop_request(show_status=False)
+                interrupted = self.is_busy
+                self.stop_request(show_status=False, restore_draft=True)
             self.course = course
             self._render_transcript()
             if not self.is_busy:
                 self._set_idle_state()
+            if interrupted:
+                self.status_label.setText(self.lang_manager.get_text(
+                    "课程资料已更新，本次回答已取消。问题已恢复，请重新发送以使用最新资料。",
+                    "Course materials changed, so the answer was cancelled. "
+                    "Your question was restored; send it again to use the latest materials.",
+                ))
             return
         self.stop_request(show_status=False)
         self.course = course
@@ -175,10 +183,17 @@ class CourseQAPanel(QWidget):
         self._render_transcript()
         self._set_idle_state()
 
-    def stop_request(self, *, show_status: bool = True) -> None:
+    def stop_request(
+        self,
+        *,
+        show_status: bool = True,
+        restore_draft: bool | None = None,
+    ) -> None:
         request = self._active_request
         if request is None:
             return
+        if restore_draft is None:
+            restore_draft = show_status
         self._request_token += 1
         request.cancel()
         self._active_request = None
@@ -188,7 +203,7 @@ class CourseQAPanel(QWidget):
             and self.turns[-1].content == request.question
         ):
             self.turns.pop()
-        if show_status:
+        if restore_draft:
             if not self.input.toPlainText().strip():
                 self.input.setPlainText(request.question)
         self._render_transcript()
