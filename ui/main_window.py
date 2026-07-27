@@ -312,6 +312,7 @@ class MainWindow(QMainWindow):
         self.progress_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
         self.progress_screen.review_topic_requested.connect(self._on_review_progress_topic)
         self.progress_screen.generate_topic_requested.connect(self._on_generate_progress_topic)
+        self.progress_screen.history_requested.connect(self._on_open_progress_record)
         # Language manager
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -757,6 +758,38 @@ class MainWindow(QMainWindow):
             lang=self.lang_manager.current,
             study_intent=self.study_flow.take_active_intent(),
         )
+        self.navigate_to(self.SCREEN_RESULTS)
+
+    def _on_open_progress_record(self, progress_id: str) -> None:
+        """Open one persisted result, using archived snapshots when assets are gone."""
+        record = self.progress_manager.get(progress_id)
+        if record is None:
+            QMessageBox.warning(
+                self if isinstance(self, QWidget) else None,
+                self.lang_manager.get_text("记录不可用", "Record Unavailable"),
+                self.lang_manager.get_text(
+                    "该练习记录已不存在，请刷新进度页。",
+                    "This practice record no longer exists. Refresh the progress page.",
+                ),
+            )
+            return
+
+        question_ids = list(dict.fromkeys(
+            answer.question_id
+            for answer in record.answers
+            if answer.question_id
+        ))
+        questions = self.question_bank.get_many(question_ids)
+        self._active_questions = {
+            question.question_id: question for question in questions
+        }
+        self.results_screen.set_results(
+            record,
+            questions=self._active_questions,
+            lang=self.lang_manager.current,
+            study_intent=None,
+        )
+        self._refresh_results_retry_availability()
         self.navigate_to(self.SCREEN_RESULTS)
 
     def _on_retry_incorrect(self):

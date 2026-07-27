@@ -230,6 +230,9 @@ class ProgressManager:
             {
                 "progress_id": r.progress_id,
                 "set_id": r.set_id,
+                "set_title_snapshot": r.set_title_snapshot,
+                "course_id_snapshot": r.course_id_snapshot,
+                "course_title_snapshot": r.course_title_snapshot,
                 "started_at": r.started_at,
                 "score": summary.score_percentage,
                 "total": summary.total_questions,

@@ -51,6 +51,13 @@ class ResultsScreen(QWidget):
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(12)
 
+        self.context_label = QLabel()
+        self.context_label.setObjectName("resultsContextLabel")
+        self.context_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.context_label.setWordWrap(True)
+        self.context_label.hide()
+        layout.addWidget(self.context_label)
+
         # Score header
         self.score_label = QLabel()
         self.score_label.setObjectName("resultsScoreLabel")
@@ -211,6 +218,16 @@ class ResultsScreen(QWidget):
         self.next_action_btn.setVisible(False)
         self.repeat_study_btn.setVisible(False)
         self._set_retry_action_state(False, False, False, False)
+        context_parts = [
+            str(value or "").strip()
+            for value in (
+                getattr(record, "course_title_snapshot", ""),
+                getattr(record, "set_title_snapshot", ""),
+            )
+            if str(value or "").strip()
+        ]
+        self.context_label.setText(" · ".join(context_parts))
+        self.context_label.setVisible(bool(context_parts))
 
         if record is None:
             self.score_label.setText(

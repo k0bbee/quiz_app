@@ -27,6 +27,7 @@ class ProgressDashboard(QWidget):
     practice_topic_requested = pyqtSignal(str)
     review_topic_requested = pyqtSignal(str)
     generate_topic_requested = pyqtSignal(str)
+    history_requested = pyqtSignal(str)
 
     def __init__(
         self,
@@ -152,6 +153,7 @@ class ProgressDashboard(QWidget):
 
         self.recent_list = QListWidget()
         self.recent_list.setObjectName("dashboardRecentList")
+        self.recent_list.itemActivated.connect(self._open_recent_session)
         recent_layout.addWidget(self.recent_list)
 
         layout.addWidget(self.recent_group)
@@ -259,7 +261,14 @@ class ProgressDashboard(QWidget):
         for session in stats.get("recent_sessions", []):
             score = session.get("score", 0)
             icon = "🟢" if score >= 80 else ("🟡" if score >= 60 else "🔴")
-            set_name = set_names.get(session.get("set_id", ""), session.get("set_id", "Custom"))
+            set_id = session.get("set_id", "")
+            set_name = (
+                session.get("set_title_snapshot")
+                or set_names.get(set_id)
+                or self.lang_manager.get_text("历史练习", "Archived Practice")
+            )
+            course_name = str(session.get("course_title_snapshot", "") or "").strip()
+            title = f"{course_name} · {set_name}" if course_name else set_name
             scope_hint = ""
             if session.get("is_partial"):
                 scope_hint = self.lang_manager.get_text(
@@ -268,13 +277,23 @@ class ProgressDashboard(QWidget):
                 )
             item = QListWidgetItem(
                 f"{icon} {session.get('started_at', '')[:10]} — "
-                f"{set_name} — "
-                f"Score: {score:.0f}% "
+                f"{title} — "
+                f"{self.lang_manager.get_text('得分', 'Score')}: {score:.0f}% "
                 f"({session.get('correct', 0)}/{session.get('total', 0)})"
                 f"{scope_hint}"
             )
+            item.setData(Qt.ItemDataRole.UserRole, session.get("progress_id", ""))
+            item.setToolTip(self.lang_manager.get_text(
+                "双击或按回车复盘本次练习",
+                "Double-click or press Enter to review this session",
+            ))
             self.recent_list.addItem(item)
         self._update_recent_history_visibility()
+
+    def _open_recent_session(self, item: QListWidgetItem) -> None:
+        progress_id = str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+        if progress_id:
+            self.history_requested.emit(progress_id)
 
     def _toggle_recent_history(self) -> None:
         """Respect the user's choice to reveal or hide a long session history."""

@@ -1222,6 +1222,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertIn("中断由设备在完成后通知 CPU。", card.explanation_label.text())
         self.assertIn("lecture.pdf", card.source_label.text())
         self.assertIn("输入输出: 0/1", screen.topic_stats_label.text())
+        self.assertEqual("操作系统 · I/O 专项", screen.context_label.text())
         self.assertFalse(screen.retry_incorrect_btn.isEnabled())
         self.assertIn("仍可复盘", screen.next_action_label.text())
 
@@ -2317,6 +2318,40 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertTrue(screen.recent_list.isVisibleTo(screen))
             self.assertIn("收起", screen.recent_toggle_btn.text())
 
+    def test_progress_dashboard_opens_archived_session_by_snapshot_title(self):
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            progress_manager = ProgressManager(str(root / "progress"))
+            question_bank = QuestionBank(str(root / "questions"))
+            record = ProgressRecord.create_new("set-internal-deleted")
+            record.status = "completed"
+            record.set_title_snapshot = "I/O 专项"
+            record.course_title_snapshot = "操作系统"
+            record.summary = SessionSummary.compute([], total_questions=1, total_time=10)
+            progress_manager.save(record)
+            screen = self._make_progress_dashboard(
+                tmpdir,
+                progress_manager,
+                question_bank,
+            )
+            requested = []
+            screen.history_requested.connect(requested.append)
+
+            screen.refresh()
+            item = screen.recent_list.item(0)
+            screen.recent_list.itemActivated.emit(item)
+
+            self.assertIn("操作系统", item.text())
+            self.assertIn("I/O 专项", item.text())
+            self.assertNotIn("set-internal-deleted", item.text())
+            self.assertEqual(record.progress_id, item.data(Qt.ItemDataRole.UserRole))
+            self.assertEqual([record.progress_id], requested)
+
     def test_progress_dashboard_keeps_short_recent_history_visible(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -3322,6 +3357,63 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         MainWindow._update_home_resume_draft(shell)
 
         self.assertEqual("exam", shown["mode"])
+
+    def test_main_window_opens_persisted_history_without_original_assets(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            progress_dir = Path(tmpdir) / "progress"
+            writer = ProgressManager(str(progress_dir))
+            record = ProgressRecord.create_new("set-deleted")
+            record.status = "completed"
+            record.set_title_snapshot = "I/O 专项"
+            record.answers = [
+                AnswerRecord(
+                    question_id="q-deleted",
+                    index_in_session=0,
+                    user_answer="A",
+                    is_correct=False,
+                )
+            ]
+            record.summary = SessionSummary.compute(record.answers, 1, 10)
+            writer.save(record)
+
+            shown = {}
+
+            class FakeResultsScreen:
+                def set_results(
+                    self,
+                    progress_record,
+                    questions,
+                    lang,
+                    *,
+                    study_intent=None,
+                ):
+                    shown["record"] = progress_record
+                    shown["questions"] = questions
+                    shown["lang"] = lang
+
+            shell = types.SimpleNamespace(
+                progress_manager=ProgressManager(str(progress_dir)),
+                question_bank=types.SimpleNamespace(get_many=lambda _ids: []),
+                results_screen=FakeResultsScreen(),
+                lang_manager=LanguageManager.instance(),
+                _active_questions={"stale": object()},
+                _refresh_results_retry_availability=lambda: shown.setdefault(
+                    "availability_refreshed",
+                    True,
+                ),
+                navigate_to=lambda index: shown.setdefault("navigated", index),
+                SCREEN_RESULTS=3,
+            )
+
+            MainWindow._on_open_progress_record(shell, record.progress_id)
+
+            self.assertEqual(record.progress_id, shown["record"].progress_id)
+            self.assertEqual({}, shown["questions"])
+            self.assertEqual({}, shell._active_questions)
+            self.assertTrue(shown["availability_refreshed"])
+            self.assertEqual(3, shown["navigated"])
 
     def test_quiz_finished_deletes_snapshot_for_completed_set(self):
         from ui.main_window import MainWindow

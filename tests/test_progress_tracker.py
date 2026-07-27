@@ -9,6 +9,24 @@ from utils.json_io import read_json, write_json
 
 
 class ProgressTrackerTests(unittest.TestCase):
+    def test_recent_session_keeps_historical_set_and_course_titles(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            record = ProgressRecord.create_new("set-deleted")
+            record.status = "completed"
+            record.set_title_snapshot = "I/O 专项"
+            record.course_id_snapshot = "course-os"
+            record.course_title_snapshot = "操作系统"
+            record.summary = SessionSummary.compute([], total_questions=1, total_time=10)
+            manager.save(record)
+
+            recent = manager.get_aggregated_stats()["recent_sessions"][0]
+
+            self.assertEqual(record.progress_id, recent["progress_id"])
+            self.assertEqual("I/O 专项", recent["set_title_snapshot"])
+            self.assertEqual("course-os", recent["course_id_snapshot"])
+            self.assertEqual("操作系统", recent["course_title_snapshot"])
+
     def test_load_for_set_uses_persisted_index_to_skip_unrelated_record_bodies(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             progress_dir = Path(tmpdir) / "progress"
