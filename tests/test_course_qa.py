@@ -195,6 +195,11 @@ class ImmediateService:
         )
 
 
+class NoSourceService:
+    def ask(self, question, *, history, language):
+        return CourseQAResponse(answer=f"summary answer: {question}", source_refs=())
+
+
 class BlockingService:
     def __init__(self, release):
         self.release = release
@@ -279,6 +284,17 @@ class CourseQAPanelTests(unittest.TestCase):
         self.assertNotIn("Source Evidence", panel.transcript.toPlainText())
         self.assertIn("io.pdf", panel.transcript.toPlainText())
         self.assertEqual("", panel.input.toPlainText())
+
+    def test_panel_marks_answer_without_original_source_evidence(self):
+        panel = CourseQAPanel(lambda _project: NoSourceService())
+        panel.set_course(project(selected=False))
+        panel.input.setPlainText("Explain the summary")
+        panel.send_btn.click()
+
+        self.assertTrue(self._wait_until(lambda: not panel.is_busy))
+        transcript = panel.transcript.toPlainText()
+        self.assertIn("summary answer: Explain the summary", transcript)
+        self.assertIn("来源: 缺少来源", transcript)
 
     def test_shift_enter_keeps_multiline_input_without_sending(self):
         panel = CourseQAPanel(lambda _project: ImmediateService())

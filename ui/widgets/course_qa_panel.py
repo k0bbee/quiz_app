@@ -304,10 +304,11 @@ class CourseQAPanel(QWidget):
             role = gm("你", "You") if turn.role == "user" else gm("助教", "Tutor")
             content = html.escape(turn.content).replace("\n", "<br>")
             source_text = ""
-            if turn.source_refs:
+            if turn.role == "assistant":
                 formatted = format_source_refs(
                     list(turn.source_refs),
                     label=gm("来源", "Source Evidence"),
+                    status=None if turn.source_refs else "missing",
                     language=self.lang_manager.current,
                 )
                 source_text = f"<div><small>{html.escape(formatted).replace(chr(10), '<br>')}</small></div>"
