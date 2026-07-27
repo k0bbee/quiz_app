@@ -124,7 +124,7 @@ def merge_courses(
         )
         for record in past_exams
     ]
-    migrated_packs = [
+    migrated_packs = consolidate_migrated_material_packs([
         CurrentEventMaterialPack.create(
             course_id=target_id,
             course_updated_at=merged.updated_at,
@@ -132,15 +132,21 @@ def merge_courses(
             candidates=list(pack.candidates),
             selected_candidate_ids=list(pack.selected_candidate_ids),
             created_at=pack.created_at,
+            source_pack_ids=[pack.pack_id, *pack.source_pack_ids],
         )
         for pack in source_packs
-    ]
+    ])
     overwritten_packs = {}
     if current_event_manager is not None:
         for pack in migrated_packs:
             existing = current_event_manager.get(pack.pack_id)
             if existing is not None:
                 overwritten_packs[pack.pack_id] = deepcopy(existing)
+        if overwritten_packs:
+            migrated_packs = consolidate_migrated_material_packs([
+                *migrated_packs,
+                *overwritten_packs.values(),
+            ])
 
     try:
         _report(task, "merging_courses", 0, 1, target.title)
@@ -250,6 +256,48 @@ def merge_courses(
         past_exam_count=len(past_exams),
         current_event_pack_count=len(migrated_packs),
     )
+
+
+def consolidate_migrated_material_packs(
+    packs: list[CurrentEventMaterialPack],
+) -> list[CurrentEventMaterialPack]:
+    """Combine migrated packs that resolve to the same deterministic identity."""
+    grouped: dict[str, list[CurrentEventMaterialPack]] = {}
+    for pack in packs:
+        grouped.setdefault(pack.pack_id, []).append(pack)
+
+    consolidated: list[CurrentEventMaterialPack] = []
+    for group in grouped.values():
+        if len(group) == 1:
+            consolidated.append(group[0])
+            continue
+        first = group[0]
+        consolidated.append(CurrentEventMaterialPack.create(
+            course_id=first.course_id,
+            course_updated_at=first.course_updated_at,
+            query=first.query,
+            candidates=[
+                candidate
+                for pack in group
+                for candidate in pack.candidates
+            ],
+            selected_candidate_ids=[
+                candidate_id
+                for pack in group
+                for candidate_id in pack.selected_candidate_ids
+            ],
+            created_at=min(
+                pack.created_at
+                for pack in group
+                if pack.created_at
+            ),
+            source_pack_ids=[
+                source_pack_id
+                for pack in group
+                for source_pack_id in pack.source_pack_ids
+            ],
+        ))
+    return consolidated
 
 
 def _merged_project(target: CourseProject, sources: list[CourseProject]) -> CourseProject:

@@ -150,6 +150,7 @@ class CurrentEventMaterialPack:
     candidates: tuple[CurrentEventCandidate, ...]
     selected_candidate_ids: tuple[str, ...]
     created_at: str
+    source_pack_ids: tuple[str, ...] = ()
 
     @classmethod
     def create(
@@ -161,6 +162,7 @@ class CurrentEventMaterialPack:
         candidates: list[CurrentEventCandidate],
         selected_candidate_ids: list[str],
         created_at: str | None = None,
+        source_pack_ids: list[str] | None = None,
     ) -> "CurrentEventMaterialPack":
         unique_candidates = tuple(_deduplicate_candidates(candidates))
         available_ids = {candidate.candidate_id for candidate in unique_candidates}
@@ -182,6 +184,11 @@ class CurrentEventMaterialPack:
             candidates=unique_candidates,
             selected_candidate_ids=selected,
             created_at=created_at or datetime.now(timezone.utc).isoformat(),
+            source_pack_ids=tuple(dict.fromkeys(
+                str(pack_id or "").strip()
+                for pack_id in (source_pack_ids or [])
+                if str(pack_id or "").strip()
+            )),
         )
 
     def selected_candidates(self) -> tuple[CurrentEventCandidate, ...]:
@@ -197,6 +204,7 @@ class CurrentEventMaterialPack:
             "candidates": [candidate.to_dict() for candidate in self.candidates],
             "selected_candidate_ids": list(self.selected_candidate_ids),
             "created_at": self.created_at,
+            "source_pack_ids": list(self.source_pack_ids),
         }
 
     @classmethod
@@ -212,6 +220,7 @@ class CurrentEventMaterialPack:
             ],
             selected_candidate_ids=list(data.get("selected_candidate_ids", []) or []),
             created_at=data.get("created_at", ""),
+            source_pack_ids=list(data.get("source_pack_ids", []) or []),
         )
         stored_id = str(data.get("pack_id", "") or "")
         if stored_id and stored_id != pack.pack_id:

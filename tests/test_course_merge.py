@@ -54,6 +54,19 @@ class CourseMergeTests(unittest.TestCase):
             metadata={"course_id": course_id, "course_title": course_id},
         )
 
+    @staticmethod
+    def _candidate(name: str) -> CurrentEventCandidate:
+        return CurrentEventCandidate.create(
+            url=f"https://example.com/{name}",
+            title=name,
+            context=f"{name} context",
+            seen_at="2026-07-01T00:00:00+00:00",
+            domain="example.com",
+            language="en",
+            query="same",
+            retrieved_at="2026-07-01T00:00:00+00:00",
+        )
+
     def test_merge_migrates_linked_assets_and_keeps_target_identity(self):
         from core.course_merge import merge_courses
 
@@ -222,6 +235,274 @@ class CourseMergeTests(unittest.TestCase):
                 real_set_manager.get(question_set.set_id).metadata["course_id"],
             )
             self.assertEqual(source.course_id, course_manager.current().course_id)
+
+    def test_merge_consolidates_colliding_material_packs_without_losing_candidates(self):
+        from core.course_merge import merge_courses
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            course_manager = CourseProjectManager(root / "courses")
+            materials = CurrentEventMaterialManager(root / "events")
+            target = self._project("course-target", "Target", "io")
+            source_a = self._project("course-a", "Source A", "memory")
+            source_b = self._project("course-b", "Source B", "process")
+            for course in (target, source_a, source_b):
+                self.assertTrue(course_manager.save(course, make_current=False))
+
+            selected = self._candidate("selected")
+            extra_a = self._candidate("extra-a")
+            extra_b = self._candidate("extra-b")
+            pack_a = CurrentEventMaterialPack.create(
+                course_id=source_a.course_id,
+                course_updated_at=source_a.updated_at,
+                query="same",
+                candidates=[selected, extra_a],
+                selected_candidate_ids=[selected.candidate_id],
+                created_at="2026-07-01T01:00:00+00:00",
+            )
+            pack_b = CurrentEventMaterialPack.create(
+                course_id=source_b.course_id,
+                course_updated_at=source_b.updated_at,
+                query="same",
+                candidates=[selected, extra_b],
+                selected_candidate_ids=[selected.candidate_id],
+                created_at="2026-07-01T02:00:00+00:00",
+            )
+            self.assertNotEqual(pack_a.pack_id, pack_b.pack_id)
+            self.assertTrue(materials.save(pack_a))
+            self.assertTrue(materials.save(pack_b))
+
+            result = merge_courses(
+                target.course_id,
+                [source_a.course_id, source_b.course_id],
+                course_manager=course_manager,
+                current_event_manager=materials,
+            )
+
+            self.assertTrue(result.success, result.error)
+            saved = materials.load_all(target.course_id)
+            self.assertEqual(1, result.current_event_pack_count)
+            self.assertEqual(1, len(saved))
+            self.assertEqual(
+                {selected.candidate_id, extra_a.candidate_id, extra_b.candidate_id},
+                {candidate.candidate_id for candidate in saved[0].candidates},
+            )
+            self.assertEqual("2026-07-01T01:00:00+00:00", saved[0].created_at)
+            self.assertEqual(
+                {pack_a.pack_id, pack_b.pack_id},
+                set(saved[0].source_pack_ids),
+            )
+
+    def test_merge_consolidates_with_existing_target_material_pack(self):
+        from core.course_merge import merge_courses
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            course_manager = CourseProjectManager(root / "courses")
+            materials = CurrentEventMaterialManager(root / "events")
+            target = self._project("course-target", "Target", "io")
+            source = self._project("course-source", "Source", "memory")
+            self.assertTrue(course_manager.save(target, make_current=False))
+            self.assertTrue(course_manager.save(source, make_current=False))
+
+            selected = self._candidate("selected")
+            target_extra = self._candidate("target-extra")
+            source_extra = self._candidate("source-extra")
+            target_pack = CurrentEventMaterialPack.create(
+                course_id=target.course_id,
+                course_updated_at=target.updated_at,
+                query="same",
+                candidates=[selected, target_extra],
+                selected_candidate_ids=[selected.candidate_id],
+                created_at="2026-06-30T23:00:00+00:00",
+            )
+            source_pack = CurrentEventMaterialPack.create(
+                course_id=source.course_id,
+                course_updated_at=source.updated_at,
+                query="same",
+                candidates=[selected, source_extra],
+                selected_candidate_ids=[selected.candidate_id],
+                created_at="2026-07-01T01:00:00+00:00",
+            )
+            self.assertTrue(materials.save(target_pack))
+            self.assertTrue(materials.save(source_pack))
+
+            result = merge_courses(
+                target.course_id,
+                [source.course_id],
+                course_manager=course_manager,
+                current_event_manager=materials,
+            )
+
+            self.assertTrue(result.success, result.error)
+            saved = materials.load_all(target.course_id)
+            self.assertEqual(1, result.current_event_pack_count)
+            self.assertEqual(1, len(saved))
+            self.assertEqual(
+                {selected.candidate_id, target_extra.candidate_id, source_extra.candidate_id},
+                {candidate.candidate_id for candidate in saved[0].candidates},
+            )
+            self.assertEqual("2026-06-30T23:00:00+00:00", saved[0].created_at)
+
+    def test_merge_keeps_material_packs_with_different_selections_separate(self):
+        from core.course_merge import merge_courses
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            course_manager = CourseProjectManager(root / "courses")
+            materials = CurrentEventMaterialManager(root / "events")
+            target = self._project("course-target", "Target", "io")
+            source_a = self._project("course-a", "Source A", "memory")
+            source_b = self._project("course-b", "Source B", "process")
+            for course in (target, source_a, source_b):
+                self.assertTrue(course_manager.save(course, make_current=False))
+
+            selected_a = self._candidate("selected-a")
+            selected_b = self._candidate("selected-b")
+            packs = [
+                CurrentEventMaterialPack.create(
+                    course_id=course.course_id,
+                    course_updated_at=course.updated_at,
+                    query="same",
+                    candidates=[candidate],
+                    selected_candidate_ids=[candidate.candidate_id],
+                )
+                for course, candidate in (
+                    (source_a, selected_a),
+                    (source_b, selected_b),
+                )
+            ]
+            for pack in packs:
+                self.assertTrue(materials.save(pack))
+
+            result = merge_courses(
+                target.course_id,
+                [source_a.course_id, source_b.course_id],
+                course_manager=course_manager,
+                current_event_manager=materials,
+            )
+
+            self.assertTrue(result.success, result.error)
+            self.assertEqual(2, result.current_event_pack_count)
+            self.assertEqual(2, len(materials.load_all(target.course_id)))
+
+    def test_merge_rolls_back_materials_when_second_target_pack_save_fails(self):
+        from core.course_merge import merge_courses
+
+        class FailSecondTargetSaveManager(CurrentEventMaterialManager):
+            def __init__(self, directory, target_course_id):
+                super().__init__(directory)
+                self.target_course_id = target_course_id
+                self.target_save_count = 0
+
+            def save(self, pack):
+                if pack.course_id == self.target_course_id:
+                    self.target_save_count += 1
+                    if self.target_save_count == 2:
+                        return False
+                return super().save(pack)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            course_manager = CourseProjectManager(root / "courses")
+            target = self._project("course-target", "Target", "io")
+            source_a = self._project("course-a", "Source A", "memory")
+            source_b = self._project("course-b", "Source B", "process")
+            materials = FailSecondTargetSaveManager(root / "events", target.course_id)
+            for course in (target, source_a, source_b):
+                self.assertTrue(course_manager.save(course, make_current=False))
+            source_packs = [
+                CurrentEventMaterialPack.create(
+                    course_id=course.course_id,
+                    course_updated_at=course.updated_at,
+                    query="same",
+                    candidates=[candidate],
+                    selected_candidate_ids=[candidate.candidate_id],
+                )
+                for course, candidate in (
+                    (source_a, self._candidate("selected-a")),
+                    (source_b, self._candidate("selected-b")),
+                )
+            ]
+            for pack in source_packs:
+                self.assertTrue(materials.save(pack))
+
+            result = merge_courses(
+                target.course_id,
+                [source_a.course_id, source_b.course_id],
+                course_manager=course_manager,
+                current_event_manager=materials,
+            )
+
+            self.assertFalse(result.success)
+            self.assertEqual((), result.rollback_errors)
+            self.assertEqual([], materials.load_all(target.course_id))
+            self.assertEqual(
+                {pack.pack_id for pack in source_packs},
+                {
+                    pack.pack_id
+                    for course_id in (source_a.course_id, source_b.course_id)
+                    for pack in materials.load_all(course_id)
+                },
+            )
+            self.assertIsNotNone(course_manager.get(source_a.course_id))
+            self.assertIsNotNone(course_manager.get(source_b.course_id))
+
+    def test_merge_rolls_back_materials_when_cancelled_after_first_target_save(self):
+        from core.course_merge import merge_courses
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            course_manager = CourseProjectManager(root / "courses")
+            materials = CurrentEventMaterialManager(root / "events")
+            target = self._project("course-target", "Target", "io")
+            source_a = self._project("course-a", "Source A", "memory")
+            source_b = self._project("course-b", "Source B", "process")
+            for course in (target, source_a, source_b):
+                self.assertTrue(course_manager.save(course, make_current=False))
+            source_packs = [
+                CurrentEventMaterialPack.create(
+                    course_id=course.course_id,
+                    course_updated_at=course.updated_at,
+                    query="same",
+                    candidates=[candidate],
+                    selected_candidate_ids=[candidate.candidate_id],
+                )
+                for course, candidate in (
+                    (source_a, self._candidate("selected-a")),
+                    (source_b, self._candidate("selected-b")),
+                )
+            ]
+            for pack in source_packs:
+                self.assertTrue(materials.save(pack))
+
+            task = None
+
+            def cancel_before_second_material(progress):
+                if progress.stage == "merging_materials" and progress.current == 1:
+                    task.cancel()
+
+            task = TaskControl(cancel_before_second_material)
+            result = merge_courses(
+                target.course_id,
+                [source_a.course_id, source_b.course_id],
+                course_manager=course_manager,
+                current_event_manager=materials,
+                task=task,
+            )
+
+            self.assertFalse(result.success)
+            self.assertTrue(result.cancelled)
+            self.assertEqual((), result.rollback_errors)
+            self.assertEqual([], materials.load_all(target.course_id))
+            self.assertEqual(
+                {pack.pack_id for pack in source_packs},
+                {
+                    pack.pack_id
+                    for course_id in (source_a.course_id, source_b.course_id)
+                    for pack in materials.load_all(course_id)
+                },
+            )
 
     def test_merge_honors_cancellation_before_writing(self):
         from core.course_merge import merge_courses
