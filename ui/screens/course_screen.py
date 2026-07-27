@@ -565,6 +565,7 @@ class CourseScreen(QWidget):
 
     def request_shutdown(self) -> bool:
         """Request cooperative cancellation; never block the GUI thread."""
+        self.qa_panel.stop_request(show_status=False)
         workers = [
             worker
             for worker in (

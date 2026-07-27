@@ -391,6 +391,27 @@ class CourseQAPanelTests(unittest.TestCase):
             self.assertTrue(screen.qa_panel.isEnabled())
             self.assertNotIn("正在依据", screen.qa_panel.status_label.text())
 
+    def test_course_screen_shutdown_cancels_an_active_qa_transport(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            release = threading.Event()
+            service = CancellableBlockingService(release)
+            manager = CourseProjectManager(tmpdir)
+            manager.save(project(selected=False))
+            screen = CourseScreen(
+                manager,
+                qa_service_factory=lambda _project: service,
+            )
+            screen.project_list.setCurrentRow(0)
+            screen.qa_mode_btn.click()
+            screen.qa_panel.input.setPlainText("question during shutdown")
+            screen.qa_panel.send_btn.click()
+
+            ready_to_close = screen.request_shutdown()
+
+            self.assertTrue(ready_to_close)
+            self.assertTrue(service.cancelled.is_set())
+            self.assertFalse(screen.qa_panel.is_busy)
+
     def test_panel_sends_on_enter_and_renders_answer_with_source(self):
         panel = CourseQAPanel(lambda _project: ImmediateService())
         panel.set_course(project(selected=False))
