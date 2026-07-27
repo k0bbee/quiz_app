@@ -1146,6 +1146,33 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertIn("未答: 1", screen.stats_label.text())
         self.assertIn("重做错题（1 题）", screen.next_action_label.text())
 
+    def test_results_screen_disables_retry_actions_when_questions_are_deleted(self):
+        question = self._make_question("q-deleted")
+        record = ProgressRecord.create_new("set-deleted")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord(
+                question_id=question.question_id,
+                index_in_session=0,
+                user_answer="B",
+                is_correct=False,
+            )
+        ]
+        record.summary = SessionSummary.compute(record.answers, 1, 10)
+        screen = self._make_results_screen()
+        screen.set_results(record, {question.question_id: question}, "zh")
+        self.assertTrue(screen.retry_incorrect_btn.isEnabled())
+        self.assertTrue(screen.retry_all_action.isEnabled())
+
+        screen.set_retry_availability([], can_retry_all=False)
+
+        self.assertFalse(screen.retry_incorrect_btn.isEnabled())
+        self.assertFalse(screen.retry_unsure_action.isEnabled())
+        self.assertFalse(screen.retry_review_action.isEnabled())
+        self.assertFalse(screen.retry_all_action.isEnabled())
+        self.assertFalse(screen.more_practice_btn.isEnabled())
+        self.assertIn("原题已不可用", screen.next_action_label.text())
+
     def test_retry_incorrect_excludes_skipped_answers(self):
         from ui.main_window import MainWindow
 
@@ -1194,7 +1221,11 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         screen = self._make_results_screen()
         emitted = []
         screen.retry_unsure.connect(lambda: emitted.append(True))
-        screen.set_results(record, {}, "zh")
+        questions = {
+            question_id: self._make_question(question_id)
+            for question_id in ("q1", "q2")
+        }
+        screen.set_results(record, questions, "zh")
 
         self.assertTrue(screen.retry_unsure_action.isEnabled())
         screen.retry_unsure_action.trigger()
@@ -1224,7 +1255,11 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         screen = self._make_results_screen()
         emitted = []
         screen.retry_review.connect(lambda: emitted.append(True))
-        screen.set_results(record, {}, "zh")
+        questions = {
+            question_id: self._make_question(question_id)
+            for question_id in ("q1", "q2")
+        }
+        screen.set_results(record, questions, "zh")
 
         self.assertIn("复查: 1", screen.stats_label.text())
         self.assertTrue(screen.retry_review_action.isEnabled())
@@ -1641,6 +1676,28 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual(qset.set_id, started["question_set"].set_id)
             self.assertEqual([q1.question_id, q2.question_id], [q.question_id for q in started["questions"]])
             self.assertEqual("practice", started["submission_mode"])
+
+    def test_retry_all_explains_when_original_question_set_was_deleted(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            record = ProgressRecord.create_new("set-deleted")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord("q-deleted", 0, "B", False),
+            ]
+            shell = types.SimpleNamespace(
+                results_screen=types.SimpleNamespace(current_record=record),
+                set_manager=SetManager(str(Path(tmpdir) / "sets")),
+                question_bank=QuestionBank(str(Path(tmpdir) / "questions")),
+                lang_manager=LanguageManager.instance(),
+            )
+
+            with patch("ui.main_window.QMessageBox.warning") as warning:
+                MainWindow._on_retry_all(shell)
+
+            warning.assert_called_once()
+            self.assertIn("已被删除", warning.call_args.args[2])
 
     def test_quiz_screen_timer_visibility_follows_setting(self):
         question = Question.create_new(

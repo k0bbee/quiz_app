@@ -1157,17 +1157,41 @@ class MainWindow(QMainWindow):
             return
 
         question_set = self.set_manager.get(record.set_id)
-        if question_set:
-            questions = self.question_bank.get_many(question_set.questions)
-            if questions:
-                self._active_questions = {q.question_id: q for q in questions}
-                self.quiz_screen.start_quiz(
-                    question_set,
-                    questions,
-                    show_timer=self._show_timer_setting(),
-                    submission_mode="practice",
-                )
-                self.navigate_to(self.SCREEN_QUIZ)
+        if question_set is None:
+            gm = self.lang_manager.get_text
+            parent = self if isinstance(self, QWidget) else None
+            QMessageBox.warning(
+                parent,
+                gm("原题不可用", "Original Questions Unavailable"),
+                gm(
+                    "原题集已被删除。当前历史记录仍可查看，但无法重新练习。",
+                    "The original question set was deleted. The archived result remains "
+                    "viewable, but it cannot be retried.",
+                ),
+            )
+            return
+        questions = self.question_bank.get_many(question_set.questions)
+        if not questions:
+            gm = self.lang_manager.get_text
+            parent = self if isinstance(self, QWidget) else None
+            QMessageBox.warning(
+                parent,
+                gm("原题不可用", "Original Questions Unavailable"),
+                gm(
+                    "原题已被删除。当前历史记录仍可查看，但无法重新练习。",
+                    "The original questions were deleted. The archived result remains "
+                    "viewable, but it cannot be retried.",
+                ),
+            )
+            return
+        self._active_questions = {q.question_id: q for q in questions}
+        self.quiz_screen.start_quiz(
+            question_set,
+            questions,
+            show_timer=self._show_timer_setting(),
+            submission_mode="practice",
+        )
+        self.navigate_to(self.SCREEN_QUIZ)
 
     def _show_timer_setting(self) -> bool:
         return bool(self.settings_screen.get_setting("show_timer", False))
@@ -1178,6 +1202,7 @@ class MainWindow(QMainWindow):
         self._sync_topic_screen_course()
         self._sync_question_bank_screen_course()
         self._sync_progress_screen_course()
+        self._refresh_results_retry_availability()
         self._on_language_changed()
 
     def _on_question_bank_changed(self):
@@ -1185,6 +1210,27 @@ class MainWindow(QMainWindow):
         self.question_bank.clear_cache()
         self.home_screen.refresh()
         self.topic_screen.refresh()
+        self._refresh_results_retry_availability()
+
+    def _refresh_results_retry_availability(self) -> None:
+        record = getattr(self.results_screen, "current_record", None)
+        if record is None:
+            return
+        answer_ids = [answer.question_id for answer in record.answers]
+        available = self.question_bank.get_many(
+            answer_ids,
+            course_id=self._current_course_id(),
+        )
+        question_set = self.set_manager.get(record.set_id) if record.set_id else None
+        set_questions = (
+            self.question_bank.get_many(question_set.questions)
+            if question_set is not None
+            else []
+        )
+        self.results_screen.set_retry_availability(
+            [question.question_id for question in available],
+            can_retry_all=bool(question_set is not None and set_questions),
+        )
 
     def _load_generation_context(self) -> tuple[str, list, object]:
         """Load active course summary and topics for AI generation.

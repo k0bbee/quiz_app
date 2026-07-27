@@ -37,6 +37,8 @@ class ResultsScreen(QWidget):
         self.course_manager = course_manager
         self._course_project = None
         self.current_study_intent: StudyIntent | None = None
+        self._retry_question_ids: set[str] = set()
+        self._can_retry_all = False
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -162,11 +164,17 @@ class ResultsScreen(QWidget):
 
         # Re-render results if a record is loaded
         if self.current_record is not None:
+            retry_question_ids = set(self._retry_question_ids)
+            can_retry_all = self._can_retry_all
             self.set_results(
                 self.current_record,
                 self._questions,
                 self.lang_manager.current,
                 study_intent=self.current_study_intent,
+            )
+            self.set_retry_availability(
+                retry_question_ids,
+                can_retry_all=can_retry_all,
             )
 
     def set_results(
@@ -183,6 +191,8 @@ class ResultsScreen(QWidget):
             study_intent if isinstance(study_intent, StudyIntent) else None
         )
         self._questions = questions or {}
+        self._retry_question_ids = set(self._questions)
+        self._can_retry_all = bool(self._questions)
         self._lang = lang
         self._recommended_topic_id = ""
         self._recommended_action = ""
@@ -297,20 +307,62 @@ class ResultsScreen(QWidget):
                 )
             self.review_layout.insertWidget(self.review_layout.count() - 1, card)
 
-        # Update retry buttons
-        has_incorrect = any(not a.skipped and not a.is_correct for a in record.answers)
-        has_unsure = any(
-            not answer.skipped and getattr(answer, "confidence", "sure") == "unsure"
+        self._refresh_retry_action_state()
+        self._update_repeat_study_action()
+
+    def set_retry_availability(
+        self,
+        question_ids,
+        *,
+        can_retry_all: bool,
+    ) -> None:
+        """Update retry actions without discarding the archived result display."""
+        self._retry_question_ids = {
+            str(question_id or "").strip()
+            for question_id in (question_ids or ())
+            if str(question_id or "").strip()
+        }
+        self._can_retry_all = bool(can_retry_all)
+        self._refresh_retry_action_state()
+        if self.current_record is not None and not (
+            self._retry_question_ids or self._can_retry_all
+        ):
+            self.next_action_btn.hide()
+            self.next_action_label.setText(self.lang_manager.get_text(
+                "该课程或题目集已删除。原题已不可用，当前记录只能查看，无法重新练习。",
+                "The course or question set was deleted. This archived result can be "
+                "reviewed, but the original questions can no longer be retried.",
+            ))
+
+    def _refresh_retry_action_state(self) -> None:
+        record = self.current_record
+        if record is None:
+            self._set_retry_action_state(False, False, False, False)
+            return
+        available = self._retry_question_ids
+        has_incorrect = any(
+            answer.question_id in available
+            and not answer.skipped
+            and not answer.is_correct
             for answer in record.answers
         )
-        has_review = bool(getattr(record, "marked_review_question_ids", []))
+        has_unsure = any(
+            answer.question_id in available
+            and not answer.skipped
+            and getattr(answer, "confidence", "sure") == "unsure"
+            for answer in record.answers
+        )
+        has_review = bool(
+            available.intersection(
+                getattr(record, "marked_review_question_ids", []) or []
+            )
+        )
         self._set_retry_action_state(
             has_incorrect,
             has_unsure,
             has_review,
-            bool(record.answers),
+            self._can_retry_all,
         )
-        self._update_repeat_study_action()
 
     def _update_repeat_study_action(self) -> None:
         intent = self.current_study_intent
