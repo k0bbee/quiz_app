@@ -1753,6 +1753,67 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertFalse(dialog.progress_bar.isVisible())
         self.assertTrue(dialog.generate_btn.isEnabled())
 
+    def test_completed_generation_can_reopen_review_after_user_cancels(self):
+        question = Question.create_new(
+            qtype=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": {
+                    "stem": "Cache?",
+                    "options": ["A. one", "B. two"],
+                    "explanation": "A valid explanation text.",
+                },
+                "en": {
+                    "stem": "Cache?",
+                    "options": ["A. one", "B. two"],
+                    "explanation": "A valid explanation text.",
+                },
+            },
+            correct_answer="A",
+            topic="cache",
+        )
+        review_count = 0
+
+        class ReviewDialog:
+            def __init__(self, questions, parent=None):
+                self.questions = questions
+
+            def exec(self):
+                nonlocal review_count
+                review_count += 1
+                if review_count == 1:
+                    return QDialog.DialogCode.Rejected
+                return QDialog.DialogCode.Accepted
+
+            def get_accepted_questions(self):
+                return self.questions
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=["cache"],
+        )
+        dialog._on_batch_done([question])
+
+        with patch("ui.dialogs.ai_generation_dialog.QuestionReviewDialog", ReviewDialog):
+            dialog._on_finished()
+
+            self.assertEqual(1, review_count)
+            self.assertFalse(dialog.review_partial_btn.isHidden())
+            self.assertTrue(dialog.review_partial_btn.isEnabled())
+            self.assertIn("审核已暂停", dialog.status_label.text())
+            self.assertIn("1", dialog.review_partial_btn.text())
+
+            dialog.review_partial_btn.click()
+
+        self.assertEqual(2, review_count)
+        self.assertEqual(QDialog.DialogCode.Accepted, dialog.result())
+        self.assertEqual([question], dialog.generated_questions)
+
     def test_generation_partial_result_shows_explicit_review_action_without_error_modal(self):
         question = Question.create_new(
             qtype=QuestionType.MULTIPLE_CHOICE,

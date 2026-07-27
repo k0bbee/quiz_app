@@ -777,9 +777,7 @@ class AIGenerationDialog(QDialog):
         self._update_preview()
 
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
-        self.review_partial_btn.setText(
-            self.lang_manager.get_text("审核并保存已生成题目", "Review and Save Generated")
-        )
+        self._refresh_review_button()
         self._refresh_fill_missing_button()
         self.generate_btn.setText(self.lang_manager.get_text("生成题目", "Generate Questions"))
         self.partial_recovery_label.setText(self._partial_recovery_hint(self.lang_manager.current))
@@ -1761,6 +1759,7 @@ class AIGenerationDialog(QDialog):
         self._partial_generation_report = None
         self._retry_source_report = None
         self.generated_questions = self._merge_retry_carryover(questions)
+        self._refresh_review_button()
         self.partial_recovery_label.setHidden(True)
         self.partial_recovery_label.clear()
         self.fill_missing_btn.setHidden(True)
@@ -1778,6 +1777,7 @@ class AIGenerationDialog(QDialog):
         if self._generation_cancelled:
             return
         self.generated_questions = self._merge_retry_carryover(questions)
+        self._refresh_review_button()
         self._append_generation_event(
             self.lang_manager.get_text(
                 f"生成未完成，但保留了 {len(self.generated_questions)} 道可审核题目。",
@@ -1869,6 +1869,9 @@ class AIGenerationDialog(QDialog):
 
         if self.generated_questions:
             is_partial = self._has_partial_generation()
+            self._refresh_review_button()
+            self.review_partial_btn.setHidden(False)
+            self.review_partial_btn.setEnabled(True)
             if self.lang_manager.current == "zh":
                 if is_partial:
                     self.status_label.setText(
@@ -1885,8 +1888,6 @@ class AIGenerationDialog(QDialog):
                     self.status_label.setText(f"Generated {len(self.generated_questions)} questions. Opening review...")
             if is_partial:
                 self._refresh_fill_missing_button()
-                self.review_partial_btn.setHidden(False)
-                self.review_partial_btn.setEnabled(True)
                 self._set_generate_button_role("secondaryButton")
                 return
             self._set_generate_button_role("primaryButton")
@@ -1894,7 +1895,7 @@ class AIGenerationDialog(QDialog):
         else:
             self.status_label.setText(self.lang_manager.get_text("未生成任何题目。", "No questions were generated."))
 
-        if not self.worker:
+        if not self.worker and not self.generated_questions:
             self.status_label.setText(self.lang_manager.get_text("未生成任何题目。", "No questions were generated."))
 
     def _has_partial_generation(self) -> bool:
@@ -1935,6 +1936,31 @@ class AIGenerationDialog(QDialog):
         self.generate_btn.style().unpolish(self.generate_btn)
         self.generate_btn.style().polish(self.generate_btn)
 
+    def _refresh_review_button(self) -> None:
+        count = len(self.generated_questions)
+        if count:
+            self.review_partial_btn.setText(self.lang_manager.get_text(
+                f"审核并保存 {count} 道题",
+                f"Review and Save {count}",
+            ))
+            return
+        self.review_partial_btn.setText(
+            self.lang_manager.get_text(
+                "审核并保存已生成题目",
+                "Review and Save Generated",
+            )
+        )
+
+    def _show_review_pending_state(self) -> None:
+        self._refresh_review_button()
+        self.review_partial_btn.setHidden(False)
+        self.review_partial_btn.setEnabled(True)
+        count = len(self.generated_questions)
+        self.status_label.setText(self.lang_manager.get_text(
+            f"审核已暂停，{count} 道题仍未保存。",
+            f"Review paused; {count} question(s) remain unsaved.",
+        ))
+
     def _review_generated_questions(self) -> None:
         if not self.generated_questions:
             return
@@ -1960,9 +1986,12 @@ class AIGenerationDialog(QDialog):
                 self.generate_btn.setEnabled(True)
                 self.review_partial_btn.setEnabled(True)
                 self.progress_bar.setVisible(False)
+                self._show_review_pending_state()
                 return
             self.generated_questions = accepted
             self.accept()
+            return
+        self._show_review_pending_state()
 
     def _partial_status_text(self, lang: str) -> str:
         if self._partial_generation_report is not None:
