@@ -327,6 +327,28 @@ class ProgressArchiveTests(unittest.TestCase):
         self.assertEqual("complete", result.status)
         self.assertEqual(0, progress.save_calls)
 
+    def test_unchanged_incomplete_archive_is_not_rewritten(self):
+        from core.progress_archive import ProgressArchiveMigrator
+
+        record = self._legacy_record()
+        progress = _Store([record], "progress_id")
+        migrator = ProgressArchiveMigrator(
+            progress_manager=progress,
+            question_bank=_Store([], "question_id"),
+            set_manager=_Store([], "set_id"),
+            course_manager=_Store([], "course_id"),
+        )
+        first = migrator.migrate_record(record)
+        migrated = progress.get(record.progress_id)
+        first_save_count = progress.save_calls
+
+        second = migrator.migrate_record(migrated)
+
+        self.assertEqual("incomplete", first.status)
+        self.assertEqual("incomplete", second.status)
+        self.assertFalse(second.changed)
+        self.assertEqual(first_save_count, progress.save_calls)
+
     def test_known_course_without_title_is_marked_incomplete(self):
         from core.progress_archive import ProgressArchiveMigrator
 

@@ -56,7 +56,11 @@ class MainWindow(QMainWindow):
     SCREEN_QUESTION_BANK = 6
     SCREEN_PAST_EXAMS = 7
 
-    def __init__(self, services: ApplicationServices | None = None):
+    def __init__(
+        self,
+        services: ApplicationServices | None = None,
+        startup_migration_report=None,
+    ):
         super().__init__()
         self.setWindowTitle(APP_NAME)
         self.resize(900, 680)
@@ -73,6 +77,7 @@ class MainWindow(QMainWindow):
         self.current_event_manager = services.current_event_manager
         self.task_center = services.task_center
         self.lang_manager = LanguageManager.instance()
+        self.startup_migration_report = startup_migration_report
 
         # Central stacked widget
         self.stack = QStackedWidget()
@@ -167,6 +172,35 @@ class MainWindow(QMainWindow):
         self._task_center_timer.setInterval(1000)
         self._task_center_timer.timeout.connect(self._refresh_task_center_action)
         self._task_center_timer.start()
+        if bool(getattr(startup_migration_report, "has_failures", False)):
+            QTimer.singleShot(0, self._show_startup_migration_warning)
+
+    def _show_startup_migration_warning(self) -> None:
+        report = self.startup_migration_report
+        if not bool(getattr(report, "has_failures", False)):
+            return
+        failed_count = len(
+            tuple(getattr(report, "failed_progress_ids", ()) or ())
+        )
+        detail = "\n".join(
+            str(error)
+            for error in tuple(getattr(report, "errors", ()) or ())[:3]
+        )
+        suffix = f"\n\n{detail}" if detail else ""
+        QMessageBox.warning(
+            self,
+            self.lang_manager.get_text(
+                "旧历史保护未完成",
+                "Legacy History Protection Incomplete",
+            ),
+            self.lang_manager.get_text(
+                f"{failed_count} 条旧练习记录暂未完成保护。请先检查数据目录权限，"
+                f"在问题解决前不要编辑或删除相关题目。{suffix}",
+                f"{failed_count} legacy practice record(s) could not be protected. "
+                f"Check the data-directory permissions before editing or deleting "
+                f"related questions.{suffix}",
+            ),
+        )
 
     def _get_course_screen(self):
         """Lazy-init the course screen on first access."""

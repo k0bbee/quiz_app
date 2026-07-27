@@ -113,6 +113,40 @@ class UiThemeTests(unittest.TestCase):
         load_theme.assert_called_once_with(app, font_scale="large")
         window_type.return_value.show.assert_called_once_with()
 
+    def test_main_runs_data_migration_before_constructing_window(self):
+        app = Mock()
+        app.exec.return_value = 0
+        services = object()
+        report = object()
+        events = []
+
+        with patch.object(main_module, "QApplication", return_value=app), \
+                patch.object(
+                    main_module.ApplicationServices,
+                    "default",
+                    side_effect=lambda: events.append("services") or services,
+                ), \
+                patch.object(main_module, "ApplicationDataMigrator") as migrator_type, \
+                patch.object(main_module, "MainWindow") as window_type, \
+                patch.object(main_module, "read_json", return_value={}), \
+                patch.object(main_module, "load_stylesheet"):
+            migrator_type.return_value.migrate.side_effect = (
+                lambda: events.append("migration") or report
+            )
+            window_type.side_effect = (
+                lambda **_kwargs: events.append("window") or Mock()
+            )
+
+            with self.assertRaisesRegex(SystemExit, "0"):
+                main_module.main()
+
+        self.assertEqual(["services", "migration", "window"], events)
+        migrator_type.assert_called_once_with(services)
+        window_type.assert_called_once_with(
+            services=services,
+            startup_migration_report=report,
+        )
+
     def test_settings_exposes_and_persists_global_font_scale(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             settings_file = Path(tmpdir) / "settings.json"

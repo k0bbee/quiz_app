@@ -144,6 +144,14 @@ class ProgressArchiveMigrator:
         migrated.archive_schema_version = ARCHIVE_SCHEMA_VERSION
         migrated.archive_status = "incomplete" if missing_fields else "complete"
         migrated.archive_missing_fields = missing_fields
+        changed = migrated.to_dict() != record.to_dict()
+        if not changed:
+            return ProgressArchiveMigrationResult(
+                progress_id=record.progress_id,
+                status=migrated.archive_status,
+                changed=False,
+                missing_fields=tuple(missing_fields),
+            )
 
         try:
             saved = self.progress_manager.save(migrated)
@@ -164,7 +172,7 @@ class ProgressArchiveMigrator:
         return ProgressArchiveMigrationResult(
             progress_id=record.progress_id,
             status=migrated.archive_status,
-            changed=migrated.to_dict() != record.to_dict(),
+            changed=True,
             missing_fields=tuple(missing_fields),
         )
 

@@ -5,6 +5,8 @@ import sys
 from PyQt6.QtWidgets import QApplication
 
 from config import APP_NAME, DEFAULT_SETTINGS, SETTINGS_FILE
+from core.application_data_migration import ApplicationDataMigrator
+from core.application_services import ApplicationServices
 from ui.application_style import load_stylesheet
 from ui.font_scale import normalize_font_scale
 from ui.main_window import MainWindow
@@ -22,7 +24,12 @@ def main() -> None:
     )
     load_stylesheet(app, font_scale=font_scale)
 
-    window = MainWindow()
+    services = ApplicationServices.default()
+    migration_report = ApplicationDataMigrator(services).migrate()
+    window = MainWindow(
+        services=services,
+        startup_migration_report=migration_report,
+    )
     window.show()
 
     sys.exit(app.exec())
