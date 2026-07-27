@@ -251,6 +251,77 @@ class ProgressArchiveTests(unittest.TestCase):
         self.assertEqual(1, len(stored.question_snapshots))
         self.assertEqual("历史题干", stored.question_snapshots[0].stem)
 
+    def test_malformed_existing_snapshot_is_rebuilt_from_live_question(self):
+        from core.progress_archive import ProgressArchiveMigrator
+
+        record = self._legacy_record()
+        record.archive_schema_version = 1
+        record.archive_status = "complete"
+        record.question_snapshots = [
+            QuestionReviewSnapshot(
+                question_id="q-io",
+                question_type="multiple_choice",
+                topic_id="input-output",
+                topic_title="输入输出",
+                stem="",
+                options=[],
+                correct_answer=None,
+                explanation="",
+            )
+        ]
+        progress = _Store([record], "progress_id")
+        migrator = ProgressArchiveMigrator(
+            progress_manager=progress,
+            question_bank=_Store([self._question()], "question_id"),
+            set_manager=_Store([self._question_set()], "set_id"),
+            course_manager=_Store([], "course_id"),
+        )
+
+        result = migrator.migrate_record(record)
+
+        self.assertTrue(result.changed)
+        self.assertEqual("complete", result.status)
+        stored = progress.get(record.progress_id)
+        self.assertEqual("设备完成后如何通知 CPU？", stored.question_snapshots[0].stem)
+        self.assertEqual(["A. 中断", "B. 轮询"], stored.question_snapshots[0].options)
+        self.assertEqual("A", stored.question_snapshots[0].correct_answer)
+
+    def test_malformed_snapshot_without_live_question_stays_incomplete(self):
+        from core.progress_archive import ProgressArchiveMigrator
+
+        record = self._legacy_record()
+        record.archive_schema_version = 1
+        record.archive_status = "complete"
+        record.question_snapshots = [
+            QuestionReviewSnapshot(
+                question_id="q-io",
+                question_type="multiple_choice",
+                topic_id="input-output",
+                topic_title="输入输出",
+                stem="",
+                options=[],
+                correct_answer=None,
+                explanation="",
+            )
+        ]
+        progress = _Store([record], "progress_id")
+        migrator = ProgressArchiveMigrator(
+            progress_manager=progress,
+            question_bank=_Store([], "question_id"),
+            set_manager=_Store([self._question_set()], "set_id"),
+            course_manager=_Store([], "course_id"),
+        )
+
+        result = migrator.migrate_record(record)
+
+        self.assertEqual("incomplete", result.status)
+        self.assertIn("snapshot:q-io:stem", result.missing_fields)
+        self.assertIn("snapshot:q-io:options", result.missing_fields)
+        self.assertIn("snapshot:q-io:correct_answer", result.missing_fields)
+        stored = progress.get(record.progress_id)
+        self.assertEqual(1, len(stored.question_snapshots))
+        self.assertEqual("", stored.question_snapshots[0].stem)
+
     def test_completed_record_without_question_identity_stays_incomplete(self):
         from core.progress_archive import ProgressArchiveMigrator
 

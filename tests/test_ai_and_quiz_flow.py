@@ -1419,6 +1419,33 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertNotIn("现在的题干", card.stem_label.text())
         self.assertTrue(screen.retry_incorrect_btn.isEnabled())
 
+    def test_results_screen_does_not_render_malformed_historical_snapshot(self):
+        record = ProgressRecord.create_new("set-incomplete")
+        record.status = "completed"
+        record.archive_schema_version = 1
+        record.archive_status = "incomplete"
+        record.answers = [AnswerRecord("q-malformed", 0, "B", False)]
+        record.summary = SessionSummary.compute(record.answers, 1, 10)
+        record.question_snapshots = [
+            QuestionReviewSnapshot(
+                question_id="q-malformed",
+                question_type="multiple_choice",
+                topic_id="history-topic",
+                topic_title="历史主题",
+                stem="",
+                options=[],
+                correct_answer=None,
+                explanation="",
+            )
+        ]
+        screen = self._make_results_screen()
+
+        screen.set_results(record, {}, "zh")
+
+        card = screen.review_layout.itemAt(0).widget()
+        self.assertIn("题目 q-malformed", card.stem_label.text())
+        self.assertNotIn("正确答案", card.answer_info.text())
+
     def test_retry_incorrect_excludes_skipped_answers(self):
         from ui.main_window import MainWindow
 

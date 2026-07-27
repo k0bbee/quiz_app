@@ -10,6 +10,7 @@ from PyQt6.QtCore import pyqtSignal, Qt
 from PyQt6.QtGui import QAction
 
 from core.language_manager import LanguageManager
+from core.progress_archive import validate_review_snapshot
 from core.study_intent import StudyAction, StudyIntent
 from models.progress import ProgressRecord, QuestionReviewSnapshot
 from models.question import Question
@@ -214,6 +215,8 @@ class ResultsScreen(QWidget):
         self._snapshot_question_ids = set()
         for snapshot in getattr(record, "question_snapshots", []) or []:
             if not isinstance(snapshot, QuestionReviewSnapshot):
+                continue
+            if not validate_review_snapshot(snapshot).valid:
                 continue
             question_id = str(snapshot.question_id or "").strip()
             if not question_id:

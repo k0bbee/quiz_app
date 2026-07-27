@@ -6,6 +6,7 @@ import copy
 from dataclasses import dataclass
 
 from models.progress import ProgressRecord, QuestionReviewSnapshot
+from utils.constants import QuestionType
 
 
 ARCHIVE_SCHEMA_VERSION = 1
@@ -20,6 +21,64 @@ class ProgressArchiveMigrationResult:
     changed: bool
     missing_fields: tuple[str, ...] = ()
     error: str = ""
+
+
+@dataclass(frozen=True)
+class SnapshotValidation:
+    """Type-aware review snapshot validation result."""
+
+    valid: bool
+    missing_fields: tuple[str, ...] = ()
+
+
+def validate_review_snapshot(
+    snapshot: QuestionReviewSnapshot,
+) -> SnapshotValidation:
+    """Validate the minimum immutable data needed for truthful review."""
+    missing: list[str] = []
+    question_id = str(getattr(snapshot, "question_id", "") or "").strip()
+    if not question_id:
+        missing.append("question_id")
+    try:
+        question_type = QuestionType(
+            str(getattr(snapshot, "question_type", "") or "").strip()
+        )
+    except ValueError:
+        question_type = None
+        missing.append("question_type")
+    if not str(getattr(snapshot, "stem", "") or "").strip():
+        missing.append("stem")
+    correct_answer = getattr(snapshot, "correct_answer", None)
+    if _is_empty_value(correct_answer):
+        missing.append("correct_answer")
+
+    options = getattr(snapshot, "options", None)
+    if question_type in {
+        QuestionType.MULTIPLE_CHOICE,
+        QuestionType.TRUE_FALSE,
+        QuestionType.SCENARIO_CHOICE,
+    }:
+        if not isinstance(options, (list, tuple)) or len(options) < 2:
+            missing.append("options")
+    elif question_type is QuestionType.MATCHING:
+        left, right = _matching_sides(options)
+        if not left or not right or len(left) != len(right):
+            missing.append("options")
+        elif not _valid_matching_answer(correct_answer, left, right):
+            if "correct_answer" not in missing:
+                missing.append("correct_answer")
+    elif question_type is QuestionType.ORDERING:
+        option_ids = _option_ids(options)
+        if len(option_ids) < 2 or len(option_ids) != len(set(option_ids)):
+            missing.append("options")
+        elif not _valid_ordering_answer(correct_answer, option_ids):
+            if "correct_answer" not in missing:
+                missing.append("correct_answer")
+
+    return SnapshotValidation(
+        valid=not missing,
+        missing_fields=tuple(missing),
+    )
 
 
 class ProgressArchiveMigrator:
@@ -51,6 +110,7 @@ class ProgressArchiveMigrator:
         if (
             record.archive_schema_version >= ARCHIVE_SCHEMA_VERSION
             and record.archive_status == "complete"
+            and _record_snapshots_are_complete(record)
         ):
             return ProgressArchiveMigrationResult(
                 progress_id=record.progress_id,
@@ -75,16 +135,25 @@ class ProgressArchiveMigrator:
             seen_question_ids.add(question_id)
             existing_snapshot = existing_snapshots.get(question_id)
             if existing_snapshot is not None:
-                migrated_snapshots.append(copy.deepcopy(existing_snapshot))
-                continue
+                validation = validate_review_snapshot(existing_snapshot)
+                if validation.valid:
+                    migrated_snapshots.append(copy.deepcopy(existing_snapshot))
+                    continue
             question = self.question_bank.get(question_id)
-            if question is None:
-                missing_fields.append(f"question:{question_id}")
+            if question is not None:
+                available_questions.append(question)
+                migrated_snapshots.append(
+                    _question_review_snapshot(question, migrated.language)
+                )
                 continue
-            available_questions.append(question)
-            migrated_snapshots.append(
-                _question_review_snapshot(question, migrated.language)
-            )
+            if existing_snapshot is not None:
+                migrated_snapshots.append(copy.deepcopy(existing_snapshot))
+                missing_fields.extend(
+                    f"snapshot:{question_id}:{field_name}"
+                    for field_name in validation.missing_fields
+                )
+            else:
+                missing_fields.append(f"question:{question_id}")
         for question_id, snapshot in existing_snapshots.items():
             if question_id not in seen_question_ids:
                 migrated_snapshots.append(copy.deepcopy(snapshot))
@@ -226,3 +295,85 @@ def _localized_question_value(question, method_name: str, language: str):
         return value
     fallback_language = "en" if language == "zh" else "zh"
     return getter(fallback_language)
+
+
+def _record_snapshots_are_complete(record: ProgressRecord) -> bool:
+    valid_ids = {
+        snapshot.question_id
+        for snapshot in record.question_snapshots
+        if validate_review_snapshot(snapshot).valid
+    }
+    answer_ids = {
+        str(answer.question_id or "").strip()
+        for answer in record.answers
+        if str(answer.question_id or "").strip()
+    }
+    return bool(valid_ids) and answer_ids.issubset(valid_ids)
+
+
+def _is_empty_value(value) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, tuple, dict, set)):
+        return not value
+    return False
+
+
+def _matching_sides(options) -> tuple[list, list]:
+    if not isinstance(options, dict):
+        return [], []
+    left = options.get("left", [])
+    right = options.get("right", [])
+    if not isinstance(left, (list, tuple)) or not isinstance(
+        right,
+        (list, tuple),
+    ):
+        return [], []
+    return list(left), list(right)
+
+
+def _option_ids(options) -> list[str]:
+    if not isinstance(options, (list, tuple)):
+        return []
+    identities: list[str] = []
+    for option in options:
+        if isinstance(option, dict):
+            identity = str(option.get("id", "") or "").strip()
+        else:
+            identity = str(option or "").strip()
+        if not identity:
+            return []
+        identities.append(identity)
+    return identities
+
+
+def _valid_matching_answer(correct_answer, left: list, right: list) -> bool:
+    if not isinstance(correct_answer, (list, tuple)) or not correct_answer:
+        return False
+    left_ids = set(_option_ids(left))
+    right_ids = set(_option_ids(right))
+    if not left_ids or not right_ids:
+        return False
+    pairs = []
+    for pair in correct_answer:
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            return False
+        pairs.append((str(pair[0] or "").strip(), str(pair[1] or "").strip()))
+    return (
+        len(pairs) == len(left_ids)
+        and {left_id for left_id, _right_id in pairs} == left_ids
+        and all(right_id in right_ids for _left_id, right_id in pairs)
+    )
+
+
+def _valid_ordering_answer(correct_answer, option_ids: list[str]) -> bool:
+    if not isinstance(correct_answer, (list, tuple)):
+        return False
+    answer_ids = [str(value or "").strip() for value in correct_answer]
+    return (
+        len(answer_ids) == len(option_ids)
+        and len(answer_ids) == len(set(answer_ids))
+        and set(answer_ids) == set(option_ids)
+    )
