@@ -257,7 +257,13 @@ class CourseQAPanel(QWidget):
             self._show_error(_unexpected_error(TypeError("invalid course Q&A response")))
             self._set_busy(False)
             return
-        self.turns.append(CourseQATurn("assistant", response.answer, response.source_refs))
+        self.turns.append(CourseQATurn(
+            "assistant",
+            response.answer,
+            response.source_refs,
+            response.citation_status,
+            response.invalid_citation_numbers,
+        ))
         self._render_transcript()
         self._set_busy(False)
         self._set_idle_state()
@@ -323,13 +329,29 @@ class CourseQAPanel(QWidget):
             content = html.escape(turn.content).replace("\n", "<br>")
             source_text = ""
             if turn.role == "assistant":
+                citation_status = turn.citation_status
+                if not citation_status:
+                    citation_status = "cited" if turn.source_refs else "missing"
                 formatted = format_source_refs(
                     list(turn.source_refs),
                     label=gm("来源", "Source Evidence"),
-                    status=None if turn.source_refs else "missing",
+                    status=None if citation_status == "cited" else citation_status,
                     language=self.lang_manager.current,
                 )
-                source_text = f"<div><small>{html.escape(formatted).replace(chr(10), '<br>')}</small></div>"
+                source_lines = [formatted] if formatted else []
+                if turn.invalid_citation_numbers:
+                    numbers = "、".join(
+                        str(number) for number in turn.invalid_citation_numbers
+                    )
+                    source_lines.append(gm(
+                        f"引用警告: 回答引用了不存在的来源编号：{numbers}",
+                        "Citation warning: The answer cited unavailable source "
+                        f"numbers: {numbers}",
+                    ))
+                escaped_sources = html.escape("\n".join(source_lines)).replace(
+                    "\n", "<br>"
+                )
+                source_text = f"<div><small>{escaped_sources}</small></div>"
             blocks.append(f"<div><b>{role}</b><p>{content}</p>{source_text}</div><hr>")
         self.transcript.setHtml("".join(blocks))
         scrollbar = self.transcript.verticalScrollBar()

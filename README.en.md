@@ -87,9 +87,9 @@ The scope constrains AI generation, past-exam prediction, home-page recommendati
 
 ## Q&A review
 
-Select a course and switch the right-hand workspace directly between the course summary and Q&A review. This does not open a separate mode dialog or add another top-level navigation item. Answers reuse the current exam scope, stable topic IDs, and page-level source index. Questions that explicitly target an out-of-scope topic are rejected with an actionable scope message instead of silently introducing outside material.
+Select a course and switch the right-hand workspace directly between the course summary and Q&A review. This does not open a separate mode dialog or add another top-level navigation item. Answers reuse the current exam scope, stable topic IDs, and page-level source index. Questions that explicitly target an out-of-scope topic are rejected with an actionable scope message instead of silently introducing outside material. After an answer completes, the UI lists only original sources explicitly cited through a valid `[Source N]` or `[来源 N]` marker. Unavailable numbers produce a warning instead of a fabricated reference, and an answer that received evidence but cited none is distinguished from one with no original evidence.
 
-The conversation keeps only recent context during the current application session. A failed question returns to the input field, stopping a request discards any late response, and the UI remains responsive while the provider is working. `Enter` sends; `Shift+Enter` inserts a new line. Remote providers receive the necessary in-scope summary, source excerpts, and recent turns only after the user sends a question.
+The conversation keeps only recent context during the current application session. A failed question returns to the input field, stopping a request cancels the underlying transport and discards any late response, and the UI remains responsive while the provider is working. `Enter` sends; `Shift+Enter` inserts a new line. Remote providers receive the necessary in-scope summary, source excerpts, and recent turns only after the user sends a question.
 
 ## Quiz behavior
 

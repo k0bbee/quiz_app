@@ -135,6 +135,11 @@ def _source_ref_status_label(status: str | None, language: str = "en") -> str:
         "recovered": ("已恢复旧来源", "Recovered"),
         "invalid_model_ref": ("无效来源", "Invalid"),
         "missing": ("缺少来源", "Missing"),
+        "uncited": (
+            "回答未明确引用提供的资料",
+            "The answer did not explicitly cite the provided sources",
+        ),
+        "invalid": ("未找到有效引用", "No valid citation found"),
     }
     if value in labels:
         return labels[value][0 if language == "zh" else 1]

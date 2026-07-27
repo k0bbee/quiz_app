@@ -193,6 +193,81 @@ class CourseQAServiceTests(unittest.TestCase):
 
         self.assertTrue(client.cancelled)
 
+    def test_only_sources_explicitly_cited_by_the_answer_are_returned(self):
+        client = FakeClient(
+            response=(
+                "Virtual memory uses replacement. [Source 2] "
+                "Interrupts notify the CPU. [来源 1] "
+                "The second source is still relevant. [Source 2]"
+            )
+        )
+
+        result = CourseQAService(client, project(selected=False)).ask(
+            "Compare interrupt-driven I/O and virtual memory page replacement",
+            language="en",
+        )
+
+        self.assertEqual(
+            ["io.pdf", "memory.pdf"],
+            [ref["source_file"] for ref in result.source_refs],
+        )
+        self.assertEqual("cited", result.citation_status)
+        self.assertEqual((), result.invalid_citation_numbers)
+
+    def test_invalid_citation_numbers_are_reported_without_fabricating_sources(self):
+        client = FakeClient(response="The answer cites unavailable material. [来源 3] [Source 0]")
+
+        result = CourseQAService(client, project(selected=False)).ask(
+            "Compare interrupt-driven I/O and virtual memory page replacement",
+            language="zh",
+        )
+
+        self.assertEqual((), result.source_refs)
+        self.assertEqual("invalid", result.citation_status)
+        self.assertEqual((3, 0), result.invalid_citation_numbers)
+
+    def test_available_evidence_without_explicit_citation_is_marked_uncited(self):
+        client = FakeClient(response="Interrupts let the CPU continue other work.")
+
+        result = CourseQAService(client, project()).ask(
+            "解释 Input Output 中断",
+            language="zh",
+        )
+
+        self.assertEqual((), result.source_refs)
+        self.assertEqual("uncited", result.citation_status)
+        self.assertEqual((), result.invalid_citation_numbers)
+
+    def test_common_english_words_do_not_hide_other_in_scope_evidence(self):
+        client = FakeClient(response="The second source covers memory. [Source 2]")
+
+        result = CourseQAService(client, project(selected=False)).ask(
+            "Explain the course concepts",
+            language="en",
+        )
+
+        prompt = client.calls[0][0][-1]["content"]
+        self.assertIn("Interrupt-driven I/O", prompt)
+        self.assertIn("Virtual memory uses address translation", prompt)
+        self.assertEqual(["memory.pdf"], [
+            ref["source_file"] for ref in result.source_refs
+        ])
+        self.assertEqual((), result.invalid_citation_numbers)
+
+    def test_answer_has_missing_source_status_when_no_evidence_was_offered(self):
+        scoped_project = project()
+        scoped_project.documents = [scoped_project.documents[1]]
+        client = FakeClient(response="课程总结中说明了中断机制。")
+
+        result = CourseQAService(client, scoped_project).ask(
+            "解释 Input Output 的中断机制",
+            language="zh",
+        )
+
+        self.assertEqual((), result.source_refs)
+        self.assertEqual("missing", result.citation_status)
+        self.assertEqual((), result.invalid_citation_numbers)
+
 
 class ImmediateService:
     def ask(self, question, *, history, language):
@@ -210,6 +285,30 @@ class ImmediateService:
 class NoSourceService:
     def ask(self, question, *, history, language):
         return CourseQAResponse(answer=f"summary answer: {question}", source_refs=())
+
+
+class UncitedEvidenceService:
+    def ask(self, question, *, history, language):
+        return CourseQAResponse(
+            answer=f"uncited answer: {question}",
+            source_refs=(),
+            citation_status="uncited",
+        )
+
+
+class MixedCitationService:
+    def ask(self, question, *, history, language):
+        return CourseQAResponse(
+            answer=f"partially grounded answer: {question}",
+            source_refs=({
+                "source_file": "io.pdf",
+                "page_or_slide": 1,
+                "heading": "I/O Lecture page 1",
+                "excerpt": "Interrupt evidence",
+            },),
+            citation_status="cited",
+            invalid_citation_numbers=(7,),
+        )
 
 
 class BlockingService:
@@ -317,6 +416,29 @@ class CourseQAPanelTests(unittest.TestCase):
         transcript = panel.transcript.toPlainText()
         self.assertIn("summary answer: Explain the summary", transcript)
         self.assertIn("来源: 缺少来源", transcript)
+
+    def test_panel_distinguishes_uncited_available_evidence_from_missing_evidence(self):
+        panel = CourseQAPanel(lambda _project: UncitedEvidenceService())
+        panel.set_course(project(selected=False))
+        panel.input.setPlainText("Explain the summary")
+        panel.send_btn.click()
+
+        self.assertTrue(self._wait_until(lambda: not panel.is_busy))
+        transcript = panel.transcript.toPlainText()
+        self.assertIn("来源: 回答未明确引用提供的资料", transcript)
+        self.assertNotIn("来源: 缺少来源", transcript)
+
+    def test_panel_warns_about_invalid_numbers_and_only_lists_valid_sources(self):
+        panel = CourseQAPanel(lambda _project: MixedCitationService())
+        panel.set_course(project(selected=False))
+        panel.input.setPlainText("Explain the mixed citations")
+        panel.send_btn.click()
+
+        self.assertTrue(self._wait_until(lambda: not panel.is_busy))
+        transcript = panel.transcript.toPlainText()
+        self.assertIn("io.pdf", transcript)
+        self.assertIn("引用警告: 回答引用了不存在的来源编号：7", transcript)
+        self.assertNotIn("来源 7", transcript)
 
     def test_shift_enter_keeps_multiline_input_without_sending(self):
         panel = CourseQAPanel(lambda _project: ImmediateService())

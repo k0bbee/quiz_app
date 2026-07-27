@@ -12,17 +12,44 @@ from core.term_extraction import extract_course_terms
 from models.course_project import CourseProject, CourseTopic
 
 
+_RETRIEVAL_NOISE_TERMS = {
+    "a",
+    "about",
+    "an",
+    "and",
+    "compare",
+    "concept",
+    "concepts",
+    "course",
+    "describe",
+    "explain",
+    "for",
+    "from",
+    "in",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "with",
+}
+
+
 @dataclass(frozen=True)
 class CourseQATurn:
     role: str
     content: str
     source_refs: tuple[dict, ...] = field(default_factory=tuple)
+    citation_status: str = ""
+    invalid_citation_numbers: tuple[int, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
 class CourseQAResponse:
     answer: str
     source_refs: tuple[dict, ...]
+    citation_status: str = ""
+    invalid_citation_numbers: tuple[int, ...] = field(default_factory=tuple)
 
 
 class CourseQAError(Exception):
@@ -132,8 +159,16 @@ class CourseQAService:
         answer = str(response or "").strip()
         if not answer:
             raise CourseQAError(_provider_error(getattr(self.client, "last_error", "")))
-        source_refs = tuple(_source_ref(item) for item in evidence[:used_evidence_count])
-        return CourseQAResponse(answer=answer, source_refs=source_refs)
+        source_refs, citation_status, invalid_numbers = _resolve_answer_citations(
+            answer,
+            evidence[:used_evidence_count],
+        )
+        return CourseQAResponse(
+            answer=answer,
+            source_refs=source_refs,
+            citation_status=citation_status,
+            invalid_citation_numbers=invalid_numbers,
+        )
 
 
 def _bounded_history(history: list[CourseQATurn], limit: int) -> list[CourseQATurn]:
@@ -200,7 +235,11 @@ def _query_terms(text: str) -> set[str]:
         token.casefold()
         for token in re.findall(r"[A-Za-z][A-Za-z0-9]{1,}|[\u4e00-\u9fff]{2,8}", text)
     )
-    return {term for term in terms if len(term) >= 2}
+    return {
+        term
+        for term in terms
+        if len(term) >= 2 and term not in _RETRIEVAL_NOISE_TERMS
+    }
 
 
 def _source_ref(item: dict) -> dict:
@@ -212,6 +251,35 @@ def _source_ref(item: dict) -> dict:
         "excerpt": str(item.get("text", "") or "").strip()[:320],
         "content_hash": str(item.get("content_hash", "") or "")[:12],
     }
+
+
+def _resolve_answer_citations(
+    answer: str,
+    offered_evidence: list[dict],
+) -> tuple[tuple[dict, ...], str, tuple[int, ...]]:
+    citation_numbers: list[int] = []
+    for match in re.finditer(r"\[(?:来源|source)\s*(\d+)\]", answer, re.IGNORECASE):
+        number = int(match.group(1))
+        if number not in citation_numbers:
+            citation_numbers.append(number)
+
+    valid_refs: list[dict] = []
+    invalid_numbers: list[int] = []
+    for number in citation_numbers:
+        if 1 <= number <= len(offered_evidence):
+            valid_refs.append(_source_ref(offered_evidence[number - 1]))
+        else:
+            invalid_numbers.append(number)
+
+    if not offered_evidence:
+        status = "missing"
+    elif not citation_numbers:
+        status = "uncited"
+    elif valid_refs:
+        status = "cited"
+    else:
+        status = "invalid"
+    return tuple(valid_refs), status, tuple(invalid_numbers)
 
 
 def _system_prompt(language: str, course_title: str) -> str:
