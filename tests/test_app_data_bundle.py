@@ -17,10 +17,97 @@ from core.app_data_bundle import (
 from core.background_task import BackgroundTaskCancelled, TaskControl
 from core.input_limits import InputLimitError
 from core.progress_tracker import ProgressManager
-from models.progress import ProgressRecord, QuestionReviewSnapshot
+from models.course_project import CourseProject, CourseProjectManager, CourseTopic
+from models.progress import AnswerRecord, ProgressRecord, QuestionReviewSnapshot
+from models.question import Question, QuestionBank
+from models.question_set import QuestionSet, SetManager
+from utils.constants import Difficulty, QuestionType
 
 
 class AppDataBundleTests(unittest.TestCase):
+    def test_import_backfills_legacy_completed_history_from_bundle_assets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "source"
+            course_manager = CourseProjectManager(
+                source / "courses",
+                current_course_file=source / "current_course.json",
+            )
+            question_bank = QuestionBank(str(source / "questions"))
+            set_manager = SetManager(str(source / "question_sets"))
+            progress_manager = ProgressManager(str(source / "progress"))
+            course = CourseProject(
+                course_id="course-os",
+                title="操作系统",
+                source_folder="",
+                summary_markdown="# 操作系统",
+                summary_path="",
+                topics=[CourseTopic("input-output", "输入输出")],
+                documents=[],
+                created_at="2026-07-01T00:00:00+00:00",
+                updated_at="2026-07-01T00:00:00+00:00",
+            )
+            self.assertTrue(course_manager.save(course))
+            question = Question(
+                question_id="q-io",
+                type=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.MEDIUM,
+                bilingual={
+                    "zh": {
+                        "stem": "设备如何通知 CPU？",
+                        "options": ["A. 中断", "B. 轮询"],
+                        "explanation": "设备发出中断。",
+                    },
+                    "en": {
+                        "stem": "How does a device notify the CPU?",
+                        "options": ["A. Interrupt", "B. Polling"],
+                        "explanation": "The device raises an interrupt.",
+                    },
+                },
+                correct_answer="A",
+                topic="input-output",
+                metadata={
+                    "course_id": course.course_id,
+                    "course_title": course.title,
+                },
+            )
+            self.assertTrue(question_bank.save(question))
+            question_set = QuestionSet.create_new(
+                title={"zh": "I/O 专项", "en": "I/O Practice"},
+                description={"zh": "", "en": ""},
+                topics=["input-output"],
+                question_ids=[question.question_id],
+            )
+            question_set.metadata.update({
+                "course_id": course.course_id,
+                "course_title": course.title,
+            })
+            self.assertTrue(set_manager.save(question_set))
+            record = ProgressRecord(
+                progress_id="progress-legacy",
+                set_id=question_set.set_id,
+                language="zh",
+                started_at="2026-07-01T00:00:00+00:00",
+                completed_at="2026-07-01T00:10:00+00:00",
+                status="completed",
+                answers=[AnswerRecord(question.question_id, 0, "A", True)],
+                archive_status="legacy",
+            )
+            self.assertTrue(progress_manager.save(record))
+
+            bundle = export_app_data_bundle(source, root / "legacy.quizdata")
+            target = root / "target"
+            result = import_app_data_bundle(bundle, target)
+
+            loaded = ProgressManager(str(target / "progress")).get(record.progress_id)
+            self.assertEqual("complete", loaded.archive_status)
+            self.assertEqual(1, loaded.archive_schema_version)
+            self.assertEqual("设备如何通知 CPU？", loaded.question_snapshots[0].stem)
+            self.assertEqual(course.title, loaded.course_title_snapshot)
+            self.assertEqual(1, result.migrated_archives)
+            self.assertEqual(0, result.incomplete_archives)
+            self.assertEqual([], result.archive_errors)
+
     def test_bundle_round_trip_preserves_quiz_review_snapshots(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

@@ -63,6 +63,9 @@ class AppDataImportResult:
     imported_files: int
     skipped_files: list[str] = field(default_factory=list)
     ignored_settings: list[str] = field(default_factory=list)
+    migrated_archives: int = 0
+    incomplete_archives: int = 0
+    archive_errors: list[str] = field(default_factory=list)
 
 
 def export_app_data_bundle(
@@ -190,13 +193,58 @@ def import_app_data_bundle(
             backup_dir,
             task=task,
         )
+        archive_migration_error = ""
+        try:
+            archive_results = _migrate_imported_progress_archives(target_dir)
+        except Exception as exc:
+            archive_results = ()
+            archive_migration_error = str(exc)
 
     _complete(task, "saved", str(target_dir))
     return AppDataImportResult(
         imported_files=imported,
         skipped_files=skipped,
         ignored_settings=ignored_settings,
+        migrated_archives=sum(
+            result.changed and result.status == "complete"
+            for result in archive_results
+        ),
+        incomplete_archives=sum(
+            result.status == "incomplete"
+            for result in archive_results
+        ),
+        archive_errors=(
+            ([archive_migration_error] if archive_migration_error else [])
+            + [
+                result.error
+                for result in archive_results
+                if result.error
+            ]
+        ),
     )
+
+
+def _migrate_imported_progress_archives(target_dir: Path):
+    """Reuse the normal history migrator after imported assets are committed."""
+    from core.progress_archive import ProgressArchiveMigrator
+    from core.progress_tracker import ProgressManager
+    from models.course_project import CourseProjectManager
+    from models.question import QuestionBank
+    from models.question_set import SetManager
+
+    progress_dir = target_dir / "progress"
+    if not progress_dir.exists():
+        return ()
+    migrator = ProgressArchiveMigrator(
+        progress_manager=ProgressManager(str(progress_dir)),
+        question_bank=QuestionBank(str(target_dir / "questions")),
+        set_manager=SetManager(str(target_dir / "question_sets")),
+        course_manager=CourseProjectManager(
+            str(target_dir / "courses"),
+            current_course_file=target_dir / "current_course.json",
+        ),
+    )
+    return migrator.migrate_all()
 
 
 def _prepare_bundle(
@@ -500,7 +548,6 @@ def _validate_zip_budget(infos: list) -> None:
         MAX_BUNDLE_ENTRY_BYTES,
         MAX_BUNDLE_MEMBERS,
         MAX_BUNDLE_TOTAL_BYTES,
-        MAX_ZIP_COMPRESSION_RATIO,
     )
 
     member_count = sum(1 for info in infos if not info.is_dir())

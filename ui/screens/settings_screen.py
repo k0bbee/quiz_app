@@ -8,12 +8,11 @@ Changes from previous version:
 """
 
 import copy
-import json
 import os
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QGroupBox, QComboBox, QLineEdit, QFormLayout, QMessageBox,
+    QGroupBox, QLineEdit, QFormLayout, QMessageBox,
     QFileDialog, QScrollArea, QFrame, QSpinBox, QCheckBox, QApplication,
     QListWidget, QListWidgetItem
 )
@@ -1664,12 +1663,34 @@ class SettingsScreen(QWidget):
                 "\nAI 提供商、端点和模型属于本机信任设置，未从数据包导入。",
                 "\nAI provider, base URL, and model are local trust settings and were not imported.",
             )
+        migrated_archives = int(getattr(result, "migrated_archives", 0) or 0)
+        incomplete_archives = int(getattr(result, "incomplete_archives", 0) or 0)
+        archive_errors = list(getattr(result, "archive_errors", []) or [])
+        archive_hint = ""
+        if migrated_archives or incomplete_archives:
+            archive_hint = self.lang_manager.get_text(
+                f"\n旧历史归档：完整迁移 {migrated_archives} 条，"
+                f"残缺并已标记 {incomplete_archives} 条。",
+                f"\nLegacy history archives: {migrated_archives} migrated "
+                f"completely, {incomplete_archives} marked incomplete.",
+            )
+        if archive_errors:
+            archive_hint += self.lang_manager.get_text(
+                f"\n另有 {len(archive_errors)} 条旧历史未能写入迁移结果；"
+                "原记录已保留，请检查数据目录后重试。",
+                f"\n{len(archive_errors)} legacy archive migration(s) could "
+                "not be saved. Original records were retained; check the data "
+                "directory and retry.",
+            )
         QMessageBox.information(
             self,
             self.lang_manager.get_text("已导入", "Imported"),
             self.lang_manager.get_text(
-                f"已导入 {result.imported_files} 个数据文件。{skipped_hint}{ignored_hint}\n建议重启应用以刷新全部数据。",
-                f"Imported {result.imported_files} data files.{skipped_hint}{ignored_hint}\nRestart the app to refresh all data.",
+                f"已导入 {result.imported_files} 个数据文件。"
+                f"{skipped_hint}{ignored_hint}{archive_hint}\n建议重启应用以刷新全部数据。",
+                f"Imported {result.imported_files} data files."
+                f"{skipped_hint}{ignored_hint}{archive_hint}\n"
+                "Restart the app to refresh all data.",
             ),
         )
 
