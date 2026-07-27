@@ -210,6 +210,8 @@ class QuizSessionCoreTests(unittest.TestCase):
                 "set_id": "set-legacy",
                 "language": "zh",
                 "started_at": "2026-07-01T00:00:00+00:00",
+                "completed_at": "2026-07-01T00:10:00+00:00",
+                "status": "completed",
             }
         )
 
@@ -217,6 +219,9 @@ class QuizSessionCoreTests(unittest.TestCase):
         self.assertEqual("", loaded.course_id_snapshot)
         self.assertEqual("", loaded.course_title_snapshot)
         self.assertEqual([], loaded.question_snapshots)
+        self.assertEqual(0, loaded.archive_schema_version)
+        self.assertEqual("legacy", loaded.archive_status)
+        self.assertEqual([], loaded.archive_missing_fields)
 
     def test_completed_session_captures_course_set_and_question_review_content(self):
         question = self._make_question("q-io-1", topic="input-output")
@@ -263,6 +268,9 @@ class QuizSessionCoreTests(unittest.TestCase):
         self.assertEqual("input-output", snapshot.topic_id)
         self.assertEqual("输入输出", snapshot.topic_title)
         self.assertEqual("lecture.pdf", snapshot.source_refs[0]["source_file"])
+        self.assertEqual(1, record.archive_schema_version)
+        self.assertEqual("complete", record.archive_status)
+        self.assertEqual([], record.archive_missing_fields)
 
         question.bilingual["zh"]["stem"] = "后来修改的题干"
         question.metadata["source_refs"][0]["source_file"] = "changed.pdf"

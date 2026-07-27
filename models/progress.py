@@ -173,6 +173,9 @@ class ProgressRecord:
     course_id_snapshot: str = ""
     course_title_snapshot: str = ""
     question_snapshots: list[QuestionReviewSnapshot] = field(default_factory=list)
+    archive_schema_version: int = 0
+    archive_status: str = ""
+    archive_missing_fields: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -191,6 +194,9 @@ class ProgressRecord:
             "question_snapshots": [
                 snapshot.to_dict() for snapshot in self.question_snapshots
             ],
+            "archive_schema_version": self.archive_schema_version,
+            "archive_status": self.archive_status,
+            "archive_missing_fields": list(self.archive_missing_fields),
         }
 
     @classmethod
@@ -209,13 +215,24 @@ class ProgressRecord:
             summary.skipped = corrected.skipped
             summary.score_percentage = corrected.score_percentage
             summary.average_time_per_question = corrected.average_time_per_question
+        status = str(data.get("status", "in_progress") or "in_progress")
+        archive_status = str(data.get("archive_status", "") or "")
+        if "archive_status" not in data and status == "completed":
+            archive_status = "legacy"
+        try:
+            archive_schema_version = max(
+                0,
+                int(data.get("archive_schema_version", 0) or 0),
+            )
+        except (TypeError, ValueError):
+            archive_schema_version = 0
         return cls(
             progress_id=data.get("progress_id", ""),
             set_id=data.get("set_id", ""),
             language=data.get("language", "zh"),
             started_at=data.get("started_at", ""),
             completed_at=data.get("completed_at", ""),
-            status=data.get("status", "in_progress"),
+            status=status,
             answers=answers,
             summary=summary,
             marked_review_question_ids=list(data.get("marked_review_question_ids", [])),
@@ -226,6 +243,13 @@ class ProgressRecord:
                 QuestionReviewSnapshot.from_dict(snapshot)
                 for snapshot in (data.get("question_snapshots", []) or [])
                 if isinstance(snapshot, dict)
+            ],
+            archive_schema_version=archive_schema_version,
+            archive_status=archive_status,
+            archive_missing_fields=[
+                str(field_name)
+                for field_name in (data.get("archive_missing_fields", []) or [])
+                if str(field_name or "").strip()
             ],
         )
 

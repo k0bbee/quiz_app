@@ -443,6 +443,8 @@ class QuizSession:
             course_id_snapshot=self._metadata_snapshot_value("course_id"),
             course_title_snapshot=self._metadata_snapshot_value("course_title"),
             question_snapshots=self._question_review_snapshots(),
+            archive_schema_version=1,
+            archive_status="complete",
         )
         # Store the record for later retrieval
         self._final_record = record
