@@ -158,6 +158,37 @@ class QuestionIndex:
 
         return self._execute_with_recovery(operation)
 
+    def scheduling_rows(
+        self,
+        course_id: str = "",
+    ) -> list[tuple[str, str, str, str]]:
+        """Return lightweight metadata needed by the daily scheduler."""
+
+        def operation(
+            connection: sqlite3.Connection,
+        ) -> list[tuple[str, str, str, str]]:
+            if course_id:
+                rows = connection.execute(
+                    """
+                    SELECT question_id, topic_id, topic_title, difficulty
+                    FROM questions WHERE course_id = ? ORDER BY file_name
+                    """,
+                    (course_id,),
+                )
+            else:
+                rows = connection.execute(
+                    """
+                    SELECT question_id, topic_id, topic_title, difficulty
+                    FROM questions ORDER BY file_name
+                    """
+                )
+            return [
+                (str(row[0]), str(row[1]), str(row[2]), str(row[3]))
+                for row in rows
+            ]
+
+        return self._execute_with_recovery(operation)
+
     def _execute_with_recovery(self, operation):
         for attempt in range(2):
             try:

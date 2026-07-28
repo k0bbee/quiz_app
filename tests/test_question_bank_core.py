@@ -142,6 +142,35 @@ class QuestionBankCoreTests(unittest.TestCase):
                 index,
             )
 
+    def test_question_bank_scheduling_index_includes_topic_and_difficulty(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            course_question = self._question("q-course", "cache")
+            course_question.difficulty = Difficulty.HARD
+            course_question.metadata.update(
+                {
+                    "course_id": "course-a",
+                    "topic_title": "Cache Mapping",
+                }
+            )
+            other_question = self._question("q-other", "process")
+            other_question.metadata["course_id"] = "course-b"
+            question_bank.save_many([course_question, other_question])
+
+            with patch.object(
+                question_bank,
+                "load_all",
+                side_effect=AssertionError(
+                    "scheduling index must not construct all questions"
+                ),
+            ):
+                index = question_bank.scheduling_index(course_id="course-a")
+
+            self.assertEqual(
+                {"q-course": ("cache", "Cache Mapping", "hard")},
+                index,
+            )
+
     def test_backfill_source_refs_from_course_updates_stale_question_refs(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))

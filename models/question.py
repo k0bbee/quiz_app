@@ -436,6 +436,25 @@ class QuestionBank:
             warning(f"Question topic index unavailable; using JSON fallback: {exc}")
             return self._topic_index_from_json(course_id)
 
+    def scheduling_index(
+        self,
+        course_id: str | None = None,
+    ) -> dict[str, tuple[str, str, str]]:
+        """Return topic and difficulty metadata without loading Question models."""
+        try:
+            self._ensure_index_current()
+            return {
+                question_id: (topic_id, topic_title, difficulty)
+                for question_id, topic_id, topic_title, difficulty
+                in self._index.scheduling_rows((course_id or "").strip())
+            }
+        except Exception as exc:
+            warning(
+                "Question scheduling index unavailable; "
+                f"using JSON fallback: {exc}"
+            )
+            return self._scheduling_index_from_json(course_id)
+
     def count(self, course_id: str | None = None) -> int:
         """Return a lightweight count of matching question records."""
         return len(self.question_ids(course_id=course_id))
@@ -547,6 +566,37 @@ class QuestionBank:
             metadata_title = metadata.get("topic_title", "") if isinstance(metadata, dict) else ""
             topic_title = str(data.get("topic_title") or metadata_title or topic_id).strip() or topic_id
             index[question_id] = (topic_id, topic_title)
+        return index
+
+    def _scheduling_index_from_json(
+        self,
+        course_id: str | None,
+    ) -> dict[str, tuple[str, str, str]]:
+        index: dict[str, tuple[str, str, str]] = {}
+        for filename in list_json_files(self._dir):
+            data = read_json(f"{self._dir}/{filename}")
+            if (
+                not isinstance(data, dict)
+                or not self._matches_course_data(data, course_id)
+            ):
+                continue
+            question_id = str(data.get("question_id", "") or "").strip()
+            topic_id = str(
+                data.get("topic_id") or data.get("topic") or ""
+            ).strip()
+            if not question_id or not topic_id:
+                continue
+            metadata = data.get("metadata", {}) or {}
+            metadata_title = (
+                metadata.get("topic_title", "")
+                if isinstance(metadata, dict)
+                else ""
+            )
+            topic_title = str(
+                data.get("topic_title") or metadata_title or topic_id
+            ).strip() or topic_id
+            difficulty = str(data.get("difficulty", "medium") or "medium")
+            index[question_id] = (topic_id, topic_title, difficulty)
         return index
 
     def _filter_by_topics_indexed(
