@@ -19,6 +19,7 @@ from ui.components import PageHeader
 from ui.widgets.source_refs_panel import SourceRefsPanel
 from utils.constants import topic_value
 from core.language_manager import LanguageManager
+from ui.archive_status_presenter import build_archive_status_view
 
 
 class ProgressDashboard(QWidget):
@@ -261,6 +262,13 @@ class ProgressDashboard(QWidget):
         for session in stats.get("recent_sessions", []):
             score = session.get("score", 0)
             icon = "🟢" if score >= 80 else ("🟡" if score >= 60 else "🔴")
+            archive_view = build_archive_status_view(
+                session.get("archive_status", ""),
+                missing_fields=session.get("archive_missing_fields", ()),
+                snapshot_count=session.get("snapshot_question_count", 0),
+                answer_count=session.get("answer_count", 0),
+                language=lang,
+            )
             set_id = session.get("set_id", "")
             set_name = (
                 session.get("set_title_snapshot")
@@ -276,17 +284,25 @@ class ProgressDashboard(QWidget):
                     f" | in scope {session.get('matched_total', 0)}/{session.get('session_total', 0)}",
                 )
             item = QListWidgetItem(
-                f"{icon} {session.get('started_at', '')[:10]} — "
+                f"{icon} {archive_view.badge + ' ' if archive_view.badge else ''}"
+                f"{session.get('started_at', '')[:10]} — "
                 f"{title} — "
                 f"{self.lang_manager.get_text('得分', 'Score')}: {score:.0f}% "
                 f"({session.get('correct', 0)}/{session.get('total', 0)})"
                 f"{scope_hint}"
             )
             item.setData(Qt.ItemDataRole.UserRole, session.get("progress_id", ""))
-            item.setToolTip(self.lang_manager.get_text(
+            review_hint = self.lang_manager.get_text(
                 "双击或按回车复盘本次练习",
                 "Double-click or press Enter to review this session",
-            ))
+            )
+            item.setToolTip(
+                "\n".join(
+                    part
+                    for part in (archive_view.tooltip, review_hint)
+                    if part
+                )
+            )
             self.recent_list.addItem(item)
         self._update_recent_history_visibility()
 

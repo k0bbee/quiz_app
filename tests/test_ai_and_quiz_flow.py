@@ -1413,11 +1413,56 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         screen = self._make_results_screen()
 
         screen.set_results(record, {"q-missing": live_question}, "zh")
+        screen.set_retry_availability([], can_retry_all=False)
 
         card = screen.review_layout.itemAt(0).widget()
         self.assertIn("题目 q-missing", card.stem_label.text())
         self.assertNotIn("现在的题干", card.stem_label.text())
-        self.assertTrue(screen.retry_incorrect_btn.isEnabled())
+        self.assertTrue(screen.archive_notice_label.isVisibleTo(screen))
+        self.assertIn("残缺历史", screen.archive_notice_label.text())
+        self.assertIn("0/1", screen.archive_notice_label.text())
+        self.assertIn("题目复盘内容", screen.archive_notice_label.text())
+        self.assertIn("只能查看已保存的部分", screen.next_action_label.text())
+        self.assertNotIn("仍可复盘", screen.next_action_label.text())
+
+    def test_results_screen_marks_legacy_history_as_awaiting_protection(self):
+        record = ProgressRecord.create_new("set-legacy")
+        record.status = "completed"
+        record.archive_status = "legacy"
+        record.answers = [AnswerRecord("q-legacy", 0, "A", True)]
+        record.summary = SessionSummary.compute(record.answers, 1, 10)
+        screen = self._make_results_screen()
+
+        screen.set_results(record, {}, "zh")
+
+        self.assertTrue(screen.archive_notice_label.isVisibleTo(screen))
+        self.assertIn("尚未完成保护", screen.archive_notice_label.text())
+
+    def test_results_screen_hides_archive_notice_for_complete_history(self):
+        question = self._make_question("q-complete")
+        record = ProgressRecord.create_new("set-complete")
+        record.status = "completed"
+        record.archive_schema_version = 1
+        record.archive_status = "complete"
+        record.answers = [AnswerRecord("q-complete", 0, "A", True)]
+        record.summary = SessionSummary.compute(record.answers, 1, 10)
+        record.question_snapshots = [
+            QuestionReviewSnapshot(
+                question_id=question.question_id,
+                question_type=question.type.value,
+                topic_id=question.topic_id(),
+                topic_title=question.topic_title(),
+                stem=question.get_stem("zh"),
+                options=question.get_options("zh"),
+                correct_answer=question.correct_answer,
+                explanation=question.get_explanation("zh"),
+            )
+        ]
+        screen = self._make_results_screen()
+
+        screen.set_results(record, {question.question_id: question}, "zh")
+
+        self.assertTrue(screen.archive_notice_label.isHidden())
 
     def test_results_screen_does_not_render_malformed_historical_snapshot(self):
         record = ProgressRecord.create_new("set-incomplete")
@@ -2571,6 +2616,57 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertNotIn("set-internal-deleted", item.text())
             self.assertEqual(record.progress_id, item.data(Qt.ItemDataRole.UserRole))
             self.assertEqual([record.progress_id], requested)
+
+    def test_progress_dashboard_distinguishes_incomplete_and_legacy_history(self):
+        language_manager = LanguageManager.instance()
+        previous_language = language_manager.current
+        self.addCleanup(language_manager.set_language, previous_language)
+        language_manager.set_language("zh")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            progress_manager = ProgressManager(str(root / "progress"))
+            question_bank = QuestionBank(str(root / "questions"))
+            records = []
+            for status, started_at in (
+                ("complete", "2026-07-28T03:00:00+00:00"),
+                ("incomplete", "2026-07-28T02:00:00+00:00"),
+                ("legacy", "2026-07-28T01:00:00+00:00"),
+            ):
+                record = ProgressRecord.create_new(f"set-{status}")
+                record.progress_id = f"progress-{status}"
+                record.started_at = started_at
+                record.status = "completed"
+                record.archive_status = status
+                record.archive_missing_fields = (
+                    ["question:q-lost"] if status == "incomplete" else []
+                )
+                record.summary = SessionSummary.compute(
+                    [],
+                    total_questions=1,
+                    total_time=10,
+                )
+                progress_manager.save(record)
+                records.append(record)
+            screen = self._make_progress_dashboard(
+                tmpdir,
+                progress_manager,
+                question_bank,
+            )
+
+            screen.refresh()
+
+            items = {
+                str(screen.recent_list.item(index).data(Qt.ItemDataRole.UserRole)):
+                screen.recent_list.item(index)
+                for index in range(screen.recent_list.count())
+            }
+            self.assertIn("残缺", items["progress-incomplete"].text())
+            self.assertIn("只能复盘已保存部分", items["progress-incomplete"].toolTip())
+            self.assertIn("待保护", items["progress-legacy"].text())
+            self.assertIn("尚未完成历史保护", items["progress-legacy"].toolTip())
+            self.assertNotIn("残缺", items["progress-complete"].text())
+            self.assertNotIn("待保护", items["progress-complete"].text())
 
     def test_progress_dashboard_keeps_short_recent_history_visible(self):
         with tempfile.TemporaryDirectory() as tmpdir:

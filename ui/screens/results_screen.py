@@ -19,6 +19,7 @@ from ui.widgets.progress_summary_bar import ProgressSummaryBar
 from utils.constants import Difficulty, QuestionType, topic_value
 from core.topic_display import topic_display_name
 from models.course_project import CourseProjectManager
+from ui.archive_status_presenter import build_archive_status_view
 
 
 class ResultsScreen(QWidget):
@@ -63,6 +64,12 @@ class ResultsScreen(QWidget):
         self.context_label.setWordWrap(True)
         self.context_label.hide()
         layout.addWidget(self.context_label)
+
+        self.archive_notice_label = QLabel()
+        self.archive_notice_label.setObjectName("archiveNoticeLabel")
+        self.archive_notice_label.setWordWrap(True)
+        self.archive_notice_label.hide()
+        layout.addWidget(self.archive_notice_label)
 
         # Score header
         self.score_label = QLabel()
@@ -246,6 +253,15 @@ class ResultsScreen(QWidget):
         ]
         self.context_label.setText(" · ".join(context_parts))
         self.context_label.setVisible(bool(context_parts))
+        archive_view = build_archive_status_view(
+            getattr(record, "archive_status", ""),
+            missing_fields=getattr(record, "archive_missing_fields", ()),
+            snapshot_count=len(self._historical_questions),
+            answer_count=len(getattr(record, "answers", ()) or ()),
+            language=lang,
+        )
+        self.archive_notice_label.setText(archive_view.notice)
+        self.archive_notice_label.setVisible(bool(archive_view.notice))
 
         if record is None:
             self.score_label.setText(
@@ -379,11 +395,20 @@ class ResultsScreen(QWidget):
             self._retry_question_ids or self._can_retry_all
         ):
             self.next_action_btn.hide()
-            self.next_action_label.setText(self.lang_manager.get_text(
-                "该课程或题目集已删除。历史内容仍可复盘，但原题已不可用，无法重新练习。",
-                "The course or question set was deleted. This archived result can be "
-                "reviewed, but the original questions can no longer be retried.",
-            ))
+            archive_view = build_archive_status_view(
+                getattr(self.current_record, "archive_status", ""),
+                missing_fields=getattr(
+                    self.current_record,
+                    "archive_missing_fields",
+                    (),
+                ),
+                snapshot_count=len(self._historical_questions),
+                answer_count=len(
+                    getattr(self.current_record, "answers", ()) or ()
+                ),
+                language=self.lang_manager.current,
+            )
+            self.next_action_label.setText(archive_view.retry_unavailable)
 
     def _refresh_retry_action_state(self) -> None:
         record = self.current_record

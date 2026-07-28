@@ -286,6 +286,14 @@ QLabel#errorLabel {
     color: #f48771;
 }
 
+QLabel#archiveNoticeLabel {
+    color: #e7c66b;
+    background-color: #332f20;
+    border: 1px solid #6b5d2e;
+    border-radius: 6px;
+    padding: 9px 12px;
+}
+
 QSplitter::handle {
     background-color: transparent;
 }

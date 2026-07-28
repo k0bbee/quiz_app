@@ -17,6 +17,8 @@ class ProgressTrackerTests(unittest.TestCase):
             record.set_title_snapshot = "I/O 专项"
             record.course_id_snapshot = "course-os"
             record.course_title_snapshot = "操作系统"
+            record.archive_status = "incomplete"
+            record.archive_missing_fields = ["question:q-lost"]
             record.summary = SessionSummary.compute([], total_questions=1, total_time=10)
             manager.save(record)
 
@@ -26,6 +28,10 @@ class ProgressTrackerTests(unittest.TestCase):
             self.assertEqual("I/O 专项", recent["set_title_snapshot"])
             self.assertEqual("course-os", recent["course_id_snapshot"])
             self.assertEqual("操作系统", recent["course_title_snapshot"])
+            self.assertEqual("incomplete", recent["archive_status"])
+            self.assertEqual(["question:q-lost"], recent["archive_missing_fields"])
+            self.assertEqual(0, recent["snapshot_question_count"])
+            self.assertEqual(0, recent["answer_count"])
 
     def test_load_for_set_uses_persisted_index_to_skip_unrelated_record_bodies(self):
         with tempfile.TemporaryDirectory() as tmpdir:
