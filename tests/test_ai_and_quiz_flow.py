@@ -3264,18 +3264,30 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertEqual({"cache": 100}, dict(plan.topic_weights))
 
     def test_progress_reset_clears_mastered_topic_overrides(self):
+        from core.daily_study_plan_store import DailyStudyPlanStore
+        from core.study_queue import build_daily_study_queue
+
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             progress_manager = ProgressManager(str(root / "progress"))
             question_bank = QuestionBank(str(root / "questions"))
             mastery_overrides = MasteryOverrideStore(root / "mastery_overrides.json")
             mastery_overrides.mark_topic_mastered("course-a", "cache")
+            daily_plan_store = DailyStudyPlanStore(root / "daily-plans.json")
+            daily_plan = daily_plan_store.get_or_create(
+                plan_id="2026-07-28:course-a",
+                plan_date="2026-07-28",
+                course_id="course-a",
+                queue=build_daily_study_queue({"q-1"}, []),
+                valid_question_ids={"q-1"},
+            )
 
             screen = self._make_progress_dashboard(
                 root,
                 progress_manager,
                 question_bank,
                 mastery_overrides=mastery_overrides,
+                daily_plan_store=daily_plan_store,
             )
             screen.set_current_course("course-a")
 
@@ -3284,6 +3296,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen._reset_progress()
 
             self.assertFalse(mastery_overrides.is_topic_mastered("course-a", "cache"))
+            self.assertIsNone(daily_plan_store.get(daily_plan.plan_id))
 
     def test_progress_reset_button_requires_two_clicks(self):
         with tempfile.TemporaryDirectory() as tmpdir:

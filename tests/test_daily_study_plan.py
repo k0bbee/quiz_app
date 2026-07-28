@@ -170,6 +170,23 @@ class DailyStudyPlanTests(unittest.TestCase):
             self.assertEqual(completed, duplicate)
             self.assertEqual(before, path.read_bytes())
 
+    def test_clear_removes_all_persisted_plans(self):
+        _DailyStudyPlan, DailyStudyPlanStore = load_plan_api()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = DailyStudyPlanStore(Path(tmpdir) / "daily-plans.json")
+            queue = build_daily_study_queue({"q-1"}, [], now=NOW)
+            plan = store.get_or_create(
+                plan_id="2026-07-28:course-a",
+                plan_date="2026-07-28",
+                course_id="course-a",
+                queue=queue,
+                valid_question_ids={"q-1"},
+            )
+
+            store.clear()
+
+            self.assertIsNone(store.get(plan.plan_id))
+
     @staticmethod
     def _answer(
         question_id: str,

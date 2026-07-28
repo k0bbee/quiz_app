@@ -8,7 +8,6 @@ Changes from previous version:
 """
 
 import copy
-import os
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -191,13 +190,20 @@ class SettingsScreen(QWidget):
 
     settings_saved = pyqtSignal()
 
-    def __init__(self, parent=None, connection_probe_factory=None, task_center=None):
+    def __init__(
+        self,
+        parent=None,
+        connection_probe_factory=None,
+        task_center=None,
+        daily_plan_store=None,
+    ):
         super().__init__(parent)
         self.lang_manager = LanguageManager.instance()
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self._settings = self._load_settings()
         self._connection_probe_factory = connection_probe_factory or AIConnectionProbe
         self.task_center = task_center
+        self.daily_plan_store = daily_plan_store
         self._connection_test_worker = None
         self._app_data_worker = None
         self._app_data_task_id = ""
@@ -1851,16 +1857,23 @@ class SettingsScreen(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             from config import PROGRESS_DIR
             import os
-            if not os.path.isdir(PROGRESS_DIR):
-                QMessageBox.information(
-                    self,
-                    self.lang_manager.get_text("完成", "Done"),
-                    self.lang_manager.get_text("没有进度记录可删除。", "No progress records to delete."))
-                return
-            for filename in os.listdir(PROGRESS_DIR):
-                if filename.endswith(".json"):
-                    os.remove(os.path.join(PROGRESS_DIR, filename))
+            deleted = False
+            if os.path.isdir(PROGRESS_DIR):
+                for filename in os.listdir(PROGRESS_DIR):
+                    if filename.endswith(".json"):
+                        os.remove(os.path.join(PROGRESS_DIR, filename))
+                        deleted = True
+            if self.daily_plan_store is not None:
+                self.daily_plan_store.clear()
             QMessageBox.information(
                 self,
                 self.lang_manager.get_text("完成", "Done"),
-                self.lang_manager.get_text("所有进度记录已删除。", "All progress records deleted."))
+                self.lang_manager.get_text(
+                    "所有进度记录和今日计划已删除。"
+                    if deleted
+                    else "没有进度记录；今日计划已重置。",
+                    "All progress records and today's plans were deleted."
+                    if deleted
+                    else "No progress records existed; today's plans were reset.",
+                ),
+            )

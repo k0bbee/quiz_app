@@ -129,8 +129,13 @@ class MainWindow(QMainWindow):
             set_manager=self.set_manager,
             mastery_overrides=self.mastery_overrides,
             course_manager=self.course_manager,
+            daily_plan_store=self.daily_plan_store,
         )
-        self.settings_window = SettingsWindow(task_center=self.task_center, parent=self)
+        self.settings_window = SettingsWindow(
+            task_center=self.task_center,
+            daily_plan_store=self.daily_plan_store,
+            parent=self,
+        )
         self.settings_screen = self.settings_window.screen
         self.settings_screen.set_history_protection_blocked(
             self._history_protection_blocked,

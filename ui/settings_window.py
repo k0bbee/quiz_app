@@ -11,7 +11,13 @@ from ui.screens.settings_screen import SettingsScreen
 class SettingsWindow(QDialog):
     """Host the settings screen without replacing the active workspace."""
 
-    def __init__(self, *, task_center=None, parent: QWidget | None = None):
+    def __init__(
+        self,
+        *,
+        task_center=None,
+        daily_plan_store=None,
+        parent: QWidget | None = None,
+    ):
         super().__init__(parent)
         self.setObjectName("settingsWindow")
         self.setModal(False)
@@ -22,7 +28,11 @@ class SettingsWindow(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self.screen = SettingsScreen(task_center=task_center, parent=self)
+        self.screen = SettingsScreen(
+            task_center=task_center,
+            daily_plan_store=daily_plan_store,
+            parent=self,
+        )
         layout.addWidget(self.screen)
 
         self.lang_manager = LanguageManager.instance()

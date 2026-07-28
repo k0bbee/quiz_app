@@ -39,6 +39,7 @@ class ProgressDashboard(QWidget):
         set_manager: SetManager,
         mastery_overrides: MasteryOverrideStore,
         course_manager: CourseProjectManager,
+        daily_plan_store=None,
     ):
         super().__init__(parent)
         self.progress_manager = progress_manager
@@ -47,6 +48,7 @@ class ProgressDashboard(QWidget):
         self.lang_manager = LanguageManager.instance()
         self.mastery_overrides = mastery_overrides
         self.course_manager = course_manager
+        self.daily_plan_store = daily_plan_store
         self._current_course_id = ""
         self._current_project = None
         self._recent_history_expanded = False
@@ -589,6 +591,8 @@ class ProgressDashboard(QWidget):
             return
 
         self._reset_pending = False
+        if self.daily_plan_store is not None:
+            self.daily_plan_store.clear()
         self.progress_manager.reset_all()
         self.mastery_overrides.clear()
         self.refresh()

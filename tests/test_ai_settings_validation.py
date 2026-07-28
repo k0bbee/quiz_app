@@ -1,4 +1,3 @@
-import json
 import os
 import tempfile
 import unittest
@@ -62,6 +61,37 @@ class ManualAppDataWorker:
 
 
 class AISettingsValidationTests(unittest.TestCase):
+    def test_reset_progress_clears_persisted_daily_plans(self):
+        from core.daily_study_plan_store import DailyStudyPlanStore
+        from core.study_queue import build_daily_study_queue
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            progress_dir = root / "progress"
+            progress_dir.mkdir()
+            (progress_dir / "progress-1.json").write_text("{}", encoding="utf-8")
+            store = DailyStudyPlanStore(root / "daily-plans.json")
+            plan = store.get_or_create(
+                plan_id="2026-07-28:course-a",
+                plan_date="2026-07-28",
+                course_id="course-a",
+                queue=build_daily_study_queue({"q-1"}, []),
+                valid_question_ids={"q-1"},
+            )
+            screen = SettingsScreen(daily_plan_store=store)
+
+            with patch(
+                "config.PROGRESS_DIR",
+                str(progress_dir),
+            ), patch.object(
+                QMessageBox,
+                "question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ), patch.object(QMessageBox, "information"):
+                screen._reset_progress()
+
+            self.assertIsNone(store.get(plan.plan_id))
+
     def test_settings_snapshot_is_public_and_cannot_mutate_screen_state(self):
         screen = SettingsScreen()
         screen._settings["default_question_type_weights"] = {"multiple_choice": 70}

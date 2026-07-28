@@ -170,6 +170,13 @@ class DailyStudyPlanStore:
         self._save(updated)
         return updated
 
+    def clear(self) -> None:
+        if not write_json(
+            self._path,
+            {"schema_version": _SCHEMA_VERSION, "plans": {}},
+        ):
+            raise OSError("failed to clear daily study plans")
+
     def _reconcile(
         self,
         plan: DailyStudyPlan,
