@@ -84,6 +84,26 @@ class UiThemeTests(unittest.TestCase):
             self.assertIs(services.task_center, window.task_center)
             self.assertIs(services.set_manager, window.progress_screen.set_manager)
 
+    def test_main_window_lazy_loads_management_workspaces_at_stable_routes(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+
+        self.assertIsNone(window._course_screen)
+        self.assertIsNone(window._question_bank_screen)
+        self.assertIsNone(window._past_exam_screen)
+        self.assertEqual(8, window.stack.count())
+
+        self.assertTrue(window.navigate_to(window.SCREEN_QUESTION_BANK))
+        self.assertEqual(window.SCREEN_QUESTION_BANK, window.stack.currentIndex())
+        self.assertIsNone(window._course_screen)
+        self.assertIsNotNone(window._question_bank_screen)
+        self.assertIsNone(window._past_exam_screen)
+
+        self.assertTrue(window.navigate_to(window.SCREEN_PAST_EXAMS))
+        self.assertEqual(window.SCREEN_PAST_EXAMS, window.stack.currentIndex())
+        self.assertIsNone(window._course_screen)
+        self.assertIsNotNone(window._past_exam_screen)
+
     def test_stylesheet_font_scaling_is_based_on_original_sizes(self):
         from ui.font_scale import scale_stylesheet_font_sizes
 
@@ -533,13 +553,14 @@ class UiThemeTests(unittest.TestCase):
         main_window = MainWindow()
         self.addCleanup(main_window.deleteLater)
         main_window.settings_screen.save_settings = Mock()
-        main_window._course_screen.request_shutdown = Mock(return_value=False)
+        course_screen = main_window._get_course_screen()
+        course_screen.request_shutdown = Mock(return_value=False)
         event = QCloseEvent()
 
         main_window.closeEvent(event)
 
         self.assertFalse(event.isAccepted())
-        main_window._course_screen.request_shutdown.assert_called_once_with()
+        course_screen.request_shutdown.assert_called_once_with()
         main_window.settings_screen.save_settings.assert_not_called()
 
     def test_semantic_action_buttons_keep_tab_focus_without_mouse_focus(self):

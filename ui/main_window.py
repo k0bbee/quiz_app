@@ -129,6 +129,16 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.quiz_screen)        # 2
         self.stack.addWidget(self.results_screen)     # 3
         self.stack.addWidget(self.progress_screen)    # 4
+        self._workspace_placeholders = {}
+        for index, name in (
+            (self.SCREEN_COURSES, "courses"),
+            (self.SCREEN_QUESTION_BANK, "questionBank"),
+            (self.SCREEN_PAST_EXAMS, "pastExams"),
+        ):
+            placeholder = QWidget()
+            placeholder.setObjectName(f"{name}WorkspacePlaceholder")
+            self._workspace_placeholders[index] = placeholder
+            self.stack.addWidget(placeholder)
 
         self._create_application_shell()
         self.study_flow = StudyFlowController(
@@ -295,7 +305,16 @@ class MainWindow(QMainWindow):
                 current_event_manager=self.current_event_manager,
                 task_center=self.task_center,
             )
-            self.stack.insertWidget(self.SCREEN_COURSES, self._course_screen)
+            self._course_screen.current_course_changed.connect(
+                self._on_course_changed
+            )
+            self._course_screen.generate_questions_requested.connect(
+                lambda _course_id: self._on_ai_generate()
+            )
+            self._course_screen.current_event_generation_requested.connect(
+                self._on_current_event_generation
+            )
+            self._install_workspace(self.SCREEN_COURSES, self._course_screen)
         return self._course_screen
 
     def _get_question_bank_screen(self):
@@ -309,7 +328,13 @@ class MainWindow(QMainWindow):
                 task_center=self.task_center,
             )
             self._sync_question_bank_screen_course()
-            self.stack.insertWidget(self.SCREEN_QUESTION_BANK, self._question_bank_screen)
+            self._question_bank_screen.question_bank_changed.connect(
+                self._on_question_bank_changed
+            )
+            self._install_workspace(
+                self.SCREEN_QUESTION_BANK,
+                self._question_bank_screen,
+            )
         return self._question_bank_screen
 
     def _get_past_exam_screen(self):
@@ -324,8 +349,19 @@ class MainWindow(QMainWindow):
             self._past_exam_screen.prediction_requested.connect(
                 self._on_generate_predicted_exam
             )
-            self.stack.insertWidget(self.SCREEN_PAST_EXAMS, self._past_exam_screen)
+            self._install_workspace(
+                self.SCREEN_PAST_EXAMS,
+                self._past_exam_screen,
+            )
         return self._past_exam_screen
+
+    def _install_workspace(self, index: int, screen: QWidget) -> None:
+        """Replace one fixed-route placeholder without shifting other routes."""
+        placeholder = self._workspace_placeholders.pop(index, None)
+        if placeholder is not None:
+            self.stack.removeWidget(placeholder)
+            placeholder.deleteLater()
+        self.stack.insertWidget(index, screen)
 
     def _create_application_shell(self):
         self.app_shell = AppShell(
@@ -389,15 +425,6 @@ class MainWindow(QMainWindow):
         self.home_screen.view_progress.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
         self.home_screen.open_settings.connect(self.open_settings)
         self.home_screen.manage_courses.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
-        course_screen = self._get_course_screen()
-        course_screen.current_course_changed.connect(self._on_course_changed)
-        course_screen.generate_questions_requested.connect(
-            lambda _course_id: self._on_ai_generate()
-        )
-        course_screen.current_event_generation_requested.connect(
-            self._on_current_event_generation
-        )
-        self._get_question_bank_screen().question_bank_changed.connect(self._on_question_bank_changed)
 
         # Topic selection
         self.topic_screen.quiz_start.connect(self._on_quiz_start)
@@ -456,7 +483,11 @@ class MainWindow(QMainWindow):
         if confirm_current and not self._confirm_current_navigation(screen_index):
             self._update_navigation_actions()
             return False
-        if screen_index == self.SCREEN_PAST_EXAMS:
+        if screen_index == self.SCREEN_COURSES:
+            self._get_course_screen()
+        elif screen_index == self.SCREEN_QUESTION_BANK:
+            self._get_question_bank_screen()
+        elif screen_index == self.SCREEN_PAST_EXAMS:
             self._get_past_exam_screen()
         self.navigation_router.navigate(screen_index, remember=remember)
         # Refresh data on certain screens
