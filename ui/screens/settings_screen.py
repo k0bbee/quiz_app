@@ -189,6 +189,8 @@ class AppDataBundleWorker(QThread):
 class SettingsScreen(QWidget):
     """Application settings with explicit save, crash-safe initialization."""
 
+    settings_saved = pyqtSignal()
+
     def __init__(self, parent=None, connection_probe_factory=None, task_center=None):
         super().__init__(parent)
         self.lang_manager = LanguageManager.instance()
@@ -846,9 +848,16 @@ class SettingsScreen(QWidget):
 
     def show_data_management(self) -> None:
         """Select the existing data-management section for a recovered task."""
+        self._show_settings_group(self.data_group)
+
+    def show_ai_settings(self) -> None:
+        """Select the AI section without losing the caller's workspace."""
+        self._show_settings_group(self.ai_group)
+
+    def _show_settings_group(self, target_group) -> None:
         for row in range(self.settings_nav_list.count()):
             item = self.settings_nav_list.item(row)
-            if item.data(Qt.ItemDataRole.UserRole) is self.data_group:
+            if item.data(Qt.ItemDataRole.UserRole) is target_group:
                 self.settings_nav_list.setCurrentRow(row)
                 self._on_settings_nav_changed(row)
                 return
@@ -996,6 +1005,7 @@ class SettingsScreen(QWidget):
             write_json(SETTINGS_FILE, self._settings)
             apply_font_scale(QApplication.instance(), self._settings["font_scale"])
             self._set_settings_dirty(False, saved=True)
+            self.settings_saved.emit()
 
             if not silent:
                 storage = secrets.get_storage_location()

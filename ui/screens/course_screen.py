@@ -49,6 +49,11 @@ class CourseScreen(QWidget):
     current_course_changed = pyqtSignal()
     generate_questions_requested = pyqtSignal(str)
     current_event_generation_requested = pyqtSignal(str, object)
+    course_import_started = pyqtSignal()
+    course_import_progressed = pyqtSignal(object)
+    course_import_completed = pyqtSignal(object)
+    course_import_failed = pyqtSignal(str)
+    course_import_cancelled = pyqtSignal()
 
     def __init__(
         self,
@@ -97,6 +102,7 @@ class CourseScreen(QWidget):
         self._summary_raw_mode = False
         self._last_task_progress = None
         self._task_bridge = None
+        self._init_present_result = True
         self._import_expanded = False
         self._setup_ui()
         self.folder_input.editingFinished.connect(self._refresh_checkpoint_action)
@@ -453,16 +459,43 @@ class CourseScreen(QWidget):
         ))
 
     def _initialize_course(self):
-        folder = self.folder_input.text().strip()
-        if not folder:
-            QMessageBox.warning(
-                self,
-                self.lang_manager.get_text("缺少文件夹", "Missing Folder"),
-                self.lang_manager.get_text("请先选择一个课程资料文件夹。", "Please select a course-material folder first.")
-            )
-            return
+        self.start_import(
+            self.folder_input.text(),
+            self.title_input.text(),
+        )
 
-        self._init_worker = CourseScreen._InitWorker(folder, self.title_input.text(), self._build_initializer())
+    def start_import(
+        self,
+        folder: str,
+        title: str = "",
+        *,
+        present_result: bool = True,
+    ) -> bool:
+        """Start the existing background import from another workspace."""
+        folder = str(folder or "").strip()
+        if not folder:
+            if present_result:
+                QMessageBox.warning(
+                    self,
+                    self.lang_manager.get_text("缺少文件夹", "Missing Folder"),
+                    self.lang_manager.get_text(
+                        "请先选择一个课程资料文件夹。",
+                        "Please select a course-material folder first.",
+                    ),
+                )
+            return False
+        if self._init_worker is not None and self._init_worker.isRunning():
+            return False
+
+        title = str(title or "").strip()
+        self.folder_input.setText(folder)
+        self.title_input.setText(title)
+        self._init_present_result = bool(present_result)
+        self._init_worker = CourseScreen._InitWorker(
+            folder,
+            title,
+            self._build_initializer(),
+        )
         self._init_worker.finished.connect(self._on_init_done)
         self._init_worker.error.connect(self._on_init_error)
         self._init_worker.cancelled.connect(self._on_course_task_cancelled)
@@ -470,17 +503,19 @@ class CourseScreen(QWidget):
         self._begin_persistent_task(
             kind="course_import",
             title=self.lang_manager.get_text(
-                f"导入课程：{self.title_input.text().strip() or Path(folder).name}",
-                f"Import course: {self.title_input.text().strip() or Path(folder).name}",
+                f"导入课程：{title or Path(folder).name}",
+                f"Import course: {title or Path(folder).name}",
             ),
             metadata={
                 "source_folder": folder,
-                "course_title": self.title_input.text().strip(),
+                "course_title": title,
             },
             worker=self._init_worker,
         )
         self._set_course_task_active(True)
+        self.course_import_started.emit()
         self._init_worker.start()
+        return True
 
     def _begin_persistent_task(self, *, kind, title, metadata, worker) -> None:
         if self.task_center is None:
@@ -563,6 +598,10 @@ class CourseScreen(QWidget):
             "Waiting for the current step to stop safely…",
         ))
 
+    def cancel_active_task(self) -> None:
+        """Expose cooperative cancellation to the hosting workspace."""
+        self._cancel_course_task()
+
     def request_shutdown(self) -> bool:
         """Request cooperative cancellation; never block the GUI thread."""
         self.qa_panel.stop_request(show_status=False)
@@ -597,6 +636,8 @@ class CourseScreen(QWidget):
         else:
             self.progress_bar.setRange(0, 0)
         self.task_status_label.setText(self._course_task_progress_text(progress))
+        if sender is self._init_worker:
+            self.course_import_progressed.emit(progress)
 
     def _course_task_progress_text(self, progress: TaskProgress) -> str:
         stages = {
@@ -630,6 +671,7 @@ class CourseScreen(QWidget):
 
     def _on_course_task_cancelled(self) -> None:
         sender = self.sender()
+        import_cancelled = sender is self._init_worker
         if sender is self._init_worker:
             self._init_worker = None
         elif sender is self._regen_worker:
@@ -640,14 +682,18 @@ class CourseScreen(QWidget):
             return
         self._finish_persistent_task("cancelled")
         self._set_course_task_active(False)
-        QMessageBox.information(
-            self,
-            self.lang_manager.get_text("已停止", "Stopped"),
-            self.lang_manager.get_text(
-                "操作已安全停止，未保存未完成的更改。",
-                "The operation stopped safely; incomplete changes were not saved.",
-            ),
-        )
+        if import_cancelled:
+            self.course_import_cancelled.emit()
+        if not import_cancelled or self._init_present_result:
+            QMessageBox.information(
+                self,
+                self.lang_manager.get_text("已停止", "Stopped"),
+                self.lang_manager.get_text(
+                    "操作已安全停止，未保存未完成的更改。",
+                    "The operation stopped safely; incomplete changes were not saved.",
+                ),
+            )
+        self._init_present_result = True
 
     def _build_initializer(self):
         """Build an initializer using current AI settings when available."""
@@ -673,6 +719,8 @@ class CourseScreen(QWidget):
         if not self._is_current_worker("_init_worker"):
             return
         self._init_worker = None
+        present_result = self._init_present_result
+        self._init_present_result = True
         self._finish_persistent_task(
             "complete",
             result_summary=f"Imported course {project.title}",
@@ -689,26 +737,32 @@ class CourseScreen(QWidget):
         msg = self._with_summary_warning(msg, project)
         msg = self._with_profile_warning(msg, project)
         msg = self._with_document_warnings(msg, project)
-        QMessageBox.information(
-            self,
-            self.lang_manager.get_text("课程就绪", "Course Ready"),
-            msg,
-        )
+        if present_result:
+            QMessageBox.information(
+                self,
+                self.lang_manager.get_text("课程就绪", "Course Ready"),
+                msg,
+            )
         self._import_expanded = False
         self.refresh()
+        self.course_import_completed.emit(project)
         self.current_course_changed.emit()
 
     def _on_init_error(self, error_msg):
         if not self._is_current_worker("_init_worker"):
             return
         self._init_worker = None
+        present_result = self._init_present_result
+        self._init_present_result = True
         self._finish_persistent_task("fail", error=error_msg)
         self._set_course_task_active(False)
-        QMessageBox.critical(
-            self,
-            self.lang_manager.get_text("初始化失败", "Initialization Failed"),
-            error_msg,
-        )
+        self.course_import_failed.emit(str(error_msg))
+        if present_result:
+            QMessageBox.critical(
+                self,
+                self.lang_manager.get_text("初始化失败", "Initialization Failed"),
+                error_msg,
+            )
 
 
     class _InitWorker(QThread):

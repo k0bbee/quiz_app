@@ -10,6 +10,7 @@ from PyQt6.QtCore import QTimer, Qt
 
 from core.application_data_migration import ApplicationDataMigrator
 from core.application_services import ApplicationServices
+from core.first_run_flow import FirstRunStage, resolve_first_run_state
 from core.language_manager import LanguageManager
 from core.question_set_regenerator import persist_new_question_set, persist_regenerated_question_set
 from core.question_set_builder import build_ai_question_set
@@ -31,6 +32,7 @@ from ui.shell import AppShell
 from config import APP_NAME, APP_NAME_EN
 
 from ui.screens.home_screen import HomeScreen
+from ui.screens.first_run_workspace import FirstRunWorkspace
 from ui.screens.topic_selection_screen import TopicSelectionScreen
 from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
@@ -79,6 +81,9 @@ class MainWindow(QMainWindow):
         self.task_center = services.task_center
         self.lang_manager = LanguageManager.instance()
         self.startup_migration_report = startup_migration_report
+        self._first_run_operation = ""
+        self._first_run_error = ""
+        self._first_run_progress = None
         self._history_protection_blocked = bool(
             getattr(startup_migration_report, "has_failures", False)
         )
@@ -92,6 +97,11 @@ class MainWindow(QMainWindow):
 
         # Create screens
         self.home_screen = HomeScreen(self.progress_manager, self.question_bank)
+        self.first_run_screen = FirstRunWorkspace()
+        self.home_workspace = QStackedWidget()
+        self.home_workspace.setObjectName("homeWorkspace")
+        self.home_workspace.addWidget(self.home_screen)
+        self.home_workspace.addWidget(self.first_run_screen)
         self.topic_screen = TopicSelectionScreen(
             self.set_manager,
             self.progress_manager,
@@ -124,7 +134,7 @@ class MainWindow(QMainWindow):
         self._active_questions: dict = {}
 
         # Management screens 6-8 are lazily created on first access.
-        self.stack.addWidget(self.home_screen)       # 0
+        self.stack.addWidget(self.home_workspace)    # 0
         self.stack.addWidget(self.topic_screen)       # 1
         self.stack.addWidget(self.quiz_screen)        # 2
         self.stack.addWidget(self.results_screen)     # 3
@@ -162,7 +172,10 @@ class MainWindow(QMainWindow):
             task_center=self.task_center,
             course_manager=self.course_manager,
             current_language=lambda: self.lang_manager.current,
-            navigate=self.navigate_to,
+            navigate=lambda screen_index: self.navigate_to(
+                screen_index,
+                allow_first_run_redirect=False,
+            ),
             open_settings=self.open_settings,
             course_changed=self._on_course_changed,
             get_course_screen=self._get_course_screen,
@@ -181,6 +194,7 @@ class MainWindow(QMainWindow):
         self._sync_home_screen_course()
         self._sync_topic_screen_course()
         self._sync_progress_screen_course()
+        self._refresh_first_run()
 
         # Apply initial language
         self._on_language_changed()
@@ -314,6 +328,21 @@ class MainWindow(QMainWindow):
             self._course_screen.current_event_generation_requested.connect(
                 self._on_current_event_generation
             )
+            self._course_screen.course_import_started.connect(
+                self._on_first_run_import_started
+            )
+            self._course_screen.course_import_progressed.connect(
+                self._on_first_run_import_progress
+            )
+            self._course_screen.course_import_completed.connect(
+                self._on_first_run_import_completed
+            )
+            self._course_screen.course_import_failed.connect(
+                self._on_first_run_import_failed
+            )
+            self._course_screen.course_import_cancelled.connect(
+                self._on_first_run_import_cancelled
+            )
             self._install_workspace(self.SCREEN_COURSES, self._course_screen)
         return self._course_screen
 
@@ -425,6 +454,22 @@ class MainWindow(QMainWindow):
         self.home_screen.view_progress.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
         self.home_screen.open_settings.connect(self.open_settings)
         self.home_screen.manage_courses.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
+        self.first_run_screen.configure_ai_requested.connect(
+            lambda: self.open_settings("ai")
+        )
+        self.first_run_screen.choose_materials_requested.connect(
+            self._on_first_run_choose_materials
+        )
+        self.first_run_screen.generate_requested.connect(
+            self._on_first_run_generate
+        )
+        self.first_run_screen.start_requested.connect(
+            self._on_first_run_start
+        )
+        self.first_run_screen.cancel_requested.connect(
+            self._on_first_run_cancel
+        )
+        self.settings_screen.settings_saved.connect(self._refresh_first_run)
 
         # Topic selection
         self.topic_screen.quiz_start.connect(self._on_quiz_start)
@@ -475,11 +520,31 @@ class MainWindow(QMainWindow):
         self._refresh_task_center_action()
         self._update_navigation_actions()
 
-    def navigate_to(self, screen_index: int, remember: bool = True, confirm_current: bool = True) -> bool:
+    def navigate_to(
+        self,
+        screen_index: int,
+        remember: bool = True,
+        confirm_current: bool = True,
+        *,
+        allow_first_run_redirect: bool = True,
+    ) -> bool:
         """Switch to a screen by index."""
         if not self._confirm_history_sensitive_navigation(screen_index):
             self._update_navigation_actions()
             return False
+        if (
+            allow_first_run_redirect
+            and self._first_run_required()
+            and screen_index == self.SCREEN_TOPIC_SELECTION
+        ):
+            screen_index = self.SCREEN_HOME
+        elif (
+            allow_first_run_redirect
+            and self._first_run_required()
+            and screen_index == self.SCREEN_COURSES
+            and self._course_screen is None
+        ):
+            screen_index = self.SCREEN_HOME
         if confirm_current and not self._confirm_current_navigation(screen_index):
             self._update_navigation_actions()
             return False
@@ -618,6 +683,176 @@ class MainWindow(QMainWindow):
             else:
                 self.task_recovery.open_page(requested_task_id)
         self._refresh_task_center_action()
+
+    def _first_run_ai_error(self) -> str:
+        settings = self.settings_screen.settings_snapshot()
+        api_key = ""
+        if _provider_requires_api_key(settings):
+            from core.secrets_manager import SecretsManager
+
+            api_key = SecretsManager.instance().get_key()
+        return _ai_generation_settings_error(settings, api_key)
+
+    def _first_run_practice_candidates(self):
+        course_id = self._current_course_id()
+        if not course_id:
+            return []
+        candidates = []
+        for question_set in self.set_manager.load_all():
+            set_course_id = str(
+                (getattr(question_set, "metadata", {}) or {}).get(
+                    "course_id",
+                    "",
+                )
+                or ""
+            )
+            if set_course_id and set_course_id != course_id:
+                continue
+            question_ids = [
+                question.question_id
+                for question in self.question_bank.get_many(
+                    question_set.questions,
+                    course_id=course_id,
+                )
+            ]
+            if question_ids:
+                candidates.append((question_set, question_ids))
+        return candidates
+
+    def _first_run_question_count(self) -> int:
+        return sum(
+            len(question_ids)
+            for _question_set, question_ids in self._first_run_practice_candidates()
+        )
+
+    def _first_run_has_completed_practice(self) -> bool:
+        return any(
+            getattr(record, "status", "") == "completed"
+            for record in self.progress_manager.load_all()
+        )
+
+    def _first_run_required(self) -> bool:
+        if self._first_run_operation:
+            return True
+        if not self._current_course_id():
+            return True
+        if self._first_run_question_count() <= 0:
+            return True
+        return not self._first_run_has_completed_practice()
+
+    def _refresh_first_run(self) -> None:
+        if not hasattr(self, "first_run_screen"):
+            return
+        progress = self._first_run_progress
+        has_course = bool(self._current_course_id())
+        question_count = self._first_run_question_count()
+        first_run_required = (
+            bool(self._first_run_operation)
+            or not has_course
+            or question_count <= 0
+            or not self._first_run_has_completed_practice()
+        )
+        state = resolve_first_run_state(
+            ai_error=self._first_run_ai_error(),
+            has_course=has_course,
+            question_count=question_count,
+            operation=self._first_run_operation,
+            error=self._first_run_error,
+            progress_text=str(getattr(progress, "detail", "") or ""),
+            progress_current=int(getattr(progress, "current", 0) or 0),
+            progress_total=int(getattr(progress, "total", 0) or 0),
+        )
+        self.first_run_screen.set_state(state)
+        self.home_workspace.setCurrentWidget(
+            self.first_run_screen
+            if first_run_required
+            else self.home_screen
+        )
+
+    def _on_first_run_choose_materials(self) -> None:
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            self.lang_manager.get_text(
+                "选择课程资料文件夹",
+                "Choose Course Materials Folder",
+            ),
+        )
+        if not folder:
+            return
+        course_screen = self._get_course_screen()
+        self._first_run_operation = "importing"
+        self._first_run_error = ""
+        self._first_run_progress = None
+        self._refresh_first_run()
+        if not course_screen.start_import(
+            folder,
+            "",
+            present_result=False,
+        ):
+            self._first_run_operation = ""
+            self._first_run_error = self.lang_manager.get_text(
+                "课程导入任务未能启动，请检查当前后台任务。",
+                "The course import could not start. Check the current background task.",
+            )
+            self._refresh_first_run()
+
+    def _on_first_run_import_started(self) -> None:
+        self._first_run_operation = "importing"
+        self._first_run_error = ""
+        self._first_run_progress = None
+        self._refresh_first_run()
+
+    def _on_first_run_import_progress(self, progress) -> None:
+        self._first_run_progress = progress
+        self._refresh_first_run()
+
+    def _on_first_run_import_completed(self, _project) -> None:
+        self._first_run_operation = ""
+        self._first_run_error = ""
+        self._first_run_progress = None
+        self._refresh_first_run()
+
+    def _on_first_run_import_failed(self, message: str) -> None:
+        self._first_run_operation = ""
+        self._first_run_error = str(message or "")
+        self._first_run_progress = None
+        self._refresh_first_run()
+
+    def _on_first_run_import_cancelled(self) -> None:
+        self._first_run_operation = ""
+        self._first_run_error = self.lang_manager.get_text(
+            "课程导入已停止，未完成内容没有保存。",
+            "Course import stopped; incomplete content was not saved.",
+        )
+        self._first_run_progress = None
+        self._refresh_first_run()
+
+    def _on_first_run_generate(self) -> None:
+        self._first_run_operation = "generating"
+        self._first_run_error = ""
+        self._refresh_first_run()
+        try:
+            self._on_ai_generate()
+        finally:
+            self._first_run_operation = ""
+            self._first_run_progress = None
+            self._refresh_first_run()
+
+    def _on_first_run_start(self) -> None:
+        candidates = self._first_run_practice_candidates()
+        if not candidates:
+            self._first_run_error = self.lang_manager.get_text(
+                "尚未找到可开始的题目集，请先生成快速复习题。",
+                "No ready question set was found. Generate quick-review questions first.",
+            )
+            self._refresh_first_run()
+            return
+        question_set, question_ids = candidates[0]
+        self._on_quiz_start(question_set.set_id, question_ids)
+
+    def _on_first_run_cancel(self) -> None:
+        if self._course_screen is not None:
+            self._course_screen.cancel_active_task()
 
     # --- Slot handlers ---
 
@@ -897,6 +1132,7 @@ class MainWindow(QMainWindow):
             snapshot_manager = getattr(self, "snapshot_manager", None)
             if snapshot_manager is not None:
                 snapshot_manager.delete_for_set(progress_record.set_id)
+        self._refresh_first_run()
 
         self.results_screen.set_results(
             progress_record,
@@ -1389,6 +1625,7 @@ class MainWindow(QMainWindow):
         self._sync_question_bank_screen_course()
         self._sync_progress_screen_course()
         self._refresh_results_retry_availability()
+        self._refresh_first_run()
         self._on_language_changed()
 
     def _on_question_bank_changed(self):
@@ -1397,6 +1634,7 @@ class MainWindow(QMainWindow):
         self.home_screen.refresh()
         self.topic_screen.refresh()
         self._refresh_results_retry_availability()
+        self._refresh_first_run()
 
     def _refresh_results_retry_availability(self) -> None:
         record = getattr(self.results_screen, "current_record", None)

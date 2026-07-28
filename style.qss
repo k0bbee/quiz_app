@@ -453,6 +453,72 @@ QHeaderView::section {
     font-weight: 600;
 }
 
+/* First-use workspace */
+QFrame#firstRunCard {
+    background-color: #1f1f1f;
+    border: 1px solid #3c3c3c;
+    border-radius: 8px;
+}
+
+QLabel#firstRunTitle {
+    color: #f2f2f2;
+    font-size: 24px;
+    font-weight: 700;
+}
+
+QFrame#firstRunStep {
+    background-color: #181818;
+    border: 1px solid #333333;
+    border-radius: 5px;
+}
+
+QFrame#firstRunStep[stepState="active"] {
+    border-color: #0e639c;
+    background-color: #1b2730;
+}
+
+QFrame#firstRunStep[stepState="done"] {
+    border-color: #2f5f45;
+}
+
+QLabel#firstRunStepNumber {
+    color: #ffffff;
+    background-color: #3a3d41;
+    border-radius: 14px;
+    font-weight: 700;
+}
+
+QFrame#firstRunStep[stepState="active"] QLabel#firstRunStepNumber {
+    background-color: #0e639c;
+}
+
+QFrame#firstRunStep[stepState="done"] QLabel#firstRunStepNumber {
+    background-color: #2f6b48;
+}
+
+QLabel#firstRunStepTitle {
+    color: #e7e7e7;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+QLabel#firstRunStepStatus {
+    color: #9d9d9d;
+    font-weight: 600;
+}
+
+QFrame#firstRunStep[stepState="active"] QLabel#firstRunStepStatus {
+    color: #75beff;
+}
+
+QFrame#firstRunStep[stepState="done"] QLabel#firstRunStepStatus {
+    color: #89d185;
+}
+
+QLabel#firstRunStatus[statusRole="error"] {
+    color: #f48771;
+}
+
 /* Choice controls */
 QCheckBox,
 QRadioButton {

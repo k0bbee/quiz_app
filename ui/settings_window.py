@@ -33,6 +33,8 @@ class SettingsWindow(QDialog):
         """Show one reusable settings window and optionally focus a section."""
         if section == "data":
             self.screen.show_data_management()
+        elif section == "ai":
+            self.screen.show_ai_settings()
         if self.isMinimized():
             self.showNormal()
         else:
