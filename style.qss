@@ -805,6 +805,18 @@ QPushButton#sidebarUtilityButton:focus {
     border-color: #007fd4;
 }
 
+QPushButton#sidebarUtilityButton[needsAttention="true"] {
+    color: #f0c674;
+    background-color: #332b1d;
+    border-color: #6b5526;
+}
+
+QPushButton#sidebarUtilityButton[needsAttention="true"]:hover {
+    color: #fff3c4;
+    background-color: #443821;
+    border-color: #9a7834;
+}
+
 QFrame#contextHeader {
     background-color: #1f1f1f;
     border: none;

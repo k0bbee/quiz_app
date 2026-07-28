@@ -333,13 +333,14 @@ class UiThemeTests(unittest.TestCase):
 
         buttons = main_window.navigation_buttons()
         self.assertEqual(
-            ["Home", "Study", "Courses", "Library"],
+            ["Study", "Courses", "Question Bank"],
             [button.text() for button in buttons],
         )
         self.assertEqual(
-            ["home", "learning", "courses", "library"],
+            ["learning", "courses", "library"],
             [button.property("workspace") for button in buttons],
         )
+        self.assertFalse(hasattr(main_window, "home_nav_btn"))
         for button in buttons:
             self.assertNotRegex(button.text(), r"[^\w\s]")
             self.assertTrue(button.isCheckable())
@@ -348,8 +349,12 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual("Settings", main_window.settings_nav_btn.text())
         self.assertEqual("settings", main_window.settings_nav_btn.property("workspace"))
         self.assertFalse(main_window.settings_nav_btn.isCheckable())
+        self.assertEqual("sidebarUtilityButton", main_window.task_center_btn.objectName())
+        self.assertEqual("tasks", main_window.task_center_btn.property("workspace"))
+        self.assertIs(main_window.navigation_sidebar, main_window.task_center_btn.parent())
 
-        self.assertTrue(main_window.home_nav_btn.isChecked())
+        self.assertTrue(main_window.learning_nav_btn.isChecked())
+        self.assertEqual("Study", main_window.context_title.text())
         self.assertFalse(main_window.context_back_btn.isVisible())
         self.assertTrue(main_window.home_screen.question_context_label.text())
 
@@ -361,7 +366,7 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual("Review Incorrect", main_window.incorrect_review_btn.text())
         self.assertFalse(main_window.context_back_btn.isVisible())
 
-        main_window.home_nav_btn.click()
+        main_window.learning_nav_btn.click()
         self.assertEqual(main_window.SCREEN_HOME, main_window.stack.currentIndex())
 
         main_window.library_nav_btn.click()

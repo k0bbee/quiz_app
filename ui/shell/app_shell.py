@@ -69,6 +69,13 @@ class AppShell(QWidget):
         self.sidebar_utility_separator.setFrameShape(QFrame.Shape.HLine)
         sidebar_layout.addWidget(self.sidebar_utility_separator)
 
+        self.task_center_btn = QPushButton("")
+        self.task_center_btn.setObjectName("sidebarUtilityButton")
+        self.task_center_btn.setProperty("workspace", "tasks")
+        self.task_center_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
+        self.task_center_btn.clicked.connect(open_task_center)
+        sidebar_layout.addWidget(self.task_center_btn)
+
         self.settings_nav_btn = QPushButton("")
         self.settings_nav_btn.setObjectName("sidebarUtilityButton")
         self.settings_nav_btn.setProperty("workspace", "settings")
@@ -114,12 +121,6 @@ class AppShell(QWidget):
         self.incorrect_review_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         self.incorrect_review_btn.clicked.connect(practice_incorrect)
         header_layout.addWidget(self.incorrect_review_btn)
-
-        self.task_center_btn = QPushButton("")
-        self.task_center_btn.setObjectName("contextActionButton")
-        self.task_center_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-        self.task_center_btn.clicked.connect(open_task_center)
-        header_layout.addWidget(self.task_center_btn)
 
         content_layout.addWidget(self.context_header)
         content_layout.addWidget(stack, 1)

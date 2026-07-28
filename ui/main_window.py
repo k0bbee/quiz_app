@@ -400,8 +400,7 @@ class MainWindow(QMainWindow):
         self.app_shell = AppShell(
             self.stack,
             workspace_routes=(
-                ("home_nav_btn", "home", self.SCREEN_HOME),
-                ("learning_nav_btn", "learning", self.SCREEN_TOPIC_SELECTION),
+                ("learning_nav_btn", "learning", self.SCREEN_HOME),
                 ("courses_nav_btn", "courses", self.SCREEN_COURSES),
                 ("library_nav_btn", "library", self.SCREEN_QUESTION_BANK),
             ),
@@ -427,7 +426,6 @@ class MainWindow(QMainWindow):
             "context_title",
             "incorrect_review_btn",
             "task_center_btn",
-            "home_nav_btn",
             "learning_nav_btn",
             "courses_nav_btn",
             "library_nav_btn",
@@ -511,10 +509,9 @@ class MainWindow(QMainWindow):
 
         self.context_back_btn.setText(gm("返回", "Back"))
         self.sidebar_title.setText(gm(APP_NAME, APP_NAME_EN))
-        self.home_nav_btn.setText(gm("首页", "Home"))
         self.learning_nav_btn.setText(gm("学习", "Study"))
         self.courses_nav_btn.setText(gm("课程", "Courses"))
-        self.library_nav_btn.setText(gm("资料库", "Library"))
+        self.library_nav_btn.setText(gm("题库", "Question Bank"))
         self.settings_nav_btn.setText(gm("设置", "Settings"))
         self.topics_tab_btn.setText(gm("题目集", "Question Sets"))
         self.progress_tab_btn.setText(gm("进度", "Progress"))
@@ -603,7 +600,7 @@ class MainWindow(QMainWindow):
             return
         current = self.stack.currentIndex()
         workspace_button = {
-            self.SCREEN_HOME: self.home_nav_btn,
+            self.SCREEN_HOME: self.learning_nav_btn,
             self.SCREEN_TOPIC_SELECTION: self.learning_nav_btn,
             self.SCREEN_QUIZ: self.learning_nav_btn,
             self.SCREEN_RESULTS: self.learning_nav_btn,
@@ -635,14 +632,14 @@ class MainWindow(QMainWindow):
         self.past_exams_tab_btn.setChecked(current == self.SCREEN_PAST_EXAMS)
 
         page_titles = {
-            self.SCREEN_HOME: ("首页", "Home"),
+            self.SCREEN_HOME: ("学习", "Study"),
             self.SCREEN_TOPIC_SELECTION: ("学习", "Study"),
             self.SCREEN_QUIZ: ("答题", "Quiz"),
             self.SCREEN_RESULTS: ("练习结果", "Results"),
             self.SCREEN_PROGRESS: ("学习", "Study"),
             self.SCREEN_COURSES: ("课程", "Courses"),
-            self.SCREEN_QUESTION_BANK: ("资料库", "Library"),
-            self.SCREEN_PAST_EXAMS: ("资料库", "Library"),
+            self.SCREEN_QUESTION_BANK: ("题库", "Question Bank"),
+            self.SCREEN_PAST_EXAMS: ("题库", "Question Bank"),
         }
         zh, en = page_titles.get(current, ("", ""))
         self.context_title.setText(self.lang_manager.get_text(zh, en))
