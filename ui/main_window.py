@@ -10,7 +10,11 @@ from PyQt6.QtCore import QTimer, Qt
 
 from core.application_data_migration import ApplicationDataMigrator
 from core.application_services import ApplicationServices
-from core.first_run_flow import FirstRunStage, resolve_first_run_state
+from core.first_run_flow import (
+    FirstRunStage,
+    build_first_run_exam_plan,
+    resolve_first_run_state,
+)
 from core.language_manager import LanguageManager
 from core.question_set_regenerator import persist_new_question_set, persist_regenerated_question_set
 from core.question_set_builder import build_ai_question_set
@@ -828,11 +832,38 @@ class MainWindow(QMainWindow):
         self._refresh_first_run()
 
     def _on_first_run_generate(self) -> None:
+        course_project = self.course_manager.current()
+        if course_project is None:
+            self._first_run_error = self.lang_manager.get_text(
+                "当前课程已不存在，请重新导入课程资料。",
+                "The current course no longer exists. Import the materials again.",
+            )
+            self._refresh_first_run()
+            return
+        try:
+            plan = build_first_run_exam_plan(course_project)
+        except ValueError:
+            self._first_run_error = self.lang_manager.get_text(
+                "课程中没有可用于出题的知识点，请重新解析课程资料。",
+                "The course has no topics available for generation. Parse the materials again.",
+            )
+            self._refresh_first_run()
+            return
+        title = self.lang_manager.get_text(
+            f"{course_project.title}快速复习",
+            f"{course_project.title} Quick Review",
+        )
         self._first_run_operation = "generating"
         self._first_run_error = ""
         self._refresh_first_run()
         try:
-            self._on_ai_generate()
+            self._on_ai_generate(
+                course_override=course_project,
+                initial_plan=plan,
+                auto_start=True,
+                start_after_save=True,
+                question_set_title=title,
+            )
         finally:
             self._first_run_operation = ""
             self._first_run_progress = None
@@ -1403,6 +1434,9 @@ class MainWindow(QMainWindow):
         prediction=None,
         material_pack=None,
         recovery_context=None,
+        auto_start: bool = False,
+        start_after_save: bool = False,
+        question_set_title: str = "",
     ):
         """Open the AI question generation dialog."""
         gm = self.lang_manager.get_text
@@ -1427,7 +1461,7 @@ class MainWindow(QMainWindow):
                 )
 
                 return
-            if hasattr(dialog, "set_title_input"):
+            if prediction is not None and hasattr(dialog, "set_title_input"):
                 course_title = str(getattr(course_project, "title", "") or "").strip()
                 dialog.set_title_input.setText(gm(
                     f"{course_title}预测模拟卷" if course_title else "预测模拟卷",
@@ -1437,6 +1471,8 @@ class MainWindow(QMainWindow):
                 dialog.status_label.setText(
                     prediction_prefill_status(prediction, gm)
                 )
+        if question_set_title and hasattr(dialog, "set_title_input"):
+            dialog.set_title_input.setText(str(question_set_title).strip())
         if isinstance(recovery_context, dict):
             if hasattr(dialog, "set_title_input"):
                 title = str(recovery_context.get("question_set_title", "") or "").strip()
@@ -1445,6 +1481,8 @@ class MainWindow(QMainWindow):
             if hasattr(dialog, "runtime_instruction_input"):
                 instruction = str(recovery_context.get("runtime_instruction", "") or "").strip()
                 dialog.runtime_instruction_input.setPlainText(instruction)
+        if auto_start:
+            dialog.start_generation_when_shown()
         if dialog.exec() == QDialog.DialogCode.Accepted:
             questions = dialog.generated_questions
             if questions:
@@ -1471,6 +1509,16 @@ class MainWindow(QMainWindow):
                         gm("保存失败", "Save Failed"),
                         str(exc),
                     )
+                    return
+                refresh_question_bank = getattr(
+                    self,
+                    "_on_question_bank_changed",
+                    None,
+                )
+                if callable(refresh_question_bank):
+                    refresh_question_bank()
+                if start_after_save:
+                    self._on_quiz_start(qset.set_id, list(qset.questions))
                     return
                 QMessageBox.information(
                     self,

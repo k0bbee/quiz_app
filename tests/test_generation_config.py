@@ -31,6 +31,29 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class GenerationConfigTests(unittest.TestCase):
+    def test_generation_dialog_schedules_confirmed_plan_after_it_is_shown(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=["cache"],
+        )
+        self.addCleanup(dialog.close)
+
+        with patch(
+            "ui.dialogs.ai_generation_dialog.QTimer.singleShot",
+        ) as single_shot:
+            dialog.start_generation_when_shown()
+
+        single_shot.assert_called_once()
+        delay, callback = single_shot.call_args.args
+        self.assertEqual(0, delay)
+        self.assertIs(dialog, callback.__self__)
+        self.assertEqual("_start_generation", callback.__name__)
+
     def test_generation_worker_cancel_interrupts_active_client_request(self):
         client = SimpleNamespace(model="test-model", cancel=Mock())
         worker = GenerationWorker(

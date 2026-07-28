@@ -1062,6 +1062,10 @@ class AIGenerationDialog(QDialog):
         self._refresh_weight_labels()
         self._update_preview()
 
+    def start_generation_when_shown(self) -> None:
+        """Start the confirmed plan once the modal event loop is responsive."""
+        QTimer.singleShot(0, self._start_generation)
+
     def _open_exam_assistant(self):
         """Open a reviewable dialogue and apply only its confirmed plan."""
         from ui.dialogs.exam_assistant_dialog import ExamAssistantDialog
