@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QTimer, Qt
 
+from core.application_data_migration import ApplicationDataMigrator
 from core.application_services import ApplicationServices
 from core.language_manager import LanguageManager
 from core.question_set_regenerator import persist_new_question_set, persist_regenerated_question_set
@@ -78,6 +79,9 @@ class MainWindow(QMainWindow):
         self.task_center = services.task_center
         self.lang_manager = LanguageManager.instance()
         self.startup_migration_report = startup_migration_report
+        self._history_protection_blocked = bool(
+            getattr(startup_migration_report, "has_failures", False)
+        )
 
         # Central stacked widget
         self.stack = QStackedWidget()
@@ -108,6 +112,12 @@ class MainWindow(QMainWindow):
         )
         self.settings_window = SettingsWindow(task_center=self.task_center, parent=self)
         self.settings_screen = self.settings_window.screen
+        self.settings_screen.set_history_protection_blocked(
+            self._history_protection_blocked,
+            self._history_protection_message()
+            if self._history_protection_blocked
+            else "",
+        )
         self._course_screen = None
         self._question_bank_screen = None
         self._past_exam_screen = None
@@ -176,30 +186,98 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self._show_startup_migration_warning)
 
     def _show_startup_migration_warning(self) -> None:
-        report = self.startup_migration_report
-        if not bool(getattr(report, "has_failures", False)):
+        if not self._history_protection_blocked:
             return
-        failed_count = len(
-            tuple(getattr(report, "failed_progress_ids", ()) or ())
-        )
-        detail = "\n".join(
-            str(error)
-            for error in tuple(getattr(report, "errors", ()) or ())[:3]
-        )
-        suffix = f"\n\n{detail}" if detail else ""
-        QMessageBox.warning(
+        reply = QMessageBox.warning(
             self,
             self.lang_manager.get_text(
                 "旧历史保护未完成",
                 "Legacy History Protection Incomplete",
             ),
+            self._history_protection_message(),
+            QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Retry,
+        )
+        if reply == QMessageBox.StandardButton.Retry:
+            self._retry_startup_migration()
+
+    def _history_protection_message(self) -> str:
+        report = self.startup_migration_report
+        failed_count = len(tuple(getattr(report, "failed_progress_ids", ()) or ()))
+        detail = "\n".join(
+            str(error)
+            for error in tuple(getattr(report, "errors", ()) or ())[:3]
+        )
+        suffix = f"\n\n{detail}" if detail else ""
+        return self.lang_manager.get_text(
+            f"{failed_count} 条旧练习记录暂未完成保护。请先检查数据目录权限，"
+            f"为避免历史答案失真，课程、题库、历史真题维护以及数据导入/重置"
+            f"已暂时停用。修复后可重试。{suffix}",
+            f"{failed_count} legacy practice record(s) could not be protected. "
+            f"To preserve historical answers, course, question-bank and "
+            f"historical-exam maintenance plus data import/reset are temporarily "
+            f"disabled. Fix the data-directory issue, then retry.{suffix}",
+        )
+
+    def _set_history_protection_blocked(self, blocked: bool, report=None) -> None:
+        if report is not None:
+            self.startup_migration_report = report
+        self._history_protection_blocked = bool(blocked)
+        self.settings_screen.set_history_protection_blocked(
+            self._history_protection_blocked,
+            self._history_protection_message()
+            if self._history_protection_blocked
+            else "",
+        )
+
+    def _retry_startup_migration(self) -> bool:
+        report = ApplicationDataMigrator(self.services).migrate()
+        blocked = bool(getattr(report, "has_failures", False))
+        self._set_history_protection_blocked(blocked, report)
+        if blocked:
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text(
+                    "仍未完成保护",
+                    "Protection Still Incomplete",
+                ),
+                self._history_protection_message(),
+            )
+            return False
+        QMessageBox.information(
+            self,
             self.lang_manager.get_text(
-                f"{failed_count} 条旧练习记录暂未完成保护。请先检查数据目录权限，"
-                f"在问题解决前不要编辑或删除相关题目。{suffix}",
-                f"{failed_count} legacy practice record(s) could not be protected. "
-                f"Check the data-directory permissions before editing or deleting "
-                f"related questions.{suffix}",
+                "历史保护已完成",
+                "History Protection Complete",
             ),
+            self.lang_manager.get_text(
+                "旧历史已完成保护，课程与资料维护功能已恢复。",
+                "Legacy history is now protected. Course and library "
+                "maintenance are available again.",
+            ),
+        )
+        return True
+
+    def _confirm_history_sensitive_navigation(self, screen_index: int) -> bool:
+        if not self._history_protection_blocked or screen_index not in {
+            self.SCREEN_COURSES,
+            self.SCREEN_QUESTION_BANK,
+            self.SCREEN_PAST_EXAMS,
+        }:
+            return True
+        reply = QMessageBox.warning(
+            self,
+            self.lang_manager.get_text(
+                "数据保护模式",
+                "Data Protection Mode",
+            ),
+            self._history_protection_message(),
+            QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Retry,
+        )
+        return (
+            reply == QMessageBox.StandardButton.Retry
+            and self._retry_startup_migration()
         )
 
     def _get_course_screen(self):
@@ -372,6 +450,9 @@ class MainWindow(QMainWindow):
 
     def navigate_to(self, screen_index: int, remember: bool = True, confirm_current: bool = True) -> bool:
         """Switch to a screen by index."""
+        if not self._confirm_history_sensitive_navigation(screen_index):
+            self._update_navigation_actions()
+            return False
         if confirm_current and not self._confirm_current_navigation(screen_index):
             self._update_navigation_actions()
             return False
@@ -1160,6 +1241,13 @@ class MainWindow(QMainWindow):
 
     def _on_regenerate_question_set(self, set_id: str):
         """Regenerate questions for an existing question set in place."""
+        if (
+            self._history_protection_blocked
+            and not self._confirm_history_sensitive_navigation(
+                self.SCREEN_QUESTION_BANK
+            )
+        ):
+            return
         gm = self.lang_manager.get_text
         qset = self.set_manager.get(set_id)
         if not qset:

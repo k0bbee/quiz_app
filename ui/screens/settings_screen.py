@@ -200,6 +200,8 @@ class SettingsScreen(QWidget):
         self._app_data_worker = None
         self._app_data_task_id = ""
         self._app_data_operation = ""
+        self._history_protection_blocked = False
+        self._history_protection_message = ""
         self._initializing = True
         self.settings_dirty = False
         self._setup_ui()
@@ -1443,6 +1445,37 @@ class SettingsScreen(QWidget):
 
     # ── Data management ──────────────────────────────────────
 
+    def set_history_protection_blocked(
+        self,
+        blocked: bool,
+        message: str = "",
+    ) -> None:
+        """Prevent imports and deletion while legacy history is unprotected."""
+        self._history_protection_blocked = bool(blocked)
+        self._history_protection_message = str(message or "")
+        self._set_app_data_busy(
+            self._app_data_worker is not None,
+            self._app_data_operation,
+        )
+
+    def _ensure_history_mutation_allowed(self) -> bool:
+        if not self._history_protection_blocked:
+            return True
+        QMessageBox.warning(
+            self,
+            self.lang_manager.get_text(
+                "数据保护模式",
+                "Data Protection Mode",
+            ),
+            self._history_protection_message
+            or self.lang_manager.get_text(
+                "旧历史保护尚未完成。请先在主窗口重试迁移，再执行导入或重置。",
+                "Legacy history protection is incomplete. Retry the migration "
+                "from the main window before importing or resetting data.",
+            ),
+        )
+        return False
+
     def _export_progress(self):
         from config import PROGRESS_DIR
         from utils.json_io import load_all_json
@@ -1459,6 +1492,8 @@ class SettingsScreen(QWidget):
                     self.lang_manager.get_text(f"进度已导出到:\n{filepath}", f"Progress exported to:\n{filepath}"))
 
     def _import_progress(self):
+        if not self._ensure_history_mutation_allowed():
+            return
         filepath, _ = QFileDialog.getOpenFileName(
             self,
             self.lang_manager.get_text("导入进度", "Import Progress"),
@@ -1563,14 +1598,12 @@ class SettingsScreen(QWidget):
         worker.start()
 
     def _set_app_data_busy(self, busy: bool, operation: str = ""):
-        for button in (
-            self.export_btn,
-            self.import_btn,
-            self.export_app_data_btn,
-            self.import_app_data_btn,
-            self.reset_progress_btn,
-        ):
-            button.setEnabled(not busy)
+        self.export_btn.setEnabled(not busy)
+        self.export_app_data_btn.setEnabled(not busy)
+        mutation_enabled = not busy and not self._history_protection_blocked
+        self.import_btn.setEnabled(mutation_enabled)
+        self.import_app_data_btn.setEnabled(mutation_enabled)
+        self.reset_progress_btn.setEnabled(mutation_enabled)
         self.app_data_status_label.setVisible(busy)
         self.cancel_app_data_btn.setVisible(busy)
         self.cancel_app_data_btn.setEnabled(busy)
@@ -1600,7 +1633,19 @@ class SettingsScreen(QWidget):
             )
             self.export_app_data_btn.setText(self.lang_manager.get_text("导出应用数据", "Export App Data"))
             self.import_app_data_btn.setText(self.lang_manager.get_text("导入应用数据", "Import App Data"))
-            self.app_data_status_label.clear()
+            if self._history_protection_blocked:
+                self.app_data_status_label.setText(
+                    self._history_protection_message
+                    or self.lang_manager.get_text(
+                        "旧历史保护尚未完成；导入与重置已暂时停用。",
+                        "Legacy history protection is incomplete; import and "
+                        "reset are temporarily disabled.",
+                    )
+                )
+                self.app_data_status_label.setVisible(True)
+            else:
+                self.app_data_status_label.clear()
+                self.app_data_status_label.hide()
 
     def _on_app_data_progress(self, progress: TaskProgress):
         stage_labels = {
@@ -1693,6 +1738,8 @@ class SettingsScreen(QWidget):
         )
 
     def _import_app_data(self):
+        if not self._ensure_history_mutation_allowed():
+            return
         filepath, _ = QFileDialog.getOpenFileName(
             self,
             self.lang_manager.get_text("导入应用数据", "Import App Data"),
@@ -1781,6 +1828,8 @@ class SettingsScreen(QWidget):
         )
 
     def _reset_progress(self):
+        if not self._ensure_history_mutation_allowed():
+            return
         reply = QMessageBox.question(
             self,
             self.lang_manager.get_text("重置进度?", "Reset Progress?"),

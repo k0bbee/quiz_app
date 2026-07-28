@@ -12,7 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QCloseEvent, QPalette
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QHBoxLayout, QLabel, QListWidget, QPushButton, QSplitter, QTextEdit, QWidget
+from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QHBoxLayout, QLabel, QListWidget, QMessageBox, QPushButton, QSplitter, QTextEdit, QWidget
 
 from core.language_manager import LanguageManager
 from core.background_task_center import BackgroundTaskCenter
@@ -146,6 +146,73 @@ class UiThemeTests(unittest.TestCase):
             services=services,
             startup_migration_report=report,
         )
+
+    def test_failed_startup_migration_blocks_history_sensitive_workflows(self):
+        report = SimpleNamespace(
+            has_failures=True,
+            failed_progress_ids=("legacy-progress",),
+            errors=("legacy-progress: permission denied",),
+        )
+        with patch("ui.main_window.QTimer.singleShot"):
+            window = MainWindow(startup_migration_report=report)
+        self.addCleanup(window.close)
+
+        with patch(
+            "ui.main_window.QMessageBox.warning",
+            return_value=QMessageBox.StandardButton.Cancel,
+        ):
+            self.assertFalse(window.navigate_to(window.SCREEN_COURSES))
+
+        self.assertEqual(window.SCREEN_HOME, window.stack.currentIndex())
+        self.assertTrue(window.navigate_to(window.SCREEN_PROGRESS))
+        self.assertFalse(window.settings_screen.import_btn.isEnabled())
+        self.assertFalse(window.settings_screen.import_app_data_btn.isEnabled())
+        self.assertFalse(window.settings_screen.reset_progress_btn.isEnabled())
+        self.assertTrue(window.settings_screen.export_btn.isEnabled())
+        self.assertTrue(window.settings_screen.export_app_data_btn.isEnabled())
+
+    def test_successful_migration_retry_reopens_history_sensitive_workflows(self):
+        failed_report = SimpleNamespace(
+            has_failures=True,
+            failed_progress_ids=("legacy-progress",),
+            errors=("legacy-progress: permission denied",),
+        )
+        success_report = SimpleNamespace(
+            has_failures=False,
+            failed_progress_ids=(),
+            errors=(),
+        )
+        with patch("ui.main_window.QTimer.singleShot"):
+            window = MainWindow(startup_migration_report=failed_report)
+        self.addCleanup(window.close)
+
+        with patch(
+            "core.application_data_migration.ApplicationDataMigrator.migrate",
+            return_value=success_report,
+        ), patch("ui.main_window.QMessageBox.information"):
+            self.assertTrue(window._retry_startup_migration())
+
+        self.assertTrue(window.settings_screen.import_btn.isEnabled())
+        self.assertTrue(window.settings_screen.import_app_data_btn.isEnabled())
+        self.assertTrue(window.settings_screen.reset_progress_btn.isEnabled())
+        self.assertTrue(window.navigate_to(window.SCREEN_COURSES))
+
+    def test_history_protection_blocks_direct_progress_import_handler(self):
+        screen = SettingsScreen()
+        screen.set_history_protection_blocked(
+            True,
+            "Legacy history protection is incomplete.",
+        )
+
+        with patch(
+            "ui.screens.settings_screen.QFileDialog.getOpenFileName"
+        ) as choose_file, patch(
+            "ui.screens.settings_screen.QMessageBox.warning"
+        ) as warning:
+            screen._import_progress()
+
+        choose_file.assert_not_called()
+        warning.assert_called_once()
 
     def test_settings_exposes_and_persists_global_font_scale(self):
         with tempfile.TemporaryDirectory() as tmpdir:
