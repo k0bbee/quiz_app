@@ -199,9 +199,7 @@ class MockExamExporterTests(unittest.TestCase):
             screen.export_mock_exams.connect(emitted_batches.append)
 
             screen.refresh()
-            self.assertFalse(screen.export_btn.isEnabled())
-
-            screen.set_list.setCurrentRow(0)
+            self.assertEqual(0, screen.set_list.currentRow())
             self.assertTrue(screen.export_btn.isEnabled())
             screen.export_btn.click()
 
@@ -451,9 +449,7 @@ class MockExamExporterTests(unittest.TestCase):
             screen.regenerate_questions.connect(emitted.append)
 
             screen.refresh()
-            self.assertFalse(screen.regenerate_btn.isEnabled())
-
-            screen.set_list.setCurrentRow(0)
+            self.assertEqual(0, screen.set_list.currentRow())
             self.assertFalse(screen.regenerate_btn.isHidden())
             self.assertTrue(screen.regenerate_btn.isEnabled())
             screen.regenerate_btn.click()
