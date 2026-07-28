@@ -46,6 +46,7 @@ class DailyStudyQueue:
     category_counts: Mapping[StudyQueueCategory, int]
     review_states: Mapping[str, ReviewState]
     estimated_minutes: int
+    backlog_count: int
 
     @property
     def total_count(self) -> int:
@@ -145,6 +146,12 @@ def build_daily_study_queue(
     )
     selected_entries = all_entries[:max(0, int(daily_limit or 0))]
     question_ids = tuple(entry.question_id for entry in selected_entries)
+    selected_category_counts = {
+        category: sum(
+            1 for entry in selected_entries if entry.category is category
+        )
+        for category in _CATEGORY_ORDER
+    }
     current_count = min(
         len(question_ids),
         max(1, int(session_size or 1)),
@@ -157,12 +164,10 @@ def build_daily_study_queue(
         question_ids=question_ids,
         current_question_ids=current_question_ids,
         remaining_question_ids=remaining_question_ids,
-        category_counts=MappingProxyType({
-            category: len(by_category[category])
-            for category in _CATEGORY_ORDER
-        }),
+        category_counts=MappingProxyType(selected_category_counts),
         review_states=MappingProxyType(review_states),
         estimated_minutes=estimated_minutes,
+        backlog_count=len(all_entries),
     )
 
 
@@ -247,4 +252,3 @@ def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
-

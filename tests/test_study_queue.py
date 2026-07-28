@@ -105,6 +105,24 @@ class StudyQueueTests(unittest.TestCase):
         )
         self.assertEqual(14, queue.estimated_minutes)
 
+    def test_queue_counts_describe_the_bounded_plan_not_the_entire_backlog(self):
+        queue = build_daily_study_queue(
+            {f"q-{index:03d}" for index in range(100)},
+            [],
+            now=NOW,
+            daily_limit=15,
+        )
+
+        self.assertEqual(
+            {StudyQueueCategory.NEW: 15},
+            {
+                category: count
+                for category, count in queue.category_counts.items()
+                if count
+            },
+        )
+        self.assertEqual(100, queue.backlog_count)
+
     def test_latest_answer_replaces_old_error_and_unsure_state(self):
         records = [
             completed_record("q-recovered", days_ago=5, is_correct=False),
