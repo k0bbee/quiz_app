@@ -77,7 +77,7 @@ class FirstRunWorkspace(QWidget):
 
         self.card = QFrame()
         self.card.setObjectName("firstRunCard")
-        self.card.setMaximumWidth(760)
+        self.card.setMaximumWidth(1080)
         card_layout = QVBoxLayout(self.card)
         card_layout.setContentsMargins(28, 26, 28, 26)
         card_layout.setSpacing(12)
@@ -123,7 +123,7 @@ class FirstRunWorkspace(QWidget):
         action_layout.addWidget(self.primary_btn)
         card_layout.addLayout(action_layout)
 
-        outer.addWidget(self.card, 4)
+        outer.addWidget(self.card, 12)
         outer.addStretch(1)
 
         self.lang_manager.language_changed.connect(self._render)

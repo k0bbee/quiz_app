@@ -19,6 +19,7 @@ from models.course_project import CourseProject, CourseTopic
 from models.question import Question
 from models.question_set import QuestionSet
 from ui.main_window import MainWindow
+from ui.screens.first_run_workspace import FirstRunWorkspace
 from utils.constants import Difficulty, QuestionType
 
 
@@ -26,6 +27,18 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class FirstRunFlowTests(unittest.TestCase):
+    def test_first_run_workspace_uses_wide_window_without_large_side_gutters(self):
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+        workspace.resize(1200, 760)
+        workspace.show()
+        _APP.processEvents()
+
+        side_gutter = (workspace.width() - workspace.card.width()) // 2
+
+        self.assertGreaterEqual(workspace.card.width(), 960)
+        self.assertLessEqual(side_gutter, 120)
+
     def test_first_run_plan_uses_ten_quick_review_questions_in_exam_scope(self):
         project = CourseProject(
             course_id="course-plan",
