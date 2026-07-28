@@ -23,7 +23,7 @@ from core.quiz_snapshot_manager import QuizSnapshotManager
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from models.past_exam import PastExamManager
 from models.question import Question, QuestionBank
-from models.question_set import SetManager
+from models.question_set import QuestionSet, SetManager
 from core.background_task_recovery import generation_plan_from_task_metadata
 from ui.application_style import apply_dark_palette as _apply_dark_palette, load_stylesheet
 from ui.main_window import MainWindow
@@ -45,6 +45,28 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class UiThemeTests(unittest.TestCase):
+    def test_topic_selection_prefers_the_only_available_question_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            set_manager = SetManager(str(Path(tmpdir) / "sets"))
+            question_set = QuestionSet.create_new(
+                title={"zh": "哲学导论综合练习", "en": "Philosophy Practice"},
+                description={"zh": "", "en": ""},
+                topics=["philosophy"],
+                question_ids=["q-1"],
+            )
+            set_manager.save(question_set)
+            screen = TopicSelectionScreen(set_manager)
+            self.addCleanup(screen.close)
+
+            screen.refresh()
+
+            self.assertEqual(1, screen.set_list.count())
+            self.assertEqual(
+                question_set.set_id,
+                screen.set_list.currentItem().data(Qt.ItemDataRole.UserRole),
+            )
+            self.assertTrue(screen.start_btn.isEnabled())
+
     def test_default_main_window_uses_isolated_services_during_qt_tests(self):
         from config import QUESTIONS_DIR
 

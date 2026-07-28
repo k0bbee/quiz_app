@@ -424,14 +424,13 @@ class TopicSelectionScreen(QWidget):
                 self.difficulty_filter.setCurrentIndex(idx)
         self.difficulty_filter.blockSignals(False)
 
-        self._render_sets()
-
         self.start_btn.setEnabled(False)
         self.export_btn.setEnabled(False)
         self.regenerate_btn.setEnabled(False)
         self.regenerate_btn.setHidden(True)
         self.rename_btn.setEnabled(False)
         self.info_label.clear()
+        self._render_sets()
         self._update_study_intent_state()
 
     def _indexed_topic_titles(self) -> dict[str, str]:
@@ -487,7 +486,9 @@ class TopicSelectionScreen(QWidget):
                 item.setForeground(QColor("#787878"))
             self.set_list.addItem(item)
 
-        if not visible:
+        if len(visible) == 1:
+            self.set_list.setCurrentRow(0)
+        elif not visible:
             self.info_label.setText(
                 self.lang_manager.get_text(
                     "没有匹配的题目集。请调整搜索/筛选条件。",
