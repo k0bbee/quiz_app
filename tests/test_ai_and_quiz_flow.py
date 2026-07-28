@@ -2465,6 +2465,99 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIn("新题 15", screen.today_plan_detail.text())
             self.assertIn("待学习总量 100 题", screen.today_plan_detail.text())
 
+    def test_home_daily_plan_uses_balanced_topic_and_difficulty_metadata(self):
+        from core.daily_study_plan_store import DailyStudyPlanStore
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            difficulties = (
+                Difficulty.EASY,
+                Difficulty.MEDIUM,
+                Difficulty.HARD,
+            )
+            questions = []
+            for topic, count in (("memory", 9), ("process", 6)):
+                for index in range(count):
+                    question = self._make_question(
+                        f"course-a-{topic}-{index:02d}",
+                        topic,
+                    )
+                    question.difficulty = difficulties[index % len(difficulties)]
+                    question.metadata["course_id"] = "course-a"
+                    questions.append(question)
+            question_bank.save_many(questions)
+            screen = HomeScreen(
+                ProgressManager(str(root / "progress")),
+                question_bank,
+                daily_plan_store=DailyStudyPlanStore(root / "daily-plans.json"),
+            )
+
+            screen.set_current_course(
+                "course-a",
+                "Systems",
+                exam_scope_weights={"memory": 60, "process": 40},
+            )
+
+            intent = screen._today_study_intent()
+            topic_index = question_bank.topic_index(course_id="course-a")
+            selected_topics = [
+                topic_index[question_id][0]
+                for question_id in (
+                    intent.question_ids + intent.remaining_question_ids
+                )
+            ]
+            self.assertEqual({"memory", "process"}, set(selected_topics))
+            self.assertIn("主题轮换", screen.today_plan_detail.toolTip())
+            self.assertIn("难度", screen.today_plan_detail.toolTip())
+
+    def test_main_syncs_course_topic_weights_to_home_scheduler(self):
+        from ui.main_window import MainWindow
+
+        course = CourseProject(
+            course_id="course-a",
+            title="Systems",
+            source_folder="",
+            summary_markdown="",
+            summary_path="",
+            topics=[
+                CourseTopic("memory", "Memory"),
+                CourseTopic("process", "Process"),
+            ],
+            documents=[],
+            created_at="2026-07-01T00:00:00+00:00",
+            updated_at="2026-07-01T00:00:00+00:00",
+            generation_profile={
+                "topic_weights": {
+                    "memory": 70,
+                    "process": 30,
+                    "outside": 100,
+                }
+            },
+            exam_scope_mode="selected",
+            exam_scope_topic_ids=["memory", "process"],
+        )
+        captured = {}
+
+        class FakeHomeScreen:
+            def set_current_course(self, *args, **kwargs):
+                captured["args"] = args
+                captured["kwargs"] = kwargs
+
+        shell = types.SimpleNamespace(
+            course_manager=types.SimpleNamespace(current=lambda: course),
+            home_screen=FakeHomeScreen(),
+            _update_home_resume_draft=lambda: None,
+        )
+
+        MainWindow._sync_home_screen_course(shell)
+
+        self.assertEqual({"memory", "process"}, captured["args"][2])
+        self.assertEqual(
+            {"memory": 70, "process": 30},
+            captured["kwargs"]["exam_scope_weights"],
+        )
+
     def test_home_keeps_completed_daily_plan_complete_after_repeat_failure(self):
         from core.daily_study_plan_store import DailyStudyPlanStore
 

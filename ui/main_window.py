@@ -1821,14 +1821,37 @@ class MainWindow(QMainWindow):
     def _sync_home_screen_course(self):
         course = self.course_manager.current()
         exam_topic_ids = None
+        exam_scope_weights = {}
         if course and getattr(course, "exam_scope_mode", "all") == "selected":
             scoped_topics = getattr(course, "exam_topics", None)
             topics = scoped_topics() if callable(scoped_topics) else getattr(course, "topics", [])
             exam_topic_ids = {topic.topic_id for topic in topics}
+        if course:
+            allowed_topics = {
+                topic.topic_id
+                for topic in (
+                    course.exam_topics()
+                    if callable(getattr(course, "exam_topics", None))
+                    else getattr(course, "topics", [])
+                )
+            }
+            profile = getattr(course, "generation_profile", {}) or {}
+            raw_weights = (
+                profile.get("topic_weights", {})
+                if isinstance(profile, dict)
+                else {}
+            )
+            if isinstance(raw_weights, dict):
+                exam_scope_weights = {
+                    str(topic_id): weight
+                    for topic_id, weight in raw_weights.items()
+                    if str(topic_id) in allowed_topics
+                }
         self.home_screen.set_current_course(
             course.course_id if course else "",
             course.title if course else "",
             exam_topic_ids,
+            exam_scope_weights=exam_scope_weights,
         )
         self._update_home_resume_draft()
 

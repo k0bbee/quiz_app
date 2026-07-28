@@ -51,6 +51,7 @@ class HomeScreen(QWidget):
         self._current_course_id = ""
         self._current_course_title = ""
         self._exam_topic_ids: set[str] | None = None
+        self._exam_scope_weights: dict[str, float] = {}
         self._resume_title = ""
         self._resume_remaining_count = 0
         self._resume_current_index: int | None = None
@@ -345,6 +346,8 @@ class HomeScreen(QWidget):
         course_id: str | None,
         course_title: str | None = None,
         exam_topic_ids: set[str] | list[str] | tuple[str, ...] | None = None,
+        *,
+        exam_scope_weights: dict | None = None,
     ):
         """Restrict home quick stats to the active course."""
         course_id = course_id or ""
@@ -358,15 +361,26 @@ class HomeScreen(QWidget):
                 if str(topic_id or "").strip()
             }
         )
+        normalized_weights = {}
+        for topic_id, weight in (exam_scope_weights or {}).items():
+            key = str(topic_id or "").strip()
+            try:
+                numeric = float(weight)
+            except (TypeError, ValueError):
+                continue
+            if key and numeric > 0:
+                normalized_weights[key] = numeric
         if (
             course_id == self._current_course_id
             and course_title == self._current_course_title
             and normalized_scope == self._exam_topic_ids
+            and normalized_weights == self._exam_scope_weights
         ):
             return
         self._current_course_id = course_id
         self._current_course_title = course_title
         self._exam_topic_ids = normalized_scope
+        self._exam_scope_weights = normalized_weights
         self._update_course_context_label()
         self.refresh()
 
@@ -408,6 +422,45 @@ class HomeScreen(QWidget):
             question_id: topic
             for question_id, topic in topic_index.items()
             if str((topic or ("", ""))[0]) in self._exam_topic_ids
+        }
+
+    def _visible_scheduling_index(
+        self,
+    ) -> dict[str, tuple[str, str, str]]:
+        if self.question_bank is None:
+            return {}
+        scheduling_index = getattr(
+            self.question_bank,
+            "scheduling_index",
+            None,
+        )
+        if callable(scheduling_index):
+            rows = scheduling_index(course_id=self._current_course_id)
+        else:
+            rows = {
+                question_id: (topic_id, topic_title, "medium")
+                for question_id, (topic_id, topic_title)
+                in self.question_bank.topic_index(
+                    course_id=self._current_course_id
+                ).items()
+            }
+        mastered_topics = (
+            self.mastery_overrides.mastered_topics(self._current_course_id)
+            if self.mastery_overrides is not None
+            else set()
+        )
+        return {
+            question_id: row
+            for question_id, row in rows.items()
+            if (
+                isinstance(row, (tuple, list))
+                and len(row) >= 3
+                and (
+                    self._exam_topic_ids is None
+                    or str(row[0] or "") in self._exam_topic_ids
+                )
+                and str(row[0] or "") not in mastered_topics
+            )
         }
 
     def _update_course_context_label(self):
@@ -524,11 +577,36 @@ class HomeScreen(QWidget):
                     if question_id in visible_ids
                 ]
 
-        topic_index = self._visible_topic_index() if total_questions > 0 else {}
+        scheduling_index = (
+            self._visible_scheduling_index()
+            if total_questions > 0
+            else {}
+        )
+        if scheduling_index:
+            visible_question_ids = set(scheduling_index)
+            topic_index = {
+                question_id: (row[0], row[1])
+                for question_id, row in scheduling_index.items()
+            }
+            difficulty_index = {
+                question_id: row[2]
+                for question_id, row in scheduling_index.items()
+            }
+        else:
+            visible_question_ids = self._visible_question_ids()
+            topic_index = (
+                self._visible_topic_index()
+                if total_questions > 0
+                else {}
+            )
+            difficulty_index = {}
         daily_queue = (
             build_daily_study_queue(
-                self._visible_question_ids(),
+                visible_question_ids,
                 progress_records,
+                topic_index=topic_index,
+                difficulty_index=difficulty_index,
+                exam_scope_weights=self._exam_scope_weights,
             )
             if draft is None and total_questions > 0
             else None
@@ -546,7 +624,7 @@ class HomeScreen(QWidget):
                     plan_date=date.today().isoformat(),
                     course_id=self._current_course_id,
                     queue=daily_queue,
-                    valid_question_ids=self._visible_question_ids(),
+                    valid_question_ids=visible_question_ids,
                 )
             except (OSError, TypeError, ValueError) as exc:
                 warning(f"Failed to load today's study plan: {exc}")
@@ -565,6 +643,7 @@ class HomeScreen(QWidget):
 
     def _render_today_plan(self):
         plan = self._today_plan
+        self.today_plan_detail.setToolTip("")
         self.today_plan_title.setText(
             self.lang_manager.get_text("今日建议", "Today's Plan")
         )
@@ -577,6 +656,14 @@ class HomeScreen(QWidget):
                 f"Finish '{plan.draft_title}' first · {plan.target_question_count} left · about {plan.estimated_minutes} min",
             ))
         elif plan.action is LearningPlanAction.START_DAILY_QUEUE:
+            self.today_plan_detail.setToolTip(
+                self.lang_manager.get_text(
+                    "调度依据：到期与错误优先 · 薄弱和未覆盖主题优先 · "
+                    "主题轮换 · 难度循序混合",
+                    "Scheduling: due and incorrect first · weak and uncovered "
+                    "topics first · topic rotation · mixed difficulty gradient",
+                )
+            )
             self.today_plan_title.setText(self.lang_manager.get_text(
                 f"今日学习 · 约 {plan.estimated_minutes} 分钟",
                 f"Today's Study · about {plan.estimated_minutes} min",
