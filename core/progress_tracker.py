@@ -187,9 +187,14 @@ class ProgressManager:
 
     # --- Aggregation ---
 
-    def get_aggregated_stats(self, question_ids: set[str] | None = None) -> dict:
+    def get_aggregated_stats(
+        self,
+        question_ids: set[str] | None = None,
+        *,
+        records: list[ProgressRecord] | None = None,
+    ) -> dict:
         """Compute overall statistics across all sessions."""
-        records = self.load_all()
+        records = self.load_all() if records is None else list(records)
         completed = [r for r in records if r.status == "completed" and r.summary]
         partial_sessions = 0
         if question_ids is not None:

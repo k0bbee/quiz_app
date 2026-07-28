@@ -95,6 +95,41 @@ class StudyFlowControllerTests(unittest.TestCase):
         )
         navigate.assert_called_once_with(2)
 
+    def test_daily_queue_intent_starts_prefilled_quiz_without_setup_screen(self):
+        question = SimpleNamespace(
+            question_id="q-daily",
+            topic="cache",
+            topic_title=lambda: "Cache",
+        )
+        question_bank = Mock()
+        question_bank.get_many.return_value = [question]
+        quiz_screen = SimpleNamespace(start_quiz_custom=Mock())
+        navigate = Mock(return_value=True)
+        topic_screen = SimpleNamespace(apply_study_intent=Mock())
+        controller = self._controller(
+            question_bank=question_bank,
+            quiz_screen=quiz_screen,
+            topic_screen=topic_screen,
+            navigate=navigate,
+        )
+        intent = StudyIntent(
+            course_id="course-a",
+            action=StudyAction.DAILY_QUEUE,
+            question_ids=("q-daily",),
+            remaining_question_ids=("q-next",),
+            question_count=1,
+            source="today_plan",
+            plan_id="2026-07-28:course-a",
+        )
+
+        controller.handle_intent(intent)
+
+        self.assertIs(intent, controller.active_intent)
+        self.assertIsNone(controller.pending_intent)
+        topic_screen.apply_study_intent.assert_not_called()
+        quiz_screen.start_quiz_custom.assert_called_once()
+        navigate.assert_called_once_with(2)
+
     def test_generate_missing_preserves_topic_scope_and_missing_count(self):
         generate_questions = Mock()
         controller = self._controller(generate_questions=generate_questions)

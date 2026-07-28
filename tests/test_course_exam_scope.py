@@ -273,7 +273,7 @@ class CourseExamScopeConsumerTests(unittest.TestCase):
 
         class ProgressManager:
             @staticmethod
-            def get_aggregated_stats(question_ids=None):
+            def get_aggregated_stats(question_ids=None, *, records=None):
                 return {
                     "total_sessions": 0,
                     "total_questions": 0,
@@ -292,8 +292,8 @@ class CourseExamScopeConsumerTests(unittest.TestCase):
 
         home.set_current_course("course-systems", "Systems", {"io"})
 
-        self.assertEqual(LearningPlanAction.REVIEW_INCORRECT, home._today_plan.action)
-        self.assertEqual(1, home._today_plan.review_question_count)
+        self.assertEqual(LearningPlanAction.START_DAILY_QUEUE, home._today_plan.action)
+        self.assertEqual(("q-io",), home._today_plan.question_ids)
         self.assertEqual({"q-io"}, home._visible_question_ids())
 
 

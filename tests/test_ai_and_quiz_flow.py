@@ -1610,7 +1610,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertIn("下一步建议", screen.next_action_label.text())
         self.assertIn("先重做错题", screen.next_action_label.text())
 
-    def test_results_screen_preserves_study_intent_and_emits_repeat(self):
+    def test_results_screen_continues_to_remaining_daily_queue_questions(self):
         question = self._make_question("q-cache", "cache")
         record = ProgressRecord.create_new("today-cache")
         record.status = "completed"
@@ -1625,10 +1625,12 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         record.summary = SessionSummary.compute(record.answers, 1, 10)
         intent = StudyIntent(
             course_id="course-a",
-            action=StudyAction.PRACTICE_TOPIC,
-            topic_ids=("cache",),
+            action=StudyAction.DAILY_QUEUE,
+            question_ids=(question.question_id,),
+            remaining_question_ids=("q-next-1", "q-next-2"),
             question_count=1,
             source="today_plan",
+            plan_id="2026-07-28:course-a",
         )
         screen = self._make_results_screen()
         requests = []
@@ -1647,9 +1649,51 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
         self.assertIs(intent, screen.current_study_intent)
         self.assertFalse(screen.repeat_study_btn.isHidden())
-        self.assertIn("再练", screen.repeat_study_btn.text())
+        self.assertIn("继续今日学习", screen.repeat_study_btn.text())
+        self.assertIn("2", screen.repeat_study_btn.text())
+        self.assertEqual("primaryButton", screen.repeat_study_btn.objectName())
+        self.assertEqual("secondaryButton", screen.retry_incorrect_btn.objectName())
         screen.repeat_study_btn.click()
-        self.assertEqual([intent], requests)
+        self.assertEqual(1, len(requests))
+        continued = requests[0]
+        self.assertIs(StudyAction.DAILY_QUEUE, continued.action)
+        self.assertEqual(("q-next-1", "q-next-2"), continued.question_ids)
+        self.assertEqual((), continued.remaining_question_ids)
+        self.assertEqual(intent.plan_id, continued.plan_id)
+
+    def test_results_screen_marks_daily_queue_complete_without_repeat(self):
+        question = self._make_question("q-cache", "cache")
+        record = ProgressRecord.create_new("today-cache")
+        record.status = "completed"
+        record.answers = [
+            AnswerRecord(
+                question_id=question.question_id,
+                index_in_session=0,
+                user_answer="A",
+                is_correct=True,
+            )
+        ]
+        record.summary = SessionSummary.compute(record.answers, 1, 10)
+        intent = StudyIntent(
+            course_id="course-a",
+            action=StudyAction.DAILY_QUEUE,
+            question_ids=(question.question_id,),
+            question_count=1,
+            source="today_plan",
+            plan_id="2026-07-28:course-a",
+        )
+        screen = self._make_results_screen()
+
+        screen.set_results(
+            record,
+            {question.question_id: question},
+            "zh",
+            study_intent=intent,
+        )
+
+        self.assertTrue(screen.repeat_study_btn.isHidden())
+        self.assertEqual("primaryButton", screen.retry_incorrect_btn.objectName())
+        self.assertIn("今日任务完成", screen.next_action_label.text())
 
     def test_results_screen_recommends_action_for_topic_with_most_incorrect_answers(self):
         record = ProgressRecord.create_new("set-1")
@@ -2295,15 +2339,17 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen = HomeScreen(progress_manager, question_bank)
             screen.set_current_course("course-a")
 
-            with patch.object(question_bank, "search", side_effect=AssertionError("home refresh should not load full search results")), \
+            with patch.object(progress_manager, "load_all", wraps=progress_manager.load_all) as load_all, \
+                 patch.object(question_bank, "search", side_effect=AssertionError("home refresh should not load full search results")), \
                  patch.object(question_bank, "get_many", side_effect=AssertionError("home refresh should not load full question objects")):
                 screen.refresh()
 
+            load_all.assert_called_once_with()
             self.assertIn("累计 1 题", screen.stats_label.text())
             self.assertIn("历史错题 1 题", screen.stats_label.text())
             self.assertIn("题库总量 1 题", screen.stats_label.text())
 
-    def test_home_today_plan_emits_course_topic_and_count_intent(self):
+    def test_home_today_queue_emits_direct_course_scoped_intent(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
             question = self._make_question("course-a-cache", "cache")
@@ -2323,11 +2369,64 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             self.assertEqual(1, len(requests))
             intent = requests[0]
-            self.assertIs(StudyAction.PRACTICE_TOPIC, intent.action)
+            self.assertIs(StudyAction.DAILY_QUEUE, intent.action)
             self.assertEqual("course-a", intent.course_id)
-            self.assertEqual(("cache",), intent.topic_ids)
+            self.assertEqual((), intent.topic_ids)
+            self.assertEqual((question.question_id,), intent.question_ids)
+            self.assertEqual((), intent.remaining_question_ids)
             self.assertEqual(1, intent.question_count)
             self.assertEqual("today_plan", intent.source)
+            self.assertIn("course-a", intent.plan_id)
+
+    def test_home_today_queue_summarizes_new_items_and_keeps_remaining_work(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            questions = [
+                self._make_question(f"course-a-q-{index}", "cache")
+                for index in range(12)
+            ]
+            for question in questions:
+                question.metadata["course_id"] = "course-a"
+            question_bank.save_many(questions)
+            screen = HomeScreen(
+                ProgressManager(str(Path(tmpdir) / "progress")),
+                question_bank,
+            )
+            screen.set_current_course("course-a", "Systems")
+            requests = []
+            screen.study_requested.connect(requests.append)
+
+            self.assertIn("新题 12", screen.today_plan_detail.text())
+            self.assertIn("约 24 分钟", screen.today_plan_title.text())
+            screen.start_btn.click()
+
+            intent = requests[0]
+            self.assertEqual(10, len(intent.question_ids))
+            self.assertEqual(2, len(intent.remaining_question_ids))
+
+    def test_home_today_queue_excludes_topics_marked_fully_mastered(self):
+        from core.mastery_overrides import MasteryOverrideStore
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            mastered = self._make_question("q-mastered", "cache")
+            visible = self._make_question("q-visible", "io")
+            for question in (mastered, visible):
+                question.metadata["course_id"] = "course-a"
+            question_bank.save_many([mastered, visible])
+            overrides = MasteryOverrideStore(root / "mastery.json")
+            overrides.mark_topic_mastered("course-a", "cache")
+            screen = HomeScreen(
+                ProgressManager(str(root / "progress")),
+                question_bank,
+                mastery_overrides=overrides,
+            )
+
+            screen.set_current_course("course-a", "Systems")
+
+            self.assertEqual((visible.question_id,), screen._today_plan.question_ids)
+            self.assertEqual({visible.question_id}, screen._visible_question_ids())
 
     def test_home_screen_can_show_and_clear_resume_draft_action(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2390,12 +2489,12 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             review_requests = []
             screen.study_requested.connect(review_requests.append)
 
-            self.assertIn("错题", screen.start_btn.text())
-            self.assertIn("1", screen.today_plan_detail.text())
+            self.assertIn("今日学习", screen.start_btn.text())
+            self.assertIn("连续错误 1", screen.today_plan_detail.text())
             screen.start_btn.click()
 
             self.assertEqual(1, len(review_requests))
-            self.assertIs(StudyAction.REVIEW_QUESTIONS, review_requests[0].action)
+            self.assertIs(StudyAction.DAILY_QUEUE, review_requests[0].action)
             self.assertEqual("course-a", review_requests[0].course_id)
             self.assertEqual((question.question_id,), review_requests[0].question_ids)
 

@@ -1,5 +1,7 @@
 """Home screen — welcome view with quick actions."""
 
+from datetime import date
+
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
 )
@@ -8,6 +10,7 @@ from PyQt6.QtCore import pyqtSignal, Qt
 from config import APP_NAME_EN, APP_NAME_ZH
 from core.language_manager import LanguageManager
 from core.study_intent import StudyAction, StudyIntent
+from core.study_queue import StudyQueueCategory, build_daily_study_queue
 from core.today_learning_plan import (
     DraftLearningState,
     LearningPlanAction,
@@ -29,10 +32,18 @@ class HomeScreen(QWidget):
     manage_courses = pyqtSignal()
     study_requested = pyqtSignal(object)
 
-    def __init__(self, progress_manager=None, question_bank=None, parent=None):
+    def __init__(
+        self,
+        progress_manager=None,
+        question_bank=None,
+        parent=None,
+        *,
+        mastery_overrides=None,
+    ):
         super().__init__(parent)
         self.progress_manager = progress_manager
         self.question_bank = question_bank
+        self.mastery_overrides = mastery_overrides
         self.lang_manager = LanguageManager.instance()
         self._current_course_id = ""
         self._current_course_title = ""
@@ -231,13 +242,17 @@ class HomeScreen(QWidget):
         )
         visible_question_ids = self._visible_question_ids()
         total_questions = self.question_bank.count(course_id=self._current_course_id)
+        progress_records = self.progress_manager.load_all()
         self.question_context_label.setText(self.lang_manager.get_text(
             f"题目：{len(visible_question_ids)} 题",
             f"Questions: {len(visible_question_ids)}",
         ))
         stats_filter = all_course_question_ids if self._current_course_id else None
-        stats = self.progress_manager.get_aggregated_stats(stats_filter)
-        incorrect_ids = self.progress_manager.get_incorrect_question_ids()
+        stats = self.progress_manager.get_aggregated_stats(
+            stats_filter,
+            records=progress_records,
+        )
+        incorrect_ids = self._incorrect_question_ids(progress_records)
         if self._current_course_id:
             incorrect_ids = [
                 question_id
@@ -252,7 +267,11 @@ class HomeScreen(QWidget):
                 if question_id in existing_ids
             ]
         incorrect_count = len(incorrect_ids)
-        self._refresh_today_plan(len(visible_question_ids), incorrect_ids)
+        self._refresh_today_plan(
+            len(visible_question_ids),
+            incorrect_ids,
+            progress_records=progress_records,
+        )
         self.incorrect_btn.setEnabled(True)
         self._set_incorrect_empty_state(incorrect_count <= 0)
 
@@ -355,14 +374,25 @@ class HomeScreen(QWidget):
         course_ids = set(
             self.question_bank.question_ids(course_id=self._current_course_id)
         )
-        if self._exam_topic_ids is None:
-            return course_ids
         topic_index = self.question_bank.topic_index(course_id=self._current_course_id)
-        return {
-            question_id
-            for question_id in course_ids
-            if str((topic_index.get(question_id) or ("", ""))[0]) in self._exam_topic_ids
-        }
+        if self._exam_topic_ids is not None:
+            course_ids = {
+                question_id
+                for question_id in course_ids
+                if str((topic_index.get(question_id) or ("", ""))[0])
+                in self._exam_topic_ids
+            }
+        if self.mastery_overrides is not None:
+            mastered_topics = self.mastery_overrides.mastered_topics(
+                self._current_course_id,
+            )
+            course_ids = {
+                question_id
+                for question_id in course_ids
+                if str((topic_index.get(question_id) or ("", ""))[0])
+                not in mastered_topics
+            }
+        return course_ids
 
     def _visible_topic_index(self) -> dict[str, tuple[str, str]]:
         """Return topic labels restricted to the selected exam scope."""
@@ -417,6 +447,20 @@ class HomeScreen(QWidget):
         self.incorrect_btn.style().unpolish(self.incorrect_btn)
         self.incorrect_btn.style().polish(self.incorrect_btn)
 
+    @staticmethod
+    def _incorrect_question_ids(progress_records) -> list[str]:
+        return sorted({
+            answer.question_id
+            for record in (progress_records or ())
+            if getattr(record, "status", "") == "completed"
+            for answer in (getattr(record, "answers", ()) or ())
+            if (
+                not getattr(answer, "skipped", False)
+                and not getattr(answer, "is_correct", False)
+                and getattr(answer, "question_id", "")
+            )
+        })
+
     def _update_resume_text(self):
         prefix_zh = "继续草稿"
         prefix_en = "Resume Draft"
@@ -444,6 +488,8 @@ class HomeScreen(QWidget):
         self,
         total_questions: int | None = None,
         incorrect_ids: list[str] | None = None,
+        *,
+        progress_records=None,
     ):
         draft = None
         if self._resume_title and self._resume_remaining_count > 0:
@@ -459,21 +505,36 @@ class HomeScreen(QWidget):
             f"题目：{total_questions} 题",
             f"Questions: {total_questions}",
         ))
+        if progress_records is None:
+            progress_records = (
+                self.progress_manager.load_all()
+                if draft is None and total_questions > 0
+                else []
+            )
         if incorrect_ids is None:
             incorrect_ids = []
-            if self.progress_manager is not None and self.question_bank is not None:
+            if self.question_bank is not None:
                 visible_ids = self._visible_question_ids()
                 incorrect_ids = [
                     question_id
-                    for question_id in self.progress_manager.get_incorrect_question_ids()
+                    for question_id in self._incorrect_question_ids(progress_records)
                     if question_id in visible_ids
                 ]
 
-        topic_index = {}
-        progress_records = []
-        if draft is None and not incorrect_ids and total_questions > 0:
-            topic_index = self._visible_topic_index()
-            progress_records = self.progress_manager.load_all()
+        topic_index = self._visible_topic_index() if total_questions > 0 else {}
+        daily_queue = (
+            build_daily_study_queue(
+                self._visible_question_ids(),
+                progress_records,
+            )
+            if draft is None and total_questions > 0
+            else None
+        )
+        plan_id = (
+            f"{date.today().isoformat()}:{self._current_course_id or 'all'}"
+            if daily_queue is not None
+            else ""
+        )
         self._today_plan = build_today_learning_plan(
             total_questions=total_questions,
             incorrect_question_ids=incorrect_ids,
@@ -481,11 +542,16 @@ class HomeScreen(QWidget):
             progress_records=progress_records,
             draft=draft,
             has_course=bool(self._current_course_id),
+            daily_queue=daily_queue,
+            plan_id=plan_id,
         )
         self._render_today_plan()
 
     def _render_today_plan(self):
         plan = self._today_plan
+        self.today_plan_title.setText(
+            self.lang_manager.get_text("今日建议", "Today's Plan")
+        )
         if plan.action is LearningPlanAction.RESUME_DRAFT:
             mode_zh = "模拟卷" if plan.draft_mode == "exam" else "练习"
             mode_en = "mock exam" if plan.draft_mode == "exam" else "practice"
@@ -494,6 +560,55 @@ class HomeScreen(QWidget):
                 f"优先完成“{plan.draft_title}” · 剩余 {plan.target_question_count} 题 · 约 {plan.estimated_minutes} 分钟",
                 f"Finish '{plan.draft_title}' first · {plan.target_question_count} left · about {plan.estimated_minutes} min",
             ))
+        elif plan.action is LearningPlanAction.START_DAILY_QUEUE:
+            self.today_plan_title.setText(self.lang_manager.get_text(
+                f"今日学习 · 约 {plan.estimated_minutes} 分钟",
+                f"Today's Study · about {plan.estimated_minutes} min",
+            ))
+            self.start_btn.setText(self.lang_manager.get_text(
+                f"开始今日学习 · {plan.target_question_count} 题",
+                f"Start Today's Study · {plan.target_question_count}",
+            ))
+            counts = dict(plan.queue_counts)
+            labels = (
+                (StudyQueueCategory.DUE.value, "到期复习", "Due"),
+                (StudyQueueCategory.RECENT_ERROR.value, "连续错误", "Recent errors"),
+                (StudyQueueCategory.UNSURE.value, "不确定", "Unsure"),
+                (StudyQueueCategory.STALE.value, "久未练", "Not reviewed"),
+                (StudyQueueCategory.NEW.value, "新题", "New"),
+            )
+            zh_parts = [
+                f"{zh} {counts[key]}"
+                for key, zh, _en in labels
+                if counts.get(key, 0) > 0
+            ]
+            en_parts = [
+                f"{en} {counts[key]}"
+                for key, _zh, en in labels
+                if counts.get(key, 0) > 0
+            ]
+            self.today_plan_detail.setText(
+                self.lang_manager.get_text(
+                    " · ".join(zh_parts),
+                    " · ".join(en_parts),
+                )
+            )
+        elif plan.action is LearningPlanAction.DAILY_COMPLETE:
+            self.today_plan_title.setText(
+                self.lang_manager.get_text(
+                    "今日任务完成",
+                    "Today's Study Complete",
+                )
+            )
+            self.start_btn.setText(
+                self.lang_manager.get_text("自由练习", "Free Practice")
+            )
+            self.today_plan_detail.setText(
+                self.lang_manager.get_text(
+                    "当前没有到期、错误、不确定、久未练或新题。",
+                    "No due, incorrect, unsure, stale, or new questions remain.",
+                )
+            )
         elif plan.action is LearningPlanAction.REVIEW_INCORRECT:
             self.start_btn.setText(self.lang_manager.get_text("开始今日错题复习", "Start Today's Review"))
             self.today_plan_detail.setText(self.lang_manager.get_text(
@@ -533,6 +648,10 @@ class HomeScreen(QWidget):
             study_action = StudyAction.RESUME_SESSION
         elif action is LearningPlanAction.REVIEW_INCORRECT:
             study_action = StudyAction.REVIEW_QUESTIONS
+        elif action is LearningPlanAction.START_DAILY_QUEUE:
+            study_action = StudyAction.DAILY_QUEUE
+        elif action is LearningPlanAction.DAILY_COMPLETE:
+            study_action = StudyAction.CUSTOM_PRACTICE
         elif action is LearningPlanAction.START_PRACTICE:
             study_action = (
                 StudyAction.PRACTICE_TOPIC
@@ -556,6 +675,8 @@ class HomeScreen(QWidget):
             action=study_action,
             topic_ids=topic_ids,
             question_ids=self._today_plan.question_ids,
+            remaining_question_ids=self._today_plan.remaining_question_ids,
             question_count=question_count,
             source="today_plan",
+            plan_id=self._today_plan.plan_id,
         )

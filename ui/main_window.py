@@ -22,7 +22,7 @@ from core.background_task_presenter import build_task_center_view, task_toolbar_
 from core.topic_display import topic_display_name
 from core.past_exam_prediction import prediction_prefill_status
 from core.session_retry import SessionRetryMode, session_retry_question_ids
-from core.study_intent import StudyIntent
+from core.study_intent import StudyAction, StudyIntent
 from ui.dialogs.background_task_dialog import BackgroundTaskDialog
 from ui.generation_launch_controller import (
     GenerationLaunchController,
@@ -100,7 +100,11 @@ class MainWindow(QMainWindow):
         )
 
         # Create screens
-        self.home_screen = HomeScreen(self.progress_manager, self.question_bank)
+        self.home_screen = HomeScreen(
+            self.progress_manager,
+            self.question_bank,
+            mastery_overrides=self.mastery_overrides,
+        )
         self.first_run_screen = FirstRunWorkspace()
         self.home_workspace = QStackedWidget()
         self.home_workspace.setObjectName("homeWorkspace")
@@ -449,7 +453,7 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         # Home screen
         self.home_screen.start_practice.connect(self._on_start_practice)
-        self.home_screen.study_requested.connect(self.study_flow.handle_intent)
+        self.home_screen.study_requested.connect(self._handle_study_intent)
         self.home_screen.resume_practice.connect(self._on_resume_abandoned)
         self.home_screen.practice_incorrect.connect(self._on_practice_incorrect)
         self.home_screen.ai_generate.connect(self._on_ai_generate)
@@ -492,7 +496,7 @@ class MainWindow(QMainWindow):
         self.results_screen.retry_unsure.connect(self._on_retry_unsure)
         self.results_screen.retry_review.connect(self._on_retry_review)
         self.results_screen.retry_all.connect(self._on_retry_all)
-        self.results_screen.study_requested.connect(self.study_flow.handle_intent)
+        self.results_screen.study_requested.connect(self._handle_study_intent)
         self.results_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
         self.results_screen.review_topic_requested.connect(self._on_review_progress_topic)
         self.progress_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
@@ -884,6 +888,15 @@ class MainWindow(QMainWindow):
             self._course_screen.cancel_active_task()
 
     # --- Slot handlers ---
+
+    def _handle_study_intent(self, intent: StudyIntent) -> None:
+        """Route a user intent and keep legacy result data aligned."""
+        self.study_flow.handle_intent(intent)
+        if (
+            isinstance(intent, StudyIntent)
+            and intent.action is StudyAction.DAILY_QUEUE
+        ):
+            self._active_questions = dict(self.study_flow.active_questions)
 
     def _on_start_practice(self):
         self.study_flow.clear_setup()

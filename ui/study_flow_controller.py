@@ -58,6 +58,9 @@ class StudyFlowController:
             self.active_intent = intent
             self._resume_session()
             return
+        if intent.action is StudyAction.DAILY_QUEUE:
+            self.start_prefilled(intent, list(intent.question_ids))
+            return
         if intent.action is StudyAction.REVIEW_QUESTIONS:
             self.active_intent = intent
             self._review_questions(intent)

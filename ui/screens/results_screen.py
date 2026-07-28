@@ -11,7 +11,11 @@ from PyQt6.QtGui import QAction
 
 from core.language_manager import LanguageManager
 from core.progress_archive import validate_review_snapshot
-from core.study_intent import StudyAction, StudyIntent
+from core.study_intent import (
+    StudyAction,
+    StudyIntent,
+    continue_daily_queue_intent,
+)
 from models.progress import ProgressRecord, QuestionReviewSnapshot
 from models.question import Question
 from ui.widgets.question_review_card import QuestionReviewCard
@@ -107,6 +111,8 @@ class ResultsScreen(QWidget):
         layout.addWidget(self.next_action_btn, alignment=Qt.AlignmentFlag.AlignCenter)
         self.repeat_study_btn = QPushButton()
         self.repeat_study_btn.setObjectName("secondaryButton")
+        self.repeat_study_btn.setMinimumHeight(40)
+        self.repeat_study_btn.setMinimumWidth(180)
         self.repeat_study_btn.hide()
         self.repeat_study_btn.clicked.connect(self._emit_repeat_study)
         layout.addWidget(
@@ -444,28 +450,63 @@ class ResultsScreen(QWidget):
         intent = self.current_study_intent
         if intent is None:
             self.repeat_study_btn.hide()
+            self._set_daily_primary_action(False)
             return
-        if intent.action is StudyAction.PRACTICE_TOPIC:
+        if intent.action is StudyAction.DAILY_QUEUE:
+            remaining = len(intent.remaining_question_ids)
+            if remaining <= 0:
+                self.repeat_study_btn.hide()
+                self._set_daily_primary_action(False)
+                return
+            text = self.lang_manager.get_text(
+                f"继续今日学习 · 剩余 {remaining} 题",
+                f"Continue Today's Study · {remaining} left",
+            )
+            self._set_daily_primary_action(True)
+        elif intent.action is StudyAction.PRACTICE_TOPIC:
             text = self.lang_manager.get_text(
                 "再练该主题",
                 "Practice This Topic Again",
             )
+            self._set_daily_primary_action(False)
         elif intent.source == "today_plan":
             text = self.lang_manager.get_text(
                 "继续今日计划",
                 "Continue Today's Plan",
             )
+            self._set_daily_primary_action(False)
         else:
             text = self.lang_manager.get_text(
                 "再次练习",
                 "Practice Again",
             )
+            self._set_daily_primary_action(False)
         self.repeat_study_btn.setText(text)
         self.repeat_study_btn.show()
 
     def _emit_repeat_study(self) -> None:
-        if self.current_study_intent is not None:
-            self.study_requested.emit(self.current_study_intent)
+        intent = self.current_study_intent
+        if intent is None:
+            return
+        if intent.action is StudyAction.DAILY_QUEUE:
+            continued = continue_daily_queue_intent(intent)
+            if continued is not None:
+                self.study_requested.emit(continued)
+            return
+        self.study_requested.emit(intent)
+
+    def _set_daily_primary_action(self, active: bool) -> None:
+        repeat_role = "primaryButton" if active else "secondaryButton"
+        retry_role = "secondaryButton" if active else "primaryButton"
+        for button, role in (
+            (self.repeat_study_btn, repeat_role),
+            (self.retry_incorrect_btn, retry_role),
+        ):
+            if button.objectName() == role:
+                continue
+            button.setObjectName(role)
+            button.style().unpolish(button)
+            button.style().polish(button)
 
     def _set_retry_action_state(
         self,
@@ -551,6 +592,18 @@ class ResultsScreen(QWidget):
 
     def _build_next_action_text(self, record: ProgressRecord) -> str:
         """Return a compact recommendation for the next learning action."""
+        intent = self.current_study_intent
+        if intent is not None and intent.action is StudyAction.DAILY_QUEUE:
+            remaining = len(intent.remaining_question_ids)
+            if remaining > 0:
+                return self.lang_manager.get_text(
+                    f"本组已完成，今日学习还剩 {remaining} 题。",
+                    f"This group is complete; {remaining} question(s) remain today.",
+                )
+            return self.lang_manager.get_text(
+                "今日任务完成。",
+                "Today's study is complete.",
+            )
         incorrect_count = sum(
             1 for answer in record.answers if not answer.skipped and not answer.is_correct
         )
