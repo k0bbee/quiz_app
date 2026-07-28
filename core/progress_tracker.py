@@ -133,6 +133,11 @@ class ProgressManager:
         self._record_sets = {}
         self._persist_set_index()
 
+    def rebuild_index(self) -> None:
+        """Rebuild the lightweight set index after an external bulk transaction."""
+        self._record_sets = {}
+        self._reconcile_set_index()
+
     def _load_set_index(self) -> dict[str, str]:
         payload = read_json(self._set_index_path)
         if not isinstance(payload, dict) or payload.get("schema_version") != 1:

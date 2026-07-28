@@ -31,7 +31,7 @@ from config import (
     DEFAULT_DIFFICULTY_WEIGHTS,
     DEFAULT_QUESTION_TYPE_WEIGHTS,
 )
-from utils.json_io import read_json, write_json, sanitize_filename_part
+from utils.json_io import read_json, write_json
 from ai.connection_probe import AIConnectionProbe
 from ai.provider_presets import (
     PROVIDER_PRESETS,
@@ -95,7 +95,7 @@ class AppDataBundleWorker(QThread):
 
     exported = pyqtSignal(object)
     imported = pyqtSignal(object)
-    failed = pyqtSignal(str)
+    failed = pyqtSignal(object)
     progressed = pyqtSignal(object)
     cancelled = pyqtSignal()
 
@@ -159,6 +159,21 @@ class AppDataBundleWorker(QThread):
                         result_count=result.imported_files,
                     )
                 self.imported.emit(result)
+            elif self.operation == "progress_import":
+                from core.progress_import import ProgressImportService
+
+                result = ProgressImportService.from_data_dir(
+                    self.data_dir
+                ).import_file(
+                    self.filepath,
+                    task=self._control,
+                )
+                if self._bridge is not None:
+                    self._bridge.complete(
+                        result_summary=str(self.filepath),
+                        result_count=result.imported,
+                    )
+                self.imported.emit(result)
             else:
                 raise ValueError(f"Unsupported app data operation: {self.operation}")
         except BackgroundTaskCancelled:
@@ -168,7 +183,7 @@ class AppDataBundleWorker(QThread):
         except Exception as exc:
             if self._bridge is not None:
                 self._bridge.fail(exc)
-            self.failed.emit(str(exc))
+            self.failed.emit(exc)
 
 
 class SettingsScreen(QWidget):
@@ -1448,29 +1463,50 @@ class SettingsScreen(QWidget):
             self,
             self.lang_manager.get_text("导入进度", "Import Progress"),
             "", "JSON Files (*.json)")
-        if filepath:
-            data = read_json(filepath)
-            if data and isinstance(data, list):
-                from config import PROGRESS_DIR
-                count = 0
-                for record in data:
-                    if isinstance(record, dict) and "progress_id" in record:
-                        try:
-                            pid = sanitize_filename_part(record["progress_id"])
-                        except ValueError:
-                            continue
-                        path = os.path.join(PROGRESS_DIR, f"{pid}.json")
-                        if write_json(path, record):
-                            count += 1
-                QMessageBox.information(
-                    self,
-                    self.lang_manager.get_text("已导入", "Imported"),
-                    self.lang_manager.get_text(f"已导入 {count} 条记录。", f"Imported {count} records."))
-            else:
-                QMessageBox.warning(
-                    self,
-                    self.lang_manager.get_text("无效文件", "Invalid File"),
-                    self.lang_manager.get_text("文件格式无效。", "Invalid file format."))
+        if not filepath:
+            return
+        reply = QMessageBox.question(
+            self,
+            self.lang_manager.get_text("导入进度?", "Import Progress?"),
+            self.lang_manager.get_text(
+                "将先验证全部记录并保护旧历史，再一次性写入；相同记录 ID 会被覆盖，"
+                "无效记录会被跳过。继续吗？",
+                "All records will be validated and legacy history protected before "
+                "one atomic commit. Matching record IDs will be overwritten and "
+                "invalid records skipped. Continue?",
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        self._start_app_data_worker(
+            self._create_progress_import_worker(filepath),
+            "progress_import",
+        )
+
+    def _create_progress_import_worker(self, filepath: str):
+        task_id = ""
+        if self.task_center is not None:
+            title = self.lang_manager.get_text(
+                "导入进度",
+                "Import Progress",
+            )
+            snapshot = self.task_center.create(
+                kind="progress_import",
+                title=title,
+                metadata={"operation": "progress_import", "path": filepath},
+            )
+            task_id = snapshot.task_id
+        self._app_data_task_id = task_id
+        return AppDataBundleWorker(
+            "progress_import",
+            filepath,
+            DATA_DIR,
+            self,
+            task_center=self.task_center,
+            task_id=task_id,
+        )
 
     def _export_app_data(self):
         filepath, _ = QFileDialog.getSaveFileName(
@@ -1515,7 +1551,10 @@ class SettingsScreen(QWidget):
         )
         self._set_app_data_busy(True, operation)
         worker.exported.connect(self._on_app_data_exported)
-        worker.imported.connect(self._on_app_data_imported)
+        if operation == "progress_import":
+            worker.imported.connect(self._on_progress_imported)
+        else:
+            worker.imported.connect(self._on_app_data_imported)
         worker.failed.connect(lambda message: self._on_app_data_failed(message, operation))
         if hasattr(worker, "progressed"):
             worker.progressed.connect(self._on_app_data_progress)
@@ -1545,7 +1584,20 @@ class SettingsScreen(QWidget):
             self.app_data_status_label.setText(
                 self.lang_manager.get_text("正在验证导入包…", "Validating import bundle…")
             )
+        elif busy and operation == "progress_import":
+            self.import_btn.setText(
+                self.lang_manager.get_text("导入中…", "Importing…")
+            )
+            self.app_data_status_label.setText(
+                self.lang_manager.get_text(
+                    "正在验证进度记录…",
+                    "Validating progress records…",
+                )
+            )
         else:
+            self.import_btn.setText(
+                self.lang_manager.get_text("导入进度", "Import Progress")
+            )
             self.export_app_data_btn.setText(self.lang_manager.get_text("导出应用数据", "Export App Data"))
             self.import_app_data_btn.setText(self.lang_manager.get_text("导入应用数据", "Import App Data"))
             self.app_data_status_label.clear()
@@ -1602,13 +1654,29 @@ class SettingsScreen(QWidget):
             ),
         )
 
-    def _on_app_data_failed(self, message: str, operation: str):
+    def _on_app_data_failed(self, error, operation: str):
         self._finish_app_data_worker()
+        if self.lang_manager.current == "zh":
+            message = str(getattr(error, "message_zh", "") or error)
+        else:
+            message = str(getattr(error, "message_en", "") or error)
         QMessageBox.critical(
             self,
             self.lang_manager.get_text(
-                "导出失败" if operation == "export" else "导入失败",
-                "Export Failed" if operation == "export" else "Import Failed",
+                (
+                    "导出失败"
+                    if operation == "export"
+                    else "进度导入失败"
+                    if operation == "progress_import"
+                    else "导入失败"
+                ),
+                (
+                    "Export Failed"
+                    if operation == "export"
+                    else "Progress Import Failed"
+                    if operation == "progress_import"
+                    else "Import Failed"
+                ),
             ),
             message,
         )
@@ -1691,6 +1759,24 @@ class SettingsScreen(QWidget):
                 f"Imported {result.imported_files} data files."
                 f"{skipped_hint}{ignored_hint}{archive_hint}\n"
                 "Restart the app to refresh all data.",
+            ),
+        )
+
+    def _on_progress_imported(self, result):
+        self._finish_app_data_worker()
+        QMessageBox.information(
+            self,
+            self.lang_manager.get_text("进度已导入", "Progress Imported"),
+            self.lang_manager.get_text(
+                f"已导入 {result.imported} 条记录，其中覆盖 {result.overwritten} 条；"
+                f"跳过无效记录 {result.invalid} 条。"
+                f"\n旧历史：完整迁移 {result.migrated_complete} 条，"
+                f"残缺并已标记 {result.migrated_incomplete} 条。",
+                f"Imported {result.imported} record(s), including "
+                f"{result.overwritten} overwrite(s); skipped {result.invalid} "
+                f"invalid record(s).\nLegacy history: "
+                f"{result.migrated_complete} migrated completely and "
+                f"{result.migrated_incomplete} marked incomplete.",
             ),
         )
 

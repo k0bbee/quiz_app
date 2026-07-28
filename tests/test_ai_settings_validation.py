@@ -478,26 +478,45 @@ class AISettingsValidationTests(unittest.TestCase):
         self.assertIn("system keychain clear failed", message)
         self.assertNotIn("sk-existing", message)
 
-    def test_import_progress_rejects_path_traversal_progress_id(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            progress_dir = root / "progress"
-            import_file = root / "progress_export.json"
-            import_file.write_text(
-                json.dumps([{"progress_id": "../outside-progress", "answers": []}]),
-                encoding="utf-8",
-            )
-            screen = SettingsScreen()
+    def test_import_progress_runs_validated_service_in_background(self):
+        screen = SettingsScreen()
+        worker = ManualAppDataWorker()
+        result = SimpleNamespace(
+            imported=8,
+            overwritten=2,
+            invalid=1,
+            migrated_complete=3,
+            migrated_incomplete=1,
+        )
 
-            with patch("config.PROGRESS_DIR", str(progress_dir)), \
-                 patch("ui.screens.settings_screen.QFileDialog.getOpenFileName", return_value=(str(import_file), "")), \
-                 patch("ui.screens.settings_screen.QMessageBox.information") as info:
-                screen._import_progress()
+        with patch(
+            "ui.screens.settings_screen.QFileDialog.getOpenFileName",
+            return_value=("progress_export.json", ""),
+        ), patch(
+            "ui.screens.settings_screen.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ), patch.object(
+            screen,
+            "_create_progress_import_worker",
+            return_value=worker,
+        ) as create_worker, patch(
+            "ui.screens.settings_screen.QMessageBox.information",
+        ) as info:
+            screen.import_btn.click()
 
-            self.assertFalse((root / "outside-progress.json").exists())
-            self.assertFalse((progress_dir / ".." / "outside-progress.json").exists())
-            self.assertEqual(0, len(list(progress_dir.glob("*.json"))) if progress_dir.exists() else 0)
-            self.assertIn("0", info.call_args.args[2])
+            create_worker.assert_called_once_with("progress_export.json")
+            self.assertTrue(worker.start_called)
+            self.assertFalse(screen.import_btn.isEnabled())
+            self.assertIn("验证", screen.app_data_status_label.text())
+            self.assertFalse(info.called)
+
+            worker.imported.emit(result)
+
+        self.assertTrue(screen.import_btn.isEnabled())
+        self.assertTrue(info.called)
+        message = info.call_args.args[2]
+        for value in ("8", "2", "1", "3"):
+            self.assertIn(value, message)
 
     def test_app_data_export_runs_in_background_worker(self):
         screen = SettingsScreen()
@@ -617,6 +636,26 @@ class AISettingsValidationTests(unittest.TestCase):
             self.assertEqual(TaskStatus.COMPLETED, completed.status)
             self.assertEqual(1, completed.result_count)
             self.assertEqual([output], exported)
+
+    def test_progress_import_worker_routes_through_validated_service(self):
+        result = SimpleNamespace(imported=4)
+        service = SimpleNamespace(import_file=lambda path, task=None: result)
+        worker = AppDataBundleWorker(
+            "progress_import",
+            "progress.json",
+            "data",
+        )
+        imported = []
+        worker.imported.connect(imported.append)
+
+        with patch(
+            "core.progress_import.ProgressImportService.from_data_dir",
+            return_value=service,
+        ) as service_factory:
+            worker.run()
+
+        service_factory.assert_called_once_with("data")
+        self.assertEqual([result], imported)
 
 
 if __name__ == "__main__":
