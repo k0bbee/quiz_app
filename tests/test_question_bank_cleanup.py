@@ -8,7 +8,7 @@ from unittest.mock import patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QMessageBox, QAbstractItemView
+from PyQt6.QtWidgets import QApplication, QMessageBox, QAbstractItemView, QTableView
 
 from core import course_index
 from core.language_manager import LanguageManager
@@ -110,6 +110,71 @@ class QuestionBankCleanupTests(unittest.TestCase):
             questions=question_ids,
         )
 
+    @staticmethod
+    def _visible_question_ids(screen: QuestionBankScreen) -> set[str]:
+        model = screen.question_table.model()
+        return {
+            str(model.index(row, 0).data(Qt.ItemDataRole.UserRole))
+            for row in range(model.rowCount())
+        }
+
+    @staticmethod
+    def _select_question_ids(
+        screen: QuestionBankScreen,
+        question_ids: set[str],
+    ) -> None:
+        model = screen.question_table.model()
+        selection_model = screen.question_table.selectionModel()
+        selection_model.clearSelection()
+        for row in range(model.rowCount()):
+            index = model.index(row, 0)
+            if index.data(Qt.ItemDataRole.UserRole) in question_ids:
+                selection_model.select(
+                    index,
+                    selection_model.SelectionFlag.Select
+                    | selection_model.SelectionFlag.Rows,
+                )
+
+    def test_question_bank_screen_uses_structured_row_selection_table(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            question_bank.save(self._question("q-table", "cache"))
+
+            screen = self._screen(tmpdir, question_bank)
+
+            self.assertIsInstance(screen.question_table, QTableView)
+            self.assertFalse(hasattr(screen, "question_list"))
+            self.assertEqual(
+                QAbstractItemView.SelectionBehavior.SelectRows,
+                screen.question_table.selectionBehavior(),
+            )
+            self.assertEqual(
+                QAbstractItemView.SelectionMode.ExtendedSelection,
+                screen.question_table.selectionMode(),
+            )
+            self.assertFalse(screen.question_table.wordWrap())
+            model = screen.question_table.model()
+            self.assertEqual(5, model.columnCount())
+            self.assertEqual(
+                ["题目", "主题", "题型", "难度", "状态"],
+                [
+                    model.headerData(
+                        column,
+                        Qt.Orientation.Horizontal,
+                        Qt.ItemDataRole.DisplayRole,
+                    )
+                    for column in range(model.columnCount())
+                ],
+            )
+            self.assertEqual(
+                "q-table",
+                model.index(0, 0).data(Qt.ItemDataRole.UserRole),
+            )
+            self.assertEqual("cache question", model.index(0, 0).data())
+            self.assertEqual("cache", model.index(0, 1).data())
+            self.assertEqual("选择题", model.index(0, 2).data())
+            self.assertEqual("中等", model.index(0, 3).data())
+
     def test_question_bank_screen_backfills_source_refs_from_current_course(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
@@ -155,7 +220,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
             screen = QuestionBankScreen(question_bank, course_manager=course_manager)
             screen.set_current_course(project.course_id)
-            screen.question_list.setCurrentRow(0)
+            screen.question_table.selectRow(0)
 
             with patch("ui.screens.question_bank_screen.QMessageBox.information") as info:
                 screen.backfill_source_refs_btn.click()
@@ -192,10 +257,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             screen.set_current_course("course-a")
             screen.refresh()
 
-            visible_ids = {
-                screen.question_list.item(row).data(Qt.ItemDataRole.UserRole)
-                for row in range(screen.question_list.count())
-            }
+            visible_ids = self._visible_question_ids(screen)
             self.assertEqual({"q-course-a"}, visible_ids)
 
     def test_question_bank_screen_filters_questions_by_selected_set(self):
@@ -216,10 +278,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             screen.set_filter.setCurrentIndex(idx)
             screen.refresh()
 
-            visible_ids = {
-                screen.question_list.item(row).data(Qt.ItemDataRole.UserRole)
-                for row in range(screen.question_list.count())
-            }
+            visible_ids = self._visible_question_ids(screen)
             self.assertEqual({"q1", "q3"}, visible_ids)
 
     def test_question_bank_screen_assigns_new_manual_question_to_current_course(self):
@@ -256,11 +315,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
             screen = self._screen(tmpdir, question_bank, set_manager=set_manager)
             screen.refresh()
-            for row in range(screen.question_list.count()):
-                item = screen.question_list.item(row)
-                if item.data(Qt.ItemDataRole.UserRole) == "q1":
-                    screen.question_list.setCurrentRow(row)
-                    break
+            self._select_question_ids(screen, {"q1"})
 
             with patch("ui.screens.question_bank_screen.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
                 screen.delete_btn.click()
@@ -279,11 +334,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             set_manager.save(qset)
 
             screen = self._screen(tmpdir, question_bank, set_manager=set_manager)
-            for row in range(screen.question_list.count()):
-                item = screen.question_list.item(row)
-                if item.data(Qt.ItemDataRole.UserRole) in {"q1", "q2"}:
-                    item.setSelected(True)
-            screen._on_selection_changed()
+            self._select_question_ids(screen, {"q1", "q2"})
 
             with patch("ui.screens.question_bank_screen.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
                 screen.delete_btn.click()
@@ -306,14 +357,21 @@ class QuestionBankCleanupTests(unittest.TestCase):
             question_bank.save(noisy)
 
             screen = self._screen(tmpdir, question_bank)
-            item = screen.question_list.item(0)
+            model = screen.question_table.model()
+            stem_index = model.index(0, 0)
 
-            self.assertLessEqual(len(item.text()), 96)
-            self.assertNotIn("\n", item.text())
-            self.assertNotIn("选项噪音", item.text())
-            self.assertNotIn("解析", item.text())
-            self.assertIn("I/O 中断流程", item.toolTip())
-            self.assertIn("选项噪音", item.toolTip())
+            self.assertLessEqual(len(stem_index.data()), 96)
+            self.assertNotIn("\n", stem_index.data())
+            self.assertNotIn("选项噪音", stem_index.data())
+            self.assertNotIn("解析", stem_index.data())
+            self.assertIn(
+                "I/O 中断流程",
+                stem_index.data(Qt.ItemDataRole.ToolTipRole),
+            )
+            self.assertIn(
+                "选项噪音",
+                stem_index.data(Qt.ItemDataRole.ToolTipRole),
+            )
 
     def test_question_bank_screen_displays_topic_title_not_internal_topic_id(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -325,11 +383,15 @@ class QuestionBankCleanupTests(unittest.TestCase):
             question_bank.save(question)
 
             screen = self._screen(tmpdir, question_bank)
-            item = screen.question_list.item(0)
+            model = screen.question_table.model()
+            topic_index = model.index(0, 1)
 
-            self.assertIn("Interrupt-driven I/O", item.text())
-            self.assertIn("Interrupt-driven I/O", item.toolTip())
-            self.assertNotIn("interrupt_io", item.text())
+            self.assertEqual("Interrupt-driven I/O", topic_index.data())
+            self.assertIn(
+                "Interrupt-driven I/O",
+                topic_index.data(Qt.ItemDataRole.ToolTipRole),
+            )
+            self.assertNotIn("interrupt_io", topic_index.data())
 
     def test_question_bank_screen_selects_first_question_after_refresh(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -478,9 +540,6 @@ class QuestionBankCleanupTests(unittest.TestCase):
             question_bank.save(question)
 
             screen = self._screen(tmpdir, question_bank)
-            item = screen.question_list.item(0)
-            screen.question_list.setCurrentItem(item)
-            screen._on_selection_changed()
 
             source_text = screen.source_refs_label.text()
             self.assertIn("第21讲 Cache.pdf", source_text)
@@ -512,10 +571,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             screen = self._screen(tmpdir, question_bank)
 
             def visible_ids() -> set[str]:
-                return {
-                    screen.question_list.item(row).data(Qt.ItemDataRole.UserRole)
-                    for row in range(screen.question_list.count())
-                }
+                return self._visible_question_ids(screen)
 
             quality_idx = screen.quality_filter.findData("quality_warnings")
             self.assertGreaterEqual(quality_idx, 0)
@@ -554,7 +610,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 self.assertTrue(worker.started)
                 self.assertFalse(screen.quality_scan_status_label.isHidden())
                 self.assertFalse(screen.cancel_quality_scan_btn.isHidden())
-                self.assertFalse(screen.question_list.isEnabled())
+                self.assertFalse(screen.question_table.isEnabled())
                 self.assertFalse(screen.save_btn.isEnabled())
 
                 worker.progressed.emit(TaskProgress("validating_question", 2, 8, "q2"))
@@ -590,10 +646,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
             warning_index = screen.quality_filter.findData("quality_warnings")
             screen.quality_filter.setCurrentIndex(warning_index)
-            visible_ids = {
-                screen.question_list.item(row).data(Qt.ItemDataRole.UserRole)
-                for row in range(screen.question_list.count())
-            }
+            visible_ids = self._visible_question_ids(screen)
             self.assertEqual({"broken"}, visible_ids)
             self.assertIn("1/2", screen.quality_scan_status_label.text())
 
@@ -639,10 +692,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             quality_idx = screen.quality_filter.findData("quality_warnings")
             screen.quality_filter.setCurrentIndex(quality_idx)
 
-            visible_ids = {
-                screen.question_list.item(row).data(Qt.ItemDataRole.UserRole)
-                for row in range(screen.question_list.count())
-            }
+            visible_ids = self._visible_question_ids(screen)
             self.assertEqual({"q-biased"}, visible_ids)
 
     def test_question_bank_screen_multi_selection_disables_ambiguous_editing(self):
@@ -653,12 +703,10 @@ class QuestionBankCleanupTests(unittest.TestCase):
             screen = self._screen(tmpdir, question_bank)
             self.assertEqual(
                 QAbstractItemView.SelectionMode.ExtendedSelection,
-                screen.question_list.selectionMode(),
+                screen.question_table.selectionMode(),
             )
 
-            screen.question_list.item(0).setSelected(True)
-            screen.question_list.item(1).setSelected(True)
-            screen._on_selection_changed()
+            self._select_question_ids(screen, {"q1", "q2"})
 
             self.assertEqual("", screen.current_question_id)
             self.assertIn("2", screen.editor.toPlainText())
@@ -679,11 +727,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             screen = self._screen(tmpdir, question_bank, set_manager=set_manager)
             changed = []
             screen.question_bank_changed.connect(lambda: changed.append(True))
-            for row in range(screen.question_list.count()):
-                item = screen.question_list.item(row)
-                if item.data(Qt.ItemDataRole.UserRole) in {"q1", "q2"}:
-                    item.setSelected(True)
-            screen._on_selection_changed()
+            self._select_question_ids(screen, {"q1", "q2"})
 
             with patch("ui.screens.question_bank_screen.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
                 screen.delete_btn.click()

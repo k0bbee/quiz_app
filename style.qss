@@ -400,7 +400,8 @@ QComboBox QAbstractItemView {
 /* Lists and tables */
 QListWidget,
 QTreeWidget,
-QTableWidget {
+QTableWidget,
+QTableView {
     color: #cccccc;
     background-color: #181818;
     alternate-background-color: #1f1f1f;
@@ -426,16 +427,19 @@ QTreeWidget::item:hover {
 
 QListWidget::item:selected,
 QTreeWidget::item:selected,
-QTableWidget::item:selected {
+QTableWidget::item:selected,
+QTableView::item:selected {
     color: #ffffff;
     background-color: #094771;
 }
 
-QTableWidget {
+QTableWidget,
+QTableView {
     gridline-color: #2b2b2b;
 }
 
-QTableWidget::item {
+QTableWidget::item,
+QTableView::item {
     padding: 4px 8px;
 }
 

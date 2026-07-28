@@ -7,10 +7,18 @@ import re
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
-    QListWidget, QListWidgetItem, QTextEdit, QMessageBox, QSplitter,
-    QAbstractItemView, QStackedWidget,
+    QTextEdit, QMessageBox, QSplitter, QAbstractItemView, QStackedWidget,
+    QHeaderView, QTableView,
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QThread
+from PyQt6.QtCore import (
+    Qt,
+    pyqtSignal,
+    QItemSelectionModel,
+    QModelIndex,
+    QSignalBlocker,
+    QTimer,
+    QThread,
+)
 
 from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
 from core.background_task_bridge import BackgroundTaskBridge
@@ -22,6 +30,7 @@ from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
 from ui.components import PageHeader
+from ui.models.question_table_model import QuestionTableModel, QuestionTableRow
 from ui.widgets.source_refs_panel import SourceRefsPanel
 from ui.widgets.question_form_editor import QuestionFormEditor
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
@@ -117,7 +126,6 @@ class QuestionBankScreen(QWidget):
         self.total = 0
         self.current_question_id = ""
         self._current_course_id = ""
-        self._list_title_limit = 96
         self._refreshing_set_filter = False
         self._quality_scan_worker = None
         self._quality_scan_task_id = ""
@@ -204,10 +212,39 @@ class QuestionBankScreen(QWidget):
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        self.question_list = QListWidget()
-        self.question_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.question_list.itemSelectionChanged.connect(self._on_selection_changed)
-        left_layout.addWidget(self.question_list, 1)
+        self.question_table = QTableView()
+        self.question_table.setObjectName("questionBankTable")
+        self.question_table_model = QuestionTableModel(
+            language=self.lang_manager.current,
+            parent=self.question_table,
+        )
+        self.question_table.setModel(self.question_table_model)
+        self.question_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.question_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+        )
+        self.question_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.question_table.setAlternatingRowColors(True)
+        self.question_table.setShowGrid(False)
+        self.question_table.setWordWrap(False)
+        self.question_table.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.question_table.verticalHeader().hide()
+        self.question_table.verticalHeader().setDefaultSectionSize(34)
+        header = self.question_table.horizontalHeader()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        for column in range(2, 5):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        self.question_table.setColumnWidth(1, 140)
+        self.question_table.selectionModel().selectionChanged.connect(
+            self._on_selection_changed
+        )
+        left_layout.addWidget(self.question_table, 1)
 
         page_row = QHBoxLayout()
         self.prev_btn = QPushButton(self.lang_manager.get_text("上一页", "Prev"))
@@ -265,12 +302,16 @@ class QuestionBankScreen(QWidget):
         action_row.addWidget(self.delete_btn)
         right_layout.addLayout(action_row)
         splitter.addWidget(right)
-        splitter.setSizes([360, 640])
+        splitter.setChildrenCollapsible(False)
+        splitter.setStretchFactor(0, 5)
+        splitter.setStretchFactor(1, 6)
+        splitter.setSizes([520, 640])
 
         layout.addWidget(splitter, 1)
 
     def _on_language_changed(self, lang):
         """Update all UI text when language changes."""
+        self.question_table_model.set_language(lang)
         self._update_ui_texts()
         self.refresh()
 
@@ -348,18 +389,33 @@ class QuestionBankScreen(QWidget):
         selected_ids = set(self._selected_question_ids())
         if not selected_ids and self.current_question_id:
             selected_ids.add(self.current_question_id)
-        self.question_list.blockSignals(True)
-        self.question_list.clear()
-        for q in items:
-            item = QListWidgetItem(self._question_list_title(q))
-            item.setData(Qt.ItemDataRole.UserRole, q.question_id)
-            item.setToolTip(self._question_list_tooltip(q))
-            self.question_list.addItem(item)
-            if q.question_id in selected_ids:
-                item.setSelected(True)
-        self.question_list.blockSignals(False)
-        if not self._selected_question_ids() and self.question_list.count() > 0:
-            self.question_list.setCurrentRow(0)
+        selection_model = self.question_table.selectionModel()
+        with QSignalBlocker(selection_model):
+            self.question_table_model.set_rows(
+                [self._question_table_row(question) for question in items]
+            )
+            for question_id in selected_ids:
+                row = self.question_table_model.row_for_question_id(question_id)
+                if row < 0:
+                    continue
+                selection_model.select(
+                    self.question_table_model.index(row, 0),
+                    QItemSelectionModel.SelectionFlag.Select
+                    | QItemSelectionModel.SelectionFlag.Rows,
+                )
+        if (
+            not self._selected_question_ids()
+            and self.question_table_model.rowCount() > 0
+        ):
+            first_index = self.question_table_model.index(0, 0)
+            with QSignalBlocker(selection_model):
+                selection_model.select(
+                    first_index,
+                    QItemSelectionModel.SelectionFlag.ClearAndSelect
+                    | QItemSelectionModel.SelectionFlag.Rows,
+                )
+                self.question_table.setCurrentIndex(first_index)
+            self._on_selection_changed()
         else:
             self._on_selection_changed()
 
@@ -383,7 +439,7 @@ class QuestionBankScreen(QWidget):
         self.form_editor.set_topics(self._current_course_topics())
         self.page = 0
         self.current_question_id = ""
-        if hasattr(self, "question_list"):
+        if hasattr(self, "question_table"):
             self.refresh()
 
     def _reset_and_refresh(self):
@@ -404,7 +460,7 @@ class QuestionBankScreen(QWidget):
             self.page += 1
             self.refresh()
 
-    def _on_selection_changed(self):
+    def _on_selection_changed(self, *_args):
         selected_ids = self._selected_question_ids()
         if not selected_ids:
             self.current_question_id = ""
@@ -482,10 +538,10 @@ class QuestionBankScreen(QWidget):
             },
             "metadata": {"source": "manual", "version": 1},
         }
-        self.question_list.blockSignals(True)
-        self.question_list.clearSelection()
-        self.question_list.setCurrentItem(None)
-        self.question_list.blockSignals(False)
+        selection_model = self.question_table.selectionModel()
+        with QSignalBlocker(selection_model):
+            self.question_table.clearSelection()
+            self.question_table.setCurrentIndex(QModelIndex())
         self.current_question_id = ""
         self._set_source_refs_summary(None)
         self.form_editor.set_topics(self._current_course_topics())
@@ -653,14 +709,11 @@ class QuestionBankScreen(QWidget):
         return self.course_manager.current()
 
     def _selected_question_ids(self) -> list[str]:
-        ids: list[str] = []
-        seen: set[str] = set()
-        for item in self.question_list.selectedItems():
-            qid = item.data(Qt.ItemDataRole.UserRole)
-            if qid and qid not in seen:
-                ids.append(qid)
-                seen.add(qid)
-        return ids
+        return [
+            str(index.data(Qt.ItemDataRole.UserRole))
+            for index in self.question_table.selectionModel().selectedRows(0)
+            if index.data(Qt.ItemDataRole.UserRole)
+        ]
 
     def _refresh_set_filter(self) -> None:
         if self.set_manager is None or not hasattr(self, "set_filter") or self._refreshing_set_filter:
@@ -849,7 +902,7 @@ class QuestionBankScreen(QWidget):
             self.difficulty_filter,
             self.quality_filter,
             self.backfill_source_refs_btn,
-            self.question_list,
+            self.question_table,
             self.prev_btn,
             self.next_btn,
             self.new_btn,
@@ -958,16 +1011,59 @@ class QuestionBankScreen(QWidget):
     def _plan_match_status(question: Question) -> str:
         return str((question.metadata or {}).get("plan_match_status", "") or "").strip().lower()
 
-    def _question_list_title(self, question: Question) -> str:
-        difficulty = self._compact_text(question.difficulty.value, 12)
-        topic = self._compact_text(question.topic_title(), 24)
-        stem = self._compact_text(self._stem_preview(question), 56)
-        return self._compact_text(f"{difficulty} · {topic} · {stem}", self._list_title_limit)
+    def _question_table_row(self, question: Question) -> QuestionTableRow:
+        return QuestionTableRow(
+            question_id=question.question_id,
+            stem=self._compact_text(self._stem_preview(question), 96),
+            topic=self._compact_text(question.topic_title(), 32),
+            question_type=self._question_type_label(question.type),
+            difficulty=self._difficulty_label(question.difficulty),
+            status=self._question_status_label(question),
+            tooltip=self._question_tooltip(question),
+        )
 
-    def _question_list_tooltip(self, question: Question) -> str:
+    def _question_tooltip(self, question: Question) -> str:
         stem = question.get_stem("zh") or question.get_stem("en") or ""
         topic = question.topic_title()
         return f"{question.difficulty.value} · {topic}\n{stem}"
+
+    def _question_type_label(self, question_type: QuestionType) -> str:
+        labels = {
+            QuestionType.MULTIPLE_CHOICE: ("选择题", "Multiple choice"),
+            QuestionType.SCENARIO_CHOICE: ("情境选择题", "Scenario choice"),
+            QuestionType.TRUE_FALSE: ("判断题", "True / false"),
+            QuestionType.FILL_IN_BLANK: ("填空题", "Fill in the blank"),
+            QuestionType.MATCHING: ("配对题", "Matching"),
+            QuestionType.ORDERING: ("排序题", "Ordering"),
+            QuestionType.SHORT_ANSWER: ("简答题", "Short answer"),
+        }
+        zh, en = labels.get(question_type, (question_type.value, question_type.value))
+        return self.lang_manager.get_text(zh, en)
+
+    def _difficulty_label(self, difficulty: Difficulty) -> str:
+        labels = {
+            Difficulty.EASY: ("简单", "Easy"),
+            Difficulty.MEDIUM: ("中等", "Medium"),
+            Difficulty.HARD: ("困难", "Hard"),
+        }
+        zh, en = labels.get(difficulty, (difficulty.value, difficulty.value))
+        return self.lang_manager.get_text(zh, en)
+
+    def _question_status_label(self, question: Question) -> str:
+        result = self._quality_scan_results.get(question.question_id)
+        if result is not None:
+            return self.lang_manager.get_text(
+                "需检查" if result.has_issues else "通过",
+                "Review" if result.has_issues else "Passed",
+            )
+        status = self._source_ref_status(question)
+        if self._has_missing_source(question):
+            return self.lang_manager.get_text("无来源", "No source")
+        if status in {"fallback_global_evidence", "fallback_topic_evidence"}:
+            return self.lang_manager.get_text("兜底来源", "Fallback")
+        if self._plan_match_status(question) == "matched_by_shape":
+            return self.lang_manager.get_text("弱匹配", "Weak match")
+        return self.lang_manager.get_text("正常", "Ready")
 
     def _set_source_refs_summary(self, question: Question | None) -> None:
         if question is None:
