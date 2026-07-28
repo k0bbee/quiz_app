@@ -48,6 +48,7 @@ from ai.exam_plan import ExamGenerationPlan
 from ai.settings_validation import (
     ai_generation_settings_error as _ai_generation_settings_error,
 )
+from models.question_set import QuestionSet
 
 
 class MainWindow(QMainWindow):
@@ -892,6 +893,8 @@ class MainWindow(QMainWindow):
     def _handle_study_intent(self, intent: StudyIntent) -> None:
         """Route a user intent and keep legacy result data aligned."""
         self.study_flow.handle_intent(intent)
+        if self.study_flow.active_intent is intent:
+            self.quiz_screen.set_study_intent(intent)
         if (
             isinstance(intent, StudyIntent)
             and intent.action is StudyAction.DAILY_QUEUE
@@ -912,6 +915,7 @@ class MainWindow(QMainWindow):
             intent,
             question_ids,
         )
+        self.quiz_screen.set_study_intent(intent)
 
     def _resume_abandoned_draft(self):
         """Return the latest resumable abandoned draft details, or None."""
@@ -941,6 +945,18 @@ class MainWindow(QMainWindow):
         if not snapshot:
             return None
         question_set = self.set_manager.get(snapshot.set_id)
+        if question_set is None and snapshot.question_set_data:
+            try:
+                restored_set = QuestionSet.from_dict(
+                    snapshot.question_set_data
+                )
+            except (TypeError, ValueError):
+                restored_set = None
+            if (
+                restored_set is not None
+                and restored_set.set_id == snapshot.set_id
+            ):
+                question_set = restored_set
         if not question_set:
             snapshot_manager.delete(snapshot.snapshot_id)
             self._resume_snapshot_error = self.lang_manager.get_text(
@@ -948,9 +964,22 @@ class MainWindow(QMainWindow):
                 "The draft's question set no longer exists, so it cannot be restored. The draft was removed.",
             )
             return None
+        try:
+            study_intent = (
+                StudyIntent.from_dict(snapshot.study_intent_data)
+                if snapshot.study_intent_data
+                else None
+            )
+        except (TypeError, ValueError):
+            study_intent = None
+        course_id = (
+            study_intent.course_id
+            if study_intent is not None and study_intent.course_id
+            else self._current_course_id()
+        )
         questions = self.question_bank.get_many(
             snapshot.question_order,
-            course_id=self._current_course_id(),
+            course_id=course_id,
         )
         if len(questions) != len(snapshot.question_order):
             snapshot_manager.delete(snapshot.snapshot_id)
@@ -959,7 +988,7 @@ class MainWindow(QMainWindow):
                 "Some questions in the draft no longer exist, so it cannot be fully restored. The draft was removed.",
             )
             return None
-        return snapshot, question_set, questions
+        return snapshot, question_set, questions, study_intent
 
     def _update_home_resume_draft(self):
         """Reflect the latest abandoned draft on the home screen."""
@@ -967,7 +996,7 @@ class MainWindow(QMainWindow):
             return
         snapshot_resume = MainWindow._resume_snapshot_draft(self)
         if snapshot_resume:
-            snapshot, question_set, questions = snapshot_resume
+            snapshot, question_set, questions, _study_intent = snapshot_resume
             remaining_count = max(0, len(questions) - snapshot.current_index)
             self.home_screen.set_resume_draft(
                 question_set.get_title(self.lang_manager.current),
@@ -989,7 +1018,7 @@ class MainWindow(QMainWindow):
         gm = self.lang_manager.get_text
         snapshot_resume = MainWindow._resume_snapshot_draft(self)
         if snapshot_resume:
-            snapshot, question_set, questions = snapshot_resume
+            snapshot, question_set, questions, study_intent = snapshot_resume
             self._active_questions = {question.question_id: question for question in questions}
             self.quiz_screen.restore_snapshot(
                 snapshot,
@@ -997,6 +1026,14 @@ class MainWindow(QMainWindow):
                 question_set,
                 show_timer=self._show_timer_setting(),
             )
+            if study_intent is not None:
+                restore_intent = getattr(
+                    self.study_flow,
+                    "restore_active_intent",
+                    None,
+                )
+                if callable(restore_intent):
+                    restore_intent(study_intent, questions)
             if hasattr(self, "home_screen"):
                 self.home_screen.clear_resume_draft()
             self.navigate_to(self.SCREEN_QUIZ)

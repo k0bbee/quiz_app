@@ -818,6 +818,35 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             self.assertEqual("exam", snapshot.mode)
 
+    def test_quiz_screen_snapshot_captures_daily_intent_and_temporary_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            progress_manager = ProgressManager(str(Path(tmpdir) / "progress"))
+            question = self._make_question("q-daily", "cache")
+            question_bank.save(question)
+            screen = QuizScreen(question_bank, progress_manager)
+            self.addCleanup(screen.close)
+            intent = StudyIntent(
+                course_id="course-a",
+                action=StudyAction.DAILY_QUEUE,
+                question_ids=(question.question_id,),
+                remaining_question_ids=("q-next",),
+                question_count=1,
+                source="today_plan",
+                plan_id="2026-07-28:course-a",
+            )
+            screen.start_quiz_custom([question], "今日学习")
+            screen.set_study_intent(intent)
+
+            snapshot = screen.capture_snapshot()
+
+            self.assertEqual(
+                screen._question_set.set_id,
+                snapshot.question_set_data["set_id"],
+            )
+            self.assertEqual("daily_queue", snapshot.study_intent_data["action"])
+            self.assertEqual(["q-next"], snapshot.study_intent_data["remaining_question_ids"])
+
     def test_quiz_screen_restores_snapshot_state_and_draft_answer(self):
         qset = QuestionSet.create_new(
             title={"zh": "测试题集", "en": "Test Set"},
@@ -3720,6 +3749,82 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertEqual(1, shown["remaining_count"])
         self.assertEqual(1, shown["current_index"])
         self.assertEqual(2, shown["total_count"])
+
+    def test_resume_daily_snapshot_rebuilds_temporary_set_and_plan_context(self):
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            set_manager = SetManager(str(root / "sets"))
+            snapshot_manager = QuizSnapshotManager(str(root / "snapshots"))
+            question = self._make_question("q-daily", "cache")
+            question.metadata["course_id"] = "course-a"
+            question_bank.save(question)
+            temporary_set = QuestionSet.create_new(
+                title={"zh": "今日学习", "en": "Today's Study"},
+                description={"zh": "", "en": ""},
+                topics=[],
+                question_ids=[question.question_id],
+                source="daily_queue",
+            )
+            snapshot = QuizSessionSnapshot.create_new(
+                set_id=temporary_set.set_id,
+                title="今日学习",
+                question_order=[question.question_id],
+            )
+            snapshot.question_set_data = temporary_set.to_dict()
+            intent = StudyIntent(
+                course_id="course-a",
+                action=StudyAction.DAILY_QUEUE,
+                question_ids=(question.question_id,),
+                remaining_question_ids=("q-next",),
+                question_count=1,
+                source="today_plan",
+                plan_id="2026-07-28:course-a",
+            )
+            snapshot.study_intent_data = intent.to_dict()
+            snapshot_manager.save(snapshot)
+            shown = {}
+            study_flow = types.SimpleNamespace(
+                restore_active_intent=Mock(),
+            )
+
+            class FakeQuizScreen:
+                def restore_snapshot(
+                    self,
+                    snapshot_arg,
+                    questions,
+                    question_set,
+                    show_timer=False,
+                ):
+                    shown["snapshot"] = snapshot_arg
+                    shown["questions"] = questions
+                    shown["question_set"] = question_set
+
+            shell = types.SimpleNamespace(
+                progress_manager=ProgressManager(str(root / "progress")),
+                snapshot_manager=snapshot_manager,
+                set_manager=set_manager,
+                question_bank=question_bank,
+                lang_manager=LanguageManager.instance(),
+                quiz_screen=FakeQuizScreen(),
+                study_flow=study_flow,
+                home_screen=types.SimpleNamespace(clear_resume_draft=Mock()),
+                _active_questions={},
+                SCREEN_QUIZ=2,
+                _current_course_id=lambda: "course-a",
+                _show_timer_setting=lambda: False,
+                navigate_to=lambda screen: shown.setdefault("screen", screen),
+            )
+
+            MainWindow._on_resume_abandoned(shell)
+
+            self.assertEqual(temporary_set.set_id, shown["question_set"].set_id)
+            self.assertEqual([question], shown["questions"])
+            restored_intent = study_flow.restore_active_intent.call_args.args[0]
+            self.assertEqual(intent, restored_intent)
+            self.assertIsNotNone(snapshot_manager.get(snapshot.snapshot_id))
 
     def test_home_resume_draft_passes_snapshot_mode_to_resume_action(self):
         from ui.main_window import MainWindow

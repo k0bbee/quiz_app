@@ -15,6 +15,7 @@ from models.question_set import QuestionSet
 from models.progress import ProgressRecord
 from models.quiz_snapshot import QuizSessionSnapshot
 from core.quiz_engine import QuizSession
+from core.study_intent import StudyIntent
 from core.language_manager import LanguageManager
 from core.progress_tracker import ProgressManager
 from core.answer_display import format_answer_for_display
@@ -55,6 +56,7 @@ class QuizScreen(QWidget):
         self._refreshing_question_nav = False
         self._review_panel_visible = False
         self.submission_mode = "exam"
+        self._study_intent: StudyIntent | None = None
 
         self._setup_ui()
         self._connect_session()
@@ -332,6 +334,7 @@ class QuizScreen(QWidget):
     ):
         """Start a quiz session with a question set."""
         self._question_set = question_set
+        self._study_intent = None
         self.submission_mode = submission_mode if submission_mode in ("exam", "practice") else "exam"
         lang = self.lang_manager.current
         self._last_user_answer = None
@@ -376,6 +379,10 @@ class QuizScreen(QWidget):
         )
         self.start_quiz(qs, questions, show_timer=show_timer, submission_mode=submission_mode)
 
+    def set_study_intent(self, intent: StudyIntent | None) -> None:
+        """Attach the active workflow context to future draft snapshots."""
+        self._study_intent = intent if isinstance(intent, StudyIntent) else None
+
     def capture_snapshot(self) -> QuizSessionSnapshot:
         """Capture the full in-progress quiz UI/session state for draft recovery."""
         self._save_current_draft_answer()
@@ -400,6 +407,16 @@ class QuizScreen(QWidget):
         snapshot.marked_review_question_ids = sorted(self._marked_question_ids)
         snapshot.started_at = self.session.started_at_iso
         snapshot.elapsed_seconds = self.session.elapsed_seconds
+        snapshot.question_set_data = (
+            self._question_set.to_dict()
+            if self._question_set is not None
+            else {}
+        )
+        snapshot.study_intent_data = (
+            self._study_intent.to_dict()
+            if self._study_intent is not None
+            else {}
+        )
         return snapshot
 
     def restore_snapshot(
@@ -417,6 +434,12 @@ class QuizScreen(QWidget):
             if question_id in question_by_id
         ]
         self._question_set = question_set
+        try:
+            self._study_intent = StudyIntent.from_dict(
+                snapshot.study_intent_data
+            ) if snapshot.study_intent_data else None
+        except (TypeError, ValueError):
+            self._study_intent = None
         self._last_user_answer = None
         self.submission_mode = snapshot.mode if snapshot.mode in ("exam", "practice") else "practice"
         self._marked_question_ids = set(snapshot.marked_review_question_ids)

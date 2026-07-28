@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -27,6 +28,8 @@ class QuizSessionSnapshot:
     elapsed_seconds: float = 0.0
     language: str = "zh"
     mode: str = "practice"
+    question_set_data: dict = field(default_factory=dict)
+    study_intent_data: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Serialize snapshot to JSON-compatible data."""
@@ -45,6 +48,8 @@ class QuizSessionSnapshot:
             "elapsed_seconds": self.elapsed_seconds,
             "language": self.language,
             "mode": self.mode,
+            "question_set_data": copy.deepcopy(self.question_set_data),
+            "study_intent_data": copy.deepcopy(self.study_intent_data),
         }
 
     @classmethod
@@ -68,6 +73,16 @@ class QuizSessionSnapshot:
             elapsed_seconds=float(data.get("elapsed_seconds", 0.0) or 0.0),
             language=data.get("language", "zh"),
             mode=data.get("mode", "practice"),
+            question_set_data=(
+                copy.deepcopy(data.get("question_set_data", {}))
+                if isinstance(data.get("question_set_data", {}), dict)
+                else {}
+            ),
+            study_intent_data=(
+                copy.deepcopy(data.get("study_intent_data", {}))
+                if isinstance(data.get("study_intent_data", {}), dict)
+                else {}
+            ),
         )
 
     @classmethod

@@ -62,6 +62,33 @@ class StudyIntent:
             str(self.plan_id or "").strip(),
         )
 
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "course_id": self.course_id,
+            "action": self.action.value,
+            "topic_ids": list(self.topic_ids),
+            "question_ids": list(self.question_ids),
+            "remaining_question_ids": list(self.remaining_question_ids),
+            "question_count": self.question_count,
+            "source": self.source,
+            "plan_id": self.plan_id,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "StudyIntent":
+        if not isinstance(data, dict):
+            raise TypeError("study intent must be an object")
+        return cls(
+            course_id=data.get("course_id", ""),
+            action=data.get("action", StudyAction.CUSTOM_PRACTICE.value),
+            topic_ids=data.get("topic_ids", ()),
+            question_ids=data.get("question_ids", ()),
+            remaining_question_ids=data.get("remaining_question_ids", ()),
+            question_count=data.get("question_count", 0),
+            source=data.get("source", "manual"),
+            plan_id=data.get("plan_id", ""),
+        )
+
 
 def continue_daily_queue_intent(
     intent: StudyIntent,

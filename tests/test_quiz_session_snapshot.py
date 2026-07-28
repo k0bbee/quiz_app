@@ -35,6 +35,20 @@ class QuizSessionSnapshotTests(unittest.TestCase):
             elapsed_seconds=60.0,
             language="zh",
             mode="practice",
+            question_set_data={
+                "set_id": "set-1",
+                "title": {"zh": "系统结构练习", "en": "Architecture"},
+                "questions": ["q1", "q2", "q3"],
+            },
+            study_intent_data={
+                "course_id": "course-a",
+                "action": "daily_queue",
+                "question_ids": ["q1", "q2", "q3"],
+                "remaining_question_ids": ["q4"],
+                "question_count": 3,
+                "source": "today_plan",
+                "plan_id": "2026-07-28:course-a",
+            },
         )
 
     def test_snapshot_round_trips_all_recovery_fields(self):
@@ -54,6 +68,9 @@ class QuizSessionSnapshotTests(unittest.TestCase):
         self.assertEqual(["q2"], loaded.marked_review_question_ids)
         self.assertEqual(60.0, loaded.elapsed_seconds)
         self.assertEqual("practice", loaded.mode)
+        self.assertEqual("set-1", loaded.question_set_data["set_id"])
+        self.assertEqual("daily_queue", loaded.study_intent_data["action"])
+        self.assertEqual(["q4"], loaded.study_intent_data["remaining_question_ids"])
 
     def test_snapshot_manager_saves_loads_latest_and_deletes(self):
         with tempfile.TemporaryDirectory() as tmpdir:

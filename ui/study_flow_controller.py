@@ -144,6 +144,23 @@ class StudyFlowController:
         self.active_intent = None
         self.active_questions = {}
 
+    def restore_active_intent(
+        self,
+        intent: StudyIntent,
+        questions,
+    ) -> None:
+        """Restore workflow context after the quiz UI restores a draft."""
+        if not isinstance(intent, StudyIntent):
+            return
+        self._activate_course(intent.course_id)
+        self.pending_intent = None
+        self.active_intent = intent
+        self.active_questions = {
+            question.question_id: question
+            for question in (questions or ())
+            if getattr(question, "question_id", "")
+        }
+
     def take_active_intent(self) -> StudyIntent | None:
         intent = self.active_intent
         self.active_intent = None
