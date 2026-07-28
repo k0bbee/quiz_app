@@ -67,6 +67,34 @@ class UiThemeTests(unittest.TestCase):
             )
             self.assertTrue(screen.start_btn.isEnabled())
 
+    def test_topic_selection_uses_responsive_list_and_detail_workspace(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = TopicSelectionScreen(
+                SetManager(str(Path(tmpdir) / "sets")),
+            )
+            self.addCleanup(screen.close)
+
+            screen.resize(1200, 760)
+            screen.show()
+            _APP.processEvents()
+
+            self.assertIsInstance(screen.content_splitter, QSplitter)
+            self.assertEqual(
+                Qt.Orientation.Horizontal,
+                screen.content_splitter.orientation(),
+            )
+            self.assertTrue(screen.list_pane.isAncestorOf(screen.set_list))
+            self.assertTrue(screen.detail_pane.isAncestorOf(screen.info_label))
+            self.assertTrue(screen.detail_pane.isAncestorOf(screen.start_btn))
+
+            screen.resize(820, 760)
+            _APP.processEvents()
+
+            self.assertEqual(
+                Qt.Orientation.Vertical,
+                screen.content_splitter.orientation(),
+            )
+
     def test_default_main_window_uses_isolated_services_during_qt_tests(self):
         from config import QUESTIONS_DIR
 

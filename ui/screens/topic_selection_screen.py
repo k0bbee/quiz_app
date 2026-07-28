@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QComboBox, QLineEdit,
-    QMessageBox, QAbstractItemView, QInputDialog
+    QAbstractItemView, QInputDialog, QSplitter,
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 from PyQt6.QtGui import QColor
@@ -95,21 +95,41 @@ class TopicSelectionScreen(QWidget):
 
         layout.addLayout(filter_layout)
 
+        self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.content_splitter.setObjectName("topicContentSplitter")
+        self.content_splitter.setChildrenCollapsible(False)
+        self.content_splitter.setHandleWidth(8)
+
         # Question set list
+        self.list_pane = QWidget()
+        self.list_pane.setObjectName("topicSetListPane")
+        list_layout = QVBoxLayout(self.list_pane)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_layout.setSpacing(8)
         self.list_label = QLabel(self.lang_manager.get_text("可用的题目集:", "Available question sets:"))
-        layout.addWidget(self.list_label)
+        list_layout.addWidget(self.list_label)
         self.set_list = QListWidget()
         self.set_list.setObjectName("topicSetList")
         self.set_list.setMinimumHeight(250)
         self.set_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.set_list.currentItemChanged.connect(self._on_set_selected)
         self.set_list.itemSelectionChanged.connect(self._on_set_selection_changed)
-        layout.addWidget(self.set_list)
+        list_layout.addWidget(self.set_list, 1)
+        self.content_splitter.addWidget(self.list_pane)
 
         # Set info
+        self.detail_pane = QWidget()
+        self.detail_pane.setObjectName("topicSetDetailPane")
+        detail_layout = QVBoxLayout(self.detail_pane)
+        detail_layout.setContentsMargins(12, 0, 0, 0)
+        detail_layout.setSpacing(12)
         self.info_label = QLabel()
         self.info_label.setWordWrap(True)
-        layout.addWidget(self.info_label)
+        self.info_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
+        detail_layout.addWidget(self.info_label)
+        detail_layout.addStretch(1)
 
         # Start button
         btn_layout = QHBoxLayout()
@@ -153,7 +173,35 @@ class TopicSelectionScreen(QWidget):
         btn_layout.addWidget(self.generate_missing_btn)
         btn_layout.addWidget(self.start_btn)
 
-        layout.addLayout(btn_layout)
+        detail_layout.addLayout(btn_layout)
+        self.content_splitter.addWidget(self.detail_pane)
+        self.content_splitter.setStretchFactor(0, 3)
+        self.content_splitter.setStretchFactor(1, 2)
+        self.content_splitter.setSizes([720, 440])
+        layout.addWidget(self.content_splitter, 1)
+        self._update_responsive_layout()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(self) -> None:
+        if not hasattr(self, "content_splitter"):
+            return
+        wide = self.width() >= 960
+        orientation = (
+            Qt.Orientation.Horizontal
+            if wide
+            else Qt.Orientation.Vertical
+        )
+        if self.content_splitter.orientation() == orientation:
+            return
+        self.content_splitter.setOrientation(orientation)
+        self.content_splitter.setSizes(
+            [max(360, self.width() * 3 // 5), max(240, self.width() * 2 // 5)]
+            if wide
+            else [max(280, self.height() * 3 // 5), max(200, self.height() * 2 // 5)]
+        )
 
     def _on_language_changed(self, lang):
         """Update all UI text when language changes."""
