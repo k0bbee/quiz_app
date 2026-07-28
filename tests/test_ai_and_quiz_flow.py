@@ -697,6 +697,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertTrue(screen.exam_mode_btn.isEnabled())
             self.assertEqual("逐题练习", screen.practice_mode_btn.text())
             self.assertEqual("模拟考试", screen.exam_mode_btn.text())
+            self.assertTrue(screen.review_toggle_btn.isHidden())
+            self.assertTrue(screen.review_checkbox.isHidden())
 
             screen.exam_mode_btn.click()
 
@@ -704,12 +706,16 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertFalse(screen.practice_mode_btn.isChecked())
             self.assertTrue(screen.exam_mode_btn.isChecked())
             self.assertEqual("完成", screen.next_question_btn.text())
+            self.assertFalse(screen.review_toggle_btn.isHidden())
+            self.assertFalse(screen.review_checkbox.isHidden())
 
             screen.practice_mode_btn.click()
 
             self.assertEqual("practice", screen.submission_mode)
             self.assertTrue(screen.practice_mode_btn.isChecked())
             self.assertFalse(screen.exam_mode_btn.isChecked())
+            self.assertTrue(screen.review_toggle_btn.isHidden())
+            self.assertTrue(screen.review_checkbox.isHidden())
 
     def test_quiz_mode_toggle_locks_after_leaving_the_untouched_start_state(self):
         with tempfile.TemporaryDirectory() as tmpdir:

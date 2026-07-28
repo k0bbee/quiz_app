@@ -664,6 +664,13 @@ class QuizScreen(QWidget):
         self.exam_mode_btn.setChecked(self.submission_mode == "exam")
         self.practice_mode_btn.blockSignals(False)
         self.exam_mode_btn.blockSignals(False)
+        review_available = self.submission_mode == "exam"
+        self.review_toggle_btn.setVisible(review_available)
+        self.review_checkbox.setVisible(review_available)
+        if not review_available and self._review_panel_visible:
+            self._review_panel_visible = False
+            self.preview_pane.hide()
+            self._refresh_review_toggle_text()
         can_switch = self._can_switch_submission_mode()
         self.practice_mode_btn.setEnabled(can_switch)
         self.exam_mode_btn.setEnabled(can_switch)
