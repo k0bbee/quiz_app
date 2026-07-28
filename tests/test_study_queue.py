@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timedelta, timezone
+from itertools import groupby
 
 from core.study_queue import StudyQueueCategory, build_daily_study_queue
 from models.progress import AnswerRecord, ProgressRecord
@@ -162,6 +163,169 @@ class StudyQueueTests(unittest.TestCase):
 
         self.assertEqual(("q-visible",), queue.question_ids)
         self.assertNotIn("q-other-course", queue.review_states)
+
+    def test_queue_rotates_topics_while_alternatives_remain(self):
+        question_ids = {
+            *(f"q-memory-{index}" for index in range(6)),
+            *(f"q-process-{index}" for index in range(6)),
+        }
+        topic_index = {
+            question_id: (
+                "memory" if "memory" in question_id else "process",
+                "Memory" if "memory" in question_id else "Process",
+            )
+            for question_id in question_ids
+        }
+
+        queue = build_daily_study_queue(
+            question_ids,
+            [],
+            now=NOW,
+            daily_limit=8,
+            topic_index=topic_index,
+        )
+
+        topics = [topic_index[question_id][0] for question_id in queue.question_ids]
+        self.assertEqual({"memory", "process"}, set(topics))
+        self.assertLessEqual(
+            max(len(list(run)) for _topic, run in groupby(topics)),
+            2,
+        )
+
+    def test_new_queue_prefers_topics_the_user_has_not_covered(self):
+        records = [
+            completed_record(
+                "q-memory-covered",
+                days_ago=0,
+                is_correct=True,
+            )
+        ]
+        topic_index = {
+            "q-memory-covered": ("memory", "Memory"),
+            "q-memory-new": ("memory", "Memory"),
+            "q-process-new": ("process", "Process"),
+        }
+
+        queue = build_daily_study_queue(
+            set(topic_index),
+            records,
+            now=NOW,
+            daily_limit=2,
+            topic_index=topic_index,
+        )
+
+        self.assertEqual("q-process-new", queue.question_ids[0])
+
+    def test_recent_error_keeps_priority_over_new_topic_rotation(self):
+        records = [
+            completed_record(
+                "q-memory-error",
+                days_ago=0,
+                is_correct=False,
+            )
+        ]
+        topic_index = {
+            "q-memory-error": ("memory", "Memory"),
+            "q-process-new": ("process", "Process"),
+        }
+
+        queue = build_daily_study_queue(
+            set(topic_index),
+            records,
+            now=NOW,
+            topic_index=topic_index,
+        )
+
+        self.assertEqual("q-memory-error", queue.question_ids[0])
+
+    def test_queue_uses_easy_medium_hard_gradient_when_available(self):
+        question_ids = {"q-hard", "q-easy", "q-medium"}
+        topic_index = {
+            question_id: ("physics", "Physics")
+            for question_id in question_ids
+        }
+        difficulty_index = {
+            "q-hard": "hard",
+            "q-easy": "easy",
+            "q-medium": "medium",
+        }
+
+        queue = build_daily_study_queue(
+            question_ids,
+            [],
+            now=NOW,
+            daily_limit=3,
+            topic_index=topic_index,
+            difficulty_index=difficulty_index,
+        )
+
+        self.assertEqual(
+            ("q-easy", "q-medium", "q-hard"),
+            queue.question_ids,
+        )
+
+    def test_exam_scope_weights_bias_selection_without_topic_bursts(self):
+        question_ids = {
+            *(f"q-major-{index}" for index in range(6)),
+            *(f"q-minor-{index}" for index in range(6)),
+        }
+        topic_index = {
+            question_id: (
+                "major" if "major" in question_id else "minor",
+                "Major" if "major" in question_id else "Minor",
+            )
+            for question_id in question_ids
+        }
+
+        queue = build_daily_study_queue(
+            question_ids,
+            [],
+            now=NOW,
+            daily_limit=5,
+            topic_index=topic_index,
+            exam_scope_weights={"major": 80, "minor": 20},
+        )
+
+        selected_topics = [
+            topic_index[question_id][0]
+            for question_id in queue.question_ids
+        ]
+        self.assertEqual(4, selected_topics.count("major"))
+        self.assertEqual(1, selected_topics.count("minor"))
+        self.assertNotIn(["major", "major", "major"], [
+            selected_topics[index:index + 3]
+            for index in range(len(selected_topics) - 2)
+        ])
+
+    def test_balanced_queue_is_deterministic(self):
+        question_ids = {
+            "q-memory-hard",
+            "q-memory-easy",
+            "q-process-medium",
+            "q-process-hard",
+        }
+        topic_index = {
+            question_id: (
+                "memory" if "memory" in question_id else "process",
+                "Memory" if "memory" in question_id else "Process",
+            )
+            for question_id in question_ids
+        }
+        difficulty_index = {
+            question_id: question_id.rsplit("-", 1)[-1]
+            for question_id in question_ids
+        }
+        kwargs = {
+            "now": NOW,
+            "topic_index": topic_index,
+            "difficulty_index": difficulty_index,
+            "exam_scope_weights": {"memory": 60, "process": 40},
+        }
+
+        first = build_daily_study_queue(question_ids, [], **kwargs)
+        second = build_daily_study_queue(question_ids, [], **kwargs)
+
+        self.assertEqual(first.question_ids, second.question_ids)
 
 
 if __name__ == "__main__":

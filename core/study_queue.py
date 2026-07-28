@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
@@ -26,6 +27,7 @@ _CATEGORY_ORDER = (
     StudyQueueCategory.STALE,
     StudyQueueCategory.NEW,
 )
+_DIFFICULTY_ORDER = ("easy", "medium", "hard", "medium")
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,8 @@ class StudyQueueEntry:
     question_id: str
     category: StudyQueueCategory
     review_state: ReviewState
+    topic_id: str = ""
+    difficulty: str = "medium"
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,19 @@ class _MutableReviewState:
     last_confidence: str = "sure"
 
 
+@dataclass
+class _TopicStats:
+    attempts: int = 0
+    correct: int = 0
+    incorrect: int = 0
+
+    @property
+    def accuracy(self) -> float:
+        if self.attempts <= 0:
+            return 0.0
+        return self.correct / self.attempts
+
+
 def build_daily_study_queue(
     candidate_question_ids,
     progress_records,
@@ -73,6 +90,9 @@ def build_daily_study_queue(
     daily_limit: int = 15,
     session_size: int = 10,
     stale_after_days: int = 14,
+    topic_index=None,
+    difficulty_index=None,
+    exam_scope_weights=None,
 ) -> DailyStudyQueue:
     """Build a transparent queue without persisting duplicate learning state."""
     now = _as_utc(now or datetime.now(timezone.utc))
@@ -85,18 +105,37 @@ def build_daily_study_queue(
         question_id: _MutableReviewState(question_id)
         for question_id in candidate_ids
     }
-    for attempted_at, _record_index, _answer_index, answer in _answer_events(
+    topics = {
+        question_id: _topic_id(question_id, topic_index)
+        for question_id in candidate_ids
+    }
+    difficulties = {
+        question_id: _difficulty(question_id, difficulty_index)
+        for question_id in candidate_ids
+    }
+    topic_stats = {
+        topic_id: _TopicStats()
+        for topic_id in set(topics.values())
+    }
+    events = _answer_events(
         progress_records,
         now,
-    ):
-        state = mutable.get(str(getattr(answer, "question_id", "") or "").strip())
+    )
+    for attempted_at, _record_index, _answer_index, answer in events:
+        question_id = str(
+            getattr(answer, "question_id", "") or ""
+        ).strip()
+        state = mutable.get(question_id)
         if state is None:
             continue
+        stats = topic_stats[topics[question_id]]
+        stats.attempts += 1
         state.attempts += 1
         state.last_reviewed_at = attempted_at.isoformat()
         confidence = str(getattr(answer, "confidence", "sure") or "sure")
         state.last_confidence = confidence if confidence in {"sure", "unsure"} else "sure"
         if bool(getattr(answer, "is_correct", False)):
+            stats.correct += 1
             state.correct_streak += 1
             state.wrong_streak = 0
             state.interval_days = (
@@ -105,6 +144,7 @@ def build_daily_study_queue(
                 else min(30, 2 ** max(0, state.correct_streak - 1))
             )
         else:
+            stats.incorrect += 1
             state.correct_streak = 0
             state.wrong_streak += 1
             state.interval_days = 0
@@ -134,17 +174,24 @@ def build_daily_study_queue(
         )
         if category is not None:
             by_category[category].append(
-                StudyQueueEntry(state.question_id, category, state)
+                StudyQueueEntry(
+                    state.question_id,
+                    category,
+                    state,
+                    topic_id=topics[state.question_id],
+                    difficulty=difficulties[state.question_id],
+                )
             )
     for category, entries in by_category.items():
         entries.sort(key=lambda entry: _entry_sort_key(category, entry))
 
-    all_entries = tuple(
-        entry
-        for category in _CATEGORY_ORDER
-        for entry in by_category[category]
+    selected_entries, remaining_entries = _schedule_entries(
+        by_category,
+        daily_limit=max(0, int(daily_limit or 0)),
+        topic_stats=topic_stats,
+        exam_scope_weights=exam_scope_weights,
     )
-    selected_entries = all_entries[:max(0, int(daily_limit or 0))]
+    all_entries = selected_entries + remaining_entries
     question_ids = tuple(entry.question_id for entry in selected_entries)
     selected_category_counts = {
         category: sum(
@@ -169,6 +216,186 @@ def build_daily_study_queue(
         estimated_minutes=estimated_minutes,
         backlog_count=len(all_entries),
     )
+
+
+def _schedule_entries(
+    by_category: dict[StudyQueueCategory, list[StudyQueueEntry]],
+    *,
+    daily_limit: int,
+    topic_stats: dict[str, _TopicStats],
+    exam_scope_weights,
+) -> tuple[tuple[StudyQueueEntry, ...], tuple[StudyQueueEntry, ...]]:
+    remaining = {
+        category: list(by_category[category])
+        for category in _CATEGORY_ORDER
+    }
+    selected: list[StudyQueueEntry] = []
+    selected_by_topic: Counter[str] = Counter()
+    last_topic = ""
+    topic_streak = 0
+    weights = _normalized_topic_weights(exam_scope_weights)
+
+    while len(selected) < daily_limit:
+        primary_category = next(
+            (
+                category
+                for category in _CATEGORY_ORDER
+                if remaining[category]
+            ),
+            None,
+        )
+        if primary_category is None:
+            break
+        candidates = remaining[primary_category]
+        chosen_category = primary_category
+        if topic_streak >= 2:
+            alternatives = [
+                entry
+                for entry in candidates
+                if entry.topic_id != last_topic
+            ]
+            if alternatives:
+                candidates = alternatives
+            else:
+                for category in _categories_after(primary_category):
+                    alternatives = [
+                        entry
+                        for entry in remaining[category]
+                        if entry.topic_id != last_topic
+                    ]
+                    if alternatives:
+                        chosen_category = category
+                        candidates = alternatives
+                        break
+
+        desired_difficulty = _DIFFICULTY_ORDER[
+            len(selected) % len(_DIFFICULTY_ORDER)
+        ]
+        chosen = _choose_entry(
+            candidates,
+            chosen_category,
+            desired_difficulty=desired_difficulty,
+            topic_stats=topic_stats,
+            selected_by_topic=selected_by_topic,
+            topic_weights=weights,
+        )
+        remaining[chosen_category].remove(chosen)
+        selected.append(chosen)
+        selected_by_topic[chosen.topic_id] += 1
+        if chosen.topic_id == last_topic:
+            topic_streak += 1
+        else:
+            last_topic = chosen.topic_id
+            topic_streak = 1
+
+    tail = tuple(
+        entry
+        for category in _CATEGORY_ORDER
+        for entry in remaining[category]
+    )
+    return tuple(selected), tail
+
+
+def _choose_entry(
+    candidates: list[StudyQueueEntry],
+    category: StudyQueueCategory,
+    *,
+    desired_difficulty: str,
+    topic_stats: dict[str, _TopicStats],
+    selected_by_topic: Counter[str],
+    topic_weights: dict[str, float],
+) -> StudyQueueEntry:
+    topics = {entry.topic_id for entry in candidates}
+
+    def topic_key(topic_id: str):
+        stats = topic_stats.get(topic_id, _TopicStats())
+        weakness = (
+            (
+                0 if stats.attempts <= 0 else 1,
+                stats.attempts,
+                stats.accuracy,
+            )
+            if category is StudyQueueCategory.NEW
+            else (
+                stats.accuracy,
+                -stats.incorrect,
+                stats.attempts,
+            )
+        )
+        weight = topic_weights.get(topic_id, 1.0)
+        projected_share = (selected_by_topic[topic_id] + 1) / weight
+        has_desired_difficulty = any(
+            entry.topic_id == topic_id
+            and entry.difficulty == desired_difficulty
+            for entry in candidates
+        )
+        return (
+            *weakness,
+            projected_share,
+            0 if has_desired_difficulty else 1,
+            topic_id,
+        )
+
+    chosen_topic = min(topics, key=topic_key)
+    topic_entries = [
+        entry for entry in candidates if entry.topic_id == chosen_topic
+    ]
+    return min(
+        topic_entries,
+        key=lambda entry: (
+            _difficulty_distance(entry.difficulty, desired_difficulty),
+            _entry_sort_key(category, entry),
+        ),
+    )
+
+
+def _categories_after(
+    category: StudyQueueCategory,
+) -> tuple[StudyQueueCategory, ...]:
+    index = _CATEGORY_ORDER.index(category)
+    return _CATEGORY_ORDER[index + 1:]
+
+
+def _normalized_topic_weights(values) -> dict[str, float]:
+    if not isinstance(values, Mapping):
+        return {}
+    normalized = {}
+    for topic, weight in values.items():
+        topic_id = str(topic or "").strip()
+        try:
+            numeric = float(weight)
+        except (TypeError, ValueError):
+            continue
+        if topic_id and numeric > 0:
+            normalized[topic_id] = numeric
+    return normalized
+
+
+def _topic_id(question_id: str, topic_index) -> str:
+    row = (
+        topic_index.get(question_id)
+        if isinstance(topic_index, Mapping)
+        else None
+    )
+    value = row[0] if isinstance(row, (tuple, list)) and row else row
+    return str(value or question_id).strip() or question_id
+
+
+def _difficulty(question_id: str, difficulty_index) -> str:
+    value = (
+        difficulty_index.get(question_id)
+        if isinstance(difficulty_index, Mapping)
+        else None
+    )
+    normalized = str(
+        getattr(value, "value", value) or "medium"
+    ).strip().lower()
+    return normalized if normalized in {"easy", "medium", "hard"} else "medium"
+
+
+def _difficulty_distance(actual: str, desired: str) -> int:
+    levels = {"easy": 0, "medium": 1, "hard": 2}
+    return abs(levels.get(actual, 1) - levels.get(desired, 1))
 
 
 def _answer_events(progress_records, now: datetime):
