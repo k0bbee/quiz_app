@@ -27,6 +27,7 @@ from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.language_manager import LanguageManager
 from core.study_intent import StudyAction, StudyIntent
+from core.today_learning_plan import LearningPlanAction
 from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.quiz_screen import QuizScreen
@@ -2439,6 +2440,88 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual(10, len(intent.question_ids))
             self.assertEqual(2, len(intent.remaining_question_ids))
 
+    def test_home_daily_plan_separates_today_count_from_total_backlog(self):
+        from core.daily_study_plan_store import DailyStudyPlanStore
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            questions = [
+                self._make_question(f"course-a-q-{index:03d}", "cache")
+                for index in range(100)
+            ]
+            for question in questions:
+                question.metadata["course_id"] = "course-a"
+            question_bank.save_many(questions)
+            screen = HomeScreen(
+                ProgressManager(str(root / "progress")),
+                question_bank,
+                daily_plan_store=DailyStudyPlanStore(root / "daily-plans.json"),
+            )
+
+            screen.set_current_course("course-a", "Systems")
+
+            self.assertIn("今日计划 15 题", screen.today_plan_detail.text())
+            self.assertIn("新题 15", screen.today_plan_detail.text())
+            self.assertIn("待学习总量 100 题", screen.today_plan_detail.text())
+
+    def test_home_keeps_completed_daily_plan_complete_after_repeat_failure(self):
+        from core.daily_study_plan_store import DailyStudyPlanStore
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            question = self._make_question("course-a-q-1", "cache")
+            question.metadata["course_id"] = "course-a"
+            question_bank.save(question)
+            progress_manager = ProgressManager(str(root / "progress"))
+            store = DailyStudyPlanStore(root / "daily-plans.json")
+            screen = HomeScreen(
+                progress_manager,
+                question_bank,
+                daily_plan_store=store,
+            )
+            screen.set_current_course("course-a", "Systems")
+            intent = screen._today_study_intent()
+            wrong = AnswerRecord(
+                question_id=question.question_id,
+                index_in_session=0,
+                user_answer="B",
+                is_correct=False,
+            )
+
+            plan = store.record_completion(
+                intent.plan_id,
+                current_question_ids=intent.question_ids,
+                answers=[wrong],
+            )
+            self.assertEqual((question.question_id,), plan.pending_ids)
+
+            plan = store.record_completion(
+                intent.plan_id,
+                current_question_ids=plan.pending_ids,
+                answers=[wrong],
+            )
+            self.assertTrue(plan.is_complete)
+
+            failed_record = ProgressRecord.create_new("daily")
+            failed_record.status = "completed"
+            failed_record.answers = [wrong]
+            failed_record.summary = SessionSummary.compute([wrong], 1, 10)
+            progress_manager.save(failed_record)
+            restarted = HomeScreen(
+                ProgressManager(str(root / "progress")),
+                QuestionBank(str(root / "questions")),
+                daily_plan_store=DailyStudyPlanStore(root / "daily-plans.json"),
+            )
+            restarted.set_current_course("course-a", "Systems")
+
+            self.assertIs(
+                LearningPlanAction.DAILY_COMPLETE,
+                restarted._today_plan.action,
+            )
+            self.assertIn("今日任务完成", restarted.today_plan_title.text())
+
     def test_home_today_queue_excludes_topics_marked_fully_mastered(self):
         from core.mastery_overrides import MasteryOverrideStore
 
@@ -4006,6 +4089,73 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertIs(study_intent, shown["study_intent"])
             shell.study_flow.take_active_intent.assert_called_once_with()
             shell._refresh_first_run.assert_called_once_with()
+
+    def test_quiz_finished_reconciles_daily_plan_before_showing_results(self):
+        from core.daily_study_plan_store import DailyStudyPlanStore
+        from core.study_queue import build_daily_study_queue
+        from ui.main_window import MainWindow
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            store = DailyStudyPlanStore(root / "daily-plans.json")
+            plan = store.get_or_create(
+                plan_id="2026-07-28:course-a",
+                plan_date="2026-07-28",
+                course_id="course-a",
+                queue=build_daily_study_queue({"q-1"}, []),
+                valid_question_ids={"q-1"},
+            )
+            intent = StudyIntent(
+                course_id="course-a",
+                action=StudyAction.DAILY_QUEUE,
+                question_ids=("q-1",),
+                question_count=1,
+                source="today_plan",
+                plan_id=plan.plan_id,
+            )
+            record = ProgressRecord.create_new("daily")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(
+                    question_id="q-1",
+                    index_in_session=0,
+                    user_answer="B",
+                    is_correct=False,
+                )
+            ]
+            record.summary = SessionSummary.compute(record.answers, 1, 10)
+            shown = {}
+
+            class FakeResultsScreen:
+                def set_results(
+                    self,
+                    progress_record,
+                    questions,
+                    lang,
+                    *,
+                    study_intent=None,
+                ):
+                    shown["intent"] = study_intent
+
+            shell = types.SimpleNamespace(
+                progress_manager=ProgressManager(str(root / "progress")),
+                snapshot_manager=None,
+                daily_plan_store=store,
+                results_screen=FakeResultsScreen(),
+                _active_questions={},
+                study_flow=types.SimpleNamespace(
+                    take_active_intent=Mock(return_value=intent),
+                ),
+                lang_manager=LanguageManager.instance(),
+                SCREEN_RESULTS=3,
+                navigate_to=lambda screen: shown.setdefault("screen", screen),
+                _refresh_first_run=Mock(),
+            )
+
+            MainWindow._on_quiz_finished(shell, record)
+
+            self.assertEqual(("q-1",), shown["intent"].remaining_question_ids)
+            self.assertFalse(store.get(plan.plan_id).is_complete)
 
     def test_home_resume_draft_deletes_snapshot_when_questions_are_missing(self):
         from ui.main_window import MainWindow

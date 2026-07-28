@@ -11,7 +11,6 @@ from PyQt6.QtCore import QTimer, Qt
 from core.application_data_migration import ApplicationDataMigrator
 from core.application_services import ApplicationServices
 from core.first_run_flow import (
-    FirstRunStage,
     build_first_run_exam_plan,
     resolve_first_run_state,
 )
@@ -84,6 +83,7 @@ class MainWindow(QMainWindow):
         self.past_exam_manager = services.past_exam_manager
         self.current_event_manager = services.current_event_manager
         self.task_center = services.task_center
+        self.daily_plan_store = getattr(services, "daily_plan_store", None)
         self.lang_manager = LanguageManager.instance()
         self.startup_migration_report = startup_migration_report
         self._first_run_operation = ""
@@ -105,6 +105,7 @@ class MainWindow(QMainWindow):
             self.progress_manager,
             self.question_bank,
             mastery_overrides=self.mastery_overrides,
+            daily_plan_store=self.daily_plan_store,
         )
         self.first_run_screen = FirstRunWorkspace()
         self.home_workspace = QStackedWidget()
@@ -1213,11 +1214,38 @@ class MainWindow(QMainWindow):
                 snapshot_manager.delete_for_set(progress_record.set_id)
         self._refresh_first_run()
 
+        study_intent = self.study_flow.take_active_intent()
+        if (
+            progress_record is not None
+            and isinstance(study_intent, StudyIntent)
+            and study_intent.action is StudyAction.DAILY_QUEUE
+            and getattr(self, "daily_plan_store", None) is not None
+            and study_intent.plan_id
+        ):
+            try:
+                daily_plan = self.daily_plan_store.record_completion(
+                    study_intent.plan_id,
+                    current_question_ids=study_intent.question_ids,
+                    answers=progress_record.answers,
+                )
+                study_intent = StudyIntent(
+                    course_id=study_intent.course_id,
+                    action=study_intent.action,
+                    topic_ids=study_intent.topic_ids,
+                    question_ids=study_intent.question_ids,
+                    remaining_question_ids=daily_plan.pending_ids,
+                    question_count=study_intent.question_count,
+                    source=study_intent.source,
+                    plan_id=study_intent.plan_id,
+                )
+            except (KeyError, OSError, TypeError, ValueError):
+                pass
+
         self.results_screen.set_results(
             progress_record,
             questions=self._active_questions,
             lang=self.lang_manager.current,
-            study_intent=self.study_flow.take_active_intent(),
+            study_intent=study_intent,
         )
         self.navigate_to(self.SCREEN_RESULTS)
 

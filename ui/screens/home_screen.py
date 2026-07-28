@@ -18,6 +18,7 @@ from core.today_learning_plan import (
     build_today_learning_plan,
 )
 from ui.components import PageHeader
+from utils.logger import warning
 
 
 class HomeScreen(QWidget):
@@ -39,11 +40,13 @@ class HomeScreen(QWidget):
         parent=None,
         *,
         mastery_overrides=None,
+        daily_plan_store=None,
     ):
         super().__init__(parent)
         self.progress_manager = progress_manager
         self.question_bank = question_bank
         self.mastery_overrides = mastery_overrides
+        self.daily_plan_store = daily_plan_store
         self.lang_manager = LanguageManager.instance()
         self._current_course_id = ""
         self._current_course_title = ""
@@ -535,6 +538,18 @@ class HomeScreen(QWidget):
             if daily_queue is not None
             else ""
         )
+        daily_plan = None
+        if daily_queue is not None and self.daily_plan_store is not None:
+            try:
+                daily_plan = self.daily_plan_store.get_or_create(
+                    plan_id=plan_id,
+                    plan_date=date.today().isoformat(),
+                    course_id=self._current_course_id,
+                    queue=daily_queue,
+                    valid_question_ids=self._visible_question_ids(),
+                )
+            except (OSError, TypeError, ValueError) as exc:
+                warning(f"Failed to load today's study plan: {exc}")
         self._today_plan = build_today_learning_plan(
             total_questions=total_questions,
             incorrect_question_ids=incorrect_ids,
@@ -543,6 +558,7 @@ class HomeScreen(QWidget):
             draft=draft,
             has_course=bool(self._current_course_id),
             daily_queue=daily_queue,
+            daily_plan=daily_plan,
             plan_id=plan_id,
         )
         self._render_today_plan()
@@ -587,10 +603,21 @@ class HomeScreen(QWidget):
                 for key, _zh, en in labels
                 if counts.get(key, 0) > 0
             ]
+            plan_zh = [f"今日计划 {plan.plan_total_count} 题", *zh_parts]
+            plan_en = [f"Today's plan {plan.plan_total_count}", *en_parts]
+            if plan.completed_count:
+                plan_zh.append(f"已完成 {plan.completed_count}")
+                plan_en.append(f"Completed {plan.completed_count}")
+            if plan.remediation_count:
+                plan_zh.append(f"补强 {plan.remediation_count}")
+                plan_en.append(f"Remediation {plan.remediation_count}")
+            if plan.backlog_count > plan.plan_total_count:
+                plan_zh.append(f"待学习总量 {plan.backlog_count} 题")
+                plan_en.append(f"Total backlog {plan.backlog_count}")
             self.today_plan_detail.setText(
                 self.lang_manager.get_text(
-                    " · ".join(zh_parts),
-                    " · ".join(en_parts),
+                    " · ".join(plan_zh),
+                    " · ".join(plan_en),
                 )
             )
         elif plan.action is LearningPlanAction.DAILY_COMPLETE:
@@ -603,11 +630,20 @@ class HomeScreen(QWidget):
             self.start_btn.setText(
                 self.lang_manager.get_text("自由练习", "Free Practice")
             )
-            self.today_plan_detail.setText(
-                self.lang_manager.get_text(
-                    "当前没有到期、错误、不确定、久未练或新题。",
-                    "No due, incorrect, unsure, stale, or new questions remain.",
+            if plan.deferred_count:
+                detail_zh = (
+                    f"今日计划已完成；{plan.deferred_count} 道仍需巩固的题目"
+                    "已安排到明日。"
                 )
+                detail_en = (
+                    f"Today's plan is complete; {plan.deferred_count} item(s) "
+                    "still needing work are deferred to tomorrow."
+                )
+            else:
+                detail_zh = "当前没有待完成的今日计划题目。"
+                detail_en = "No questions remain in today's plan."
+            self.today_plan_detail.setText(
+                self.lang_manager.get_text(detail_zh, detail_en)
             )
         elif plan.action is LearningPlanAction.REVIEW_INCORRECT:
             self.start_btn.setText(self.lang_manager.get_text("开始今日错题复习", "Start Today's Review"))
