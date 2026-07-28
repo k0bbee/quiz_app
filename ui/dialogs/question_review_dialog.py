@@ -44,6 +44,7 @@ class QuestionReviewDialog(QDialog):
         parent=None,
         page_size: int = 50,
         course_project=None,
+        allow_empty_accept: bool = False,
     ):
         super().__init__(parent)
         self.questions = list(questions)
@@ -54,6 +55,7 @@ class QuestionReviewDialog(QDialog):
         self._accepted: set[int] = self._initial_accepted_indexes()
         self._loading_edit_fields = False
         self.course_project = course_project
+        self.allow_empty_accept = bool(allow_empty_accept)
 
         self.setWindowTitle(self.lang_manager.get_text("审查生成的题目", "Review Generated Questions"))
         self.resize(900, 600)
@@ -212,7 +214,7 @@ class QuestionReviewDialog(QDialog):
         self.cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(self.cancel_btn)
 
-        self.save_btn = QPushButton(self.lang_manager.get_text("保存已接受的题目", "Save Accepted Questions"))
+        self.save_btn = QPushButton(self._save_button_text())
         self.save_btn.setObjectName("primaryButton")
         self.save_btn.setMinimumHeight(36)
         self.save_btn.clicked.connect(self._on_save)
@@ -245,7 +247,7 @@ class QuestionReviewDialog(QDialog):
         self.review_tabs.setTabText(2, self.lang_manager.get_text("来源", "Sources"))
         self.review_tabs.setTabText(3, self.lang_manager.get_text("质量问题", "Quality"))
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
-        self.save_btn.setText(self.lang_manager.get_text("保存已接受的题目", "Save Accepted Questions"))
+        self.save_btn.setText(self._save_button_text())
 
         # Update visible list item stems (may change with language)
         self._render_current_page(preserve_selection=True)
@@ -427,7 +429,7 @@ class QuestionReviewDialog(QDialog):
         """Validate and save accepted questions."""
         self._apply_current_edits(refresh=False)
         accepted_count = len(self._accepted)
-        if accepted_count == 0:
+        if accepted_count == 0 and not self.allow_empty_accept:
             QMessageBox.warning(
                 self,
                 self.lang_manager.get_text("没有接受的题目", "No Questions"),
@@ -435,17 +437,35 @@ class QuestionReviewDialog(QDialog):
             )
             return
 
+        if accepted_count:
+            confirmation = self.lang_manager.get_text(
+                f"保存 {accepted_count} 道已接受的题目？\n它们将被添加到题库中。",
+                f"Save {accepted_count} accepted question(s)?\nThey will be added to the question bank.",
+            )
+        else:
+            confirmation = self.lang_manager.get_text(
+                "拒绝全部警告题并保存其余已自动接受的题目？",
+                "Reject all flagged questions and save the remaining auto-accepted questions?",
+            )
         reply = QMessageBox.question(
             self,
             self.lang_manager.get_text("保存题目?", "Save Questions?"),
-            self.lang_manager.get_text(
-                f"保存 {accepted_count} 道已接受的题目？\n它们将被添加到题库中。",
-                f"Save {accepted_count} accepted question(s)?\nThey will be added to the question bank."
-            ),
+            confirmation,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         if reply == QMessageBox.StandardButton.Yes:
             self.accept()
+
+    def _save_button_text(self) -> str:
+        if self.allow_empty_accept:
+            return self.lang_manager.get_text(
+                "保存审查结果",
+                "Save Review Result",
+            )
+        return self.lang_manager.get_text(
+            "保存已接受的题目",
+            "Save Accepted Questions",
+        )
 
     def get_accepted_questions(self) -> list[Question]:
         """Return only the accepted questions."""

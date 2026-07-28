@@ -862,6 +862,7 @@ class MainWindow(QMainWindow):
                 initial_plan=plan,
                 auto_start=True,
                 start_after_save=True,
+                review_warnings_only=True,
                 question_set_title=title,
             )
         finally:
@@ -1436,6 +1437,7 @@ class MainWindow(QMainWindow):
         recovery_context=None,
         auto_start: bool = False,
         start_after_save: bool = False,
+        review_warnings_only: bool = False,
         question_set_title: str = "",
     ):
         """Open the AI question generation dialog."""
@@ -1481,6 +1483,8 @@ class MainWindow(QMainWindow):
             if hasattr(dialog, "runtime_instruction_input"):
                 instruction = str(recovery_context.get("runtime_instruction", "") or "").strip()
                 dialog.runtime_instruction_input.setPlainText(instruction)
+        if review_warnings_only:
+            dialog.set_review_warnings_only(True)
         if auto_start:
             dialog.start_generation_when_shown()
         if dialog.exec() == QDialog.DialogCode.Accepted:

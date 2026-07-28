@@ -1,10 +1,11 @@
 import os
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from models.course_project import CourseTopic
 from models.question import Question
@@ -213,6 +214,29 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
 
         self.assertEqual({0}, dialog._accepted)
         self.assertEqual([good.question_id], [question.question_id for question in dialog.get_accepted_questions()])
+
+    def test_warning_only_review_can_save_after_rejecting_every_warning(self):
+        warning = make_question(1)
+        warning.metadata["source_ref_status"] = "invalid_model_ref"
+        dialog = QuestionReviewDialog(
+            [warning],
+            page_size=10,
+            allow_empty_accept=True,
+        )
+        self.addCleanup(dialog.close)
+        self.assertEqual("保存审查结果", dialog.save_btn.text())
+
+        with patch(
+            "ui.dialogs.question_review_dialog.QMessageBox.warning",
+        ) as warning_message, patch(
+            "ui.dialogs.question_review_dialog.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ):
+            dialog._on_save()
+
+        warning_message.assert_not_called()
+        self.assertEqual(QDialog.DialogCode.Accepted, dialog.result())
+        self.assertEqual([], dialog.get_accepted_questions())
 
     def test_review_dialog_accept_all_label_describes_safe_bulk_action(self):
         dialog = QuestionReviewDialog([make_question(1)], page_size=10)

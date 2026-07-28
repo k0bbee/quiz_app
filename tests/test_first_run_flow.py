@@ -302,10 +302,12 @@ class FirstRunFlowTests(unittest.TestCase):
                 initial_plan=plan,
                 auto_start=True,
                 start_after_save=True,
+                review_warnings_only=True,
                 question_set_title="操作系统快速复习",
             )
 
         dialog.apply_exam_plan.assert_called_once_with(plan)
+        dialog.set_review_warnings_only.assert_called_once_with(True)
         dialog.start_generation_when_shown.assert_called_once_with()
         dialog.set_title_input.setText.assert_called_once_with("操作系统快速复习")
         shell._on_question_bank_changed.assert_called_once_with()
@@ -345,6 +347,7 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual(("mechanics",), kwargs["initial_plan"].selected_topics)
         self.assertTrue(kwargs["auto_start"])
         self.assertTrue(kwargs["start_after_save"])
+        self.assertTrue(kwargs["review_warnings_only"])
         self.assertEqual("大学物理快速复习", kwargs["question_set_title"])
 
 

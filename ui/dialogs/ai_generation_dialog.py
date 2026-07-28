@@ -17,6 +17,7 @@ from PyQt6.QtGui import QTextCursor
 from utils.constants import topic_alias_values, topic_label, topic_value
 from core.app_errors import coerce_app_error, format_app_error
 from core.language_manager import LanguageManager
+from core.question_validation import validate_question_quality
 from ai.llm_client import LLMClient
 from ai.batch_generator import GenerationWorker
 from ai.generation_config import (
@@ -77,6 +78,7 @@ class AIGenerationDialog(QDialog):
         self.worker: GenerationWorker = None
         self._generation_failed = False
         self._generation_cancelled = False
+        self._review_warnings_only = False
         self._close_when_worker_stops = False
         self._partial_generation_error = None
         self._partial_generation_report: GenerationReport | None = None
@@ -1066,6 +1068,10 @@ class AIGenerationDialog(QDialog):
         """Start the confirmed plan once the modal event loop is responsive."""
         QTimer.singleShot(0, self._start_generation)
 
+    def set_review_warnings_only(self, enabled: bool = True) -> None:
+        """Auto-accept clean questions and review only quality warnings."""
+        self._review_warnings_only = bool(enabled)
+
     def _open_exam_assistant(self):
         """Open a reviewable dialogue and apply only its confirmed plan."""
         from ui.dialogs.exam_assistant_dialog import ExamAssistantDialog
@@ -1968,16 +1974,56 @@ class AIGenerationDialog(QDialog):
     def _review_generated_questions(self) -> None:
         if not self.generated_questions:
             return
+        all_questions = list(self.generated_questions)
+        review_questions = all_questions
+        auto_accepted = []
+        if self._review_warnings_only:
+            classified = [
+                (question, bool(validate_question_quality(question)))
+                for question in all_questions
+            ]
+            review_questions = [
+                question
+                for question, has_warnings in classified
+                if has_warnings
+            ]
+            auto_accepted = [
+                question
+                for question, has_warnings in classified
+                if not has_warnings
+            ]
+            if not review_questions:
+                self.accept()
+                return
         review_kwargs = (
             {"course_project": self.course_project} if self.course_project is not None else {}
         )
+        if self._review_warnings_only:
+            review_kwargs["allow_empty_accept"] = bool(auto_accepted)
         review_dialog = QuestionReviewDialog(
-            self.generated_questions,
+            review_questions,
             self,
             **review_kwargs,
         )
         if review_dialog.exec() == QDialog.DialogCode.Accepted:
             accepted = review_dialog.get_accepted_questions()
+            if self._review_warnings_only:
+                accepted_warning_by_id = {
+                    question.question_id: question
+                    for question in accepted
+                }
+                warning_ids = {
+                    question.question_id
+                    for question in review_questions
+                }
+                accepted = [
+                    accepted_warning_by_id.get(question.question_id, question)
+                    for question in all_questions
+                    if (
+                        question.question_id not in warning_ids
+                        or question.question_id in accepted_warning_by_id
+                    )
+                ]
             if not accepted:
                 QMessageBox.warning(
                     self,

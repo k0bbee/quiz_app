@@ -1837,6 +1837,121 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(QDialog.DialogCode.Accepted, dialog.result())
         self.assertEqual([question], dialog.generated_questions)
 
+    def test_warning_focused_review_skips_clean_questions_and_keeps_them(self):
+        clean = Question.create_new(
+            qtype=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": "系统调用运行在内核态。",
+                    "options": ["正确", "错误"],
+                    "explanation": "系统调用会进入内核执行受保护的服务。",
+                },
+                "en": {
+                    "stem": "System calls execute in kernel mode.",
+                    "options": ["True", "False"],
+                    "explanation": "A system call enters the kernel for a protected service.",
+                },
+            },
+            correct_answer=True,
+            topic="process",
+        )
+        warning = Question.create_new(
+            qtype=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": "DMA 可以减少 CPU 搬运数据的工作。",
+                    "options": ["正确", "错误"],
+                    "explanation": "",
+                },
+                "en": {
+                    "stem": "DMA reduces CPU data-copy work.",
+                    "options": ["True", "False"],
+                    "explanation": "",
+                },
+            },
+            correct_answer=True,
+            topic="io",
+        )
+        reviewed = {}
+
+        class RejectingWarningReview:
+            def __init__(self, questions, parent=None, **kwargs):
+                reviewed["questions"] = list(questions)
+                reviewed["kwargs"] = kwargs
+
+            def exec(self):
+                return QDialog.DialogCode.Accepted
+
+            def get_accepted_questions(self):
+                return []
+
+        dialog = AIGenerationDialog(
+            "course content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=["process", "io"],
+        )
+        self.addCleanup(dialog.close)
+        dialog.generated_questions = [clean, warning]
+        dialog.set_review_warnings_only(True)
+
+        with patch(
+            "ui.dialogs.ai_generation_dialog.QuestionReviewDialog",
+            RejectingWarningReview,
+        ):
+            dialog._review_generated_questions()
+
+        self.assertEqual([warning], reviewed["questions"])
+        self.assertTrue(reviewed["kwargs"]["allow_empty_accept"])
+        self.assertEqual([clean], dialog.generated_questions)
+        self.assertEqual(QDialog.DialogCode.Accepted, dialog.result())
+
+    def test_warning_focused_review_auto_accepts_when_all_questions_are_clean(self):
+        clean = Question.create_new(
+            qtype=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": "合同依法成立后对当事人具有约束力。",
+                    "options": ["正确", "错误"],
+                    "explanation": "依法成立的合同原则上对当事人具有法律约束力。",
+                },
+                "en": {
+                    "stem": "A lawfully formed contract binds its parties.",
+                    "options": ["True", "False"],
+                    "explanation": "A lawfully formed contract generally binds its parties.",
+                },
+            },
+            correct_answer=True,
+            topic="contract",
+        )
+        dialog = AIGenerationDialog(
+            "course content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=["contract"],
+        )
+        self.addCleanup(dialog.close)
+        dialog.generated_questions = [clean]
+        dialog.set_review_warnings_only(True)
+
+        with patch(
+            "ui.dialogs.ai_generation_dialog.QuestionReviewDialog",
+        ) as review_dialog:
+            dialog._review_generated_questions()
+
+        review_dialog.assert_not_called()
+        self.assertEqual([clean], dialog.generated_questions)
+        self.assertEqual(QDialog.DialogCode.Accepted, dialog.result())
+
     def test_generation_partial_result_shows_explicit_review_action_without_error_modal(self):
         question = Question.create_new(
             qtype=QuestionType.MULTIPLE_CHOICE,
