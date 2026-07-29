@@ -1,0 +1,20 @@
+name: Temporary Current Audit 20260729
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove temporary workflow from artifact
+        run: rm -f .github/workflows/temporary-current-audit-20260729.yml
+      - name: Upload current source
+        uses: actions/upload-artifact@v4
+        with:
+          name: quiz-app-current-main-source-20260729
+          path: .
+          include-hidden-files: true
+          retention-days: 1
