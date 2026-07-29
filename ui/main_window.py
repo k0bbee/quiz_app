@@ -95,6 +95,7 @@ class MainWindow(QMainWindow):
         self._first_run_operation = ""
         self._first_run_error = ""
         self._first_run_progress = None
+        self._last_generation_launch_error = ""
         self._history_protection_blocked = bool(
             getattr(startup_migration_report, "has_failures", False)
         )
@@ -501,7 +502,9 @@ class MainWindow(QMainWindow):
         self.first_run_screen.cancel_requested.connect(
             self._on_first_run_cancel
         )
-        self.settings_screen.settings_saved.connect(self._refresh_first_run)
+        self.settings_screen.settings_saved.connect(
+            self._on_first_run_settings_saved
+        )
 
         # Topic selection
         self.topic_screen.study_start.connect(self._on_study_quiz_start)
@@ -681,6 +684,16 @@ class MainWindow(QMainWindow):
     def open_settings(self, section: str = "") -> None:
         """Open settings as a utility window without leaving the workspace."""
         self.settings_window.show_settings(section)
+
+    def _on_first_run_settings_saved(self) -> None:
+        """Resume onboarding in place after repairing AI configuration."""
+        if (
+            self._last_generation_launch_error
+            and self._first_run_error == self._last_generation_launch_error
+        ):
+            self._first_run_error = ""
+        self._last_generation_launch_error = ""
+        self._refresh_first_run()
 
     def _refresh_task_center_action(self) -> None:
         """Keep the global task entry visible and surface tasks needing attention."""
@@ -890,20 +903,86 @@ class MainWindow(QMainWindow):
         self._first_run_operation = "generating"
         self._first_run_error = ""
         self._refresh_first_run()
-        try:
-            self._on_ai_generate(
-                course_override=course_project,
-                initial_plan=plan,
-                auto_start=True,
-                start_after_save=True,
-                review_warnings_only=True,
-                question_set_title=title,
-                draft_source="first_run",
-            )
-        finally:
+        configured = MainWindow._configure_generation_dialog(
+            self,
+            course_override=course_project,
+            initial_plan=plan,
+            review_warnings_only=True,
+            question_set_title=title,
+            draft_source="first_run",
+            present_error=False,
+        )
+        if configured is None:
             self._first_run_operation = ""
-            self._first_run_progress = None
+            self._first_run_error = self._last_generation_launch_error
             self._refresh_first_run()
+            return
+        dialog, course_project, restored_draft, draft_source = configured
+        dialog.accepted.connect(
+            lambda: self._on_first_run_generation_accepted(
+                dialog,
+                course_project,
+                draft_source,
+            )
+        )
+        dialog.rejected.connect(
+            lambda: self._on_first_run_generation_rejected(
+                dialog,
+                course_project,
+                draft_source,
+            )
+        )
+        self.first_run_screen.show_generation_widget(dialog)
+        if not restored_draft:
+            dialog.start_generation_when_shown()
+
+    def _on_first_run_generation_accepted(
+        self,
+        dialog,
+        course_project,
+        draft_source: str,
+    ) -> None:
+        MainWindow._sync_generation_draft(
+            self,
+            dialog,
+            course_project,
+            source=draft_source,
+        )
+        saved = MainWindow._save_generated_dialog(
+            self,
+            dialog,
+            course_project,
+            start_after_save=True,
+        )
+        if not saved:
+            show_pending = getattr(dialog, "_show_review_pending_state", None)
+            if callable(show_pending):
+                show_pending()
+            self.first_run_screen.show_generation_widget(dialog)
+            return
+        self.first_run_screen.clear_generation_widget(dialog)
+        dialog.deleteLater()
+        self._first_run_operation = ""
+        self._first_run_progress = None
+        self._refresh_first_run()
+
+    def _on_first_run_generation_rejected(
+        self,
+        dialog,
+        course_project,
+        draft_source: str,
+    ) -> None:
+        MainWindow._sync_generation_draft(
+            self,
+            dialog,
+            course_project,
+            source=draft_source,
+        )
+        self.first_run_screen.clear_generation_widget(dialog)
+        dialog.deleteLater()
+        self._first_run_operation = ""
+        self._first_run_progress = None
+        self._refresh_first_run()
 
     def _on_first_run_start(self) -> None:
         candidates = self._first_run_practice_candidates()
@@ -1537,6 +1616,7 @@ class MainWindow(QMainWindow):
         material_pack=None,
         purpose: str = "create",
         allow_review_without_ai: bool = False,
+        present_error: bool = True,
     ):
         """Prepare one validated generation dialog for create or regenerate."""
         gm = self.lang_manager.get_text
@@ -1559,14 +1639,17 @@ class MainWindow(QMainWindow):
             allow_review_without_ai=allow_review_without_ai,
         )
         if preparation.ok:
+            self._last_generation_launch_error = ""
             return preparation
         copy = generation_launch_copy(preparation.issue, purpose=purpose)
         detail = preparation.message or gm(copy.detail_zh, copy.detail_en)
-        QMessageBox.warning(
-            self,
-            gm(copy.title_zh, copy.title_en),
-            detail,
-        )
+        self._last_generation_launch_error = detail
+        if present_error:
+            QMessageBox.warning(
+                self,
+                gm(copy.title_zh, copy.title_en),
+                detail,
+            )
         return None
 
     def _on_ai_generate(
@@ -1582,8 +1665,57 @@ class MainWindow(QMainWindow):
         review_warnings_only: bool = False,
         question_set_title: str = "",
         draft_source: str = "manual",
+        present_error: bool = True,
     ):
         """Open the AI question generation dialog."""
+        configured = MainWindow._configure_generation_dialog(
+            self,
+            course_override=course_override,
+            initial_plan=initial_plan,
+            prediction=prediction,
+            material_pack=material_pack,
+            recovery_context=recovery_context,
+            review_warnings_only=review_warnings_only,
+            question_set_title=question_set_title,
+            draft_source=draft_source,
+            present_error=present_error,
+        )
+        if configured is None:
+            return
+        dialog, course_project, restored_draft, draft_source = configured
+        if auto_start and not restored_draft:
+            dialog.start_generation_when_shown()
+        dialog_result = dialog.exec()
+        if material_pack is None:
+            MainWindow._sync_generation_draft(
+                self,
+                dialog,
+                course_project,
+                source=draft_source,
+            )
+        if dialog_result == QDialog.DialogCode.Accepted:
+            MainWindow._save_generated_dialog(
+                self,
+                dialog,
+                course_project,
+                material_pack=material_pack,
+                start_after_save=start_after_save,
+            )
+
+    def _configure_generation_dialog(
+        self,
+        *,
+        course_override=None,
+        initial_plan=None,
+        prediction=None,
+        material_pack=None,
+        recovery_context=None,
+        review_warnings_only: bool = False,
+        question_set_title: str = "",
+        draft_source: str = "manual",
+        present_error: bool = True,
+    ):
+        """Configure one generation surface without deciding how it is shown."""
         gm = self.lang_manager.get_text
         course_manager = getattr(self, "course_manager", None)
         draft_course = (
@@ -1617,6 +1749,7 @@ class MainWindow(QMainWindow):
             material_pack=material_pack,
             purpose="create",
             allow_review_without_ai=generation_draft is not None,
+            present_error=present_error,
         )
         if preparation is None:
             return
@@ -1681,75 +1814,81 @@ class MainWindow(QMainWindow):
                     source=draft_source,
                 )
             )
-        if auto_start and not restored_draft:
-            dialog.start_generation_when_shown()
-        dialog_result = dialog.exec()
-        if material_pack is None:
-            MainWindow._sync_generation_draft(
-                self,
-                dialog,
-                course_project,
-                source=draft_source,
+        return dialog, course_project, restored_draft, draft_source
+
+    def _save_generated_dialog(
+        self,
+        dialog,
+        course_project,
+        *,
+        material_pack=None,
+        start_after_save: bool = False,
+    ) -> bool:
+        """Persist accepted generation output from modal or embedded surfaces."""
+        questions = list(getattr(dialog, "generated_questions", ()) or ())
+        if not questions:
+            return False
+        gm = self.lang_manager.get_text
+        lang = self.lang_manager.current
+        qset = build_ai_question_set(
+            questions,
+            selected_difficulty=dialog.diff_combo.currentData(),
+            generation_config=dialog._build_generation_config(),
+            lang=lang,
+            course_project=course_project,
+            custom_title=dialog.question_set_title(),
+            material_pack=material_pack,
+        )
+        try:
+            qset, saved = persist_new_question_set(
+                self.question_bank,
+                self.set_manager,
+                qset,
+                questions,
             )
-        if dialog_result == QDialog.DialogCode.Accepted:
-            questions = dialog.generated_questions
-            if questions:
-                lang = self.lang_manager.current
-                qset = build_ai_question_set(
-                    questions,
-                    selected_difficulty=dialog.diff_combo.currentData(),
-                    generation_config=dialog._build_generation_config(),
-                    lang=lang,
-                    course_project=course_project,
-                    custom_title=dialog.question_set_title(),
-                    material_pack=material_pack,
-                )
-                try:
-                    qset, saved = persist_new_question_set(
-                        self.question_bank,
-                        self.set_manager,
-                        qset,
-                        questions,
-                    )
-                except RuntimeError as exc:
-                    QMessageBox.critical(
-                        self if isinstance(self, QWidget) else None,
-                        gm("保存失败", "Save Failed"),
-                        str(exc),
-                    )
-                    return
-                MainWindow._delete_generation_draft(
-                    self,
-                    course_project.course_id,
-                )
-                refresh_question_bank = getattr(
-                    self,
-                    "_on_question_bank_changed",
-                    None,
-                )
-                if callable(refresh_question_bank):
-                    refresh_question_bank()
-                if start_after_save:
-                    self._on_study_quiz_start(
-                        StudyIntent(
-                            course_id=course_project.course_id,
-                            action=StudyAction.CUSTOM_PRACTICE,
-                            set_id=qset.set_id,
-                            question_ids=tuple(qset.questions),
-                            question_count=len(qset.questions),
-                            submission_mode="practice",
-                            source="first_run_generation",
-                        ),
-                        list(qset.questions),
-                    )
-                    return
-                QMessageBox.information(
-                    self,
-                    gm("已保存", "Saved"),
-                    gm(f"已保存 {saved} 道题目并创建了题目集：\n{qset.get_title(lang)}",
-                       f"Saved {saved} questions and created a question set:\n{qset.get_title(lang)}"),
-                )
-                self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+        except RuntimeError as exc:
+            QMessageBox.critical(
+                self if isinstance(self, QWidget) else None,
+                gm("保存失败", "Save Failed"),
+                str(exc),
+            )
+            return False
+        MainWindow._delete_generation_draft(
+            self,
+            course_project.course_id,
+        )
+        refresh_question_bank = getattr(
+            self,
+            "_on_question_bank_changed",
+            None,
+        )
+        if callable(refresh_question_bank):
+            refresh_question_bank()
+        if start_after_save:
+            self._on_study_quiz_start(
+                StudyIntent(
+                    course_id=course_project.course_id,
+                    action=StudyAction.CUSTOM_PRACTICE,
+                    set_id=qset.set_id,
+                    question_ids=tuple(qset.questions),
+                    question_count=len(qset.questions),
+                    submission_mode="practice",
+                    source="first_run_generation",
+                ),
+                list(qset.questions),
+            )
+            return True
+        QMessageBox.information(
+            self,
+            gm("已保存", "Saved"),
+            gm(
+                f"已保存 {saved} 道题目并创建了题目集：\n{qset.get_title(lang)}",
+                f"Saved {saved} questions and created a question set:\n"
+                f"{qset.get_title(lang)}",
+            ),
+        )
+        self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+        return True
 
     def _generation_draft(self, course_id: str):
         store = vars(self).get("generation_draft_store")

@@ -9,6 +9,8 @@ from PyQt6.QtWidgets import (
     QLabel,
     QProgressBar,
     QPushButton,
+    QSizePolicy,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -70,10 +72,18 @@ class FirstRunWorkspace(QWidget):
         self.setObjectName("firstRunWorkspace")
         self.lang_manager = LanguageManager.instance()
         self.state = FirstRunState(FirstRunStage.AI_SETUP)
+        self._generation_widget = None
 
-        outer = QHBoxLayout(self)
-        outer.setContentsMargins(28, 28, 28, 28)
-        outer.addStretch(1)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        self.content_stack = QStackedWidget()
+        self.content_stack.setObjectName("firstRunContentStack")
+        outer.addWidget(self.content_stack)
+
+        self.overview_page = QWidget()
+        overview_layout = QHBoxLayout(self.overview_page)
+        overview_layout.setContentsMargins(28, 28, 28, 28)
+        overview_layout.addStretch(1)
 
         self.card = QFrame()
         self.card.setObjectName("firstRunCard")
@@ -123,8 +133,29 @@ class FirstRunWorkspace(QWidget):
         action_layout.addWidget(self.primary_btn)
         card_layout.addLayout(action_layout)
 
-        outer.addWidget(self.card, 12)
-        outer.addStretch(1)
+        overview_layout.addWidget(self.card, 12)
+        overview_layout.addStretch(1)
+        self.content_stack.addWidget(self.overview_page)
+
+        self.generation_page = QWidget()
+        generation_layout = QVBoxLayout(self.generation_page)
+        generation_layout.setContentsMargins(12, 10, 12, 12)
+        generation_layout.setSpacing(8)
+        self.generation_title_label = QLabel()
+        self.generation_title_label.setObjectName("firstRunTitle")
+        generation_layout.addWidget(self.generation_title_label)
+        self.generation_detail_label = QLabel()
+        self.generation_detail_label.setObjectName("secondaryText")
+        self.generation_detail_label.setWordWrap(True)
+        generation_layout.addWidget(self.generation_detail_label)
+        self.generation_host = QWidget()
+        self.generation_host.setObjectName("firstRunGenerationHost")
+        self.generation_host_layout = QVBoxLayout(self.generation_host)
+        self.generation_host_layout.setContentsMargins(0, 0, 0, 0)
+        self.generation_host_layout.setSpacing(0)
+        generation_layout.addWidget(self.generation_host, 1)
+        self.content_stack.addWidget(self.generation_page)
+        self.content_stack.setCurrentWidget(self.overview_page)
 
         self.lang_manager.language_changed.connect(self._render)
         self._render()
@@ -133,6 +164,40 @@ class FirstRunWorkspace(QWidget):
         self.state = state
         self._render()
 
+    def show_generation_widget(self, widget: QWidget) -> None:
+        """Present the existing generation surface inside onboarding."""
+        if widget is self._generation_widget:
+            self.content_stack.setCurrentWidget(self.generation_page)
+            widget.show()
+            return
+        self.clear_generation_widget()
+        widget.setParent(self.generation_host)
+        widget.setWindowFlags(Qt.WindowType.Widget)
+        widget.setMinimumSize(0, 0)
+        widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        self.generation_host_layout.addWidget(widget)
+        self._generation_widget = widget
+        self.content_stack.setCurrentWidget(self.generation_page)
+        widget.show()
+
+    def clear_generation_widget(self, widget: QWidget | None = None):
+        """Return to the step overview and detach the hosted surface."""
+        current = self._generation_widget
+        if current is None or (widget is not None and widget is not current):
+            return None
+        self.generation_host_layout.removeWidget(current)
+        current.hide()
+        current.setParent(None)
+        self._generation_widget = None
+        self.content_stack.setCurrentWidget(self.overview_page)
+        return current
+
+    def generation_widget(self):
+        return self._generation_widget
+
     def _render(self, *_args) -> None:
         gm = self.lang_manager.get_text
         self.title_label.setText(gm("创建第一门课程", "Create Your First Course"))
@@ -140,6 +205,14 @@ class FirstRunWorkspace(QWidget):
             "完成下面三步即可直接开始第一次练习，无需先理解题库和题目集。",
             "Complete these three steps to start your first practice without "
             "learning the library structure first.",
+        ))
+        self.generation_title_label.setText(
+            gm("准备第一次练习", "Prepare Your First Practice")
+        )
+        self.generation_detail_label.setText(gm(
+            "生成、进度、补充要求和审核都在这里完成；关闭应用后仍可继续审核已生成题目。",
+            "Generate, adjust, and review here. Generated questions remain "
+            "available for review after restarting the app.",
         ))
         statuses = self._step_statuses()
         self.ai_step.render(

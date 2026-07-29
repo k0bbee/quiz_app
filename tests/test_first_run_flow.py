@@ -6,7 +6,8 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
+from PyQt6.QtWidgets import QApplication, QDialog, QLabel
 
 from ai.generation_config import GenerationConfig
 from ai.exam_plan import ExamGenerationPlan
@@ -21,6 +22,7 @@ from models.course_project import CourseProject, CourseTopic
 from models.question import Question
 from models.question_set import QuestionSet
 from ui.main_window import MainWindow
+from ui.generation_launch_controller import GenerationLaunchIssue
 from ui.screens.first_run_workspace import FirstRunWorkspace
 from utils.constants import Difficulty, QuestionType
 
@@ -29,6 +31,25 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class FirstRunFlowTests(unittest.TestCase):
+    def test_first_run_workspace_hosts_generation_surface_in_place(self):
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+        generation_surface = QDialog()
+        QLabel("generation", generation_surface)
+
+        workspace.show_generation_widget(generation_surface)
+
+        self.assertIs(
+            generation_surface,
+            workspace.generation_widget(),
+        )
+        self.assertIs(
+            workspace.generation_page,
+            workspace.content_stack.currentWidget(),
+        )
+        self.assertIs(workspace.generation_host, generation_surface.parent())
+        self.assertEqual(Qt.WindowType.Widget, generation_surface.windowType())
+
     def test_first_run_workspace_uses_wide_window_without_large_side_gutters(self):
         workspace = FirstRunWorkspace()
         self.addCleanup(workspace.close)
@@ -586,18 +607,163 @@ class FirstRunFlowTests(unittest.TestCase):
             updated_at="2026-07-28T00:00:00+00:00",
         )
         window.course_manager.save(project)
-        window._on_ai_generate = Mock()
 
-        window._on_first_run_generate()
+        with patch.object(
+            MainWindow,
+            "_configure_generation_dialog",
+            return_value=None,
+        ) as configure:
+            window._on_first_run_generate()
 
-        kwargs = window._on_ai_generate.call_args.kwargs
+        kwargs = configure.call_args.kwargs
         self.assertEqual(project.course_id, kwargs["course_override"].course_id)
         self.assertEqual(10, kwargs["initial_plan"].question_count)
         self.assertEqual(("mechanics",), kwargs["initial_plan"].selected_topics)
-        self.assertTrue(kwargs["auto_start"])
-        self.assertTrue(kwargs["start_after_save"])
         self.assertTrue(kwargs["review_warnings_only"])
         self.assertEqual("大学物理快速复习", kwargs["question_set_title"])
+        self.assertFalse(kwargs["present_error"])
+
+    def test_first_run_generation_settings_error_stays_in_workspace(self):
+        with patch(
+            "ui.main_window.MainWindow._first_run_ai_error",
+            return_value="",
+            create=True,
+        ):
+            window = MainWindow()
+        self.addCleanup(window.close)
+        project = CourseProject(
+            course_id="course-inline-error",
+            title="法学",
+            source_folder="",
+            summary_markdown="# 法学",
+            summary_path="",
+            topics=[CourseTopic("contract", "合同")],
+            documents=[],
+            created_at="2026-07-29T00:00:00+00:00",
+            updated_at="2026-07-29T00:00:00+00:00",
+        )
+        window.course_manager.save(project)
+        window._first_run_ai_error = Mock(return_value="API key missing")
+        failed = Mock(
+            ok=False,
+            issue=GenerationLaunchIssue.INVALID_AI_SETTINGS,
+            message="API key missing",
+        )
+
+        with patch(
+            "ui.main_window.GenerationLaunchController.prepare",
+            return_value=failed,
+        ), patch("ui.main_window.QMessageBox.warning") as warning:
+            window._on_first_run_generate()
+
+        warning.assert_not_called()
+        self.assertEqual(
+            FirstRunStage.AI_SETUP,
+            window.first_run_screen.state.stage,
+        )
+        self.assertEqual(
+            "API key missing",
+            window.first_run_screen.status_label.text(),
+        )
+        self.assertIsNone(window.first_run_screen.generation_widget())
+
+        window._first_run_ai_error.return_value = ""
+        window._on_first_run_settings_saved()
+
+        self.assertEqual(
+            FirstRunStage.GENERATE,
+            window.first_run_screen.state.stage,
+        )
+        self.assertFalse(window.first_run_screen.status_label.isVisible())
+
+    def test_first_run_generation_is_embedded_without_modal_exec(self):
+        with patch(
+            "ui.main_window.MainWindow._first_run_ai_error",
+            return_value="",
+            create=True,
+        ):
+            window = MainWindow()
+        self.addCleanup(window.close)
+        project = CourseProject(
+            course_id="course-inline-generation",
+            title="大学物理",
+            source_folder="",
+            summary_markdown="# 大学物理",
+            summary_path="",
+            topics=[CourseTopic("mechanics", "力学")],
+            documents=[],
+            created_at="2026-07-29T00:00:00+00:00",
+            updated_at="2026-07-29T00:00:00+00:00",
+        )
+        window.course_manager.save(project)
+
+        from ui.dialogs.ai_generation_dialog import AIGenerationDialog
+
+        dialog = AIGenerationDialog(
+            project.summary_markdown,
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=project.topics,
+            course_project=project,
+        )
+        self.addCleanup(dialog.close)
+        dialog.exec = Mock(
+            side_effect=AssertionError("first-run generation must not be modal")
+        )
+        dialog.start_generation_when_shown = Mock()
+        preparation = Mock(dialog=dialog, course_project=project)
+
+        with patch.object(
+            MainWindow,
+            "_prepare_generation_dialog",
+            return_value=preparation,
+        ):
+            window._on_first_run_generate()
+
+        self.assertIs(
+            dialog,
+            window.first_run_screen.generation_widget(),
+        )
+        dialog.exec.assert_not_called()
+        dialog.start_generation_when_shown.assert_called_once_with()
+
+        dialog.generated_questions = [
+            Question(
+                question_id="inline-generated-question",
+                type=QuestionType.TRUE_FALSE,
+                difficulty=Difficulty.EASY,
+                bilingual={
+                    "zh": {
+                        "stem": "力是矢量。",
+                        "options": ["正确", "错误"],
+                        "explanation": "力同时具有大小和方向。",
+                    },
+                    "en": {
+                        "stem": "Force is a vector.",
+                        "options": ["True", "False"],
+                        "explanation": "Force has both magnitude and direction.",
+                    },
+                },
+                correct_answer=True,
+                topic="mechanics",
+                metadata={"course_id": project.course_id},
+            )
+        ]
+        window._on_study_quiz_start = Mock()
+
+        dialog.accept()
+
+        self.assertIsNone(window.first_run_screen.generation_widget())
+        saved_sets = [
+            question_set
+            for question_set in window.set_manager.load_all()
+            if question_set.metadata.get("course_id") == project.course_id
+        ]
+        self.assertEqual(1, len(saved_sets))
+        window._on_study_quiz_start.assert_called_once()
 
 
 if __name__ == "__main__":
