@@ -55,6 +55,12 @@ class AppRouteTests(unittest.TestCase):
         self.assertTrue(focus.focus)
         self.assertEqual(("练习结果", "Results"), (focus.title_zh, focus.title_en))
 
+        generation = route_spec(Route.course("course-1", tab="generation"))
+        self.assertEqual(
+            ("课程", "Courses"),
+            (generation.title_zh, generation.title_en),
+        )
+
     def test_invalid_route_tabs_are_rejected_at_the_boundary(self):
         from ui.navigation.routes import Route
 

@@ -496,6 +496,11 @@ class MainWindow(QMainWindow):
                 ("today_tab_btn", Route.study("today")),
                 ("topics_tab_btn", Route.study("practice")),
                 ("progress_tab_btn", Route.study("analysis")),
+                ("course_overview_tab_btn", Route.course(tab="overview")),
+                ("course_sources_tab_btn", Route.course(tab="sources")),
+                ("course_knowledge_tab_btn", Route.course(tab="knowledge")),
+                ("course_generation_tab_btn", Route.course(tab="generation")),
+                ("course_qa_tab_btn", Route.course(tab="qa")),
                 ("bank_tab_btn", Route.library("questions")),
                 ("sets_tab_btn", Route.library("sets")),
                 ("past_exams_tab_btn", Route.library("past_exams")),
@@ -520,6 +525,11 @@ class MainWindow(QMainWindow):
             "today_tab_btn",
             "topics_tab_btn",
             "progress_tab_btn",
+            "course_overview_tab_btn",
+            "course_sources_tab_btn",
+            "course_knowledge_tab_btn",
+            "course_generation_tab_btn",
+            "course_qa_tab_btn",
             "bank_tab_btn",
             "sets_tab_btn",
             "past_exams_tab_btn",
@@ -654,6 +664,13 @@ class MainWindow(QMainWindow):
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"unknown screen index: {screen_index}") from exc
 
+    def _course_context_id(self) -> str:
+        if self._course_screen is not None:
+            selected = self._course_screen.selected_course_id()
+            if selected:
+                return selected
+        return self._current_course_id()
+
     def navigate_route(
         self,
         route: Route,
@@ -665,6 +682,12 @@ class MainWindow(QMainWindow):
         """Navigate by product semantics instead of numeric widget position."""
         if not isinstance(route, Route):
             raise TypeError("route must be a Route")
+        if route.workspace is Workspace.COURSE and not route.course_id:
+            route = Route.course(
+                self._course_context_id(),
+                tab=route.tab,
+                draft_id=route.draft_id,
+            )
         screen_index = self._screen_index_for_route(route)
         if not self._confirm_history_sensitive_navigation(screen_index):
             self._update_navigation_actions()
@@ -688,8 +711,21 @@ class MainWindow(QMainWindow):
         if confirm_current and not self._confirm_current_navigation(screen_index):
             self._update_navigation_actions()
             return False
+        active_generation_workspace = vars(self).get("_generation_workspace")
+        if (
+            route.tab == "generation"
+            and active_generation_workspace is not None
+            and active_generation_workspace.generation_widget() is not None
+            and active_generation_workspace.course_id
+        ):
+            route = Route.course(
+                active_generation_workspace.course_id,
+                tab="generation",
+                draft_id=route.draft_id,
+            )
         if (
             route.workspace is Workspace.COURSE
+            and route.tab == "generation"
             and route.course_id
             and self.course_manager.get(route.course_id) is not None
             and self._current_course_id() != route.course_id
@@ -703,7 +739,14 @@ class MainWindow(QMainWindow):
         elif screen_index == self.SCREEN_PAST_EXAMS:
             self._get_past_exam_screen()
         elif screen_index == self.SCREEN_GENERATION:
-            self._get_generation_workspace()
+            generation_workspace = self._get_generation_workspace()
+            if (
+                route.course_id
+                and generation_workspace.generation_widget() is None
+            ):
+                project = self.course_manager.get(route.course_id)
+                if project is not None:
+                    return bool(self._on_ai_generate(course_override=project))
         self.navigation_router.navigate(route, remember=remember)
         # Refresh data on certain screens
         if screen_index == self.SCREEN_TOPIC_SELECTION:
@@ -716,7 +759,8 @@ class MainWindow(QMainWindow):
             self._sync_home_screen_course()
             self.home_screen.refresh()
         elif screen_index == self.SCREEN_COURSES:
-            self._get_course_screen().refresh()
+            course_screen = self._get_course_screen()
+            course_screen.show_course(route.course_id, route.tab)
         elif screen_index == self.SCREEN_QUESTION_BANK:
             self._sync_question_bank_screen_course()
             library = self._get_question_bank_screen()

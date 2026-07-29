@@ -182,8 +182,6 @@ def route_spec(route: Route) -> RouteSpec:
     if route.workspace is Workspace.STUDY:
         return RouteSpec(route.workspace, "学习", "Study")
     if route.workspace is Workspace.COURSE:
-        if route.tab == "generation":
-            return RouteSpec(route.workspace, "生成与审核", "Generate and Review")
         return RouteSpec(route.workspace, "课程", "Courses")
     if route.workspace is Workspace.LIBRARY:
         return RouteSpec(route.workspace, "资料库", "Library")

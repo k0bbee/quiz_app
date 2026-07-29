@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
 from core.course_initializer import CourseInitializer
+from core.course_hub_presenter import build_course_hub_view
 from core.course_parse_checkpoint import CourseParseCheckpointStore
 from core.course_asset_lifecycle import (
     CourseRemovalMode,
@@ -32,6 +33,10 @@ from core.language_manager import LanguageManager
 from config import COURSE_CHECKPOINTS_DIR, SETTINGS_FILE
 from ui.dialogs.course_exam_scope_dialog import CourseExamScopeDialog
 from ui.dialogs.course_merge_dialog import CourseMergeDialog
+from ui.widgets.course_hub_panels import (
+    CourseKnowledgePanel,
+    CourseSourcesPanel,
+)
 from ui.widgets.course_qa_panel import CourseQAPanel
 from utils.json_io import read_json
 
@@ -101,6 +106,8 @@ class CourseScreen(QWidget):
         self._merge_worker = None
         self._summary_markdown = ""
         self._summary_raw_mode = False
+        self._active_section = "overview"
+        self._course_hub_view = None
         self._last_task_progress = None
         self._task_bridge = None
         self._init_present_result = True
@@ -376,17 +383,24 @@ class CourseScreen(QWidget):
         self.summary_label = QLabel(self.lang_manager.get_text("摘要预览", "Summary preview"))
         self.summary_label.setObjectName("courseSummaryLabel")
         summary_header.addWidget(self.summary_label, 1)
-        self.qa_mode_btn = QPushButton(self.lang_manager.get_text("问答巩固", "Q&A Review"))
+        self.qa_mode_btn = QPushButton(
+            self.lang_manager.get_text("问答巩固", "Q&A Review"),
+            right,
+        )
         self.qa_mode_btn.setObjectName("secondaryButton")
         self.qa_mode_btn.setEnabled(False)
         self.qa_mode_btn.clicked.connect(self._toggle_qa_mode)
-        summary_header.addWidget(self.qa_mode_btn)
+        self.qa_mode_btn.hide()
         self.summary_mode_btn = QPushButton()
         self.summary_mode_btn.setObjectName("secondaryButton")
         self.summary_mode_btn.clicked.connect(self._toggle_summary_mode)
         self._update_summary_mode_button_text()
         summary_header.addWidget(self.summary_mode_btn)
         right_layout.addLayout(summary_header)
+        self.overview_metrics_label = QLabel()
+        self.overview_metrics_label.setObjectName("secondaryText")
+        self.overview_metrics_label.setWordWrap(True)
+        right_layout.addWidget(self.overview_metrics_label)
         self.content_stack = QStackedWidget()
         self.summary_preview = QTextBrowser()
         self.summary_preview.setObjectName("courseSummaryPreview")
@@ -410,6 +424,12 @@ class CourseScreen(QWidget):
             }
         """)
         self.content_stack.addWidget(self.summary_preview)
+        self.sources_panel = CourseSourcesPanel()
+        self.sources_table = self.sources_panel.table
+        self.content_stack.addWidget(self.sources_panel)
+        self.knowledge_panel = CourseKnowledgePanel()
+        self.knowledge_table = self.knowledge_panel.table
+        self.content_stack.addWidget(self.knowledge_panel)
         self.qa_panel = CourseQAPanel(self.qa_service_factory)
         self.content_stack.addWidget(self.qa_panel)
         right_layout.addWidget(self.content_stack, 1)
@@ -432,6 +452,86 @@ class CourseScreen(QWidget):
     def show_archived_courses(self) -> None:
         """Open the recoverable-course scope without changing course state."""
         self._set_course_scope("archived")
+
+    def selected_course_id(self) -> str:
+        item = self.project_list.currentItem()
+        if item is None:
+            return ""
+        return str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+
+    def show_course(self, course_id: str, section: str = "overview") -> None:
+        """Render the exact course named by a semantic route."""
+        normalized_id = str(course_id or "").strip()
+        project = self.manager.get(normalized_id) if normalized_id else None
+        if project is not None:
+            self._course_scope = (
+                "archived"
+                if getattr(project, "is_archived", False)
+                else "active"
+            )
+        self.refresh()
+        if project is not None:
+            for row in range(self.project_list.count()):
+                item = self.project_list.item(row)
+                if (
+                    str(item.data(Qt.ItemDataRole.UserRole) or "").strip()
+                    == normalized_id
+                ):
+                    self.project_list.setCurrentRow(row)
+                    break
+        self.show_section(section)
+
+    def show_section(self, section: str) -> None:
+        """Show one Course Hub section without creating nested navigation."""
+        normalized = str(section or "").strip()
+        widgets = {
+            "overview": self.summary_preview,
+            "sources": self.sources_panel,
+            "knowledge": self.knowledge_panel,
+            "qa": self.qa_panel,
+        }
+        if normalized not in widgets:
+            raise ValueError(f"unknown course section: {normalized}")
+        self._active_section = normalized
+        self.content_stack.setCurrentWidget(widgets[normalized])
+        is_overview = normalized == "overview"
+        self.overview_metrics_label.setVisible(is_overview)
+        self.summary_mode_btn.setVisible(is_overview)
+        project = self.manager.get(self.selected_course_id())
+        self._update_content_header(project)
+
+    def _render_course_hub(self, project) -> None:
+        view = build_course_hub_view(project, self.question_bank)
+        self._course_hub_view = view
+        gm = self.lang_manager.get_text
+        warning_text = (
+            gm(
+                f" · {view.warning_count} 份资料需关注",
+                f" · {view.warning_count} source(s) need attention",
+            )
+            if view.warning_count
+            else ""
+        )
+        self.overview_metrics_label.setText(
+            gm(
+                f"{view.document_count} 份资料 · {view.topic_count} 个知识点 · "
+                f"{view.question_count} 道题 · "
+                f"考试范围 {view.exam_topic_count}/{view.topic_count}"
+                f"{warning_text}",
+                f"{view.document_count} sources · {view.topic_count} knowledge points · "
+                f"{view.question_count} questions · "
+                f"exam scope {view.exam_topic_count}/{view.topic_count}"
+                f"{warning_text}",
+            )
+        )
+        self.sources_panel.render(view, gm)
+        self.knowledge_panel.render(view, gm)
+
+    def _clear_course_hub(self) -> None:
+        self._course_hub_view = None
+        self.overview_metrics_label.clear()
+        self.sources_table.setRowCount(0)
+        self.knowledge_table.setRowCount(0)
 
     def refresh(self):
         """Reload active or archived projects from disk."""
@@ -484,7 +584,9 @@ class CourseScreen(QWidget):
             self._import_expanded = True
         self.import_group.setVisible(self._import_expanded)
         active_scope = self._course_scope == "active"
-        self.generate_questions_btn.setVisible(active_scope and not is_empty)
+        # Generation is a Course Hub route. Keep the legacy button available
+        # to old signal-level callers without exposing a duplicate entry.
+        self.generate_questions_btn.setVisible(False)
         self.restore_course_btn.setVisible(not active_scope and not is_empty)
         self.view_course_library_btn.setVisible(
             not active_scope and not is_empty
@@ -546,6 +648,7 @@ class CourseScreen(QWidget):
             self.project_list.setCurrentRow(selected_row)
         else:
             self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
+            self._clear_course_hub()
             self._clear_summary()
             self.qa_panel.set_course(None)
 
@@ -1022,6 +1125,7 @@ class CourseScreen(QWidget):
 
     def _on_project_selected(self, current, previous):
         if current is None:
+            self._clear_course_hub()
             self.generate_questions_btn.setEnabled(False)
             self.set_current_btn.setEnabled(False)
             self.restore_course_btn.setEnabled(False)
@@ -1060,8 +1164,9 @@ class CourseScreen(QWidget):
         self.archive_action.setEnabled(not archived)
         self.delete_action.setEnabled(True)
         self.qa_panel.set_course(project)
-        self._update_content_header(project)
+        self._render_course_hub(project)
         self._show_summary(project.summary_markdown)
+        self.show_section(self._active_section)
 
     def _generate_for_selected_course(self):
         current_item = self.project_list.currentItem()
@@ -1768,17 +1873,15 @@ class CourseScreen(QWidget):
         self._render_summary_preview()
 
     def _toggle_qa_mode(self):
-        """Switch the selected course workspace between summary and grounded Q&A."""
+        """Compatibility action for callers predating Course Hub routes."""
         if self.qa_panel.course is None:
             return
-        target = self.summary_preview if self._qa_mode_active() else self.qa_panel
-        self.content_stack.setCurrentWidget(target)
-        self.summary_mode_btn.setVisible(target is self.summary_preview)
+        target = "overview" if self._qa_mode_active() else "qa"
+        self.show_section(target)
         self.qa_mode_btn.setText(self.lang_manager.get_text(
-            "返回课程总结" if target is self.qa_panel else "问答巩固",
-            "Back to Summary" if target is self.qa_panel else "Q&A Review",
+            "返回课程总结" if target == "qa" else "问答巩固",
+            "Back to Summary" if target == "qa" else "Q&A Review",
         ))
-        self._update_content_header(self.qa_panel.course)
 
     def _qa_mode_active(self) -> bool:
         return (
@@ -1791,13 +1894,20 @@ class CourseScreen(QWidget):
         if project is None:
             self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
             return
-        if self._qa_mode_active():
-            self.summary_label.setText(self.lang_manager.get_text(
-                f"问答巩固 · {project.title}",
-                f"Q&A Review · {project.title}",
-            ))
-        else:
+        section_labels = {
+            "sources": ("资料", "Sources"),
+            "knowledge": ("知识点", "Knowledge"),
+            "qa": ("问答巩固", "Q&A Review"),
+        }
+        labels = section_labels.get(self._active_section)
+        if labels is None:
             self.summary_label.setText(project.title)
+            return
+        zh, en = labels
+        self.summary_label.setText(self.lang_manager.get_text(
+            f"{zh} · {project.title}",
+            f"{en} · {project.title}",
+        ))
 
     def _create_qa_service(self, project):
         """Build a validated course Q&A service from persisted AI settings."""
@@ -1843,6 +1953,7 @@ class CourseScreen(QWidget):
 
     def _clear_summary(self):
         self._summary_markdown = ""
+        self._active_section = "overview"
         self.summary_preview.setPlainText(self.lang_manager.get_text(
             "选择左侧课程查看摘要；如果还没有课程，请先导入课程资料。",
             "Select a course on the left to view its summary. If none exist, import course materials first.",
@@ -1850,6 +1961,7 @@ class CourseScreen(QWidget):
         self.summary_mode_btn.setEnabled(False)
         if hasattr(self, "content_stack"):
             self.content_stack.setCurrentWidget(self.summary_preview)
+            self.overview_metrics_label.setVisible(True)
             self.summary_mode_btn.setVisible(True)
         if hasattr(self, "qa_mode_btn"):
             self.qa_mode_btn.setText(self.lang_manager.get_text("问答巩固", "Q&A Review"))
