@@ -279,7 +279,10 @@ class FirstRunFlowTests(unittest.TestCase):
             topic_weights={"io": 100},
         )
         dialog.question_set_title.return_value = "操作系统快速复习"
-        course = Mock(title="操作系统")
+        course = Mock(
+            course_id="course-first-run",
+            title="操作系统",
+        )
         shell = Mock()
         shell.lang_manager = LanguageManager.instance()
         shell.question_bank = Mock()
@@ -324,10 +327,15 @@ class FirstRunFlowTests(unittest.TestCase):
         dialog.start_generation_when_shown.assert_called_once_with()
         dialog.set_title_input.setText.assert_called_once_with("操作系统快速复习")
         shell._on_question_bank_changed.assert_called_once_with()
-        shell._on_quiz_start.assert_called_once_with(
-            question_set.set_id,
-            question_set.questions,
+        shell._on_study_quiz_start.assert_called_once()
+        started_intent, started_question_ids = (
+            shell._on_study_quiz_start.call_args.args
         )
+        self.assertEqual(question_set.set_id, started_intent.set_id)
+        self.assertEqual("course-first-run", started_intent.course_id)
+        self.assertEqual("practice", started_intent.submission_mode)
+        self.assertEqual("first_run_generation", started_intent.source)
+        self.assertEqual(question_set.questions, started_question_ids)
         information.assert_not_called()
 
     def test_first_run_generate_uses_default_plan_without_configuration_step(self):

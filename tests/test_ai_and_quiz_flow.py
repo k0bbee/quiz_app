@@ -39,6 +39,40 @@ from utils.constants import Difficulty, QuestionType, QuizState, topic_value
 _APP = QApplication.instance() or QApplication([])
 
 
+class _StudyFlowSpy:
+    """Capture MainWindow-to-controller calls without duplicating quiz startup."""
+
+    def __init__(self, started):
+        self.started = started
+        self.active_questions = {}
+
+    def start_questions(
+        self,
+        intent,
+        questions,
+        *,
+        label="",
+        question_set=None,
+    ):
+        questions = list(questions)
+        self.started["intent"] = intent
+        self.started["questions"] = questions
+        self.started["label"] = label
+        self.started["question_set"] = question_set
+        self.started["submission_mode"] = intent.submission_mode
+        self.started["screen"] = 2
+        self.active_questions = {
+            question.question_id: question for question in questions
+        }
+        return self.active_questions
+
+    def restore_active_intent(self, intent, questions):
+        self.started["restored_intent"] = intent
+        self.active_questions = {
+            question.question_id: question for question in questions
+        }
+
+
 class QuizWidgetAndSessionTests(unittest.TestCase):
     def _make_question(self, qid: str, topic: str = "cache") -> Question:
         return Question(
@@ -643,37 +677,33 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual(1, screen.session.answered_count)
             self.assertEqual("下一题", screen.next_question_btn.text())
 
-    def test_main_window_quiz_start_defaults_to_practice_mode(self):
+    def test_main_window_study_start_delegates_session_ownership_to_flow(self):
         from ui.main_window import MainWindow
 
         question = self._make_question("q1")
-        qset = QuestionSet.create_new(
-            title={"zh": "题集", "en": "Set"},
-            description={"zh": "", "en": ""},
-            topics=["test"],
-            question_ids=[question.question_id],
+        intent = StudyIntent(
+            course_id="course-a",
+            action=StudyAction.CUSTOM_PRACTICE,
+            question_ids=(question.question_id,),
+            question_count=1,
         )
-        started = {}
-        study_flow = types.SimpleNamespace(clear_active=Mock())
+        study_flow = types.SimpleNamespace(start_prefilled=Mock(return_value={
+            question.question_id: question,
+        }))
         shell = types.SimpleNamespace(
-            lang_manager=LanguageManager.instance(),
-            set_manager=types.SimpleNamespace(get=lambda set_id: qset),
-            question_bank=types.SimpleNamespace(get_many=lambda question_ids: [question]),
-            quiz_screen=types.SimpleNamespace(
-                start_quiz=lambda question_set, questions, **kwargs: started.update(kwargs)
-            ),
             study_flow=study_flow,
-            _active_questions={},
-            _show_timer_setting=lambda: False,
-            SCREEN_QUIZ="quiz",
-            navigate_to=lambda screen_name: started.update({"screen": screen_name}),
         )
 
-        MainWindow._on_quiz_start(shell, qset.set_id, [question.question_id])
+        MainWindow._on_study_quiz_start(
+            shell,
+            intent,
+            [question.question_id],
+        )
 
-        self.assertEqual("practice", started["submission_mode"])
-        self.assertEqual("quiz", started["screen"])
-        study_flow.clear_active.assert_called_once_with()
+        study_flow.start_prefilled.assert_called_once_with(
+            intent,
+            [question.question_id],
+        )
 
     def test_quiz_mode_uses_inline_toggle_before_answering(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1968,7 +1998,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 question_bank=question_bank,
                 lang_manager=LanguageManager.instance(),
                 quiz_screen=FakeQuizScreen(),
-                _active_questions={},
+                study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
                 _current_course_id=lambda: "course-a",
                 _show_timer_setting=lambda: False,
@@ -2019,7 +2049,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 question_bank=question_bank,
                 lang_manager=LanguageManager.instance(),
                 quiz_screen=FakeQuizScreen(),
-                _active_questions={},
+                study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
                 _current_course_id=lambda: "course-a",
                 _show_timer_setting=lambda: False,
@@ -2063,8 +2093,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 set_manager=set_manager,
                 question_bank=question_bank,
                 quiz_screen=FakeQuizScreen(),
-                _active_questions={},
+                study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
+                _current_course_id=lambda: "course-a",
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
@@ -3463,7 +3494,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 question_bank=question_bank,
                 lang_manager=LanguageManager.instance(),
                 quiz_screen=FakeQuizScreen(),
-                _active_questions={},
+                study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
                 _current_course_id=lambda: "course-a",
                 _show_timer_setting=lambda: False,
@@ -3472,7 +3503,10 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             MainWindow._on_practice_incorrect(shell)
 
-            self.assertEqual({course_a.question_id}, set(shell._active_questions))
+            self.assertEqual(
+                {course_a.question_id},
+                set(shell.study_flow.active_questions),
+            )
             self.assertEqual([course_a.question_id], [q.question_id for q in started["questions"]])
 
     def test_incorrect_review_uses_mastery_priority_order(self):
@@ -3524,7 +3558,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 question_bank=question_bank,
                 lang_manager=LanguageManager.instance(),
                 quiz_screen=FakeQuizScreen(),
-                _active_questions={},
+                study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
                 _current_course_id=lambda: "course-a",
                 _show_timer_setting=lambda: False,
@@ -3582,7 +3616,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 question_bank=question_bank,
                 lang_manager=LanguageManager.instance(),
                 quiz_screen=FakeQuizScreen(),
-                _active_questions={},
+                study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
                 _current_course_id=lambda: "course-a",
                 _show_timer_setting=lambda: False,
@@ -3658,7 +3692,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 question_bank=question_bank,
                 lang_manager=LanguageManager.instance(),
                 quiz_screen=FakeQuizScreen(),
-                _active_questions={},
+                study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
                 _current_course_id=lambda: "course-a",
                 _show_timer_setting=lambda: False,
@@ -3719,7 +3753,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 mastery_overrides=mastery_overrides,
                 lang_manager=LanguageManager.instance(),
                 quiz_screen=FakeQuizScreen(),
-                _active_questions={},
+                study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
                 _current_course_id=lambda: "course-a",
                 _show_timer_setting=lambda: False,
@@ -3790,7 +3824,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 question_bank=question_bank,
                 lang_manager=LanguageManager.instance(),
                 quiz_screen=FakeQuizScreen(),
-                _active_questions={},
+                study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
                 _current_course_id=lambda: "course-a",
                 _show_timer_setting=lambda: False,
@@ -3868,7 +3902,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 question_bank=question_bank,
                 lang_manager=LanguageManager.instance(),
                 quiz_screen=FakeQuizScreen(),
-                _active_questions={},
+                study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
                 _current_course_id=lambda: "course-a",
                 _show_timer_setting=lambda: False,
@@ -4006,7 +4040,6 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 quiz_screen=FakeQuizScreen(),
                 study_flow=study_flow,
                 home_screen=types.SimpleNamespace(clear_resume_draft=Mock()),
-                _active_questions={},
                 SCREEN_QUIZ=2,
                 _current_course_id=lambda: "course-a",
                 _show_timer_setting=lambda: False,
@@ -4113,7 +4146,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 question_bank=types.SimpleNamespace(get_many=lambda _ids: []),
                 results_screen=FakeResultsScreen(),
                 lang_manager=LanguageManager.instance(),
-                _active_questions={"stale": object()},
+                study_flow=types.SimpleNamespace(
+                    active_questions={"stale": object()},
+                ),
                 _refresh_results_retry_availability=lambda: shown.setdefault(
                     "availability_refreshed",
                     True,
@@ -4126,7 +4161,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             self.assertEqual(record.progress_id, shown["record"].progress_id)
             self.assertEqual({}, shown["questions"])
-            self.assertEqual({}, shell._active_questions)
+            self.assertEqual({"stale"}, set(shell.study_flow.active_questions))
             self.assertTrue(shown["availability_refreshed"])
             self.assertEqual(3, shown["navigated"])
 
@@ -4178,8 +4213,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 progress_manager=progress_manager,
                 snapshot_manager=snapshot_manager,
                 results_screen=FakeResultsScreen(),
-                _active_questions={},
                 study_flow=types.SimpleNamespace(
+                    active_questions={},
                     take_active_intent=Mock(return_value=study_intent),
                 ),
                 lang_manager=LanguageManager.instance(),
@@ -4214,8 +4249,10 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             intent = StudyIntent(
                 course_id="course-a",
                 action=StudyAction.DAILY_QUEUE,
+                set_id="daily-set",
                 question_ids=("q-1",),
                 question_count=1,
+                submission_mode="exam",
                 source="today_plan",
                 plan_id=plan.plan_id,
             )
@@ -4248,8 +4285,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 snapshot_manager=None,
                 daily_plan_store=store,
                 results_screen=FakeResultsScreen(),
-                _active_questions={},
                 study_flow=types.SimpleNamespace(
+                    active_questions={},
                     take_active_intent=Mock(return_value=intent),
                 ),
                 lang_manager=LanguageManager.instance(),
@@ -4261,6 +4298,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             MainWindow._on_quiz_finished(shell, record)
 
             self.assertEqual(("q-1",), shown["intent"].remaining_question_ids)
+            self.assertEqual("daily-set", shown["intent"].set_id)
+            self.assertEqual("exam", shown["intent"].submission_mode)
             self.assertFalse(store.get(plan.plan_id).is_complete)
 
     def test_home_resume_draft_deletes_snapshot_when_questions_are_missing(self):
@@ -4335,7 +4374,6 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 question_bank=QuestionBank(str(root / "questions")),
                 lang_manager=LanguageManager.instance(),
                 quiz_screen=types.SimpleNamespace(),
-                _active_questions={},
                 SCREEN_QUIZ=2,
                 _current_course_id=lambda: "",
                 _show_timer_setting=lambda: False,

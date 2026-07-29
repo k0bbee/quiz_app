@@ -195,6 +195,7 @@ class StudyFlowController:
             for question in (questions or ())
             if getattr(question, "question_id", "")
         }
+        self.quiz_screen.set_study_intent(intent)
 
     def take_active_intent(self) -> StudyIntent | None:
         intent = self.active_intent

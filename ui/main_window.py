@@ -146,7 +146,6 @@ class MainWindow(QMainWindow):
         self._course_screen = None
         self._question_bank_screen = None
         self._past_exam_screen = None
-        self._active_questions: dict = {}
 
         # Management screens 6-8 are lazily created on first access.
         self.stack.addWidget(self.home_workspace)    # 0
@@ -901,7 +900,18 @@ class MainWindow(QMainWindow):
             self._refresh_first_run()
             return
         question_set, question_ids = candidates[0]
-        self._on_quiz_start(question_set.set_id, question_ids)
+        self._on_study_quiz_start(
+            StudyIntent(
+                course_id=self._current_course_id(),
+                action=StudyAction.CUSTOM_PRACTICE,
+                set_id=question_set.set_id,
+                question_ids=tuple(question_ids),
+                question_count=len(question_ids),
+                submission_mode="practice",
+                source="first_run_ready",
+            ),
+            question_ids,
+        )
 
     def _on_first_run_cancel(self) -> None:
         if self._course_screen is not None:
@@ -910,15 +920,8 @@ class MainWindow(QMainWindow):
     # --- Slot handlers ---
 
     def _handle_study_intent(self, intent: StudyIntent) -> None:
-        """Route a user intent and keep legacy result data aligned."""
+        """Route one typed user intent through the study controller."""
         self.study_flow.handle_intent(intent)
-        if self.study_flow.active_intent is intent:
-            self.quiz_screen.set_study_intent(intent)
-        if (
-            isinstance(intent, StudyIntent)
-            and intent.action is StudyAction.DAILY_QUEUE
-        ):
-            self._active_questions = dict(self.study_flow.active_questions)
 
     def _on_start_practice(self):
         self.study_flow.clear_setup()
@@ -930,11 +933,7 @@ class MainWindow(QMainWindow):
         question_ids: list[str],
     ) -> None:
         """Start the prefilled practice without asking for scope again."""
-        self._active_questions = self.study_flow.start_prefilled(
-            intent,
-            question_ids,
-        )
-        self.quiz_screen.set_study_intent(intent)
+        self.study_flow.start_prefilled(intent, question_ids)
 
     def _resume_abandoned_draft(self):
         """Return the latest resumable abandoned draft details, or None."""
@@ -1038,21 +1037,23 @@ class MainWindow(QMainWindow):
         snapshot_resume = MainWindow._resume_snapshot_draft(self)
         if snapshot_resume:
             snapshot, question_set, questions, study_intent = snapshot_resume
-            self._active_questions = {question.question_id: question for question in questions}
             self.quiz_screen.restore_snapshot(
                 snapshot,
                 questions,
                 question_set,
                 show_timer=self._show_timer_setting(),
             )
-            if study_intent is not None:
-                restore_intent = getattr(
-                    self.study_flow,
-                    "restore_active_intent",
-                    None,
+            if study_intent is None:
+                study_intent = StudyIntent(
+                    course_id=self._current_course_id(),
+                    action=StudyAction.CUSTOM_PRACTICE,
+                    set_id=question_set.set_id,
+                    question_ids=tuple(snapshot.question_order),
+                    question_count=len(snapshot.question_order),
+                    submission_mode=snapshot.mode,
+                    source="snapshot_resume",
                 )
-                if callable(restore_intent):
-                    restore_intent(study_intent, questions)
+            self.study_flow.restore_active_intent(study_intent, questions)
             if hasattr(self, "home_screen"):
                 self.home_screen.clear_resume_draft()
             self.navigate_to(self.SCREEN_QUIZ)
@@ -1076,45 +1077,29 @@ class MainWindow(QMainWindow):
                 )
             return
         draft, question_set, remaining = resume
-        self._active_questions = {question.question_id: question for question in remaining}
         label = gm(
             f"继续草稿：{question_set.get_title('zh')}",
             f"Resume Draft: {question_set.get_title('en')}",
         )
-        self.quiz_screen.start_quiz_custom(
+        intent = StudyIntent(
+            course_id=self._current_course_id(),
+            action=StudyAction.CUSTOM_PRACTICE,
+            set_id=question_set.set_id,
+            question_ids=tuple(
+                question.question_id for question in remaining
+            ),
+            question_count=len(remaining),
+            submission_mode="practice",
+            source="legacy_resume",
+        )
+        self.study_flow.start_questions(
+            intent,
             remaining,
-            label,
-            show_timer=self._show_timer_setting(),
+            label=label,
         )
         self.progress_manager.delete(draft.progress_id)
         if hasattr(self, "home_screen"):
             self.home_screen.clear_resume_draft()
-        self.navigate_to(self.SCREEN_QUIZ)
-
-    def _on_quiz_start(self, set_id: str, question_ids: list[str]):
-        """Start a quiz session with the given question set."""
-        gm = self.lang_manager.get_text
-        question_set = self.set_manager.get(set_id)
-        if not question_set:
-            QMessageBox.warning(self, gm("错误", "Error"), gm("未找到题目集。", "Question set not found."))
-            return
-
-        questions = self.question_bank.get_many(question_ids)
-        if not questions:
-            QMessageBox.warning(self, gm("错误", "Error"), gm("未找到该题目集的题目。", "No questions found for this set."))
-            return
-
-        submission_mode = "practice"
-
-        self.study_flow.clear_active()
-        self._active_questions = {q.question_id: q for q in questions}
-        self.quiz_screen.start_quiz(
-            question_set,
-            questions,
-            show_timer=self._show_timer_setting(),
-            submission_mode=submission_mode,
-        )
-        self.navigate_to(self.SCREEN_QUIZ)
 
     def _on_export_mock_exam(self, set_id: str):
         """Export a selected question set as a Markdown mock exam."""
@@ -1249,10 +1234,12 @@ class MainWindow(QMainWindow):
                 study_intent = StudyIntent(
                     course_id=study_intent.course_id,
                     action=study_intent.action,
+                    set_id=study_intent.set_id,
                     topic_ids=study_intent.topic_ids,
                     question_ids=study_intent.question_ids,
                     remaining_question_ids=daily_plan.pending_ids,
                     question_count=study_intent.question_count,
+                    submission_mode=study_intent.submission_mode,
                     source=study_intent.source,
                     plan_id=study_intent.plan_id,
                 )
@@ -1261,7 +1248,7 @@ class MainWindow(QMainWindow):
 
         self.results_screen.set_results(
             progress_record,
-            questions=self._active_questions,
+            questions=dict(self.study_flow.active_questions),
             lang=self.lang_manager.current,
             study_intent=study_intent,
         )
@@ -1287,12 +1274,12 @@ class MainWindow(QMainWindow):
             if answer.question_id
         ))
         questions = self.question_bank.get_many(question_ids)
-        self._active_questions = {
+        result_questions = {
             question.question_id: question for question in questions
         }
         self.results_screen.set_results(
             record,
-            questions=self._active_questions,
+            questions=result_questions,
             lang=self.lang_manager.current,
             study_intent=None,
         )
@@ -1341,13 +1328,21 @@ class MainWindow(QMainWindow):
                 ),
             )
             return
-        self._active_questions = {question.question_id: question for question in questions}
-        self.quiz_screen.start_quiz_custom(
-            questions,
-            gm(copy.session_title_zh, copy.session_title_en),
-            show_timer=self._show_timer_setting(),
+        intent = StudyIntent(
+            course_id=self._current_course_id(),
+            action=StudyAction.CUSTOM_PRACTICE,
+            question_ids=tuple(
+                question.question_id for question in questions
+            ),
+            question_count=len(questions),
+            submission_mode="practice",
+            source=f"results_{mode.value}",
         )
-        self.navigate_to(self.SCREEN_QUIZ)
+        self.study_flow.start_questions(
+            intent,
+            questions,
+            label=gm(copy.session_title_zh, copy.session_title_en),
+        )
 
     def _on_practice_incorrect(self, intent: StudyIntent | None = None):
         """Start a quiz session from all historical incorrect questions."""
@@ -1389,10 +1384,32 @@ class MainWindow(QMainWindow):
             )
             return
 
-        self._active_questions = {q.question_id: q for q in questions}
         label = gm("历史错题复习", "Incorrect Review")
-        self.quiz_screen.start_quiz_custom(questions, label, show_timer=self._show_timer_setting())
-        self.navigate_to(self.SCREEN_QUIZ)
+        intent = StudyIntent(
+            course_id=course_id,
+            action=(
+                intent.action
+                if isinstance(intent, StudyIntent)
+                else StudyAction.REVIEW_QUESTIONS
+            ),
+            topic_ids=intent.topic_ids if isinstance(intent, StudyIntent) else (),
+            question_ids=tuple(
+                question.question_id for question in questions
+            ),
+            question_count=len(questions),
+            submission_mode=(
+                intent.submission_mode
+                if isinstance(intent, StudyIntent)
+                else "practice"
+            ),
+            source=(
+                intent.source
+                if isinstance(intent, StudyIntent)
+                else "incorrect_history"
+            ),
+            plan_id=intent.plan_id if isinstance(intent, StudyIntent) else "",
+        )
+        self.study_flow.start_questions(intent, questions, label=label)
 
     def _on_practice_progress_topic(self, topic_key: str):
         """Start a short practice session for the selected progress topic."""
@@ -1474,14 +1491,26 @@ class MainWindow(QMainWindow):
 
     def _start_progress_topic_quiz(self, questions: list, label: str):
         """Open QuizScreen for a progress-topic action."""
-        self._active_questions = {question.question_id: question for question in questions}
-        self.quiz_screen.start_quiz_custom(
-            questions,
-            label,
-            show_timer=self._show_timer_setting(),
+        intent = StudyIntent(
+            course_id=self._current_course_id(),
+            action=StudyAction.PRACTICE_TOPIC,
+            topic_ids=tuple(dict.fromkeys(
+                topic_value(question.topic)
+                for question in questions
+                if topic_value(question.topic)
+            )),
+            question_ids=tuple(
+                question.question_id for question in questions
+            ),
+            question_count=len(questions),
             submission_mode="practice",
+            source="progress_topic",
         )
-        self.navigate_to(self.SCREEN_QUIZ)
+        self.study_flow.start_questions(
+            intent,
+            questions,
+            label=label,
+        )
 
     def _prepare_generation_dialog(
         self,
@@ -1615,7 +1644,18 @@ class MainWindow(QMainWindow):
                 if callable(refresh_question_bank):
                     refresh_question_bank()
                 if start_after_save:
-                    self._on_quiz_start(qset.set_id, list(qset.questions))
+                    self._on_study_quiz_start(
+                        StudyIntent(
+                            course_id=course_project.course_id,
+                            action=StudyAction.CUSTOM_PRACTICE,
+                            set_id=qset.set_id,
+                            question_ids=tuple(qset.questions),
+                            question_count=len(qset.questions),
+                            submission_mode="practice",
+                            source="first_run_generation",
+                        ),
+                        list(qset.questions),
+                    )
                     return
                 QMessageBox.information(
                     self,
@@ -1751,14 +1791,20 @@ class MainWindow(QMainWindow):
                 ),
             )
             return
-        self._active_questions = {q.question_id: q for q in questions}
-        self.quiz_screen.start_quiz(
-            question_set,
-            questions,
-            show_timer=self._show_timer_setting(),
+        intent = StudyIntent(
+            course_id=self._current_course_id(),
+            action=StudyAction.CUSTOM_PRACTICE,
+            set_id=question_set.set_id,
+            question_ids=tuple(question_set.questions),
+            question_count=len(question_set.questions),
             submission_mode="practice",
+            source="results_retry_all",
         )
-        self.navigate_to(self.SCREEN_QUIZ)
+        self.study_flow.start_questions(
+            intent,
+            questions,
+            question_set=question_set,
+        )
 
     def _show_timer_setting(self) -> bool:
         return bool(self.settings_screen.get_setting("show_timer", False))

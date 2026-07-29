@@ -222,6 +222,29 @@ class StudyFlowControllerTests(unittest.TestCase):
         quiz_screen.start_quiz_custom.assert_called_once()
         navigate.assert_called_once_with(2)
 
+    def test_restored_session_rebinds_intent_and_questions_to_quiz(self):
+        question = SimpleNamespace(question_id="q-restored")
+        quiz_screen = SimpleNamespace(
+            start_quiz=Mock(),
+            start_quiz_custom=Mock(),
+            set_study_intent=Mock(),
+        )
+        controller = self._controller(quiz_screen=quiz_screen)
+        intent = StudyIntent(
+            course_id="course-a",
+            action=StudyAction.CUSTOM_PRACTICE,
+            question_ids=("q-restored",),
+            question_count=1,
+            submission_mode="exam",
+            source="snapshot_resume",
+        )
+
+        controller.restore_active_intent(intent, [question])
+
+        self.assertIs(intent, controller.active_intent)
+        self.assertEqual({"q-restored": question}, controller.active_questions)
+        quiz_screen.set_study_intent.assert_called_once_with(intent)
+
     def test_generate_missing_preserves_topic_scope_and_missing_count(self):
         generate_questions = Mock()
         controller = self._controller(generate_questions=generate_questions)
