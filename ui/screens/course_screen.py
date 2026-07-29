@@ -1317,6 +1317,10 @@ class CourseScreen(QWidget):
                 ),
             )
             return
+        if self.manager.current() is None:
+            remaining_courses = list(self.manager.load_all())
+            if remaining_courses:
+                self.manager.set_current(remaining_courses[0].course_id)
         self.current_course_changed.emit()
         self.refresh()
 

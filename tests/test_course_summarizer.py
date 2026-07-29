@@ -1717,6 +1717,54 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertEqual("归档课程", screen.archive_action.text())
             self.assertEqual("永久删除…", screen.delete_action.text())
 
+    def test_archiving_current_course_activates_remaining_course(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            current_file = str(Path(tmpdir) / "current.json")
+            projects_dir = str(Path(tmpdir) / "projects")
+            manager = CourseProjectManager(
+                projects_dir,
+                current_course_file=current_file,
+            )
+            current = CourseProject(
+                course_id="course-current",
+                title="Current",
+                source_folder="",
+                summary_markdown="# Current",
+                summary_path="",
+                topics=[],
+                documents=[],
+                created_at="2026-07-29T00:00:00+00:00",
+                updated_at="2026-07-29T00:00:00+00:00",
+            )
+            remaining = CourseProject(
+                course_id="course-remaining",
+                title="Remaining",
+                source_folder="",
+                summary_markdown="# Remaining",
+                summary_path="",
+                topics=[],
+                documents=[],
+                created_at="2026-07-29T00:00:00+00:00",
+                updated_at="2026-07-29T01:00:00+00:00",
+            )
+            self.assertTrue(manager.save(current, make_current=True))
+            self.assertTrue(manager.save(remaining, make_current=False))
+            screen = CourseScreen(manager)
+            for row in range(screen.project_list.count()):
+                item = screen.project_list.item(row)
+                if item.data(Qt.ItemDataRole.UserRole) == current.course_id:
+                    screen.project_list.setCurrentRow(row)
+                    break
+
+            screen.archive_action.trigger()
+
+            self.assertEqual(remaining.course_id, manager.current().course_id)
+            self.assertTrue(screen.active_scope_btn.isChecked())
+            self.assertEqual(
+                remaining.course_id,
+                screen.project_list.currentItem().data(Qt.ItemDataRole.UserRole),
+            )
+
     def test_course_screen_guides_user_when_course_library_is_empty(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
