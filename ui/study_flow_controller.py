@@ -16,6 +16,7 @@ class StudyFlowController:
         self,
         *,
         question_bank,
+        set_manager,
         course_manager,
         topic_screen,
         quiz_screen,
@@ -32,6 +33,7 @@ class StudyFlowController:
         show_timer: Callable[[], bool],
     ):
         self.question_bank = question_bank
+        self.set_manager = set_manager
         self.course_manager = course_manager
         self.topic_screen = topic_screen
         self.quiz_screen = quiz_screen
@@ -112,12 +114,25 @@ class StudyFlowController:
                 "今日练习",
                 "Today's Practice",
             )
-        self.quiz_screen.start_quiz_custom(
-            questions,
-            label,
-            show_timer=self._show_timer(),
-            submission_mode="practice",
+        question_set = (
+            self.set_manager.get(intent.set_id)
+            if self.set_manager is not None and intent.set_id
+            else None
         )
+        if question_set is not None:
+            self.quiz_screen.start_quiz(
+                question_set,
+                questions,
+                show_timer=self._show_timer(),
+                submission_mode=intent.submission_mode,
+            )
+        else:
+            self.quiz_screen.start_quiz_custom(
+                questions,
+                label,
+                show_timer=self._show_timer(),
+                submission_mode=intent.submission_mode,
+            )
         self._navigate(self._quiz_screen_index)
         return self.active_questions
 
@@ -133,6 +148,7 @@ class StudyFlowController:
             action=StudyAction.GENERATE_MISSING,
             topic_ids=intent.topic_ids,
             question_count=missing_count,
+            submission_mode=intent.submission_mode,
             source=intent.source,
         ))
 

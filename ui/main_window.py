@@ -168,6 +168,7 @@ class MainWindow(QMainWindow):
         self._create_application_shell()
         self.study_flow = StudyFlowController(
             question_bank=self.question_bank,
+            set_manager=self.set_manager,
             course_manager=self.course_manager,
             topic_screen=self.topic_screen,
             quiz_screen=self.quiz_screen,

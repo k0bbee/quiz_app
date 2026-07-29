@@ -12,6 +12,7 @@ class StudyFlowControllerTests(unittest.TestCase):
 
         dependencies = {
             "question_bank": Mock(),
+            "set_manager": None,
             "course_manager": SimpleNamespace(get=lambda _course_id: None),
             "topic_screen": SimpleNamespace(
                 apply_study_intent=Mock(),
@@ -94,6 +95,45 @@ class StudyFlowControllerTests(unittest.TestCase):
             submission_mode="practice",
         )
         navigate.assert_called_once_with(2)
+
+    def test_saved_set_intent_starts_real_set_in_requested_mode(self):
+        question = SimpleNamespace(
+            question_id="q1",
+            topic="cache",
+            topic_title=lambda: "Cache",
+        )
+        question_set = SimpleNamespace(set_id="set-1")
+        question_bank = Mock()
+        question_bank.get_many.return_value = [question]
+        set_manager = SimpleNamespace(get=Mock(return_value=question_set))
+        quiz_screen = SimpleNamespace(
+            start_quiz=Mock(),
+            start_quiz_custom=Mock(),
+        )
+        controller = self._controller(
+            question_bank=question_bank,
+            set_manager=set_manager,
+            quiz_screen=quiz_screen,
+        )
+        intent = StudyIntent(
+            course_id="course-a",
+            action=StudyAction.CUSTOM_PRACTICE,
+            set_id="set-1",
+            question_ids=("q1",),
+            question_count=1,
+            submission_mode="exam",
+        )
+
+        controller.start_prefilled(intent, ["q1"])
+
+        set_manager.get.assert_called_once_with("set-1")
+        quiz_screen.start_quiz.assert_called_once_with(
+            question_set,
+            [question],
+            show_timer=False,
+            submission_mode="exam",
+        )
+        quiz_screen.start_quiz_custom.assert_not_called()
 
     def test_daily_queue_intent_starts_prefilled_quiz_without_setup_screen(self):
         question = SimpleNamespace(
