@@ -241,17 +241,23 @@ class HomeScreen(QWidget):
             self._refresh_today_plan()
             return
 
-        all_course_question_ids = set(
-            self.question_bank.question_ids(course_id=self._current_course_id)
+        all_course_question_ids = (
+            set(self.question_bank.question_ids(course_id=self._current_course_id))
+            if self._current_course_id
+            else set()
         )
         visible_question_ids = self._visible_question_ids()
-        total_questions = self.question_bank.count(course_id=self._current_course_id)
+        total_questions = (
+            self.question_bank.count(course_id=self._current_course_id)
+            if self._current_course_id
+            else 0
+        )
         progress_records = self.progress_manager.load_all()
         self.question_context_label.setText(self.lang_manager.get_text(
             f"题目：{len(visible_question_ids)} 题",
             f"Questions: {len(visible_question_ids)}",
         ))
-        stats_filter = all_course_question_ids if self._current_course_id else None
+        stats_filter = all_course_question_ids
         stats = self.progress_manager.get_aggregated_stats(
             stats_filter,
             records=progress_records,
@@ -264,12 +270,7 @@ class HomeScreen(QWidget):
                 if question_id in visible_question_ids
             ]
         else:
-            existing_ids = set(self.question_bank.question_ids())
-            incorrect_ids = [
-                question_id
-                for question_id in incorrect_ids
-                if question_id in existing_ids
-            ]
+            incorrect_ids = []
         incorrect_count = len(incorrect_ids)
         self._refresh_today_plan(
             len(visible_question_ids),
@@ -386,7 +387,7 @@ class HomeScreen(QWidget):
 
     def _visible_question_ids(self) -> set[str]:
         """Return current-course question IDs inside the selected exam scope."""
-        if self.question_bank is None:
+        if self.question_bank is None or not self._current_course_id:
             return set()
         course_ids = set(
             self.question_bank.question_ids(course_id=self._current_course_id)
@@ -413,7 +414,7 @@ class HomeScreen(QWidget):
 
     def _visible_topic_index(self) -> dict[str, tuple[str, str]]:
         """Return topic labels restricted to the selected exam scope."""
-        if self.question_bank is None:
+        if self.question_bank is None or not self._current_course_id:
             return {}
         topic_index = self.question_bank.topic_index(course_id=self._current_course_id)
         if self._exam_topic_ids is None:
@@ -427,7 +428,7 @@ class HomeScreen(QWidget):
     def _visible_scheduling_index(
         self,
     ) -> dict[str, tuple[str, str, str]]:
-        if self.question_bank is None:
+        if self.question_bank is None or not self._current_course_id:
             return {}
         scheduling_index = getattr(
             self.question_bank,
@@ -475,10 +476,18 @@ class HomeScreen(QWidget):
             )
         else:
             self.course_context_label.setText(
-                self.lang_manager.get_text("当前课程：全部课程", "Current course: All courses")
+                self.lang_manager.get_text(
+                    "当前课程：尚未选择",
+                    "Current course: None selected",
+                )
             )
         if hasattr(self, "scope_context_label"):
-            if self._exam_topic_ids is None:
+            if not self._current_course_id:
+                self.scope_context_label.setText(self.lang_manager.get_text(
+                    "考试范围：等待选择课程",
+                    "Exam scope: Select a course first",
+                ))
+            elif self._exam_topic_ids is None:
                 self.scope_context_label.setText(self.lang_manager.get_text(
                     "考试范围：全部知识点",
                     "Exam scope: All topics",

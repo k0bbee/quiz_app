@@ -58,6 +58,7 @@ class UiThemeTests(unittest.TestCase):
             screen = TopicSelectionScreen(set_manager)
             self.addCleanup(screen.close)
 
+            screen.set_current_course("course-a")
             screen.refresh()
 
             self.assertEqual(2, screen.preset_combo.count())
@@ -986,7 +987,46 @@ class UiThemeTests(unittest.TestCase):
 
             home.set_current_course("", "")
 
-            self.assertIn("全部课程", home.course_context_label.text())
+            self.assertIn("尚未选择", home.course_context_label.text())
+
+    def test_learning_surfaces_do_not_treat_missing_current_course_as_global_scope(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bank = QuestionBank(str(root / "questions"))
+            bank.save(Question(
+                question_id="archived-question",
+                type=QuestionType.TRUE_FALSE,
+                difficulty=Difficulty.EASY,
+                bilingual={
+                    "zh": {
+                        "stem": "归档课程题目",
+                        "options": ["正确", "错误"],
+                        "explanation": "",
+                    },
+                    "en": {
+                        "stem": "Archived course question",
+                        "options": ["True", "False"],
+                        "explanation": "",
+                    },
+                },
+                correct_answer=True,
+                topic="archived-topic",
+                metadata={"course_id": "course-archived"},
+            ))
+            progress = ProgressManager(str(root / "progress"))
+            home = HomeScreen(progress, bank)
+            topic = TopicSelectionScreen(
+                SetManager(str(root / "sets")),
+                progress,
+                question_bank=bank,
+            )
+
+            home.set_current_course("", "")
+            topic.set_current_course("", "")
+
+            self.assertEqual(set(), home._visible_question_ids())
+            self.assertEqual({}, topic._scheduling_index)
+            self.assertFalse(topic.start_btn.isEnabled())
 
     def test_settings_content_and_actions_follow_desktop_form_layout(self):
         settings = SettingsScreen()

@@ -223,16 +223,20 @@ class TopicSelectionScreen(QWidget):
         selected_topics = set(self._selected_topic_ids())
         selected_difficulty = self.difficulty_filter.currentData()
 
-        self._all_sets = [
-            question_set
-            for question_set in self.set_manager.load_all()
-            if self._matches_current_course(question_set)
-        ]
+        self._all_sets = (
+            [
+                question_set
+                for question_set in self.set_manager.load_all()
+                if self._matches_current_course(question_set)
+            ]
+            if self._current_course_id
+            else []
+        )
         self._scheduling_index = (
             self.question_bank.scheduling_index(
                 course_id=self._current_course_id
             )
-            if self.question_bank is not None
+            if self.question_bank is not None and self._current_course_id
             else {}
         )
         self._populate_presets(selected_preset)
@@ -569,8 +573,8 @@ class TopicSelectionScreen(QWidget):
     def _update_course_context_label(self) -> None:
         title = self._current_course_title or self._current_course_id
         self.course_context_label.setText(self.lang_manager.get_text(
-            f"当前课程：{title or '全部课程'}",
-            f"Current course: {title or 'All courses'}",
+            f"当前课程：{title or '尚未选择'}",
+            f"Current course: {title or 'None selected'}",
         ))
 
     def _matches_current_course(self, question_set) -> bool:
@@ -579,6 +583,5 @@ class TopicSelectionScreen(QWidget):
         )
         return (
             not source_course_id
-            or not self._current_course_id
             or source_course_id == self._current_course_id
-        )
+        ) if self._current_course_id else False
