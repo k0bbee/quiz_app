@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QApplication, QDialog, QLabel
 
 from models.course_project import CourseProject, CourseTopic
@@ -71,6 +72,19 @@ class GenerationWorkspaceTests(unittest.TestCase):
         self.assertTrue(window.navigate_to(window.SCREEN_HOME))
         self.assertTrue(window.navigate_to(window.SCREEN_GENERATION))
         self.assertIs(dialog, window._get_generation_workspace().generation_widget())
+
+    def test_main_window_defers_close_while_generation_shutdown_is_pending(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+        workspace = window._get_generation_workspace()
+        workspace.request_shutdown = Mock(return_value=False)
+        event = QCloseEvent()
+
+        window.closeEvent(event)
+
+        self.assertFalse(event.isAccepted())
+        self.assertTrue(window._generation_close_pending)
+        workspace.request_shutdown.assert_called_once_with()
 
 
 if __name__ == "__main__":

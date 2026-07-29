@@ -98,6 +98,7 @@ class MainWindow(QMainWindow):
         self._first_run_error = ""
         self._first_run_progress = None
         self._last_generation_launch_error = ""
+        self._generation_close_pending = False
         self._history_protection_blocked = bool(
             getattr(startup_migration_report, "has_failures", False)
         )
@@ -1827,6 +1828,10 @@ class MainWindow(QMainWindow):
             )
         MainWindow._get_generation_workspace(self).clear_generation_widget(dialog)
         dialog.deleteLater()
+        if bool(getattr(self, "_generation_close_pending", False)):
+            self._generation_close_pending = False
+            QTimer.singleShot(0, self.close)
+            return
         self.navigate_to(
             self.SCREEN_COURSES,
             allow_first_run_redirect=False,
@@ -2373,6 +2378,13 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         if self._past_exam_screen is not None and not self._past_exam_screen.request_shutdown():
+            event.ignore()
+            return
+        if (
+            self._generation_workspace is not None
+            and not self._generation_workspace.request_shutdown()
+        ):
+            self._generation_close_pending = True
             event.ignore()
             return
         self.settings_screen.save_settings(silent=True)

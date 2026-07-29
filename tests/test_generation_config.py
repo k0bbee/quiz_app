@@ -1893,11 +1893,10 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertIn("后续要求已排队", log)
         self.assertNotIn("后续要求已更新", log)
 
-    def test_cancel_during_generation_waits_for_worker_shutdown(self):
+    def test_cancel_during_generation_returns_without_waiting_for_worker(self):
         class RunningWorker:
             def __init__(self):
                 self.cancelled = False
-                self.wait_timeout = None
 
             def isRunning(self):
                 return True
@@ -1905,12 +1904,8 @@ class GenerationConfigTests(unittest.TestCase):
             def cancel(self):
                 self.cancelled = True
 
-            def wait(self, timeout):
-                self.wait_timeout = timeout
-                return True
-
-            def terminate(self):
-                raise AssertionError("cancel must not force-terminate worker from the UI thread")
+            def wait(self, _timeout):
+                raise AssertionError("cancel must not wait in the UI thread")
 
         dialog = AIGenerationDialog(
             "course content",
@@ -1923,13 +1918,12 @@ class GenerationConfigTests(unittest.TestCase):
         dialog.reject()
 
         self.assertTrue(worker.cancelled)
-        self.assertEqual(5000, worker.wait_timeout)
+        self.assertTrue(dialog._close_when_worker_stops)
 
-    def test_cancel_during_generation_keeps_dialog_open_when_worker_is_still_running(self):
+    def test_cancelled_generation_closes_after_worker_finished_signal(self):
         class SlowWorker:
             def __init__(self):
                 self.cancelled = False
-                self.wait_timeout = None
 
             def isRunning(self):
                 return True
@@ -1937,9 +1931,8 @@ class GenerationConfigTests(unittest.TestCase):
             def cancel(self):
                 self.cancelled = True
 
-            def wait(self, timeout):
-                self.wait_timeout = timeout
-                return False
+            def wait(self, _timeout):
+                raise AssertionError("cancel must not wait in the UI thread")
 
         dialog = AIGenerationDialog(
             "course content",
@@ -1954,8 +1947,11 @@ class GenerationConfigTests(unittest.TestCase):
         dialog.reject()
 
         self.assertTrue(worker.cancelled)
-        self.assertEqual(5000, worker.wait_timeout)
         self.assertEqual([], rejected)
+
+        dialog._on_finished()
+
+        self.assertEqual([True], rejected)
 
     def test_generation_finished_handler_does_not_wait_on_worker(self):
         class FinishedWorker:

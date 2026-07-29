@@ -96,6 +96,19 @@ class GenerationWorkspace(QWidget):
     def generation_widget(self):
         return self._generation_widget
 
+    def request_shutdown(self) -> bool:
+        """Request cooperative shutdown without blocking the UI thread."""
+        current = self._generation_widget
+        if current is None:
+            return True
+        reject = getattr(current, "reject", None)
+        if not callable(reject):
+            return True
+        reject()
+        worker = getattr(current, "worker", None)
+        is_running = getattr(worker, "isRunning", None)
+        return not (callable(is_running) and is_running())
+
     def _render(self, *_args) -> None:
         gm = self.lang_manager.get_text
         self.title_label.setText(gm("生成与审核", "Generate and Review"))

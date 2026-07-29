@@ -2121,15 +2121,15 @@ class AIGenerationDialog(QDialog):
         """Cancel generation if the dialog is closed while a worker is running."""
         if self.worker and self.worker.isRunning():
             self._generation_cancelled = True
+            self._close_when_worker_stops = True
             self.generation_status_timer.stop()
             self.worker.cancel()
-            if not self.worker.wait(5000):
-                self._close_when_worker_stops = True
-                self.status_label.setText(
-                    self.lang_manager.get_text(
-                        "正在取消生成任务…请等待当前 AI 请求结束。",
-                        "Cancelling generation... waiting for the current AI request to finish.",
-                    )
+            self.status_label.setText(
+                self.lang_manager.get_text(
+                    "正在取消生成任务…当前 AI 请求结束后将自动关闭。",
+                    "Cancelling generation... this workspace will close when "
+                    "the current AI request finishes.",
                 )
-                return
+            )
+            return
         super().reject()
