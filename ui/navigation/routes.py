@@ -149,6 +149,7 @@ _WORKSPACE_TABS = {
         RouteTab(Route.library("questions"), "题目", "Questions"),
         RouteTab(Route.library("sets"), "题目集", "Question Sets"),
         RouteTab(Route.library("past_exams"), "历史真题", "Historical Exams"),
+        RouteTab(Route.library("drafts"), "生成草稿", "Generation Drafts"),
     ),
     Workspace.FOCUS: (),
 }

@@ -404,6 +404,7 @@ class MainWindow(QMainWindow):
                 course_manager=self.course_manager,
                 progress_manager=self.progress_manager,
                 task_center=self.task_center,
+                generation_draft_store=self.generation_draft_store,
             )
             self._sync_question_bank_screen_course()
             self._question_bank_screen.question_bank_changed.connect(
@@ -420,6 +421,9 @@ class MainWindow(QMainWindow):
             )
             self._question_bank_screen.regenerate_questions.connect(
                 self._on_regenerate_question_set
+            )
+            self._question_bank_screen.resume_generation_draft.connect(
+                self._on_resume_generation_draft
             )
             self._install_workspace(
                 self.SCREEN_QUESTION_BANK,
@@ -504,6 +508,7 @@ class MainWindow(QMainWindow):
                 ("bank_tab_btn", Route.library("questions")),
                 ("sets_tab_btn", Route.library("sets")),
                 ("past_exams_tab_btn", Route.library("past_exams")),
+                ("drafts_tab_btn", Route.library("drafts")),
             ),
             navigate=self.navigate_route,
             open_settings=self.open_settings,
@@ -533,6 +538,7 @@ class MainWindow(QMainWindow):
             "bank_tab_btn",
             "sets_tab_btn",
             "past_exams_tab_btn",
+            "drafts_tab_btn",
         ):
             setattr(self, attribute, getattr(self.app_shell, attribute))
         self.setCentralWidget(self.app_shell)
@@ -766,6 +772,8 @@ class MainWindow(QMainWindow):
             library = self._get_question_bank_screen()
             if route.tab == "sets":
                 library.show_question_sets()
+            elif route.tab == "drafts":
+                library.show_generation_drafts()
             else:
                 library.show_questions()
             library.refresh()
@@ -2190,6 +2198,23 @@ class MainWindow(QMainWindow):
             store.delete(course_id)
         except OSError as exc:
             log_warning(f"Failed to delete generation draft: {exc}")
+
+    def _on_resume_generation_draft(
+        self,
+        course_id: str,
+        _source: str = "",
+    ) -> bool:
+        """Resume the authoritative stored draft in its owning course."""
+        course = self.course_manager.get(str(course_id or "").strip())
+        if course is None or getattr(course, "is_archived", False):
+            return False
+        draft = MainWindow._generation_draft(self, course.course_id)
+        if draft is None:
+            return False
+        return bool(self._on_ai_generate(
+            course_override=course,
+            draft_source=draft.source,
+        ))
 
     def _on_current_event_generation(self, course_id: str, material_pack) -> None:
         """Generate against the reviewed material pack for its selected course."""

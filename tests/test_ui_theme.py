@@ -432,7 +432,12 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual(main_window.SCREEN_QUESTION_BANK, main_window.stack.currentIndex())
         self.assertEqual(Route.library("questions"), main_window.current_route)
         self.assertEqual(
-            ["Questions", "Question Sets", "Historical Exams"],
+            [
+                "Questions",
+                "Question Sets",
+                "Historical Exams",
+                "Generation Drafts",
+            ],
             [button.text() for button in main_window.context_tabs()],
         )
         self.assertTrue(main_window.bank_tab_btn.isChecked())

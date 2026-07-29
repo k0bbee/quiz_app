@@ -115,6 +115,26 @@ class GenerationDraftStore:
             return None
         return draft if draft.course_id == course_id else None
 
+    def list_all(self) -> tuple[GenerationDraft, ...]:
+        """Return every valid draft newest first without exposing storage rows."""
+        drafts: list[GenerationDraft] = []
+        for course_id, data in self._load_payload()["drafts"].items():
+            if not isinstance(data, dict):
+                continue
+            try:
+                draft = GenerationDraft.from_dict(data)
+            except (TypeError, ValueError):
+                continue
+            if draft.course_id == str(course_id or "").strip():
+                drafts.append(draft)
+        return tuple(
+            sorted(
+                drafts,
+                key=lambda draft: (draft.updated_at, draft.course_id),
+                reverse=True,
+            )
+        )
+
     def save(
         self,
         *,

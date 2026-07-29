@@ -21,6 +21,9 @@ from models.question_set import SetManager
 from ui.components import PageHeader
 from ui.screens.question_bank_screen import QuestionBankScreen
 from ui.widgets.question_set_library_panel import QuestionSetLibraryPanel
+from ui.widgets.generation_draft_library_panel import (
+    GenerationDraftLibraryPanel,
+)
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 
 
@@ -32,6 +35,7 @@ class LibraryScreen(QWidget):
     export_mock_exams = pyqtSignal(list)
     regenerate_questions = pyqtSignal(str)
     sets_changed = pyqtSignal()
+    resume_generation_draft = pyqtSignal(str, str)
 
     def __init__(
         self,
@@ -41,6 +45,7 @@ class LibraryScreen(QWidget):
         course_manager: CourseProjectManager,
         progress_manager=None,
         task_center=None,
+        generation_draft_store=None,
         parent=None,
     ):
         super().__init__(parent)
@@ -96,8 +101,14 @@ class LibraryScreen(QWidget):
             progress_manager=progress_manager,
         )
         self.set_panel.setObjectName("question_sets")
+        self.draft_panel = GenerationDraftLibraryPanel(
+            generation_draft_store,
+            course_manager,
+        )
+        self.draft_panel.setObjectName("generation_drafts")
         self.workspace_tabs.addTab(self.question_screen, "")
         self.workspace_tabs.addTab(self.set_panel, "")
+        self.workspace_tabs.addTab(self.draft_panel, "")
         self.workspace_tabs.tabBar().hide()
         layout.addWidget(self.workspace_tabs, 1)
 
@@ -110,6 +121,9 @@ class LibraryScreen(QWidget):
             self.regenerate_questions.emit
         )
         self.set_panel.sets_changed.connect(self.sets_changed.emit)
+        self.draft_panel.resume_requested.connect(
+            self.resume_generation_draft.emit
+        )
         self.active_scope_btn.clicked.connect(
             lambda: self._set_scope_kind("active")
         )
@@ -143,6 +157,10 @@ class LibraryScreen(QWidget):
         self.workspace_tabs.setTabText(
             1,
             self.lang_manager.get_text("题目集", "Question Sets"),
+        )
+        self.workspace_tabs.setTabText(
+            2,
+            self.lang_manager.get_text("生成草稿", "Generation Drafts"),
         )
         self.scope_label.setText(
             self.lang_manager.get_text("资料范围", "Asset Scope")
@@ -289,6 +307,7 @@ class LibraryScreen(QWidget):
         self.current_scope = scope
         self.question_screen.set_asset_scope(scope)
         self.set_panel.set_asset_scope(scope)
+        self.draft_panel.set_asset_scope(scope)
 
     def refresh(self) -> None:
         self._refresh_scope_controls()
@@ -300,3 +319,6 @@ class LibraryScreen(QWidget):
 
     def show_questions(self) -> None:
         self.workspace_tabs.setCurrentWidget(self.question_screen)
+
+    def show_generation_drafts(self) -> None:
+        self.workspace_tabs.setCurrentWidget(self.draft_panel)

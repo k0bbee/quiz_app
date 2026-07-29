@@ -104,9 +104,13 @@ class LibraryScreenTests(unittest.TestCase):
             screen.set_current_course("course-os")
             screen.refresh()
 
-            self.assertEqual(2, screen.workspace_tabs.count())
+            self.assertEqual(3, screen.workspace_tabs.count())
             self.assertEqual("question_records", screen.workspace_tabs.widget(0).objectName())
             self.assertEqual("question_sets", screen.workspace_tabs.widget(1).objectName())
+            self.assertEqual(
+                "generation_drafts",
+                screen.workspace_tabs.widget(2).objectName(),
+            )
             self.assertTrue(screen.question_screen.page_header.isHidden())
             margins = screen.question_screen.layout().contentsMargins()
             self.assertEqual(

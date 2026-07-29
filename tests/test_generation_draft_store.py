@@ -124,6 +124,41 @@ class GenerationDraftStoreTests(unittest.TestCase):
             self.assertIsNone(result)
             self.assertIsNone(store.get("course-a"))
 
+    def test_list_all_returns_valid_drafts_newest_first(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            timestamps = iter([
+                "2026-07-29T08:00:00+00:00",
+                "2026-07-29T09:00:00+00:00",
+            ])
+            store = GenerationDraftStore(
+                Path(tmpdir) / "generation-drafts.json",
+                clock=lambda: next(timestamps),
+            )
+            plan = ExamGenerationPlan(question_count=3)
+            store.save(
+                course_id="course-a",
+                questions=[self._question("a-q")],
+                question_set_title="A",
+                exam_plan=plan,
+            )
+            question_b = self._question("b-q")
+            question_b.metadata["course_id"] = "course-b"
+            store.save(
+                course_id="course-b",
+                questions=[question_b],
+                question_set_title="B",
+                exam_plan=plan,
+                source="prediction",
+            )
+
+            drafts = store.list_all()
+
+            self.assertEqual(
+                ["course-b", "course-a"],
+                [draft.course_id for draft in drafts],
+            )
+            self.assertEqual("prediction", drafts[0].source)
+
 
 if __name__ == "__main__":
     unittest.main()
