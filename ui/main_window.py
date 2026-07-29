@@ -1755,7 +1755,9 @@ class MainWindow(QMainWindow):
             gm(f"已保存 {saved} 道新题，并更新题目集：\n{qset.get_title(self.lang_manager.current)}{cleanup_note}",
                f"Saved {saved} new questions and updated question set:\n{qset.get_title(self.lang_manager.current)}{cleanup_note}"),
         )
-        self.navigate_to(self.SCREEN_TOPIC_SELECTION)
+        library = self._get_question_bank_screen()
+        library.show_question_sets()
+        self.navigate_to(self.SCREEN_QUESTION_BANK)
 
     def _on_retry_all(self):
         """Retry the entire question set."""

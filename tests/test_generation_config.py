@@ -31,6 +31,78 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class GenerationConfigTests(unittest.TestCase):
+    def test_regenerated_question_set_returns_to_library_set_tab(self):
+        from ui.main_window import MainWindow
+
+        question = Question.create_new(
+            qtype=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": {
+                    "stem": "重新生成题",
+                    "options": ["正确", "错误"],
+                    "explanation": "解释。",
+                },
+                "en": {
+                    "stem": "Regenerated question",
+                    "options": ["True", "False"],
+                    "explanation": "Explanation.",
+                },
+            },
+            correct_answer=True,
+            topic="cache",
+        )
+        question_set = QuestionSet.create_new(
+            title={"zh": "缓存题集", "en": "Cache Set"},
+            description={"zh": "", "en": ""},
+            topics=["cache"],
+            question_ids=[question.question_id],
+        )
+        dialog = SimpleNamespace(
+            generated_questions=[question],
+            diff_combo=SimpleNamespace(
+                currentData=lambda: Difficulty.MEDIUM.value,
+            ),
+            configure_from_question_set=Mock(),
+            exec=Mock(return_value=QDialog.DialogCode.Accepted),
+        )
+        library = SimpleNamespace(show_question_sets=Mock())
+        navigated = []
+        shell = SimpleNamespace(
+            _history_protection_blocked=False,
+            lang_manager=SimpleNamespace(
+                current="zh",
+                get_text=lambda zh, _en: zh,
+            ),
+            set_manager=SimpleNamespace(get=lambda _set_id: question_set),
+            question_bank=Mock(),
+            progress_manager=Mock(),
+            topic_screen=SimpleNamespace(refresh=Mock()),
+            _get_question_bank_screen=Mock(return_value=library),
+            navigate_to=navigated.append,
+            SCREEN_TOPIC_SELECTION=1,
+            SCREEN_QUESTION_BANK=6,
+        )
+
+        with patch.object(
+            MainWindow,
+            "_prepare_generation_dialog",
+            return_value=SimpleNamespace(
+                dialog=dialog,
+                course_project=Mock(),
+            ),
+        ), patch(
+            "ui.main_window.persist_regenerated_question_set",
+            return_value=(question_set, 1, []),
+        ), patch("ui.main_window.QMessageBox.information"):
+            MainWindow._on_regenerate_question_set(
+                shell,
+                question_set.set_id,
+            )
+
+        library.show_question_sets.assert_called_once_with()
+        self.assertEqual([6], navigated)
+
     def test_generation_dialog_schedules_confirmed_plan_after_it_is_shown(self):
         dialog = AIGenerationDialog(
             "course content",
