@@ -1638,7 +1638,7 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             self.assertIsNone(current)
             self.assertFalse(Path(current_file).exists())
 
-    def test_course_screen_can_delete_selected_project(self):
+    def test_course_screen_archives_selected_project_without_deleting_identity(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             current_file = str(Path(tmpdir) / "current.json")
             source = Path(tmpdir) / "source"
@@ -1658,11 +1658,14 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             with patch.object(
                 screen,
                 "_choose_course_removal_mode",
-                return_value=CourseRemovalMode.KEEP_ASSETS,
+                return_value=CourseRemovalMode.ARCHIVE,
             ):
                 screen.delete_action.trigger()
 
-            self.assertIsNone(manager.get(project.course_id))
+            archived = manager.get(project.course_id)
+            self.assertIsNotNone(archived)
+            self.assertTrue(archived.is_archived)
+            self.assertEqual([], manager.load_all())
             self.assertEqual(0, screen.project_list.count())
             self.assertNotIn("Systems", screen.summary_label.text())
 
