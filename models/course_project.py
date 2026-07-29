@@ -288,7 +288,7 @@ class CourseProjectManager:
             return False
         current = read_json(self._current_course_file) or {}
         if current.get("course_id") == course_id:
-            return delete_json(self._current_course_file)
+            delete_json(self._current_course_file)
         return True
 
     def restore(self, course_id: str, *, make_current: bool = False) -> bool:

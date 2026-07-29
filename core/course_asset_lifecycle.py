@@ -75,6 +75,7 @@ class CourseAssetImpact:
 class CourseRemovalMode(str, Enum):
     """User-visible policies for removing a course."""
 
+    ARCHIVE = "archive"
     KEEP_ASSETS = "keep_assets"
     UNLINK_ASSETS = "unlink_assets"
     DELETE_LINKED_BANK = "delete_linked_bank"
@@ -210,6 +211,22 @@ def remove_course_assets(
         past_exam_manager,
         current_event_manager,
     )
+    project = course_manager.get(impact.course_id)
+    if project is None:
+        return CourseRemovalResult(False, impact, "Course no longer exists")
+    if mode in {
+        CourseRemovalMode.ARCHIVE,
+        CourseRemovalMode.KEEP_ASSETS,
+    }:
+        try:
+            _require_success(
+                course_manager.archive(impact.course_id),
+                f"archive course {impact.course_id}",
+            )
+        except Exception as exc:
+            return CourseRemovalResult(False, impact, str(exc))
+        return CourseRemovalResult(True, impact)
+
     archive_error = migrate_impacted_progress_archives(
         impact,
         course_manager=course_manager,

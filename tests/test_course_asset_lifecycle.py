@@ -65,6 +65,16 @@ class _CourseManager(_StoreManager):
             self.current_id = ""
         return deleted
 
+    def archive(self, item_id):
+        item = self.get(item_id)
+        if item is None:
+            return False
+        item.status = "archived"
+        self.save(item, make_current=False)
+        if self.current_id == item_id:
+            self.current_id = ""
+        return True
+
 
 class _PastExamManager(_StoreManager):
     def __init__(self, items):
@@ -154,7 +164,7 @@ class CourseAssetLifecycleTests(unittest.TestCase):
 
         result = remove_course_assets(
             "course-a",
-            CourseRemovalMode.KEEP_ASSETS,
+            CourseRemovalMode.DELETE_LINKED_BANK,
             **managers,
         )
 
@@ -261,6 +271,43 @@ class CourseAssetLifecycleTests(unittest.TestCase):
             set(managers["progress_manager"].items),
         )
         self.assertEqual({}, managers["snapshot_manager"].items)
+
+    def test_archive_mode_preserves_course_identity_and_every_linked_asset(self):
+        managers = self._lifecycle_managers()
+        managers["progress_manager"].save(
+            SimpleNamespace(
+                progress_id="progress-draft",
+                set_id="set-direct",
+                status="abandoned",
+            )
+        )
+
+        result = remove_course_assets(
+            "course-a",
+            CourseRemovalMode.ARCHIVE,
+            **managers,
+        )
+
+        self.assertTrue(result.success, result.error)
+        course = managers["course_manager"].get("course-a")
+        self.assertIsNotNone(course)
+        self.assertEqual("archived", course.status)
+        self.assertEqual("", managers["course_manager"].current_id)
+        self.assertIsNotNone(managers["question_bank"].get("q-course"))
+        self.assertIsNotNone(managers["set_manager"].get("set-direct"))
+        self.assertIsNotNone(
+            managers["progress_manager"].get("progress-draft")
+        )
+        self.assertIsNotNone(
+            managers["snapshot_manager"].get("snapshot-direct")
+        )
+        self.assertEqual(
+            "course-a",
+            managers["past_exam_manager"].get("exam-course").course_id,
+        )
+        self.assertIsNotNone(
+            managers["current_event_manager"].get("pack-course")
+        )
 
     def test_impact_follows_direct_course_links_and_indirect_set_references(self):
         questions = _Manager([
