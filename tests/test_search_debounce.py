@@ -11,7 +11,7 @@ from models.course_project import CourseProjectManager
 from models.question import QuestionBank
 from models.question_set import SetManager
 from ui.screens.question_bank_screen import QuestionBankScreen
-from ui.screens.topic_selection_screen import TopicSelectionScreen
+from ui.widgets.question_set_library_panel import QuestionSetLibraryPanel
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -35,9 +35,11 @@ class SearchDebounceTests(unittest.TestCase):
             self.assertTrue(screen.search_debounce_timer.isActive())
             screen.search_debounce_timer.stop()
 
-    def test_topic_selection_search_input_uses_single_shot_debounce(self):
+    def test_question_set_library_search_uses_single_shot_debounce(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            screen = TopicSelectionScreen(SetManager(str(Path(tmpdir) / "sets")))
+            screen = QuestionSetLibraryPanel(
+                SetManager(str(Path(tmpdir) / "sets"))
+            )
             self.addCleanup(screen.close)
 
             self.assertTrue(screen.search_debounce_timer.isSingleShot())

@@ -365,16 +365,29 @@ class MainWindow(QMainWindow):
     def _get_question_bank_screen(self):
         """Lazy-init the question bank screen on first access."""
         if self._question_bank_screen is None:
-            from ui.screens.question_bank_screen import QuestionBankScreen
-            self._question_bank_screen = QuestionBankScreen(
+            from ui.screens.library_screen import LibraryScreen
+            self._question_bank_screen = LibraryScreen(
                 self.question_bank,
                 set_manager=self.set_manager,
                 course_manager=self.course_manager,
+                progress_manager=self.progress_manager,
                 task_center=self.task_center,
             )
             self._sync_question_bank_screen_course()
             self._question_bank_screen.question_bank_changed.connect(
                 self._on_question_bank_changed
+            )
+            self._question_bank_screen.sets_changed.connect(
+                self.topic_screen.refresh
+            )
+            self._question_bank_screen.export_mock_exam.connect(
+                self._on_export_mock_exam
+            )
+            self._question_bank_screen.export_mock_exams.connect(
+                self._on_export_mock_exams
+            )
+            self._question_bank_screen.regenerate_questions.connect(
+                self._on_regenerate_question_set
             )
             self._install_workspace(
                 self.SCREEN_QUESTION_BANK,
@@ -486,12 +499,11 @@ class MainWindow(QMainWindow):
         self.settings_screen.settings_saved.connect(self._refresh_first_run)
 
         # Topic selection
-        self.topic_screen.quiz_start.connect(self._on_quiz_start)
         self.topic_screen.study_start.connect(self._on_study_quiz_start)
         self.topic_screen.generate_missing.connect(self.study_flow.generate_missing)
-        self.topic_screen.export_mock_exam.connect(self._on_export_mock_exam)
-        self.topic_screen.export_mock_exams.connect(self._on_export_mock_exams)
-        self.topic_screen.regenerate_questions.connect(self._on_regenerate_question_set)
+        self.topic_screen.today_mode_requested.connect(
+            lambda: self.navigate_to(self.SCREEN_HOME)
+        )
 
         # Quiz screen
         self.quiz_screen.quiz_finished.connect(self._on_quiz_finished)
@@ -523,9 +535,9 @@ class MainWindow(QMainWindow):
         self.sidebar_title.setText(gm(APP_NAME, APP_NAME_EN))
         self.learning_nav_btn.setText(gm("学习", "Study"))
         self.courses_nav_btn.setText(gm("课程", "Courses"))
-        self.library_nav_btn.setText(gm("题库", "Question Bank"))
+        self.library_nav_btn.setText(gm("资料库", "Library"))
         self.settings_nav_btn.setText(gm("设置", "Settings"))
-        self.topics_tab_btn.setText(gm("题目集", "Question Sets"))
+        self.topics_tab_btn.setText(gm("练习", "Practice"))
         self.progress_tab_btn.setText(gm("进度", "Progress"))
         self.bank_tab_btn.setText(gm("题库", "Question Bank"))
         self.past_exams_tab_btn.setText(gm("历史真题", "Historical Exams"))

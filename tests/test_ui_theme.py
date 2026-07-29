@@ -45,7 +45,7 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class UiThemeTests(unittest.TestCase):
-    def test_topic_selection_prefers_the_only_available_question_set(self):
+    def test_study_setup_keeps_the_only_saved_set_optional(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             set_manager = SetManager(str(Path(tmpdir) / "sets"))
             question_set = QuestionSet.create_new(
@@ -60,40 +60,32 @@ class UiThemeTests(unittest.TestCase):
 
             screen.refresh()
 
-            self.assertEqual(1, screen.set_list.count())
+            self.assertEqual(2, screen.preset_combo.count())
+            self.assertEqual(
+                "",
+                screen.preset_combo.currentData(),
+            )
             self.assertEqual(
                 question_set.set_id,
-                screen.set_list.currentItem().data(Qt.ItemDataRole.UserRole),
+                screen.preset_combo.itemData(1),
             )
-            self.assertTrue(screen.start_btn.isEnabled())
 
-    def test_topic_selection_uses_responsive_list_and_detail_workspace(self):
+    def test_study_setup_uses_one_compact_scope_card_at_narrow_width(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             screen = TopicSelectionScreen(
                 SetManager(str(Path(tmpdir) / "sets")),
             )
             self.addCleanup(screen.close)
 
-            screen.resize(1200, 760)
+            screen.resize(820, 680)
             screen.show()
             _APP.processEvents()
 
-            self.assertIsInstance(screen.content_splitter, QSplitter)
-            self.assertEqual(
-                Qt.Orientation.Horizontal,
-                screen.content_splitter.orientation(),
-            )
-            self.assertTrue(screen.list_pane.isAncestorOf(screen.set_list))
-            self.assertTrue(screen.detail_pane.isAncestorOf(screen.info_label))
-            self.assertTrue(screen.detail_pane.isAncestorOf(screen.start_btn))
-
-            screen.resize(820, 760)
-            _APP.processEvents()
-
-            self.assertEqual(
-                Qt.Orientation.Vertical,
-                screen.content_splitter.orientation(),
-            )
+            self.assertTrue(screen.setup_card.isVisibleTo(screen))
+            self.assertTrue(screen.setup_card.isAncestorOf(screen.preset_combo))
+            self.assertTrue(screen.setup_card.isAncestorOf(screen.topic_filter))
+            self.assertTrue(screen.setup_card.isAncestorOf(screen.question_count_input))
+            self.assertFalse(hasattr(screen, "content_splitter"))
 
     def test_default_main_window_uses_isolated_services_during_qt_tests(self):
         from config import QUESTIONS_DIR
@@ -383,7 +375,7 @@ class UiThemeTests(unittest.TestCase):
 
         buttons = main_window.navigation_buttons()
         self.assertEqual(
-            ["Study", "Courses", "Question Bank"],
+            ["Study", "Courses", "Library"],
             [button.text() for button in buttons],
         )
         self.assertEqual(
@@ -410,7 +402,7 @@ class UiThemeTests(unittest.TestCase):
 
         main_window.navigate_to(main_window.SCREEN_PROGRESS)
         self.assertTrue(main_window.learning_nav_btn.isChecked())
-        self.assertEqual(["Question Sets", "Progress"], [button.text() for button in main_window.context_tabs()])
+        self.assertEqual(["Practice", "Progress"], [button.text() for button in main_window.context_tabs()])
         self.assertTrue(main_window.progress_tab_btn.isChecked())
         self.assertFalse(main_window.incorrect_review_btn.isHidden())
         self.assertEqual("Review Incorrect", main_window.incorrect_review_btn.text())
@@ -1343,17 +1335,16 @@ class UiThemeTests(unittest.TestCase):
             )
             main_window = MainWindow()
 
-        self.assertEqual("secondaryButton", topic.export_btn.objectName())
-        self.assertEqual("secondaryButton", topic.regenerate_btn.objectName())
-        self.assertEqual("导出模拟卷", topic.export_btn.text())
-        self.assertEqual("重新生成题目", topic.regenerate_btn.text())
+        self.assertEqual("自由练习", topic.free_practice_mode_btn.text())
+        self.assertEqual("模拟考试", topic.mock_exam_mode_btn.text())
         lang_manager.set_language("en")
-        self.assertEqual("Export Mock Exam", topic.export_btn.text())
-        self.assertEqual("Regenerate Questions", topic.regenerate_btn.text())
-        self.assertEqual("secondaryButton", topic.rename_btn.objectName())
+        self.assertEqual("Free Practice", topic.free_practice_mode_btn.text())
+        self.assertEqual("Mock Exam", topic.mock_exam_mode_btn.text())
         self.assertEqual("primaryButton", topic.start_btn.objectName())
         self.assertFalse(hasattr(topic, "back_btn"))
-        self.assertNotRegex(topic.rename_btn.text(), r"[^\w\s]")
+        self.assertFalse(hasattr(topic, "rename_btn"))
+        self.assertFalse(hasattr(topic, "export_btn"))
+        self.assertFalse(hasattr(topic, "regenerate_btn"))
         self.assertNotRegex(topic.start_btn.text(), r"[^\w\s]")
 
         self.assertEqual("secondaryButton", results.next_action_btn.objectName())

@@ -114,12 +114,14 @@ class QuestionBankScreen(QWidget):
         course_manager: CourseProjectManager,
         parent=None,
         task_center=None,
+        embedded: bool = False,
     ):
         super().__init__(parent)
         self.question_bank = question_bank
         self.set_manager = set_manager
         self.course_manager = course_manager
         self.task_center = task_center
+        self.embedded = bool(embedded)
         self.lang_manager = LanguageManager.instance()
         self.page_size = 25
         self.page = 0
@@ -140,12 +142,16 @@ class QuestionBankScreen(QWidget):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
+        if self.embedded:
+            layout.setContentsMargins(0, 0, 0, 0)
+        else:
+            layout.setContentsMargins(24, 20, 24, 20)
 
         self.page_header = PageHeader(
             self.lang_manager.get_text("题库管理", "Question Bank")
         )
         self.title = self.page_header.title_label
+        self.page_header.setVisible(not self.embedded)
         layout.addWidget(self.page_header)
 
         filter_row = QHBoxLayout()

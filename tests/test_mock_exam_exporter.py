@@ -14,9 +14,9 @@ from core.mock_exam_exporter import MockExamExporter, render_mock_exam_markdown
 from core.study_intent import StudyAction, StudyIntent
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet
-from models.progress import ProgressRecord, SessionSummary
 from utils.constants import Difficulty, QuestionType
 from ui.screens.topic_selection_screen import TopicSelectionScreen
+from ui.widgets.question_set_library_panel import QuestionSetLibraryPanel
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -192,7 +192,7 @@ class MockExamExporterTests(unittest.TestCase):
             manager = SetManager(tmpdir)
             qset = self._make_question_set()
             manager.save(qset)
-            screen = TopicSelectionScreen(manager)
+            screen = QuestionSetLibraryPanel(manager)
             emitted_singles = []
             emitted_batches = []
             screen.export_mock_exam.connect(emitted_singles.append)
@@ -244,7 +244,7 @@ class MockExamExporterTests(unittest.TestCase):
             screen.apply_study_intent(intent)
 
             self.assertFalse(screen.study_intent_banner.isHidden())
-            self.assertIn("高速缓存", screen.study_intent_banner.text())
+            self.assertIn("高速缓存", screen.coverage_label.text())
             self.assertIn("1", screen.start_btn.text())
             self.assertTrue(screen.start_btn.isEnabled())
             screen.start_btn.click()
@@ -294,22 +294,16 @@ class MockExamExporterTests(unittest.TestCase):
             empty = self._make_question_set()
             empty.questions = []
             manager.save(empty)
-            screen = TopicSelectionScreen(manager)
-            started = []
+            screen = QuestionSetLibraryPanel(manager)
             exported = []
-            screen.quiz_start.connect(lambda *args: started.append(args))
             screen.export_mock_exam.connect(exported.append)
 
             screen.refresh()
             screen.set_list.setCurrentRow(0)
 
             self.assertIn("空题集", screen.set_list.item(0).text())
-            self.assertIn("无法开始", screen.info_label.text())
-            self.assertFalse(screen.start_btn.isEnabled())
             self.assertFalse(screen.export_btn.isEnabled())
-            screen._start_quiz()
-            screen._export_selected_set()
-            self.assertEqual([], started)
+            screen._export_selected()
             self.assertEqual([], exported)
 
     def test_topic_selection_screen_blocks_batch_export_when_any_set_is_empty(self):
@@ -324,7 +318,7 @@ class MockExamExporterTests(unittest.TestCase):
             empty.questions = []
             manager.save(populated)
             manager.save(empty)
-            screen = TopicSelectionScreen(manager)
+            screen = QuestionSetLibraryPanel(manager)
             exported = []
             screen.export_mock_exams.connect(exported.append)
 
@@ -333,7 +327,7 @@ class MockExamExporterTests(unittest.TestCase):
             screen.set_list.item(1).setSelected(True)
 
             self.assertFalse(screen.export_btn.isEnabled())
-            screen._export_selected_set()
+            screen._export_selected()
             self.assertEqual([], exported)
 
     def test_topic_selection_screen_ignores_current_item_without_explicit_selection(self):
@@ -343,33 +337,28 @@ class MockExamExporterTests(unittest.TestCase):
             manager = SetManager(tmpdir)
             qset = self._make_question_set()
             manager.save(qset)
-            screen = TopicSelectionScreen(manager)
+            screen = QuestionSetLibraryPanel(manager)
             exported = []
             regenerated = []
-            started = []
             screen.export_mock_exam.connect(exported.append)
             screen.regenerate_questions.connect(regenerated.append)
-            screen.quiz_start.connect(lambda set_id, questions: started.append((set_id, questions)))
 
             screen.refresh()
             screen.set_list.setCurrentRow(0)
             self.assertIsNotNone(screen.set_list.currentItem())
             screen.set_list.clearSelection()
-            screen._on_set_selection_changed()
+            screen._update_selection()
 
             self.assertEqual([], screen._selected_set_ids())
             self.assertFalse(screen.export_btn.isEnabled())
-            self.assertFalse(screen.start_btn.isEnabled())
             self.assertFalse(screen.regenerate_btn.isEnabled())
             self.assertFalse(screen.rename_btn.isEnabled())
 
-            screen._export_selected_set()
-            screen._regenerate_selected_set()
-            screen._start_quiz()
+            screen._export_selected()
+            screen._regenerate_selected()
 
             self.assertEqual([], exported)
             self.assertEqual([], regenerated)
-            self.assertEqual([], started)
 
     def test_topic_selection_screen_emits_export_requests_for_multiple_selected_sets(self):
         from models.question_set import SetManager
@@ -382,7 +371,7 @@ class MockExamExporterTests(unittest.TestCase):
             second.set_id = "set-b"
             manager.save(first)
             manager.save(second)
-            screen = TopicSelectionScreen(manager)
+            screen = QuestionSetLibraryPanel(manager)
             emitted_singles = []
             emitted_batches = []
             screen.export_mock_exam.connect(emitted_singles.append)
@@ -403,7 +392,7 @@ class MockExamExporterTests(unittest.TestCase):
             self.assertEqual(1, len(emitted_batches))
             self.assertCountEqual([first.set_id, second.set_id], emitted_batches[0])
 
-    def test_topic_selection_screen_filters_by_multiple_selected_topics(self):
+    def test_question_set_library_searches_topic_labels(self):
         from models.question_set import SetManager
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -421,20 +410,16 @@ class MockExamExporterTests(unittest.TestCase):
             manager.save(scheduling)
             manager.save(memory)
 
-            screen = TopicSelectionScreen(manager)
+            screen = QuestionSetLibraryPanel(manager)
             screen.refresh()
-            model = screen.topic_filter.model()
-            for row in range(screen.topic_filter.count()):
-                if screen.topic_filter.itemData(row) in {"cache", "scheduling"}:
-                    model.item(row).setCheckState(Qt.CheckState.Checked)
-
+            screen.search_input.setText("memory")
             screen._render_sets()
 
             visible_ids = {
                 screen.set_list.item(row).data(Qt.ItemDataRole.UserRole)
                 for row in range(screen.set_list.count())
             }
-            self.assertEqual({"set-cache", "set-scheduling"}, visible_ids)
+            self.assertEqual({"set-memory"}, visible_ids)
 
     def test_topic_selection_screen_emits_regenerate_request_for_ai_generated_set(self):
         from models.question_set import SetManager
@@ -444,7 +429,7 @@ class MockExamExporterTests(unittest.TestCase):
             qset = self._make_question_set()
             qset.metadata["source"] = "ai_generated"
             manager.save(qset)
-            screen = TopicSelectionScreen(manager)
+            screen = QuestionSetLibraryPanel(manager)
             emitted = []
             screen.regenerate_questions.connect(emitted.append)
 
@@ -464,7 +449,7 @@ class MockExamExporterTests(unittest.TestCase):
             qset = self._make_question_set()
             qset.metadata["source"] = "manual"
             manager.save(qset)
-            screen = TopicSelectionScreen(manager)
+            screen = QuestionSetLibraryPanel(manager)
             emitted = []
             screen.regenerate_questions.connect(emitted.append)
 
@@ -473,7 +458,7 @@ class MockExamExporterTests(unittest.TestCase):
 
             self.assertTrue(screen.regenerate_btn.isHidden())
             self.assertFalse(screen.regenerate_btn.isEnabled())
-            screen._regenerate_selected_set()
+            screen._regenerate_selected()
             self.assertEqual([], emitted)
 
     def test_topic_selection_screen_batches_progress_loading_when_rendering_sets(self):
@@ -503,24 +488,17 @@ class MockExamExporterTests(unittest.TestCase):
                 manager.save(qset)
                 sets.append(qset)
 
-            progress = ProgressRecord.create_new(sets[1].set_id)
-            progress.status = "completed"
-            progress.summary = SessionSummary(
-                total_questions=2,
-                answered=2,
-                correct=1,
-                incorrect=1,
-                score_percentage=50.0,
+            progress_manager = CountingProgressManager([])
+            screen = QuestionSetLibraryPanel(
+                manager,
+                progress_manager=progress_manager,
             )
-            progress_manager = CountingProgressManager([progress])
-            screen = TopicSelectionScreen(manager, progress_manager=progress_manager)
 
             screen.refresh()
 
-            self.assertEqual(1, progress_manager.load_all_calls)
+            self.assertEqual(0, progress_manager.load_all_calls)
             self.assertEqual([], progress_manager.load_for_set_calls)
-            rendered = [screen.set_list.item(row).text() for row in range(screen.set_list.count())]
-            self.assertTrue(any("recent 50%" in text or "最近 50%" in text for text in rendered))
+            self.assertEqual(3, screen.set_list.count())
 
     def test_topic_selection_screen_can_rename_selected_question_set(self):
         from models.question_set import SetManager
@@ -529,12 +507,12 @@ class MockExamExporterTests(unittest.TestCase):
             manager = SetManager(tmpdir)
             qset = self._make_question_set()
             manager.save(qset)
-            screen = TopicSelectionScreen(manager)
+            screen = QuestionSetLibraryPanel(manager)
             screen.refresh()
             screen.set_list.setCurrentRow(0)
 
             with patch(
-                "ui.screens.topic_selection_screen.QInputDialog.getText",
+                "ui.widgets.question_set_library_panel.QInputDialog.getText",
                 return_value=("期末强化题集", True),
             ):
                 screen.rename_btn.click()
@@ -561,7 +539,7 @@ class MockExamExporterTests(unittest.TestCase):
             manager.save(course_b)
             manager.save(manual)
 
-            screen = TopicSelectionScreen(manager)
+            screen = QuestionSetLibraryPanel(manager)
             screen.set_current_course("course-a")
             screen.refresh()
 
@@ -584,7 +562,7 @@ class MockExamExporterTests(unittest.TestCase):
 
             screen.set_current_course("course-a", "Computer Architecture")
 
-            self.assertIn("Showing sets for", screen.course_context_label.text())
+            self.assertIn("Current course", screen.course_context_label.text())
             self.assertIn("Computer Architecture", screen.course_context_label.text())
 
             screen.set_current_course("", "")

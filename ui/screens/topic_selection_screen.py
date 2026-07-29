@@ -1,32 +1,37 @@
-"""Topic selection screen — choose topics, difficulty, and question count."""
+"""Learning setup workspace for daily, free-practice, and mock-exam flows."""
 
-from datetime import datetime, timezone
+from __future__ import annotations
 
+from collections import Counter
+
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QListWidget, QListWidgetItem, QComboBox, QLineEdit,
-    QAbstractItemView, QInputDialog, QSplitter,
+    QButtonGroup,
+    QComboBox,
+    QFormLayout,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
 )
-from PyQt6.QtCore import pyqtSignal, Qt, QTimer
-from PyQt6.QtGui import QColor
 
-from utils.constants import topic_label, topic_value
 from core.language_manager import LanguageManager
+from core.practice_selection import select_practice_question_ids
 from core.study_intent import StudyAction, StudyIntent
 from models.question import QuestionBank
 from models.question_set import SetManager
-from ui.widgets.wheel_safe_controls import WheelSafeComboBox
+from ui.widgets.wheel_safe_controls import WheelSafeComboBox, WheelSafeSpinBox
+from utils.constants import topic_label, topic_value
 
 
 class TopicSelectionScreen(QWidget):
-    """Screen for selecting a question set and configuring quiz parameters."""
+    """Configure a study session without exposing question-set maintenance."""
 
-    quiz_start = pyqtSignal(str, list)  # set_id, question_ids
-    export_mock_exam = pyqtSignal(str)  # set_id
-    export_mock_exams = pyqtSignal(list)  # set_ids
-    regenerate_questions = pyqtSignal(str)  # set_id
     study_start = pyqtSignal(object, list)  # StudyIntent, question_ids
     generate_missing = pyqtSignal(object, int)  # StudyIntent, missing count
+    today_mode_requested = pyqtSignal()
 
     def __init__(
         self,
@@ -41,32 +46,57 @@ class TopicSelectionScreen(QWidget):
         self.progress_manager = progress_manager
         self.question_bank = question_bank
         self.lang_manager = LanguageManager.instance()
-        self._all_sets = []
+        self.study_mode = "practice"
         self._current_course_id = ""
         self._current_course_title = ""
-        self._updating_topic_filter = False
         self._study_intent: StudyIntent | None = None
-        self.search_debounce_timer = QTimer(self)
-        self.search_debounce_timer.setSingleShot(True)
-        self.search_debounce_timer.setInterval(250)
-        self.search_debounce_timer.timeout.connect(self._render_sets)
+        self._all_sets = []
+        self._scheduling_index: dict[str, tuple[str, str, str]] = {}
+        self._updating_topics = False
+        self._updating_preset = False
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
+        self.refresh()
 
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(14)
 
-        # Title
-        self.title_label = QLabel(self.lang_manager.get_text("选择题目集", "Select Question Set"))
+        self.title_label = QLabel()
         self.title_label.setObjectName("screenTitle")
         layout.addWidget(self.title_label)
+
+        self.mode_frame = QFrame()
+        self.mode_frame.setObjectName("studyModeBar")
+        mode_layout = QHBoxLayout(self.mode_frame)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        mode_layout.setSpacing(8)
+        self.mode_group = QButtonGroup(self)
+        self.mode_group.setExclusive(True)
+        self.today_mode_btn = self._mode_button("todayStudyMode")
+        self.free_practice_mode_btn = self._mode_button("freePracticeMode")
+        self.mock_exam_mode_btn = self._mode_button("mockExamMode")
+        for button in (
+            self.today_mode_btn,
+            self.free_practice_mode_btn,
+            self.mock_exam_mode_btn,
+        ):
+            mode_layout.addWidget(button)
+        mode_layout.addStretch(1)
+        self.today_mode_btn.clicked.connect(self._request_today_mode)
+        self.free_practice_mode_btn.clicked.connect(
+            lambda: self._set_study_mode("practice")
+        )
+        self.mock_exam_mode_btn.clicked.connect(
+            lambda: self._set_study_mode("exam")
+        )
+        layout.addWidget(self.mode_frame)
 
         self.course_context_label = QLabel()
         self.course_context_label.setObjectName("topicCourseContextLabel")
         self.course_context_label.setWordWrap(True)
         layout.addWidget(self.course_context_label)
-        self._update_course_context_label()
 
         self.study_intent_banner = QLabel()
         self.study_intent_banner.setObjectName("studyIntentBanner")
@@ -74,95 +104,61 @@ class TopicSelectionScreen(QWidget):
         self.study_intent_banner.hide()
         layout.addWidget(self.study_intent_banner)
 
-        # Filters
-        filter_layout = QHBoxLayout()
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText(self.lang_manager.get_text("搜索...", "Search..."))
-        self.search_input.textChanged.connect(self._schedule_search_render)
-        filter_layout.addWidget(self.search_input, 2)
+        self.setup_card = QFrame()
+        self.setup_card.setObjectName("studySetupCard")
+        setup_layout = QVBoxLayout(self.setup_card)
+        setup_layout.setContentsMargins(18, 18, 18, 18)
+        setup_layout.setSpacing(14)
+
+        self.setup_title = QLabel()
+        self.setup_title.setObjectName("sectionTitle")
+        setup_layout.addWidget(self.setup_title)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(18)
+        form.setVerticalSpacing(12)
+
+        self.preset_combo = WheelSafeComboBox()
+        self.preset_combo.currentIndexChanged.connect(self._on_preset_changed)
+        self.preset_label = QLabel()
+        form.addRow(self.preset_label, self.preset_combo)
 
         self.topic_filter = WheelSafeComboBox()
         self.topic_filter.setEditable(True)
         self.topic_filter.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.topic_filter.lineEdit().setReadOnly(True)
-        self.topic_filter.currentIndexChanged.connect(self._render_sets)
-        self.topic_filter.model().itemChanged.connect(self._on_topic_filter_item_changed)
-        filter_layout.addWidget(self.topic_filter, 1)
+        self.topic_filter.model().itemChanged.connect(
+            self._on_topic_filter_item_changed
+        )
+        self.topic_label = QLabel()
+        form.addRow(self.topic_label, self.topic_filter)
 
         self.difficulty_filter = WheelSafeComboBox()
-        self.difficulty_filter.currentIndexChanged.connect(self._render_sets)
-        filter_layout.addWidget(self.difficulty_filter)
-
-        layout.addLayout(filter_layout)
-
-        self.content_splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.content_splitter.setObjectName("topicContentSplitter")
-        self.content_splitter.setChildrenCollapsible(False)
-        self.content_splitter.setHandleWidth(8)
-
-        # Question set list
-        self.list_pane = QWidget()
-        self.list_pane.setObjectName("topicSetListPane")
-        list_layout = QVBoxLayout(self.list_pane)
-        list_layout.setContentsMargins(0, 0, 0, 0)
-        list_layout.setSpacing(8)
-        self.list_label = QLabel(self.lang_manager.get_text("可用的题目集:", "Available question sets:"))
-        list_layout.addWidget(self.list_label)
-        self.set_list = QListWidget()
-        self.set_list.setObjectName("topicSetList")
-        self.set_list.setMinimumHeight(250)
-        self.set_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.set_list.currentItemChanged.connect(self._on_set_selected)
-        self.set_list.itemSelectionChanged.connect(self._on_set_selection_changed)
-        list_layout.addWidget(self.set_list, 1)
-        self.content_splitter.addWidget(self.list_pane)
-
-        # Set info
-        self.detail_pane = QWidget()
-        self.detail_pane.setObjectName("topicSetDetailPane")
-        detail_layout = QVBoxLayout(self.detail_pane)
-        detail_layout.setContentsMargins(12, 0, 0, 0)
-        detail_layout.setSpacing(12)
-        self.info_label = QLabel()
-        self.info_label.setWordWrap(True)
-        self.info_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        self.difficulty_filter.currentIndexChanged.connect(
+            self._on_scope_control_changed
         )
-        detail_layout.addWidget(self.info_label)
-        detail_layout.addStretch(1)
+        self.difficulty_label = QLabel()
+        form.addRow(self.difficulty_label, self.difficulty_filter)
 
-        # Start button
-        btn_layout = QHBoxLayout()
-        btn_layout.addStretch()
+        self.question_count_input = WheelSafeSpinBox()
+        self.question_count_input.setRange(1, 100)
+        self.question_count_input.setValue(10)
+        self.question_count_input.valueChanged.connect(
+            self._on_scope_control_changed
+        )
+        self.question_count_label = QLabel()
+        form.addRow(self.question_count_label, self.question_count_input)
+        setup_layout.addLayout(form)
 
-        self.export_btn = QPushButton(self.lang_manager.get_text("导出模拟卷", "Export Mock Exam"))
-        self.export_btn.setObjectName("secondaryButton")
-        self.export_btn.setMinimumHeight(40)
-        self.export_btn.clicked.connect(self._export_selected_set)
-        self.export_btn.setEnabled(False)
-        btn_layout.addWidget(self.export_btn)
+        self.coverage_label = QLabel()
+        self.coverage_label.setObjectName("secondaryText")
+        self.coverage_label.setWordWrap(True)
+        setup_layout.addWidget(self.coverage_label)
+        layout.addWidget(self.setup_card)
+        layout.addStretch(1)
 
-        self.regenerate_btn = QPushButton(self.lang_manager.get_text("重新生成题目", "Regenerate Questions"))
-        self.regenerate_btn.setObjectName("secondaryButton")
-        self.regenerate_btn.setMinimumHeight(40)
-        self.regenerate_btn.clicked.connect(self._regenerate_selected_set)
-        self.regenerate_btn.setEnabled(False)
-        self.regenerate_btn.setHidden(True)
-        btn_layout.addWidget(self.regenerate_btn)
-
-        self.rename_btn = QPushButton(self.lang_manager.get_text("重命名", "Rename"))
-        self.rename_btn.setObjectName("secondaryButton")
-        self.rename_btn.setMinimumHeight(40)
-        self.rename_btn.clicked.connect(self._rename_selected_set)
-        self.rename_btn.setEnabled(False)
-        btn_layout.addWidget(self.rename_btn)
-
-        self.start_btn = QPushButton(self.lang_manager.get_text("开始答题", "Start Quiz"))
-        self.start_btn.setObjectName("primaryButton")
-        self.start_btn.setMinimumHeight(40)
-        self.start_btn.clicked.connect(self._start_quiz)
-        self.start_btn.setEnabled(False)
-        self.export_btn.setEnabled(False)
+        action_layout = QHBoxLayout()
+        action_layout.addStretch(1)
         self.generate_missing_btn = QPushButton()
         self.generate_missing_btn.setObjectName("secondaryButton")
         self.generate_missing_btn.setMinimumHeight(40)
@@ -170,562 +166,419 @@ class TopicSelectionScreen(QWidget):
             self._request_missing_generation
         )
         self.generate_missing_btn.hide()
-        btn_layout.addWidget(self.generate_missing_btn)
-        btn_layout.addWidget(self.start_btn)
+        action_layout.addWidget(self.generate_missing_btn)
+        self.start_btn = QPushButton()
+        self.start_btn.setObjectName("primaryButton")
+        self.start_btn.setMinimumHeight(40)
+        self.start_btn.clicked.connect(self._start_quiz)
+        action_layout.addWidget(self.start_btn)
+        layout.addLayout(action_layout)
 
-        detail_layout.addLayout(btn_layout)
-        self.content_splitter.addWidget(self.detail_pane)
-        self.content_splitter.setStretchFactor(0, 3)
-        self.content_splitter.setStretchFactor(1, 2)
-        self.content_splitter.setSizes([720, 440])
-        layout.addWidget(self.content_splitter, 1)
-        self._update_responsive_layout()
+        self._on_language_changed()
+        self._sync_mode_buttons()
 
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._update_responsive_layout()
+    def _mode_button(self, object_name: str) -> QPushButton:
+        button = QPushButton()
+        button.setObjectName("quizModeOption")
+        button.setProperty("modeKey", object_name)
+        button.setProperty("studyModeOption", True)
+        button.setCheckable(True)
+        button.setMinimumHeight(36)
+        self.mode_group.addButton(button)
+        return button
 
-    def _update_responsive_layout(self) -> None:
-        if not hasattr(self, "content_splitter"):
-            return
-        wide = self.width() >= 960
-        orientation = (
-            Qt.Orientation.Horizontal
-            if wide
-            else Qt.Orientation.Vertical
-        )
-        if self.content_splitter.orientation() == orientation:
-            return
-        self.content_splitter.setOrientation(orientation)
-        self.content_splitter.setSizes(
-            [max(360, self.width() * 3 // 5), max(240, self.width() * 2 // 5)]
-            if wide
-            else [max(280, self.height() * 3 // 5), max(200, self.height() * 2 // 5)]
-        )
-
-    def _on_language_changed(self, lang):
-        """Update all UI text when language changes."""
-        self.title_label.setText(self.lang_manager.get_text("选择题目集", "Select Question Set"))
+    def _on_language_changed(self, _lang=None) -> None:
+        gm = self.lang_manager.get_text
+        self.title_label.setText(gm("开始学习", "Start Learning"))
+        self.today_mode_btn.setText(gm("今日学习", "Today"))
+        self.free_practice_mode_btn.setText(gm("自由练习", "Free Practice"))
+        self.mock_exam_mode_btn.setText(gm("模拟考试", "Mock Exam"))
+        self.setup_title.setText(gm("练习范围", "Practice Scope"))
+        self.preset_label.setText(gm("保存的方案", "Saved Preset"))
+        self.topic_label.setText(gm("知识点", "Topics"))
+        self.difficulty_label.setText(gm("难度", "Difficulty"))
+        self.question_count_label.setText(gm("题量", "Questions"))
         self._update_course_context_label()
-        self.search_input.setPlaceholderText(self.lang_manager.get_text("搜索...", "Search..."))
-        self.list_label.setText(self.lang_manager.get_text("可用的题目集:", "Available question sets:"))
-        self.export_btn.setText(self.lang_manager.get_text("导出模拟卷", "Export Mock Exam"))
-        self.regenerate_btn.setText(self.lang_manager.get_text("重新生成题目", "Regenerate Questions"))
-        self.rename_btn.setText(self.lang_manager.get_text("重命名", "Rename"))
-        self.start_btn.setText(self.lang_manager.get_text("开始答题", "Start Quiz"))
-        self._update_study_intent_state()
         self.refresh()
 
-    def _on_set_selected(self, current, previous):
-        """Display info about the selected question set."""
-        if current is None:
-            self.info_label.clear()
-            self.start_btn.setEnabled(False)
-            self.export_btn.setEnabled(False)
-            self.regenerate_btn.setEnabled(False)
-            self.regenerate_btn.setHidden(True)
-            self.rename_btn.setEnabled(False)
-            return
-
-        set_id = current.data(Qt.ItemDataRole.UserRole)
-        qset = self.set_manager.get(set_id)
-        if qset:
-            lang = self.lang_manager.current
-            topics_str = ", ".join(topic_label(t, lang) for t in qset.topics)
-            attempts = self.progress_manager.load_for_set(set_id) if self.progress_manager else []
-            completed = [r for r in attempts if r.status == "completed" and r.summary]
-            recent_score = f"{completed[0].summary.score_percentage:.0f}%" if completed else "N/A"
-            best_score = f"{max(r.summary.score_percentage for r in completed):.0f}%" if completed else "N/A"
-            empty_notice = ""
-            if qset.question_count == 0:
-                empty_notice = self.lang_manager.get_text(
-                    "<br><b>空题集无法开始或导出，请重新生成题目。</b>",
-                    "<br><b>This empty set cannot be started or exported. Regenerate its questions.</b>",
-                )
-            self.info_label.setText(
-                f"<b>{qset.get_title(lang)}</b><br>"
-                f"{qset.get_description(lang)}<br><br>"
-                f"{self.lang_manager.get_text('题目数:', 'Questions:')} {qset.question_count} | "
-                f"{self.lang_manager.get_text('难度:', 'Difficulty:')} {qset.difficulty.value} | "
-                f"{self.lang_manager.get_text('预计时间:', 'Est. time:')} {qset.estimated_minutes} "
-                f"{self.lang_manager.get_text('分钟', 'min')}<br>"
-                f"{self.lang_manager.get_text('主题:', 'Topics:')} {topics_str}<br>"
-                f"{self.lang_manager.get_text('练习次数:', 'Attempts:')} {len(completed)} | "
-                f"{self.lang_manager.get_text('最近:', 'Recent:')} {recent_score} | "
-                f"{self.lang_manager.get_text('最佳:', 'Best:')} {best_score}"
-                f"{empty_notice}"
-            )
-            self._on_set_selection_changed()
-
-    def _on_set_selection_changed(self):
-        """Keep action availability aligned with single vs batch selection."""
-        selected_ids = self._selected_set_ids()
-        has_selection = bool(selected_ids)
-        single_selection = len(selected_ids) == 1
-        selected_set = self.set_manager.get(selected_ids[0]) if single_selection else None
-        selected_sets = [self.set_manager.get(set_id) for set_id in selected_ids]
-        all_have_questions = has_selection and all(
-            qset is not None and qset.question_count > 0 for qset in selected_sets
-        )
-        can_regenerate = single_selection and self._is_regeneratable_set(selected_set)
-        self.export_btn.setEnabled(all_have_questions)
-        self.start_btn.setEnabled(single_selection and all_have_questions)
-        self.regenerate_btn.setHidden(not can_regenerate)
-        self.regenerate_btn.setEnabled(can_regenerate)
-        self.rename_btn.setEnabled(single_selection)
-
-    def _start_quiz(self):
-        """Emit signal to start the quiz with selected set."""
-        if self._study_intent is not None:
-            question_ids = self._study_question_ids()
-            if question_ids:
-                self.study_start.emit(self._study_intent, question_ids)
-            return
-        set_ids = self._selected_set_ids()
-        if len(set_ids) != 1:
-            return
-
-        set_id = set_ids[0]
-        qset = self.set_manager.get(set_id)
-        if qset and qset.question_count > 0:
-            self.quiz_start.emit(set_id, qset.questions)
-
-    def _request_missing_generation(self) -> None:
-        intent = self._study_intent
-        if intent is None:
-            return
-        missing = max(0, intent.question_count - len(self._study_question_ids()))
-        if missing:
-            self.generate_missing.emit(intent, missing)
-
-    def _export_selected_set(self):
-        """Emit signal to export selected question sets as mock exams."""
-        set_ids = self._selected_set_ids()
-        selected_sets = [self.set_manager.get(set_id) for set_id in set_ids]
-        if not selected_sets or any(
-            qset is None or qset.question_count == 0 for qset in selected_sets
+    def set_current_course(
+        self,
+        course_id: str | None,
+        course_title: str | None = None,
+    ) -> None:
+        course_id = str(course_id or "").strip()
+        course_title = str(course_title or "").strip()
+        if (
+            course_id == self._current_course_id
+            and course_title == self._current_course_title
         ):
-            return
-        if len(set_ids) == 1:
-            self.export_mock_exam.emit(set_ids[0])
-        elif len(set_ids) > 1:
-            self.export_mock_exams.emit(set_ids)
-
-    def _regenerate_selected_set(self):
-        """Emit signal to regenerate questions for the selected question set."""
-        set_ids = self._selected_set_ids()
-        if len(set_ids) != 1:
-            return
-        qset = self.set_manager.get(set_ids[0])
-        if not self._is_regeneratable_set(qset):
-            return
-        self.regenerate_questions.emit(set_ids[0])
-
-    def _rename_selected_set(self):
-        """Let the user rename the selected question set."""
-        set_ids = self._selected_set_ids()
-        if len(set_ids) != 1:
-            return
-        qset = self.set_manager.get(set_ids[0])
-        if not qset:
-            return
-        lang = self.lang_manager.current
-        new_title, accepted = QInputDialog.getText(
-            self,
-            self.lang_manager.get_text("重命名题目集", "Rename Question Set"),
-            self.lang_manager.get_text("题目集名称:", "Question set name:"),
-            text=qset.get_title(lang),
-        )
-        new_title = new_title.strip()
-        if not accepted or not new_title:
-            return
-        qset.title["zh"] = new_title
-        qset.title["en"] = new_title
-        qset.metadata["updated_at"] = datetime.now(timezone.utc).isoformat()
-        qset.metadata["renamed_by_user"] = True
-        self.set_manager.save(qset)
-        self.refresh()
-        for row in range(self.set_list.count()):
-            item = self.set_list.item(row)
-            if item.data(Qt.ItemDataRole.UserRole) == qset.set_id:
-                self.set_list.setCurrentRow(row)
-                break
-
-    def set_current_course(self, course_id: str | None, course_title: str | None = None):
-        """Restrict generated question sets to the active course."""
-        course_id = course_id or ""
-        course_title = (course_title or "").strip()
-        if course_id == self._current_course_id and course_title == self._current_course_title:
             return
         self._current_course_id = course_id
         self._current_course_title = course_title
         self._update_course_context_label()
-        if hasattr(self, "set_list"):
-            self.refresh()
+        self.refresh()
+
+    def refresh(self) -> None:
+        selected_preset = self.preset_combo.currentData()
+        selected_topics = set(self._selected_topic_ids())
+        selected_difficulty = self.difficulty_filter.currentData()
+
+        self._all_sets = [
+            question_set
+            for question_set in self.set_manager.load_all()
+            if self._matches_current_course(question_set)
+        ]
+        self._scheduling_index = (
+            self.question_bank.scheduling_index(
+                course_id=self._current_course_id
+            )
+            if self.question_bank is not None
+            else {}
+        )
+        self._populate_presets(selected_preset)
+        self._populate_topics(selected_topics)
+        self._populate_difficulties(selected_difficulty)
+        self._update_scope_state()
 
     def apply_study_intent(self, intent: StudyIntent) -> None:
-        """Prefill this setup page from a complete study request."""
         if not isinstance(intent, StudyIntent) or intent.action not in {
             StudyAction.PRACTICE_TOPIC,
             StudyAction.CUSTOM_PRACTICE,
         }:
             return
         self._study_intent = intent
-        if intent.course_id and intent.course_id != self._current_course_id:
+        if intent.course_id:
             self._current_course_id = intent.course_id
             self._current_course_title = ""
-            self._update_course_context_label()
+        self.study_mode = intent.submission_mode
+        self.question_count_input.setValue(max(1, intent.question_count))
         self.refresh()
-        if intent.topic_ids:
-            wanted = set(intent.topic_ids)
-            self._updating_topic_filter = True
-            try:
-                model = self.topic_filter.model()
-                for row in range(self.topic_filter.count()):
-                    topic = self.topic_filter.itemData(row)
-                    item = model.item(row)
-                    if item is None:
-                        continue
-                    checked = (
-                        topic is not None and topic_value(topic) in wanted
-                    )
-                    item.setCheckState(
-                        Qt.CheckState.Checked
-                        if checked
-                        else Qt.CheckState.Unchecked
-                    )
-            finally:
-                self._updating_topic_filter = False
-            self._update_topic_filter_label()
-            self._render_sets()
-        self._update_study_intent_state()
+        if intent.set_id:
+            index = self.preset_combo.findData(intent.set_id)
+            if index >= 0:
+                self.preset_combo.setCurrentIndex(index)
+        self._set_checked_topics(intent.topic_ids)
+        self._sync_mode_buttons()
+        self._update_scope_state()
 
     def clear_study_intent(self) -> None:
         self._study_intent = None
         self.study_intent_banner.clear()
         self.study_intent_banner.hide()
         self.generate_missing_btn.hide()
-        self.start_btn.setText(
-            self.lang_manager.get_text("开始答题", "Start Quiz")
-        )
-        self._on_set_selection_changed()
+        self._set_study_mode("practice")
 
-    def _update_course_context_label(self):
-        """Show which course scope the question set list currently uses."""
-        title = self._current_course_title or self._current_course_id
-        if title:
-            self.course_context_label.setText(
-                self.lang_manager.get_text(
-                    f"当前课程：{title}",
-                    f"Showing sets for: {title}",
+    def _request_today_mode(self) -> None:
+        self._sync_mode_buttons()
+        self.today_mode_requested.emit()
+
+    def _set_study_mode(self, mode: str) -> None:
+        if mode not in {"practice", "exam"}:
+            return
+        self.study_mode = mode
+        self._sync_mode_buttons()
+        self._update_scope_state()
+
+    def _sync_mode_buttons(self) -> None:
+        for button, checked in (
+            (self.today_mode_btn, False),
+            (self.free_practice_mode_btn, self.study_mode == "practice"),
+            (self.mock_exam_mode_btn, self.study_mode == "exam"),
+        ):
+            button.blockSignals(True)
+            button.setChecked(checked)
+            button.blockSignals(False)
+
+    def _populate_presets(self, selected_set_id: str | None) -> None:
+        gm = self.lang_manager.get_text
+        self._updating_preset = True
+        self.preset_combo.blockSignals(True)
+        self.preset_combo.clear()
+        self.preset_combo.addItem(gm("不使用预设", "No preset"), "")
+        for question_set in self._all_sets:
+            if not question_set.questions:
+                continue
+            self.preset_combo.addItem(
+                f"{question_set.get_title(self.lang_manager.current)}"
+                f" · {question_set.question_count} {gm('题', 'questions')}",
+                question_set.set_id,
+            )
+        index = self.preset_combo.findData(selected_set_id or "")
+        self.preset_combo.setCurrentIndex(max(0, index))
+        self.preset_combo.blockSignals(False)
+        self._updating_preset = False
+
+    def _populate_topics(self, selected_topics: set[str]) -> None:
+        topic_titles: dict[str, str] = {}
+        for topic_id, topic_title, _difficulty in self._scheduling_index.values():
+            topic_id = str(topic_id or "").strip()
+            if topic_id:
+                topic_titles.setdefault(
+                    topic_id,
+                    str(topic_title or topic_id).strip() or topic_id,
                 )
-            )
-        else:
-            self.course_context_label.setText(
-                self.lang_manager.get_text("当前课程：全部课程", "Showing sets for: All courses")
-            )
+        for question_set in self._all_sets:
+            for topic in question_set.topics:
+                topic_id = topic_value(topic)
+                topic_titles.setdefault(
+                    topic_id,
+                    topic_label(topic, self.lang_manager.current),
+                )
 
-    def refresh(self):
-        """Reload the question set list."""
-        lang = self.lang_manager.current
-        self._all_sets = [
-            qset for qset in self.set_manager.load_all()
-            if self._matches_current_course(qset)
-        ]
-
-        self._updating_topic_filter = True
-        self.topic_filter.blockSignals(True)
-        self.topic_filter.model().blockSignals(True)
-        current_topics = {topic_value(topic) for topic in self._selected_topic_filters()}
+        self._updating_topics = True
+        model = self.topic_filter.model()
+        model.blockSignals(True)
         self.topic_filter.clear()
-        self.topic_filter.addItem(self.lang_manager.get_text("全部主题", "All topics"), None)
-        self._configure_topic_filter_item(0, checked=not current_topics)
-        seen_topics = []
-        for qs in self._all_sets:
-            for topic in qs.topics:
-                if topic not in seen_topics:
-                    seen_topics.append(topic)
-        topic_titles = self._indexed_topic_titles()
-        for topic in sorted(seen_topics, key=topic_value):
-            self.topic_filter.addItem(
-                topic_titles.get(topic_value(topic), topic_label(topic, lang)),
-                topic,
-            )
-            self._configure_topic_filter_item(
+        self.topic_filter.addItem(
+            self.lang_manager.get_text("全部知识点", "All Topics"),
+            None,
+        )
+        self._make_topic_item_checkable(0, checked=not selected_topics)
+        for topic_id in sorted(topic_titles):
+            self.topic_filter.addItem(topic_titles[topic_id], topic_id)
+            self._make_topic_item_checkable(
                 self.topic_filter.count() - 1,
-                checked=topic_value(topic) in current_topics,
+                checked=topic_id in selected_topics,
             )
-        self.topic_filter.model().blockSignals(False)
-        self.topic_filter.blockSignals(False)
-        self._updating_topic_filter = False
+        model.blockSignals(False)
+        self._updating_topics = False
         self._update_topic_filter_label()
 
+    def _populate_difficulties(self, selected: str | None) -> None:
+        gm = self.lang_manager.get_text
         self.difficulty_filter.blockSignals(True)
-        current_diff = self.difficulty_filter.currentData()
         self.difficulty_filter.clear()
-        self.difficulty_filter.addItem(self.lang_manager.get_text("全部难度", "All"), None)
-        for diff in ("easy", "medium", "hard"):
-            self.difficulty_filter.addItem(diff, diff)
-        if current_diff is not None:
-            idx = self.difficulty_filter.findData(current_diff)
-            if idx >= 0:
-                self.difficulty_filter.setCurrentIndex(idx)
+        self.difficulty_filter.addItem(gm("自适应", "Adaptive"), "")
+        self.difficulty_filter.addItem(gm("简单", "Easy"), "easy")
+        self.difficulty_filter.addItem(gm("中等", "Medium"), "medium")
+        self.difficulty_filter.addItem(gm("困难", "Hard"), "hard")
+        index = self.difficulty_filter.findData(selected or "")
+        self.difficulty_filter.setCurrentIndex(max(0, index))
         self.difficulty_filter.blockSignals(False)
 
-        self.start_btn.setEnabled(False)
-        self.export_btn.setEnabled(False)
-        self.regenerate_btn.setEnabled(False)
-        self.regenerate_btn.setHidden(True)
-        self.rename_btn.setEnabled(False)
-        self.info_label.clear()
-        self._render_sets()
-        self._update_study_intent_state()
-
-    def _indexed_topic_titles(self) -> dict[str, str]:
-        """Return course-scoped display titles without exposing stable IDs."""
-        if self.question_bank is None:
-            return {}
-        titles: dict[str, str] = {}
-        for topic_id, topic_title in self.question_bank.topic_index(
-            course_id=self._current_course_id,
-        ).values():
-            stable_id = str(topic_id or "").strip()
-            display_title = str(topic_title or "").strip()
-            if stable_id and display_title:
-                titles.setdefault(stable_id, display_title)
-        return titles
-
-    def _schedule_search_render(self):
-        """Debounce free-text search to avoid rerendering on every keystroke."""
-        self.search_debounce_timer.start()
-
-    def _render_sets(self):
-        """Render the filtered question-set list."""
-        if not hasattr(self, "set_list"):
-            return
-
-        self.set_list.clear()
-        lang = self.lang_manager.current
-        query = self.search_input.text().strip().lower() if hasattr(self, "search_input") else ""
-        topic_filters = self._selected_topic_filters() if hasattr(self, "topic_filter") else []
-        diff_filter = self.difficulty_filter.currentData() if hasattr(self, "difficulty_filter") else None
-
-        visible = [qs for qs in self._all_sets if self._matches_filters(qs, query, topic_filters, diff_filter, lang)]
-        completed_by_set = self._completed_progress_by_set() if self.progress_manager else {}
-        for qs in visible:
-            completed = completed_by_set.get(qs.set_id, [])
-            score_hint = ""
-            if completed:
-                score_hint = (
-                    f" | {self.lang_manager.get_text('最近', 'recent')} "
-                    f"{completed[0].summary.score_percentage:.0f}%"
-                )
-            empty_marker = ""
-            if qs.question_count == 0:
-                empty_marker = self.lang_manager.get_text("空题集 | ", "Empty set | ")
-            item = QListWidgetItem(
-                f"{qs.get_title(lang)}  [{empty_marker}{qs.question_count} "
-                f"{self.lang_manager.get_text('题', 'questions')}, "
-                f"{qs.estimated_minutes} {self.lang_manager.get_text('分钟', 'min')}"
-                f"{score_hint}]"
-            )
-            item.setData(Qt.ItemDataRole.UserRole, qs.set_id)
-            if qs.question_count == 0:
-                item.setForeground(QColor("#787878"))
-            self.set_list.addItem(item)
-
-        if len(visible) == 1:
-            self.set_list.setCurrentRow(0)
-        elif not visible:
-            self.info_label.setText(
-                self.lang_manager.get_text(
-                    "没有匹配的题目集。请调整搜索/筛选条件。",
-                    "No matching question sets. Adjust search/filter."
-                )
-            )
-            self.start_btn.setEnabled(False)
-            self.export_btn.setEnabled(False)
-            self.regenerate_btn.setEnabled(False)
-            self.regenerate_btn.setHidden(True)
-            self.rename_btn.setEnabled(False)
-        self._update_study_intent_state()
-
-    def _study_question_ids(self) -> list[str]:
-        intent = self._study_intent
-        if intent is None or self.question_bank is None:
-            return []
-        limit = max(1, intent.question_count)
-        if intent.question_ids:
-            questions = self.question_bank.get_many(
-                intent.question_ids,
-                course_id=intent.course_id,
-            )
-            return [question.question_id for question in questions[:limit]]
-        question_ids = []
-        seen = set()
-        for topic_id in intent.topic_ids:
-            questions = self.question_bank.filter_by_topic(
-                topic_id,
-                course_id=intent.course_id,
-            )
-            for question in questions:
-                if question.question_id in seen:
-                    continue
-                seen.add(question.question_id)
-                question_ids.append(question.question_id)
-                if len(question_ids) >= limit:
-                    return question_ids
-        if not intent.topic_ids:
-            return list(self.question_bank.question_ids(
-                course_id=intent.course_id,
-            ))[:limit]
-        return question_ids
-
-    def _update_study_intent_state(self) -> None:
-        intent = self._study_intent
-        if intent is None or not hasattr(self, "start_btn"):
-            return
-        question_ids = self._study_question_ids()
-        topic_names = []
-        wanted = set(intent.topic_ids)
-        for row in range(self.topic_filter.count()):
-            topic = self.topic_filter.itemData(row)
-            if topic is not None and topic_value(topic) in wanted:
-                topic_names.append(self.topic_filter.itemText(row))
-        topic_text = ", ".join(topic_names or intent.topic_ids)
-        count = len(question_ids)
-        self.study_intent_banner.setText(self.lang_manager.get_text(
-            f"今日计划 · {topic_text or '综合练习'} · 已准备 {count}/{intent.question_count} 题",
-            f"Today's plan · {topic_text or 'Mixed practice'} · {count}/{intent.question_count} questions ready",
-        ))
-        self.study_intent_banner.show()
-        self.start_btn.setText(self.lang_manager.get_text(
-            f"开始 {count} 题",
-            f"Start {count} Questions",
-        ))
-        self.start_btn.setEnabled(bool(question_ids))
-        missing = max(0, intent.question_count - count)
-        self.generate_missing_btn.setText(self.lang_manager.get_text(
-            f"补生成 {missing} 题",
-            f"Generate {missing} More",
-        ))
-        self.generate_missing_btn.setVisible(missing > 0)
-
-    def _completed_progress_by_set(self) -> dict[str, list]:
-        """Return completed progress records grouped by set id using one bulk load."""
-        grouped: dict[str, list] = {}
-        if not self.progress_manager:
-            return grouped
-        for record in self.progress_manager.load_all():
-            if record.status != "completed" or not record.summary:
-                continue
-            grouped.setdefault(record.set_id, []).append(record)
-        return grouped
-
-    def _matches_filters(self, qset, query: str, topic_filters, diff_filter, lang: str) -> bool:
-        """Return True if a question set should be shown."""
-        selected_topic_values = {topic_value(topic) for topic in topic_filters}
-        if selected_topic_values and not any(topic_value(topic) in selected_topic_values for topic in qset.topics):
-            return False
-        if diff_filter is not None and qset.difficulty.value != diff_filter:
-            return False
-        if not query:
-            return True
-
-        topic_text = " ".join(
-            f"{topic_value(t)} {topic_label(t, 'zh')} {topic_label(t, 'en')}"
-            for t in qset.topics
-        )
-        haystack = " ".join([
-            qset.get_title("zh"),
-            qset.get_title("en"),
-            qset.get_description("zh"),
-            qset.get_description("en"),
-            topic_text,
-        ]).lower()
-        return query in haystack
-
-    def _configure_topic_filter_item(self, row: int, checked: bool = False):
-        """Make a topic filter row checkable."""
+    def _make_topic_item_checkable(self, row: int, *, checked: bool) -> None:
         item = self.topic_filter.model().item(row)
         if item is None:
             return
-        item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable)
-        item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        item.setFlags(
+            Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsUserCheckable
+        )
+        item.setCheckState(
+            Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
+        )
 
-    def _selected_topic_filters(self) -> list[object]:
-        """Return checked topic filter values; empty means all topics."""
-        if not hasattr(self, "topic_filter"):
-            return []
+    def _on_topic_filter_item_changed(self, item) -> None:
+        if self._updating_topics:
+            return
+        self._updating_topics = True
+        try:
+            model = self.topic_filter.model()
+            row = item.row()
+            if row == 0 and item.checkState() == Qt.CheckState.Checked:
+                for other_row in range(1, self.topic_filter.count()):
+                    model.item(other_row).setCheckState(
+                        Qt.CheckState.Unchecked
+                    )
+            elif row > 0 and item.checkState() == Qt.CheckState.Checked:
+                model.item(0).setCheckState(Qt.CheckState.Unchecked)
+            if not self._selected_topic_ids():
+                model.item(0).setCheckState(Qt.CheckState.Checked)
+        finally:
+            self._updating_topics = False
+        self._update_topic_filter_label()
+        self._on_scope_control_changed()
+
+    def _set_checked_topics(self, topic_ids) -> None:
+        wanted = {str(topic_id or "").strip() for topic_id in topic_ids}
+        self._updating_topics = True
+        try:
+            model = self.topic_filter.model()
+            for row in range(self.topic_filter.count()):
+                topic_id = self.topic_filter.itemData(row)
+                checked = (
+                    (topic_id is None and not wanted)
+                    or (topic_id is not None and topic_id in wanted)
+                )
+                model.item(row).setCheckState(
+                    Qt.CheckState.Checked
+                    if checked
+                    else Qt.CheckState.Unchecked
+                )
+        finally:
+            self._updating_topics = False
+        self._update_topic_filter_label()
+
+    def _selected_topic_ids(self) -> list[str]:
         selected = []
         model = self.topic_filter.model()
-        for row in range(self.topic_filter.count()):
-            topic = self.topic_filter.itemData(row)
-            if topic is None:
-                continue
+        for row in range(1, self.topic_filter.count()):
             item = model.item(row)
-            if item and item.checkState() == Qt.CheckState.Checked:
-                selected.append(topic)
+            if item is not None and item.checkState() == Qt.CheckState.Checked:
+                topic_id = str(self.topic_filter.itemData(row) or "").strip()
+                if topic_id:
+                    selected.append(topic_id)
         return selected
 
-    def _on_topic_filter_item_changed(self, item):
-        """Apply multi-topic filter changes from checkable combo rows."""
-        if self._updating_topic_filter:
-            return
-        self._updating_topic_filter = True
-        try:
-            changed_topic = item.data(Qt.ItemDataRole.UserRole)
-            model = self.topic_filter.model()
-            all_item = model.item(0)
-            if changed_topic is None and item.checkState() == Qt.CheckState.Checked:
-                for row in range(1, self.topic_filter.count()):
-                    topic_item = model.item(row)
-                    if topic_item:
-                        topic_item.setCheckState(Qt.CheckState.Unchecked)
-            elif changed_topic is not None and item.checkState() == Qt.CheckState.Checked and all_item:
-                all_item.setCheckState(Qt.CheckState.Unchecked)
-            if all_item and not self._selected_topic_filters():
-                all_item.setCheckState(Qt.CheckState.Checked)
-        finally:
-            self._updating_topic_filter = False
-
-        self._update_topic_filter_label()
-        self._render_sets()
-
-    def _update_topic_filter_label(self):
-        """Show a compact label for the current multi-topic filter."""
-        if not hasattr(self, "topic_filter") or not self.topic_filter.isEditable():
-            return
-        count = len(self._selected_topic_filters())
-        if count == 0:
-            text = self.lang_manager.get_text("全部主题", "All topics")
-        else:
-            text = self.lang_manager.get_text(f"已选 {count} 个主题", f"{count} topics selected")
+    def _update_topic_filter_label(self) -> None:
+        count = len(self._selected_topic_ids())
+        text = self.lang_manager.get_text(
+            "全部知识点" if not count else f"已选 {count} 个知识点",
+            "All Topics" if not count else f"{count} topics selected",
+        )
         self.topic_filter.lineEdit().setText(text)
 
-    def _selected_set_ids(self) -> list[str]:
-        """Return selected question-set ids without duplicates."""
-        items = self.set_list.selectedItems() if hasattr(self, "set_list") else []
-        set_ids = []
-        seen = set()
-        for item in items:
-            set_id = item.data(Qt.ItemDataRole.UserRole)
-            if set_id and set_id not in seen:
-                seen.add(set_id)
-                set_ids.append(set_id)
-        return set_ids
+    def _on_preset_changed(self) -> None:
+        if self._updating_preset:
+            return
+        set_id = str(self.preset_combo.currentData() or "")
+        question_set = self.set_manager.get(set_id) if set_id else None
+        using_preset = question_set is not None
+        if question_set is not None:
+            self.question_count_input.setValue(
+                max(1, question_set.question_count)
+            )
+            self._set_checked_topics(
+                [topic_value(topic) for topic in question_set.topics]
+            )
+            index = self.difficulty_filter.findData(
+                question_set.difficulty.value
+            )
+            if index >= 0:
+                self.difficulty_filter.setCurrentIndex(index)
+        for control in (
+            self.topic_filter,
+            self.difficulty_filter,
+            self.question_count_input,
+        ):
+            control.setEnabled(not using_preset)
+        self._update_scope_state()
 
-    def _matches_current_course(self, qset) -> bool:
-        source_course_id = (qset.metadata or {}).get("course_id", "")
-        if not source_course_id:
-            return True
-        if not self._current_course_id:
-            return True
-        return source_course_id == self._current_course_id
+    def _on_scope_control_changed(self, *_args) -> None:
+        self._update_scope_state()
 
-    @staticmethod
-    def _is_regeneratable_set(qset) -> bool:
-        if not qset:
-            return False
-        source = str((qset.metadata or {}).get("source", "") or "").strip().lower()
-        return source in {"ai_generated", "ai_regenerated"}
+    def _selected_question_ids(self) -> list[str]:
+        set_id = str(self.preset_combo.currentData() or "")
+        if set_id:
+            question_set = self.set_manager.get(set_id)
+            if question_set is None:
+                return []
+            if not self._scheduling_index:
+                return list(question_set.questions)
+            return [
+                question_id
+                for question_id in question_set.questions
+                if question_id in self._scheduling_index
+            ]
+        return select_practice_question_ids(
+            self._scheduling_index,
+            topic_ids=self._selected_topic_ids(),
+            difficulty=str(self.difficulty_filter.currentData() or ""),
+            limit=self.question_count_input.value(),
+        )
+
+    def _build_intent(self, question_ids: list[str]) -> StudyIntent:
+        set_id = str(self.preset_combo.currentData() or "")
+        topic_ids = tuple(self._selected_topic_ids())
+        requested_count = self.question_count_input.value()
+        current = self._study_intent
+        if (
+            current is not None
+            and not set_id
+            and current.course_id == self._current_course_id
+            and current.topic_ids == topic_ids
+            and current.question_count == requested_count
+            and current.submission_mode == self.study_mode
+        ):
+            return current
+        return StudyIntent(
+            course_id=self._current_course_id,
+            action=StudyAction.CUSTOM_PRACTICE,
+            set_id=set_id,
+            topic_ids=topic_ids,
+            question_ids=tuple(question_ids),
+            question_count=requested_count,
+            submission_mode=self.study_mode,
+            source="study_workspace",
+        )
+
+    def _start_quiz(self) -> None:
+        question_ids = self._selected_question_ids()
+        if not question_ids:
+            return
+        self.study_start.emit(self._build_intent(question_ids), question_ids)
+
+    def _request_missing_generation(self) -> None:
+        question_ids = self._selected_question_ids()
+        missing = max(0, self.question_count_input.value() - len(question_ids))
+        if missing:
+            self.generate_missing.emit(
+                self._build_intent(question_ids),
+                missing,
+            )
+
+    def _update_scope_state(self) -> None:
+        if not hasattr(self, "start_btn"):
+            return
+        gm = self.lang_manager.get_text
+        question_ids = self._selected_question_ids()
+        requested = self.question_count_input.value()
+        mode_text = gm(
+            "逐题反馈" if self.study_mode == "practice" else "最后统一交卷",
+            "Immediate feedback"
+            if self.study_mode == "practice"
+            else "Submit at the end",
+        )
+        topic_counts = Counter(
+            self._scheduling_index[question_id][1]
+            for question_id in question_ids
+            if question_id in self._scheduling_index
+        )
+        coverage = " · ".join(
+            f"{title} {count}" for title, count in topic_counts.items()
+        )
+        self.coverage_label.setText(gm(
+            f"预计覆盖：{coverage or '按保存方案'}\n"
+            f"已准备 {len(question_ids)}/{requested} 题 · {mode_text}",
+            f"Expected coverage: {coverage or 'saved preset'}\n"
+            f"{len(question_ids)}/{requested} questions ready · {mode_text}",
+        ))
+        self.start_btn.setText(gm(
+            f"开始练习 {len(question_ids)} 题"
+            if self.study_mode == "practice"
+            else f"开始模拟考试 {len(question_ids)} 题",
+            f"Start Practice {len(question_ids)} Questions"
+            if self.study_mode == "practice"
+            else f"Start Mock Exam {len(question_ids)} Questions",
+        ))
+        self.start_btn.setEnabled(bool(question_ids))
+        missing = max(0, requested - len(question_ids))
+        self.generate_missing_btn.setText(gm(
+            f"补生成 {missing} 题",
+            f"Generate {missing} More",
+        ))
+        self.generate_missing_btn.setVisible(
+            self._study_intent is not None and missing > 0
+        )
+        if self._study_intent is not None:
+            self.study_intent_banner.setText(gm(
+                f"已按学习建议预填：{len(question_ids)}/{requested} 题",
+                f"Study suggestion applied: {len(question_ids)}/{requested} ready",
+            ))
+            self.study_intent_banner.show()
+
+    def _update_course_context_label(self) -> None:
+        title = self._current_course_title or self._current_course_id
+        self.course_context_label.setText(self.lang_manager.get_text(
+            f"当前课程：{title or '全部课程'}",
+            f"Current course: {title or 'All courses'}",
+        ))
+
+    def _matches_current_course(self, question_set) -> bool:
+        source_course_id = str(
+            (question_set.metadata or {}).get("course_id", "") or ""
+        )
+        return (
+            not source_course_id
+            or not self._current_course_id
+            or source_course_id == self._current_course_id
+        )
