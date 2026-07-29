@@ -17,6 +17,10 @@ from utils.json_io import read_json, write_json, list_json_files, delete_json, s
 from utils.logger import error
 
 
+COURSE_STATUS_ACTIVE = "active"
+COURSE_STATUS_ARCHIVED = "archived"
+
+
 @dataclass
 class CourseTopic:
     """A topic inferred from imported course materials."""
@@ -68,9 +72,19 @@ class CourseProject:
     exam_scope_mode: str = "all"
     exam_scope_topic_ids: list[str] = field(default_factory=list)
     merged_course_ids: list[str] = field(default_factory=list)
+    status: str = COURSE_STATUS_ACTIVE
 
     def __post_init__(self) -> None:
         """Normalize persisted scope data without breaking legacy projects."""
+        normalized_status = str(self.status or "").strip().lower()
+        self.status = (
+            normalized_status
+            if normalized_status in {
+                COURSE_STATUS_ACTIVE,
+                COURSE_STATUS_ARCHIVED,
+            }
+            else COURSE_STATUS_ACTIVE
+        )
         if self.exam_scope_mode not in {"all", "selected"}:
             self.exam_scope_mode = "all"
         self.exam_scope_topic_ids = self._ordered_topic_ids(self.exam_scope_topic_ids)
@@ -82,6 +96,10 @@ class CourseProject:
             if str(course_id or "").strip()
             and str(course_id or "").strip() != self.course_id
         ))
+
+    @property
+    def is_archived(self) -> bool:
+        return self.status == COURSE_STATUS_ARCHIVED
 
     def exam_topics(self) -> list[CourseTopic]:
         """Return course topics currently included in the exam scope."""
@@ -137,6 +155,7 @@ class CourseProject:
             "exam_scope_mode": self.exam_scope_mode,
             "exam_scope_topic_ids": list(self.exam_scope_topic_ids),
             "merged_course_ids": list(self.merged_course_ids),
+            "status": self.status,
         }
 
     @classmethod
@@ -159,6 +178,7 @@ class CourseProject:
             exam_scope_mode=data.get("exam_scope_mode", "all"),
             exam_scope_topic_ids=list(data.get("exam_scope_topic_ids", []) or []),
             merged_course_ids=list(data.get("merged_course_ids", []) or []),
+            status=data.get("status", COURSE_STATUS_ACTIVE),
         )
 
 
@@ -196,6 +216,8 @@ class CourseProjectManager:
         return self._summary_path_for(safe_id)
 
     def save(self, project: CourseProject, make_current: bool = True) -> bool:
+        if project.is_archived:
+            make_current = False
         safe_id = sanitize_filename_part(project.course_id)
         project_path = Path(self._dir) / f"{safe_id}.json"
         summary_path = self._normalize_summary_path(project, safe_id)
@@ -225,12 +247,18 @@ class CourseProjectManager:
         data = read_json(os.path.join(self._dir, f"{safe_id}.json"))
         return CourseProject.from_dict(data) if data else None
 
-    def load_all(self) -> list[CourseProject]:
+    def load_all(
+        self,
+        *,
+        include_archived: bool = False,
+    ) -> list[CourseProject]:
         projects = []
         for filename in list_json_files(self._dir):
             data = read_json(os.path.join(self._dir, filename))
             if data:
-                projects.append(CourseProject.from_dict(data))
+                project = CourseProject.from_dict(data)
+                if include_archived or not project.is_archived:
+                    projects.append(project)
         return sorted(projects, key=lambda project: project.updated_at, reverse=True)
 
     def current(self) -> Optional[CourseProject]:
@@ -238,15 +266,39 @@ class CourseProjectManager:
         if not data:
             return None
         project = self.get(data.get("course_id", ""))
-        if project:
+        if project and not project.is_archived:
             return project
         delete_json(self._current_course_file)
         return None
 
     def set_current(self, course_id: str) -> bool:
-        if not self.get(course_id):
+        project = self.get(course_id)
+        if project is None or project.is_archived:
             return False
         return write_json(self._current_course_file, {"course_id": course_id})
+
+    def archive(self, course_id: str) -> bool:
+        """Hide a course from active flows while preserving its identity."""
+        project = self.get(course_id)
+        if project is None:
+            return False
+        project.status = COURSE_STATUS_ARCHIVED
+        project.updated_at = datetime.now(timezone.utc).isoformat()
+        if not self.save(project, make_current=False):
+            return False
+        current = read_json(self._current_course_file) or {}
+        if current.get("course_id") == course_id:
+            return delete_json(self._current_course_file)
+        return True
+
+    def restore(self, course_id: str, *, make_current: bool = False) -> bool:
+        """Return an archived course to active selection."""
+        project = self.get(course_id)
+        if project is None:
+            return False
+        project.status = COURSE_STATUS_ACTIVE
+        project.updated_at = datetime.now(timezone.utc).isoformat()
+        return self.save(project, make_current=make_current)
 
     def delete(self, course_id: str) -> bool:
         """Delete a course project and its generated summary file."""
