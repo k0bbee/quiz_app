@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QTextBrowser
 
 from ai.course_summarizer import CourseSummaryGenerator
@@ -1655,19 +1656,66 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
             screen.refresh()
             screen.project_list.setCurrentRow(0)
 
-            with patch.object(
-                screen,
-                "_choose_course_removal_mode",
-                return_value=CourseRemovalMode.ARCHIVE,
-            ):
-                screen.delete_action.trigger()
+            screen.archive_action.trigger()
 
             archived = manager.get(project.course_id)
             self.assertIsNotNone(archived)
             self.assertTrue(archived.is_archived)
             self.assertEqual([], manager.load_all())
-            self.assertEqual(0, screen.project_list.count())
-            self.assertNotIn("Systems", screen.summary_label.text())
+            self.assertTrue(screen.archived_scope_btn.isChecked())
+            self.assertEqual(1, screen.project_list.count())
+            self.assertIn("Systems", screen.project_list.item(0).text())
+
+    def test_course_screen_restores_archived_course_as_current(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            current_file = str(Path(tmpdir) / "current.json")
+            source = Path(tmpdir) / "source"
+            source.mkdir()
+            manager = CourseProjectManager(
+                str(Path(tmpdir) / "projects"),
+                current_course_file=current_file,
+            )
+            initializer = CourseInitializer(manager=manager)
+            initializer.parser = FakeParser(self._docs())
+            project = initializer.initialize(
+                str(source),
+                title="Systems",
+                make_current=True,
+            )
+            self.assertTrue(manager.archive(project.course_id))
+
+            screen = CourseScreen(manager)
+
+            self.assertTrue(screen.archived_scope_btn.isChecked())
+            self.assertEqual(1, screen.project_list.count())
+            self.assertEqual("恢复课程", screen.restore_course_btn.text())
+            self.assertTrue(screen.restore_course_btn.isEnabled())
+
+            screen.restore_course_btn.click()
+
+            restored = manager.get(project.course_id)
+            self.assertIsNotNone(restored)
+            self.assertFalse(restored.is_archived)
+            self.assertEqual(project.course_id, manager.current().course_id)
+            self.assertTrue(screen.active_scope_btn.isChecked())
+            self.assertEqual(
+                project.course_id,
+                screen.project_list.currentItem().data(Qt.ItemDataRole.UserRole),
+            )
+
+    def test_course_screen_uses_archive_as_reversible_default_action(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source"
+            source.mkdir()
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            initializer = CourseInitializer(manager=manager)
+            initializer.parser = FakeParser(self._docs())
+            initializer.initialize(str(source), title="Systems", make_current=True)
+
+            screen = CourseScreen(manager)
+
+            self.assertEqual("归档课程", screen.archive_action.text())
+            self.assertEqual("永久删除…", screen.delete_action.text())
 
     def test_course_screen_guides_user_when_course_library_is_empty(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -116,7 +116,15 @@ class CourseExamScopeScreenTests(unittest.TestCase):
         )
         self.assertTrue(screen.more_actions_btn.icon().isNull())
         self.assertEqual(
-            ["重命名", "重新生成总结", "热点材料", "合并课程", "刷新", "删除课程"],
+            [
+                "重命名",
+                "重新生成总结",
+                "热点材料",
+                "合并课程",
+                "归档课程",
+                "刷新",
+                "永久删除…",
+            ],
             [action.text() for action in screen.more_actions_menu.actions() if not action.isSeparator()],
         )
 

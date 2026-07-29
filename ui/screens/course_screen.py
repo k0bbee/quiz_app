@@ -11,7 +11,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QListWidget, QListWidgetItem, QFileDialog, QMessageBox,
     QSplitter, QGroupBox, QProgressBar, QInputDialog, QTextBrowser,
-    QDialog, QRadioButton, QMenu, QStackedWidget,
+    QButtonGroup, QDialog, QRadioButton, QMenu, QStackedWidget,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
@@ -104,6 +104,7 @@ class CourseScreen(QWidget):
         self._task_bridge = None
         self._init_present_result = True
         self._import_expanded = False
+        self._course_scope = "active"
         self._setup_ui()
         self.folder_input.editingFinished.connect(self._refresh_checkpoint_action)
         self.lang_manager.language_changed.connect(self._on_language_changed)
@@ -126,8 +127,17 @@ class CourseScreen(QWidget):
         self.init_btn.setText(self.lang_manager.get_text("解析并生成总结", "Parse and generate summary"))
         self.generate_questions_btn.setText(self.lang_manager.get_text("生成题目", "Generate Questions"))
         self._update_import_toggle_text()
-        self.list_label.setText(self.lang_manager.get_text("已导入的课程:", "Imported courses:"))
+        self.list_label.setText(self.lang_manager.get_text("课程", "Courses"))
+        self.active_scope_btn.setText(
+            self.lang_manager.get_text("进行中的课程", "Active")
+        )
+        self.archived_scope_btn.setText(
+            self.lang_manager.get_text("已归档", "Archived")
+        )
         self.set_current_btn.setText(self.lang_manager.get_text("设为当前", "Set Current"))
+        self.restore_course_btn.setText(
+            self.lang_manager.get_text("恢复课程", "Restore Course")
+        )
         self.scope_btn.setText(self.lang_manager.get_text("考试范围", "Exam Scope"))
         self.current_events_action.setText(self.lang_manager.get_text("热点材料", "Current Events"))
         self.merge_action.setText(self.lang_manager.get_text("合并课程", "Merge Courses"))
@@ -135,7 +145,12 @@ class CourseScreen(QWidget):
         self.rename_action.setText(self.lang_manager.get_text("重命名", "Rename"))
         self.regenerate_action.setText(self.lang_manager.get_text("重新生成总结", "Regenerate Summary"))
         self.refresh_action.setText(self.lang_manager.get_text("刷新", "Refresh"))
-        self.delete_action.setText(self.lang_manager.get_text("删除课程", "Delete Course"))
+        self.archive_action.setText(
+            self.lang_manager.get_text("归档课程", "Archive Course")
+        )
+        self.delete_action.setText(
+            self.lang_manager.get_text("永久删除…", "Delete Permanently…")
+        )
         self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
         self.qa_mode_btn.setText(self.lang_manager.get_text(
             "返回课程总结" if self._qa_mode_active() else "问答巩固",
@@ -217,8 +232,33 @@ class CourseScreen(QWidget):
         left = QWidget()
         self.left_layout = QVBoxLayout(left)
         self.left_layout.setContentsMargins(0, 0, 0, 0)
-        self.list_label = QLabel(self.lang_manager.get_text("已导入的课程:", "Imported courses:"))
+        self.list_label = QLabel(self.lang_manager.get_text("课程", "Courses"))
         self.left_layout.addWidget(self.list_label)
+        self.course_scope_layout = QHBoxLayout()
+        self.course_scope_layout.setSpacing(6)
+        self.course_scope_group = QButtonGroup(self)
+        self.course_scope_group.setExclusive(True)
+        self.active_scope_btn = QPushButton(
+            self.lang_manager.get_text("进行中的课程", "Active")
+        )
+        self.archived_scope_btn = QPushButton(
+            self.lang_manager.get_text("已归档", "Archived")
+        )
+        for button in (self.active_scope_btn, self.archived_scope_btn):
+            button.setObjectName("quizModeOption")
+            button.setCheckable(True)
+            button.setMinimumHeight(34)
+            self.course_scope_group.addButton(button)
+            self.course_scope_layout.addWidget(button)
+        self.course_scope_layout.addStretch(1)
+        self.active_scope_btn.clicked.connect(
+            lambda: self._set_course_scope("active")
+        )
+        self.archived_scope_btn.clicked.connect(
+            lambda: self._set_course_scope("archived")
+        )
+        self.active_scope_btn.setChecked(True)
+        self.left_layout.addLayout(self.course_scope_layout)
         self.empty_state_label = QLabel()
         self.empty_state_label.setObjectName("courseEmptyStateLabel")
         self.empty_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -236,6 +276,14 @@ class CourseScreen(QWidget):
         self.generate_questions_btn.setEnabled(False)
         self.generate_questions_btn.clicked.connect(self._generate_for_selected_course)
         self.left_layout.addWidget(self.generate_questions_btn)
+        self.restore_course_btn = QPushButton(
+            self.lang_manager.get_text("恢复课程", "Restore Course")
+        )
+        self.restore_course_btn.setObjectName("primaryButton")
+        self.restore_course_btn.setVisible(False)
+        self.restore_course_btn.setEnabled(False)
+        self.restore_course_btn.clicked.connect(self._restore_selected_project)
+        self.left_layout.addWidget(self.restore_course_btn)
 
         self.course_action_layout = QHBoxLayout()
         self.set_current_btn = QPushButton(self.lang_manager.get_text("设为当前", "Set Current"))
@@ -266,11 +314,20 @@ class CourseScreen(QWidget):
         )
         self.merge_action.triggered.connect(self._merge_selected_project)
         self.more_actions_menu.addAction(self.merge_action)
+        self.archive_action = QAction(
+            self.lang_manager.get_text("归档课程", "Archive Course"),
+            self,
+        )
+        self.archive_action.triggered.connect(self._archive_selected_project)
+        self.more_actions_menu.addAction(self.archive_action)
         self.refresh_action = QAction(self.lang_manager.get_text("刷新", "Refresh"), self)
         self.refresh_action.triggered.connect(self.refresh)
         self.more_actions_menu.addAction(self.refresh_action)
         self.more_actions_menu.addSeparator()
-        self.delete_action = QAction(self.lang_manager.get_text("删除课程", "Delete Course"), self)
+        self.delete_action = QAction(
+            self.lang_manager.get_text("永久删除…", "Delete Permanently…"),
+            self,
+        )
         self.delete_action.setObjectName("dangerAction")
         self.delete_action.triggered.connect(self._delete_selected_project)
         self.more_actions_menu.addAction(self.delete_action)
@@ -331,14 +388,59 @@ class CourseScreen(QWidget):
 
         layout.addWidget(splitter, 1)
 
+    def _all_projects(self) -> list:
+        try:
+            return list(self.manager.load_all(include_archived=True))
+        except TypeError:
+            return list(self.manager.load_all())
+
+    def _set_course_scope(self, scope: str) -> None:
+        normalized = "archived" if scope == "archived" else "active"
+        self._course_scope = normalized
+        self.refresh()
+
+    def show_archived_courses(self) -> None:
+        """Open the recoverable-course scope without changing course state."""
+        self._set_course_scope("archived")
+
     def refresh(self):
-        """Reload projects from disk."""
+        """Reload active or archived projects from disk."""
+        selected_item = self.project_list.currentItem()
+        selected_id = (
+            str(selected_item.data(Qt.ItemDataRole.UserRole) or "")
+            if selected_item is not None
+            else ""
+        )
         self.project_list.clear()
         current = self.manager.current()
         current_id = current.course_id if current else ""
-        projects = self.manager.load_all()
+        all_projects = self._all_projects()
+        active_projects = [
+            project
+            for project in all_projects
+            if not getattr(project, "is_archived", False)
+        ]
+        archived_projects = [
+            project
+            for project in all_projects
+            if getattr(project, "is_archived", False)
+        ]
+        if self._course_scope == "active" and not active_projects and archived_projects:
+            self._course_scope = "archived"
+        self.active_scope_btn.setChecked(self._course_scope == "active")
+        self.archived_scope_btn.setChecked(self._course_scope == "archived")
+        projects = (
+            archived_projects
+            if self._course_scope == "archived"
+            else active_projects
+        )
         for project in projects:
-            prefix = "★ " if project.course_id == current_id else ""
+            prefix = (
+                "★ "
+                if self._course_scope == "active"
+                and project.course_id == current_id
+                else ""
+            )
             scope_count = len(project.exam_topics())
             scope_label = self.lang_manager.get_text("范围", "scope")
             item = QListWidgetItem(
@@ -347,35 +449,60 @@ class CourseScreen(QWidget):
             item.setData(Qt.ItemDataRole.UserRole, project.course_id)
             self.project_list.addItem(item)
         is_empty = not projects
-        if is_empty:
+        has_any_course = bool(all_projects)
+        if not has_any_course:
             self._import_expanded = True
         self.import_group.setVisible(self._import_expanded)
-        self.generate_questions_btn.setVisible(not is_empty)
-        import_role = "primaryButton" if is_empty else "secondaryButton"
+        active_scope = self._course_scope == "active"
+        self.generate_questions_btn.setVisible(active_scope and not is_empty)
+        self.restore_course_btn.setVisible(not active_scope and not is_empty)
+        import_role = "primaryButton" if not has_any_course else "secondaryButton"
         if self.init_btn.objectName() != import_role:
             self.init_btn.setObjectName(import_role)
             self.init_btn.style().unpolish(self.init_btn)
             self.init_btn.style().polish(self.init_btn)
         self._update_import_toggle_text()
-        self.empty_state_label.setText(self.lang_manager.get_text(
-            "还没有课程。请在上方选择课程资料文件夹并导入第一个课程。",
-            "No courses yet. Choose a course-material folder above and import your first course.",
-        ))
+        if not has_any_course:
+            empty_text = self.lang_manager.get_text(
+                "还没有课程。请在上方选择课程资料文件夹并导入第一个课程。",
+                "No courses yet. Choose a course-material folder above and import your first course.",
+            )
+        elif self._course_scope == "archived":
+            empty_text = self.lang_manager.get_text(
+                "没有已归档课程。",
+                "There are no archived courses.",
+            )
+        else:
+            empty_text = self.lang_manager.get_text(
+                f"暂无进行中的课程。你有 {len(archived_projects)} 门已归档课程，可以切换到“已归档”后恢复。",
+                f"There are no active courses. You have {len(archived_projects)} archived "
+                "course(s); switch to Archived to restore one.",
+            )
+        self.empty_state_label.setText(empty_text)
         self.empty_state_label.setVisible(is_empty)
         self.project_list.setVisible(not is_empty)
         self.set_current_btn.setEnabled(False)
+        self.restore_course_btn.setEnabled(False)
         self.scope_btn.setEnabled(False)
         self.current_events_action.setEnabled(False)
+        self.merge_action.setEnabled(False)
         self.generate_questions_btn.setEnabled(False)
         self.qa_mode_btn.setEnabled(False)
         self.rename_action.setEnabled(False)
         self.regenerate_action.setEnabled(False)
+        self.archive_action.setEnabled(False)
         self.delete_action.setEnabled(False)
         if projects:
             selected_row = 0
-            if current:
+            preferred_id = selected_id
+            if not preferred_id and current and active_scope:
+                preferred_id = current.course_id
+            if preferred_id:
                 for row in range(self.project_list.count()):
-                    if self.project_list.item(row).data(Qt.ItemDataRole.UserRole) == current.course_id:
+                    if (
+                        self.project_list.item(row).data(Qt.ItemDataRole.UserRole)
+                        == preferred_id
+                    ):
                         selected_row = row
                         break
             self.project_list.setCurrentRow(selected_row)
@@ -859,12 +986,14 @@ class CourseScreen(QWidget):
         if current is None:
             self.generate_questions_btn.setEnabled(False)
             self.set_current_btn.setEnabled(False)
+            self.restore_course_btn.setEnabled(False)
             self.scope_btn.setEnabled(False)
             self.current_events_action.setEnabled(False)
             self.merge_action.setEnabled(False)
             self.qa_mode_btn.setEnabled(False)
             self.rename_action.setEnabled(False)
             self.regenerate_action.setEnabled(False)
+            self.archive_action.setEnabled(False)
             self.delete_action.setEnabled(False)
             return
         course_id = current.data(Qt.ItemDataRole.UserRole)
@@ -872,14 +1001,21 @@ class CourseScreen(QWidget):
         if not project:
             return
         active = self.manager.current()
-        self.set_current_btn.setEnabled(not active or active.course_id != course_id)
-        self.generate_questions_btn.setEnabled(True)
-        self.scope_btn.setEnabled(True)
-        self.current_events_action.setEnabled(True)
-        self.merge_action.setEnabled(len(self.manager.load_all()) > 1)
+        archived = bool(getattr(project, "is_archived", False))
+        self.set_current_btn.setEnabled(
+            not archived and (not active or active.course_id != course_id)
+        )
+        self.restore_course_btn.setEnabled(archived)
+        self.generate_questions_btn.setEnabled(not archived)
+        self.scope_btn.setEnabled(not archived)
+        self.current_events_action.setEnabled(not archived)
+        self.merge_action.setEnabled(
+            not archived and len(self.manager.load_all()) > 1
+        )
         self.qa_mode_btn.setEnabled(True)
-        self.rename_action.setEnabled(True)
-        self.regenerate_action.setEnabled(True)
+        self.rename_action.setEnabled(not archived)
+        self.regenerate_action.setEnabled(not archived)
+        self.archive_action.setEnabled(not archived)
         self.delete_action.setEnabled(True)
         self.qa_panel.set_course(project)
         self._update_content_header(project)
@@ -1152,6 +1288,65 @@ class CourseScreen(QWidget):
         self._set_course_task_active(True)
         self._regen_worker.start()
 
+    def _archive_selected_project(self) -> None:
+        current = self.project_list.currentItem()
+        if current is None:
+            return
+        course_id = str(current.data(Qt.ItemDataRole.UserRole) or "")
+        project = self.manager.get(course_id)
+        if project is None or getattr(project, "is_archived", False):
+            return
+        result = remove_course_assets(
+            course_id,
+            CourseRemovalMode.ARCHIVE,
+            course_manager=self.manager,
+            question_bank=self.question_bank,
+            set_manager=self.set_manager,
+            progress_manager=self.progress_manager,
+            snapshot_manager=self.snapshot_manager,
+            past_exam_manager=self.past_exam_manager,
+            current_event_manager=self.current_event_manager,
+        )
+        if not result.success:
+            QMessageBox.critical(
+                self,
+                self.lang_manager.get_text("归档失败", "Archive Failed"),
+                self.lang_manager.get_text(
+                    f"课程未能归档，原数据保持不变。\n{result.error}",
+                    f"The course could not be archived; its data was left unchanged.\n{result.error}",
+                ),
+            )
+            return
+        self.current_course_changed.emit()
+        self.refresh()
+
+    def _restore_selected_project(self) -> None:
+        current = self.project_list.currentItem()
+        if current is None:
+            return
+        course_id = str(current.data(Qt.ItemDataRole.UserRole) or "")
+        project = self.manager.get(course_id)
+        if project is None or not getattr(project, "is_archived", False):
+            return
+        if not self.manager.restore(course_id, make_current=True):
+            QMessageBox.critical(
+                self,
+                self.lang_manager.get_text("恢复失败", "Restore Failed"),
+                self.lang_manager.get_text(
+                    "课程未能恢复，请检查应用数据目录后重试。",
+                    "The course could not be restored. Check the app data directory and try again.",
+                ),
+            )
+            return
+        self._course_scope = "active"
+        self.refresh()
+        for row in range(self.project_list.count()):
+            item = self.project_list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) == course_id:
+                self.project_list.setCurrentRow(row)
+                break
+        self.current_course_changed.emit()
+
     def _delete_selected_project(self):
         current = self.project_list.currentItem()
         if not current:
@@ -1205,7 +1400,9 @@ class CourseScreen(QWidget):
 
     def _choose_course_removal_mode(self, project, impact):
         dialog = QDialog(self)
-        dialog.setWindowTitle(self.lang_manager.get_text("删除课程", "Delete Course"))
+        dialog.setWindowTitle(
+            self.lang_manager.get_text("永久删除课程", "Delete Course Permanently")
+        )
         dialog.setMinimumWidth(520)
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(24, 20, 24, 20)
@@ -1217,14 +1414,6 @@ class CourseScreen(QWidget):
         layout.addWidget(impact_label)
 
         choices = (
-            (
-                CourseRemovalMode.KEEP_ASSETS,
-                self.lang_manager.get_text("仅删除课程资料", "Delete Course Only"),
-                self._course_removal_mode_text(
-                    CourseRemovalMode.KEEP_ASSETS,
-                    impact,
-                ),
-            ),
             (
                 CourseRemovalMode.UNLINK_ASSETS,
                 self.lang_manager.get_text("解除关联并删除课程", "Unlink and Delete Course"),
@@ -1252,7 +1441,7 @@ class CourseScreen(QWidget):
             detail.setWordWrap(True)
             detail.setContentsMargins(24, 0, 0, 4)
             layout.addWidget(detail)
-        radios[CourseRemovalMode.KEEP_ASSETS].setChecked(True)
+        radios[CourseRemovalMode.UNLINK_ASSETS].setChecked(True)
 
         source_note = QLabel(self.lang_manager.get_text(
             "原始课件文件夹始终不会被删除。",
