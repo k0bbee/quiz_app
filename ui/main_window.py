@@ -347,6 +347,9 @@ class MainWindow(QMainWindow):
             self._course_screen.generate_questions_requested.connect(
                 lambda _course_id: self._on_ai_generate()
             )
+            self._course_screen.view_course_library_requested.connect(
+                self._open_course_library
+            )
             self._course_screen.current_event_generation_requested.connect(
                 self._on_current_event_generation
             )
@@ -400,6 +403,15 @@ class MainWindow(QMainWindow):
                 self._question_bank_screen,
             )
         return self._question_bank_screen
+
+    def _open_course_library(self, course_id: str) -> None:
+        """Open one active or archived course's assets without changing status."""
+        if not self.navigate_to(
+            self.SCREEN_QUESTION_BANK,
+            allow_first_run_redirect=False,
+        ):
+            return
+        self._get_question_bank_screen().show_course_assets(course_id)
 
     def _get_past_exam_screen(self):
         """Lazy-init the historical exam workbench on first access."""

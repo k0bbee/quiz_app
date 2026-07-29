@@ -1703,6 +1703,28 @@ class CourseSummaryGeneratorTests(unittest.TestCase):
                 screen.project_list.currentItem().data(Qt.ItemDataRole.UserRole),
             )
 
+    def test_archived_course_can_open_its_library_without_restoring(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "source"
+            source.mkdir()
+            manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+            initializer = CourseInitializer(manager=manager)
+            initializer.parser = FakeParser(self._docs())
+            project = initializer.initialize(
+                str(source),
+                title="Systems",
+                make_current=True,
+            )
+            self.assertTrue(manager.archive(project.course_id))
+            screen = CourseScreen(manager)
+            requested = []
+            screen.view_course_library_requested.connect(requested.append)
+
+            screen.view_course_library_btn.click()
+
+            self.assertEqual([project.course_id], requested)
+            self.assertTrue(manager.get(project.course_id).is_archived)
+
     def test_course_screen_uses_archive_as_reversible_default_action(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             source = Path(tmpdir) / "source"

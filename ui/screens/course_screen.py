@@ -48,6 +48,7 @@ class CourseScreen(QWidget):
 
     current_course_changed = pyqtSignal()
     generate_questions_requested = pyqtSignal(str)
+    view_course_library_requested = pyqtSignal(str)
     current_event_generation_requested = pyqtSignal(str, object)
     course_import_started = pyqtSignal()
     course_import_progressed = pyqtSignal(object)
@@ -137,6 +138,12 @@ class CourseScreen(QWidget):
         self.set_current_btn.setText(self.lang_manager.get_text("设为当前", "Set Current"))
         self.restore_course_btn.setText(
             self.lang_manager.get_text("恢复课程", "Restore Course")
+        )
+        self.view_course_library_btn.setText(
+            self.lang_manager.get_text("查看题库", "View Library")
+        )
+        self.delete_archived_course_btn.setText(
+            self.lang_manager.get_text("永久删除", "Delete Permanently")
         )
         self.scope_btn.setText(self.lang_manager.get_text("考试范围", "Exam Scope"))
         self.current_events_action.setText(self.lang_manager.get_text("热点材料", "Current Events"))
@@ -283,7 +290,30 @@ class CourseScreen(QWidget):
         self.restore_course_btn.setVisible(False)
         self.restore_course_btn.setEnabled(False)
         self.restore_course_btn.clicked.connect(self._restore_selected_project)
-        self.left_layout.addWidget(self.restore_course_btn)
+        self.view_course_library_btn = QPushButton(
+            self.lang_manager.get_text("查看题库", "View Library")
+        )
+        self.view_course_library_btn.setObjectName("secondaryButton")
+        self.view_course_library_btn.setVisible(False)
+        self.view_course_library_btn.setEnabled(False)
+        self.view_course_library_btn.clicked.connect(
+            self._view_selected_course_library
+        )
+        self.delete_archived_course_btn = QPushButton(
+            self.lang_manager.get_text("永久删除", "Delete Permanently")
+        )
+        self.delete_archived_course_btn.setObjectName("dangerButton")
+        self.delete_archived_course_btn.setVisible(False)
+        self.delete_archived_course_btn.setEnabled(False)
+        self.delete_archived_course_btn.clicked.connect(
+            self._delete_selected_project
+        )
+        self.archived_action_layout = QHBoxLayout()
+        self.archived_action_layout.setSpacing(6)
+        self.archived_action_layout.addWidget(self.restore_course_btn)
+        self.archived_action_layout.addWidget(self.view_course_library_btn)
+        self.archived_action_layout.addWidget(self.delete_archived_course_btn)
+        self.left_layout.addLayout(self.archived_action_layout)
 
         self.course_action_layout = QHBoxLayout()
         self.set_current_btn = QPushButton(self.lang_manager.get_text("设为当前", "Set Current"))
@@ -456,6 +486,12 @@ class CourseScreen(QWidget):
         active_scope = self._course_scope == "active"
         self.generate_questions_btn.setVisible(active_scope and not is_empty)
         self.restore_course_btn.setVisible(not active_scope and not is_empty)
+        self.view_course_library_btn.setVisible(
+            not active_scope and not is_empty
+        )
+        self.delete_archived_course_btn.setVisible(
+            not active_scope and not is_empty
+        )
         import_role = "primaryButton" if not has_any_course else "secondaryButton"
         if self.init_btn.objectName() != import_role:
             self.init_btn.setObjectName(import_role)
@@ -483,6 +519,8 @@ class CourseScreen(QWidget):
         self.project_list.setVisible(not is_empty)
         self.set_current_btn.setEnabled(False)
         self.restore_course_btn.setEnabled(False)
+        self.view_course_library_btn.setEnabled(False)
+        self.delete_archived_course_btn.setEnabled(False)
         self.scope_btn.setEnabled(False)
         self.current_events_action.setEnabled(False)
         self.merge_action.setEnabled(False)
@@ -987,6 +1025,8 @@ class CourseScreen(QWidget):
             self.generate_questions_btn.setEnabled(False)
             self.set_current_btn.setEnabled(False)
             self.restore_course_btn.setEnabled(False)
+            self.view_course_library_btn.setEnabled(False)
+            self.delete_archived_course_btn.setEnabled(False)
             self.scope_btn.setEnabled(False)
             self.current_events_action.setEnabled(False)
             self.merge_action.setEnabled(False)
@@ -1006,6 +1046,8 @@ class CourseScreen(QWidget):
             not archived and (not active or active.course_id != course_id)
         )
         self.restore_course_btn.setEnabled(archived)
+        self.view_course_library_btn.setEnabled(archived)
+        self.delete_archived_course_btn.setEnabled(archived)
         self.generate_questions_btn.setEnabled(not archived)
         self.scope_btn.setEnabled(not archived)
         self.current_events_action.setEnabled(not archived)
@@ -1350,6 +1392,14 @@ class CourseScreen(QWidget):
                 self.project_list.setCurrentRow(row)
                 break
         self.current_course_changed.emit()
+
+    def _view_selected_course_library(self) -> None:
+        current = self.project_list.currentItem()
+        if current is None:
+            return
+        course_id = str(current.data(Qt.ItemDataRole.UserRole) or "")
+        if self.manager.get(course_id) is not None:
+            self.view_course_library_requested.emit(course_id)
 
     def _delete_selected_project(self):
         current = self.project_list.currentItem()
