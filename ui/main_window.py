@@ -30,7 +30,12 @@ from ui.generation_launch_controller import (
 from ui.session_retry_presenter import session_retry_copy
 from ui.study_flow_controller import StudyFlowController
 from ui.task_recovery_controller import TaskRecoveryController
-from ui.navigation import NavigationRouter
+from ui.navigation import (
+    NavigationRouter,
+    Route,
+    ScreenKey,
+    Workspace,
+)
 from ui.shell import AppShell
 from config import APP_NAME, APP_NAME_EN
 
@@ -65,6 +70,17 @@ class MainWindow(QMainWindow):
     SCREEN_QUESTION_BANK = 6
     SCREEN_PAST_EXAMS = 7
     SCREEN_GENERATION = 8
+    SCREEN_INDEX_BY_KEY = {
+        ScreenKey.HOME: SCREEN_HOME,
+        ScreenKey.TOPIC_SELECTION: SCREEN_TOPIC_SELECTION,
+        ScreenKey.QUIZ: SCREEN_QUIZ,
+        ScreenKey.RESULTS: SCREEN_RESULTS,
+        ScreenKey.PROGRESS: SCREEN_PROGRESS,
+        ScreenKey.COURSES: SCREEN_COURSES,
+        ScreenKey.QUESTION_BANK: SCREEN_QUESTION_BANK,
+        ScreenKey.PAST_EXAMS: SCREEN_PAST_EXAMS,
+        ScreenKey.GENERATION: SCREEN_GENERATION,
+    }
 
     def __init__(
         self,
@@ -108,6 +124,8 @@ class MainWindow(QMainWindow):
         self.navigation_router = NavigationRouter(
             self.stack,
             skip_history_from={self.SCREEN_QUIZ},
+            resolve_destination=self._screen_index_for_route,
+            initial_destination=Route.study("today"),
         )
 
         # Create screens
@@ -458,20 +476,33 @@ class MainWindow(QMainWindow):
         self.app_shell = AppShell(
             self.stack,
             workspace_routes=(
-                ("learning_nav_btn", "learning", self.SCREEN_HOME),
-                ("courses_nav_btn", "courses", self.SCREEN_COURSES),
-                ("library_nav_btn", "library", self.SCREEN_QUESTION_BANK),
+                (
+                    "learning_nav_btn",
+                    Workspace.STUDY,
+                    Route.study("today"),
+                ),
+                (
+                    "courses_nav_btn",
+                    Workspace.COURSE,
+                    Route.course(),
+                ),
+                (
+                    "library_nav_btn",
+                    Workspace.LIBRARY,
+                    Route.library("questions"),
+                ),
             ),
             context_routes=(
-                ("topics_tab_btn", self.SCREEN_TOPIC_SELECTION),
-                ("progress_tab_btn", self.SCREEN_PROGRESS),
-                ("bank_tab_btn", self.SCREEN_QUESTION_BANK),
-                ("past_exams_tab_btn", self.SCREEN_PAST_EXAMS),
+                ("today_tab_btn", Route.study("today")),
+                ("topics_tab_btn", Route.study("practice")),
+                ("progress_tab_btn", Route.study("analysis")),
+                ("bank_tab_btn", Route.library("questions")),
+                ("sets_tab_btn", Route.library("sets")),
+                ("past_exams_tab_btn", Route.library("past_exams")),
             ),
-            navigate=self.navigate_to,
+            navigate=self.navigate_route,
             open_settings=self.open_settings,
             navigate_back=self.navigate_back,
-            practice_incorrect=self._on_practice_incorrect,
             open_task_center=self._open_task_center,
         )
         for attribute in (
@@ -482,14 +513,15 @@ class MainWindow(QMainWindow):
             "context_header",
             "context_back_btn",
             "context_title",
-            "incorrect_review_btn",
             "task_center_btn",
             "learning_nav_btn",
             "courses_nav_btn",
             "library_nav_btn",
+            "today_tab_btn",
             "topics_tab_btn",
             "progress_tab_btn",
             "bank_tab_btn",
+            "sets_tab_btn",
             "past_exams_tab_btn",
         ):
             setattr(self, attribute, getattr(self.app_shell, attribute))
@@ -569,17 +601,8 @@ class MainWindow(QMainWindow):
         lang = lang or self.lang_manager.current
         gm = self.lang_manager.get_text
 
-        self.context_back_btn.setText(gm("返回", "Back"))
         self.sidebar_title.setText(gm(APP_NAME, APP_NAME_EN))
-        self.learning_nav_btn.setText(gm("学习", "Study"))
-        self.courses_nav_btn.setText(gm("课程", "Courses"))
-        self.library_nav_btn.setText(gm("资料库", "Library"))
-        self.settings_nav_btn.setText(gm("设置", "Settings"))
-        self.topics_tab_btn.setText(gm("练习", "Practice"))
-        self.progress_tab_btn.setText(gm("进度", "Progress"))
-        self.bank_tab_btn.setText(gm("题库", "Question Bank"))
-        self.past_exams_tab_btn.setText(gm("历史真题", "Historical Exams"))
-        self.incorrect_review_btn.setText(gm("错题复习", "Review Incorrect"))
+        self.app_shell.render_language(gm)
         self._refresh_task_center_action()
         self._update_navigation_actions()
 
@@ -591,27 +614,88 @@ class MainWindow(QMainWindow):
         *,
         allow_first_run_redirect: bool = True,
     ) -> bool:
-        """Switch to a screen by index."""
+        """Compatibility boundary for callers that still hold a stack index."""
+        return self.navigate_route(
+            self._default_route_for_screen_index(screen_index),
+            remember=remember,
+            confirm_current=confirm_current,
+            allow_first_run_redirect=allow_first_run_redirect,
+        )
+
+    @property
+    def current_route(self) -> Route:
+        destination = self.navigation_router.current_destination
+        if isinstance(destination, Route):
+            return destination
+        return self._default_route_for_screen_index(self.stack.currentIndex())
+
+    def _screen_index_for_route(self, route) -> int:
+        if isinstance(route, Route):
+            return self.SCREEN_INDEX_BY_KEY[route.screen]
+        return int(route)
+
+    def _default_route_for_screen_index(self, screen_index: int) -> Route:
+        routes = {
+            self.SCREEN_HOME: Route.study("today"),
+            self.SCREEN_TOPIC_SELECTION: Route.study("practice"),
+            self.SCREEN_QUIZ: Route.focus("quiz"),
+            self.SCREEN_RESULTS: Route.focus("results"),
+            self.SCREEN_PROGRESS: Route.study("analysis"),
+            self.SCREEN_COURSES: Route.course(),
+            self.SCREEN_QUESTION_BANK: Route.library("questions"),
+            self.SCREEN_PAST_EXAMS: Route.library("past_exams"),
+            self.SCREEN_GENERATION: Route.course(
+                self._current_course_id(),
+                tab="generation",
+            ),
+        }
+        try:
+            return routes[int(screen_index)]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"unknown screen index: {screen_index}") from exc
+
+    def navigate_route(
+        self,
+        route: Route,
+        remember: bool = True,
+        confirm_current: bool = True,
+        *,
+        allow_first_run_redirect: bool = True,
+    ) -> bool:
+        """Navigate by product semantics instead of numeric widget position."""
+        if not isinstance(route, Route):
+            raise TypeError("route must be a Route")
+        screen_index = self._screen_index_for_route(route)
         if not self._confirm_history_sensitive_navigation(screen_index):
             self._update_navigation_actions()
             return False
         if (
             allow_first_run_redirect
             and self._first_run_required()
-            and screen_index == self.SCREEN_TOPIC_SELECTION
+            and route == Route.study("practice")
         ):
-            screen_index = self.SCREEN_HOME
+            route = Route.study("today")
         elif (
             allow_first_run_redirect
             and self._first_run_required()
-            and screen_index == self.SCREEN_COURSES
+            and route.workspace is Workspace.COURSE
+            and route.tab != "generation"
             and self._course_screen is None
             and self._archived_course_count() <= 0
         ):
-            screen_index = self.SCREEN_HOME
+            route = Route.study("today")
+        screen_index = self._screen_index_for_route(route)
         if confirm_current and not self._confirm_current_navigation(screen_index):
             self._update_navigation_actions()
             return False
+        if (
+            route.workspace is Workspace.COURSE
+            and route.course_id
+            and self.course_manager.get(route.course_id) is not None
+            and self._current_course_id() != route.course_id
+            and self.course_manager.set_current(route.course_id)
+        ):
+            self._on_course_changed()
         if screen_index == self.SCREEN_COURSES:
             self._get_course_screen()
         elif screen_index == self.SCREEN_QUESTION_BANK:
@@ -620,7 +704,7 @@ class MainWindow(QMainWindow):
             self._get_past_exam_screen()
         elif screen_index == self.SCREEN_GENERATION:
             self._get_generation_workspace()
-        self.navigation_router.navigate(screen_index, remember=remember)
+        self.navigation_router.navigate(route, remember=remember)
         # Refresh data on certain screens
         if screen_index == self.SCREEN_TOPIC_SELECTION:
             self._sync_topic_screen_course()
@@ -635,7 +719,12 @@ class MainWindow(QMainWindow):
             self._get_course_screen().refresh()
         elif screen_index == self.SCREEN_QUESTION_BANK:
             self._sync_question_bank_screen_course()
-            self._get_question_bank_screen().refresh()
+            library = self._get_question_bank_screen()
+            if route.tab == "sets":
+                library.show_question_sets()
+            else:
+                library.show_questions()
+            library.refresh()
         elif screen_index == self.SCREEN_PAST_EXAMS:
             self._get_past_exam_screen().refresh()
         self._update_navigation_actions()
@@ -647,11 +736,23 @@ class MainWindow(QMainWindow):
         if previous is None:
             self._update_navigation_actions()
             return
-        if not self._confirm_current_navigation(previous):
+        target_screen = self._screen_index_for_route(previous)
+        if not self._confirm_current_navigation(target_screen):
             self._update_navigation_actions()
             return
         self.navigation_router.discard_back()
-        self.navigate_to(previous, remember=False, confirm_current=False)
+        if isinstance(previous, Route):
+            self.navigate_route(
+                previous,
+                remember=False,
+                confirm_current=False,
+            )
+        else:
+            self.navigate_to(
+                previous,
+                remember=False,
+                confirm_current=False,
+            )
 
     def _confirm_current_navigation(self, target_screen: int) -> bool:
         """Return whether navigation away from the current screen may proceed."""
@@ -663,57 +764,11 @@ class MainWindow(QMainWindow):
         """Keep shell navigation buttons in sync with current location."""
         if not hasattr(self, "context_back_btn"):
             return
-        current = self.stack.currentIndex()
-        workspace_button = {
-            self.SCREEN_HOME: self.learning_nav_btn,
-            self.SCREEN_TOPIC_SELECTION: self.learning_nav_btn,
-            self.SCREEN_QUIZ: self.learning_nav_btn,
-            self.SCREEN_RESULTS: self.learning_nav_btn,
-            self.SCREEN_PROGRESS: self.learning_nav_btn,
-            self.SCREEN_COURSES: self.courses_nav_btn,
-            self.SCREEN_GENERATION: self.courses_nav_btn,
-            self.SCREEN_QUESTION_BANK: self.library_nav_btn,
-            self.SCREEN_PAST_EXAMS: self.library_nav_btn,
-        }.get(current)
-        if workspace_button is not None:
-            workspace_button.setChecked(True)
-
-        learning = current in {
-            self.SCREEN_TOPIC_SELECTION,
-            self.SCREEN_PROGRESS,
-            self.SCREEN_QUIZ,
-            self.SCREEN_RESULTS,
-        }
-        library = current in {self.SCREEN_QUESTION_BANK, self.SCREEN_PAST_EXAMS}
-        for button in (self.topics_tab_btn, self.progress_tab_btn):
-            button.setVisible(learning and current not in {self.SCREEN_QUIZ, self.SCREEN_RESULTS})
-        self.incorrect_review_btn.setVisible(
-            learning and current not in {self.SCREEN_QUIZ, self.SCREEN_RESULTS}
+        self.app_shell.apply_route(
+            self.current_route,
+            can_go_back=self.navigation_router.can_go_back,
+            get_text=self.lang_manager.get_text,
         )
-        for button in (self.bank_tab_btn, self.past_exams_tab_btn):
-            button.setVisible(library)
-        self.topics_tab_btn.setChecked(current == self.SCREEN_TOPIC_SELECTION)
-        self.progress_tab_btn.setChecked(current == self.SCREEN_PROGRESS)
-        self.bank_tab_btn.setChecked(current == self.SCREEN_QUESTION_BANK)
-        self.past_exams_tab_btn.setChecked(current == self.SCREEN_PAST_EXAMS)
-
-        page_titles = {
-            self.SCREEN_HOME: ("学习", "Study"),
-            self.SCREEN_TOPIC_SELECTION: ("学习", "Study"),
-            self.SCREEN_QUIZ: ("答题", "Quiz"),
-            self.SCREEN_RESULTS: ("练习结果", "Results"),
-            self.SCREEN_PROGRESS: ("学习", "Study"),
-            self.SCREEN_COURSES: ("课程", "Courses"),
-            self.SCREEN_GENERATION: ("生成与审核", "Generate and Review"),
-            self.SCREEN_QUESTION_BANK: ("题库", "Question Bank"),
-            self.SCREEN_PAST_EXAMS: ("题库", "Question Bank"),
-        }
-        zh, en = page_titles.get(current, ("", ""))
-        self.context_title.setText(self.lang_manager.get_text(zh, en))
-        is_focus_flow = current in {self.SCREEN_QUIZ, self.SCREEN_RESULTS}
-        self.navigation_sidebar.setVisible(not is_focus_flow)
-        self.context_back_btn.setVisible(is_focus_flow and self.navigation_router.can_go_back)
-        self.context_back_btn.setEnabled(self.navigation_router.can_go_back)
         self._refresh_task_center_action()
 
     def open_settings(self, section: str = "") -> None:
@@ -2183,9 +2238,7 @@ class MainWindow(QMainWindow):
             gm(f"已保存 {saved} 道新题，并更新题目集：\n{qset.get_title(self.lang_manager.current)}{cleanup_note}",
                f"Saved {saved} new questions and updated question set:\n{qset.get_title(self.lang_manager.current)}{cleanup_note}"),
         )
-        library = self._get_question_bank_screen()
-        library.show_question_sets()
-        self.navigate_to(self.SCREEN_QUESTION_BANK)
+        self.navigate_route(Route.library("sets"))
 
     def _on_retry_all(self):
         """Retry the entire question set."""

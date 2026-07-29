@@ -21,6 +21,7 @@ from core.background_task_center import BackgroundTaskCenter, TaskStatus
 from core import course_index
 from core.question_set_builder import build_ai_question_set
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
+from ui.navigation import Route
 from models.course_project import CourseProject, CourseTopic
 from models.question import Question
 from models.question_set import QuestionSet
@@ -191,7 +192,6 @@ class GenerationConfigTests(unittest.TestCase):
             configure_from_question_set=Mock(),
             exec=Mock(return_value=QDialog.DialogCode.Accepted),
         )
-        library = SimpleNamespace(show_question_sets=Mock())
         navigated = []
         shell = SimpleNamespace(
             _history_protection_blocked=False,
@@ -203,8 +203,7 @@ class GenerationConfigTests(unittest.TestCase):
             question_bank=Mock(),
             progress_manager=Mock(),
             topic_screen=SimpleNamespace(refresh=Mock()),
-            _get_question_bank_screen=Mock(return_value=library),
-            navigate_to=navigated.append,
+            navigate_route=navigated.append,
             SCREEN_TOPIC_SELECTION=1,
             SCREEN_QUESTION_BANK=6,
         )
@@ -225,8 +224,7 @@ class GenerationConfigTests(unittest.TestCase):
                 question_set.set_id,
             )
 
-        library.show_question_sets.assert_called_once_with()
-        self.assertEqual([6], navigated)
+        self.assertEqual([Route.library("sets")], navigated)
 
     def test_generation_dialog_schedules_confirmed_plan_after_it_is_shown(self):
         dialog = AIGenerationDialog(

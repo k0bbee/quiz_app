@@ -91,6 +91,7 @@ class TopicSelectionScreen(QWidget):
         self.mock_exam_mode_btn.clicked.connect(
             lambda: self._set_study_mode("exam")
         )
+        self.today_mode_btn.hide()
         layout.addWidget(self.mode_frame)
 
         self.course_context_label = QLabel()
@@ -189,9 +190,9 @@ class TopicSelectionScreen(QWidget):
 
     def _on_language_changed(self, _lang=None) -> None:
         gm = self.lang_manager.get_text
-        self.title_label.setText(gm("开始学习", "Start Learning"))
+        self.title_label.setText(gm("自由练习", "Free Practice"))
         self.today_mode_btn.setText(gm("今日学习", "Today"))
-        self.free_practice_mode_btn.setText(gm("自由练习", "Free Practice"))
+        self.free_practice_mode_btn.setText(gm("练习模式", "Practice Mode"))
         self.mock_exam_mode_btn.setText(gm("模拟考试", "Mock Exam"))
         self.setup_title.setText(gm("练习范围", "Practice Scope"))
         self.preset_label.setText(gm("保存的方案", "Saved Preset"))

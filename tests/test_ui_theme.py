@@ -27,6 +27,7 @@ from models.question_set import QuestionSet, SetManager
 from core.background_task_recovery import generation_plan_from_task_metadata
 from ui.application_style import apply_dark_palette as _apply_dark_palette, load_stylesheet
 from ui.main_window import MainWindow
+from ui.navigation import Route
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
 from ui.screens.course_screen import CourseScreen
@@ -404,15 +405,24 @@ class UiThemeTests(unittest.TestCase):
 
         self.assertTrue(main_window.learning_nav_btn.isChecked())
         self.assertEqual("Study", main_window.context_title.text())
+        self.assertEqual(Route.study("today"), main_window.current_route)
+        self.assertEqual(
+            ["Today", "Free Practice", "Learning Analysis"],
+            [button.text() for button in main_window.context_tabs()],
+        )
+        self.assertTrue(main_window.today_tab_btn.isChecked())
+        self.assertFalse(hasattr(main_window, "incorrect_review_btn"))
         self.assertFalse(main_window.context_back_btn.isVisible())
         self.assertTrue(main_window.home_screen.question_context_label.text())
 
         main_window.navigate_to(main_window.SCREEN_PROGRESS)
         self.assertTrue(main_window.learning_nav_btn.isChecked())
-        self.assertEqual(["Practice", "Progress"], [button.text() for button in main_window.context_tabs()])
+        self.assertEqual(Route.study("analysis"), main_window.current_route)
+        self.assertEqual(
+            ["Today", "Free Practice", "Learning Analysis"],
+            [button.text() for button in main_window.context_tabs()],
+        )
         self.assertTrue(main_window.progress_tab_btn.isChecked())
-        self.assertFalse(main_window.incorrect_review_btn.isHidden())
-        self.assertEqual("Review Incorrect", main_window.incorrect_review_btn.text())
         self.assertFalse(main_window.context_back_btn.isVisible())
 
         main_window.learning_nav_btn.click()
@@ -420,11 +430,39 @@ class UiThemeTests(unittest.TestCase):
 
         main_window.library_nav_btn.click()
         self.assertEqual(main_window.SCREEN_QUESTION_BANK, main_window.stack.currentIndex())
-        self.assertEqual(["Question Bank", "Historical Exams"], [button.text() for button in main_window.context_tabs()])
+        self.assertEqual(Route.library("questions"), main_window.current_route)
+        self.assertEqual(
+            ["Questions", "Question Sets", "Historical Exams"],
+            [button.text() for button in main_window.context_tabs()],
+        )
+        self.assertTrue(main_window.bank_tab_btn.isChecked())
+        self.assertTrue(
+            main_window._question_bank_screen.workspace_tabs.tabBar().isHidden()
+        )
+        main_window.sets_tab_btn.click()
+        self.assertEqual(Route.library("sets"), main_window.current_route)
+        self.assertEqual(
+            main_window._question_bank_screen.set_panel,
+            main_window._question_bank_screen.workspace_tabs.currentWidget(),
+        )
         main_window.past_exams_tab_btn.click()
         self.assertEqual(main_window.SCREEN_PAST_EXAMS, main_window.stack.currentIndex())
+        self.assertEqual(Route.library("past_exams"), main_window.current_route)
         self.assertIs(main_window.past_exam_manager, main_window._past_exam_screen.manager)
         self.assertIs(main_window.course_manager, main_window._past_exam_screen.course_manager)
+
+        main_window.navigate_route(Route.study("practice"))
+        self.assertTrue(main_window.topic_screen.today_mode_btn.isHidden())
+        self.assertEqual(
+            ["Practice Mode", "Mock Exam"],
+            [
+                button.text()
+                for button in (
+                    main_window.topic_screen.free_practice_mode_btn,
+                    main_window.topic_screen.mock_exam_mode_btn,
+                )
+            ],
+        )
 
         main_window.navigate_to(main_window.SCREEN_PROGRESS)
         current_screen = main_window.stack.currentIndex()
@@ -1381,10 +1419,11 @@ class UiThemeTests(unittest.TestCase):
             )
             main_window = MainWindow()
 
-        self.assertEqual("自由练习", topic.free_practice_mode_btn.text())
+        self.assertEqual("练习模式", topic.free_practice_mode_btn.text())
+        self.assertTrue(topic.today_mode_btn.isHidden())
         self.assertEqual("模拟考试", topic.mock_exam_mode_btn.text())
         lang_manager.set_language("en")
-        self.assertEqual("Free Practice", topic.free_practice_mode_btn.text())
+        self.assertEqual("Practice Mode", topic.free_practice_mode_btn.text())
         self.assertEqual("Mock Exam", topic.mock_exam_mode_btn.text())
         self.assertEqual("primaryButton", topic.start_btn.objectName())
         self.assertFalse(hasattr(topic, "back_btn"))

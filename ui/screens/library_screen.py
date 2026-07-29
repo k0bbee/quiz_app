@@ -98,6 +98,7 @@ class LibraryScreen(QWidget):
         self.set_panel.setObjectName("question_sets")
         self.workspace_tabs.addTab(self.question_screen, "")
         self.workspace_tabs.addTab(self.set_panel, "")
+        self.workspace_tabs.tabBar().hide()
         layout.addWidget(self.workspace_tabs, 1)
 
         self.question_screen.question_bank_changed.connect(
@@ -295,5 +296,7 @@ class LibraryScreen(QWidget):
         self.set_panel.refresh()
 
     def show_question_sets(self) -> None:
-        self.set_panel.refresh()
         self.workspace_tabs.setCurrentWidget(self.set_panel)
+
+    def show_questions(self) -> None:
+        self.workspace_tabs.setCurrentWidget(self.question_screen)

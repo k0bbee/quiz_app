@@ -17,6 +17,14 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from ui.navigation.routes import (
+    Route,
+    Workspace,
+    route_spec,
+    route_tab,
+    workspace_label,
+)
+
 
 class AppShell(QWidget):
     """Present the shared sidebar, context header, and screen stack."""
@@ -25,12 +33,11 @@ class AppShell(QWidget):
         self,
         stack: QStackedWidget,
         *,
-        workspace_routes: Sequence[tuple[str, str, int]],
-        context_routes: Sequence[tuple[str, int]],
-        navigate: Callable[[int], object],
+        workspace_routes: Sequence[tuple[str, Workspace, Route]],
+        context_routes: Sequence[tuple[str, Route]],
+        navigate: Callable[[Route], object],
         open_settings: Callable[[], object],
         navigate_back: Callable[[], object],
-        practice_incorrect: Callable[[], object],
         open_task_center: Callable[[], object],
         parent=None,
     ):
@@ -56,9 +63,10 @@ class AppShell(QWidget):
 
         self._workspace_group = QButtonGroup(self)
         self._workspace_group.setExclusive(True)
+        self._workspace_routes = {}
         self._navigation_buttons = tuple(
-            self._create_sidebar_button(attribute, workspace, screen_index, navigate)
-            for attribute, workspace, screen_index in workspace_routes
+            self._create_sidebar_button(attribute, workspace, route, navigate)
+            for attribute, workspace, route in workspace_routes
         )
         for button in self._navigation_buttons:
             sidebar_layout.addWidget(button)
@@ -109,18 +117,13 @@ class AppShell(QWidget):
         )
         header_layout.addWidget(self.context_title)
 
+        self._context_routes = {}
         self._context_tabs = tuple(
-            self._create_context_tab(attribute, screen_index, navigate)
-            for attribute, screen_index in context_routes
+            self._create_context_tab(attribute, route, navigate)
+            for attribute, route in context_routes
         )
         for button in self._context_tabs:
             header_layout.addWidget(button)
-
-        self.incorrect_review_btn = QPushButton("")
-        self.incorrect_review_btn.setObjectName("contextActionButton")
-        self.incorrect_review_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-        self.incorrect_review_btn.clicked.connect(practice_incorrect)
-        header_layout.addWidget(self.incorrect_review_btn)
 
         content_layout.addWidget(self.context_header)
         content_layout.addWidget(stack, 1)
@@ -130,37 +133,70 @@ class AppShell(QWidget):
     def _create_sidebar_button(
         self,
         attribute: str,
-        workspace: str,
-        screen_index: int,
-        navigate: Callable[[int], object],
+        workspace: Workspace,
+        route: Route,
+        navigate: Callable[[Route], object],
     ) -> QPushButton:
         button = QPushButton("")
         button.setObjectName("sidebarNavButton")
-        button.setProperty("workspace", workspace)
+        button.setProperty("workspace", workspace.value)
         button.setCheckable(True)
         button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         button.clicked.connect(
-            lambda _checked=False, index=screen_index: navigate(index)
+            lambda _checked=False, destination=route: navigate(destination)
         )
         self._workspace_group.addButton(button)
+        self._workspace_routes[button] = workspace
         setattr(self, attribute, button)
         return button
 
     def _create_context_tab(
         self,
         attribute: str,
-        screen_index: int,
-        navigate: Callable[[int], object],
+        route: Route,
+        navigate: Callable[[Route], object],
     ) -> QPushButton:
         button = QPushButton("")
         button.setObjectName("contextTabButton")
         button.setCheckable(True)
         button.setFocusPolicy(Qt.FocusPolicy.TabFocus)
         button.clicked.connect(
-            lambda _checked=False, index=screen_index: navigate(index)
+            lambda _checked=False, destination=route: navigate(destination)
         )
+        self._context_routes[button] = route
         setattr(self, attribute, button)
         return button
+
+    def render_language(self, get_text) -> None:
+        for button, workspace in self._workspace_routes.items():
+            zh, en = workspace_label(workspace)
+            button.setText(get_text(zh, en))
+        for button, route in self._context_routes.items():
+            tab = route_tab(route)
+            if tab is not None:
+                button.setText(get_text(tab.label_zh, tab.label_en))
+        self.context_back_btn.setText(get_text("返回", "Back"))
+        self.settings_nav_btn.setText(get_text("设置", "Settings"))
+
+    def apply_route(self, route: Route, *, can_go_back: bool, get_text) -> None:
+        spec = route_spec(route)
+        for button, workspace in self._workspace_routes.items():
+            button.setChecked(workspace is spec.workspace)
+        for button, destination in self._context_routes.items():
+            visible = (
+                not spec.focus
+                and destination.workspace is spec.workspace
+            )
+            button.setVisible(visible)
+            button.setChecked(
+                visible and destination.tab == route.tab
+            )
+        self.context_title.setText(
+            get_text(spec.title_zh, spec.title_en)
+        )
+        self.navigation_sidebar.setVisible(not spec.focus)
+        self.context_back_btn.setVisible(spec.focus and can_go_back)
+        self.context_back_btn.setEnabled(can_go_back)
 
     def navigation_buttons(self) -> tuple[QPushButton, ...]:
         return self._navigation_buttons
