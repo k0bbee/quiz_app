@@ -18,7 +18,11 @@ class StudyFlowControllerTests(unittest.TestCase):
                 apply_study_intent=Mock(),
                 clear_study_intent=Mock(),
             ),
-            "quiz_screen": SimpleNamespace(start_quiz_custom=Mock()),
+            "quiz_screen": SimpleNamespace(
+                start_quiz=Mock(),
+                start_quiz_custom=Mock(),
+                set_study_intent=Mock(),
+            ),
             "lang_manager": SimpleNamespace(
                 current="zh",
                 get_text=lambda zh, _en: zh,
@@ -66,7 +70,11 @@ class StudyFlowControllerTests(unittest.TestCase):
         )
         question_bank = Mock()
         question_bank.get_many.return_value = [question]
-        quiz_screen = SimpleNamespace(start_quiz_custom=Mock())
+        quiz_screen = SimpleNamespace(
+            start_quiz=Mock(),
+            start_quiz_custom=Mock(),
+            set_study_intent=Mock(),
+        )
         navigate = Mock(return_value=True)
         controller = self._controller(
             question_bank=question_bank,
@@ -94,7 +102,46 @@ class StudyFlowControllerTests(unittest.TestCase):
             show_timer=False,
             submission_mode="practice",
         )
+        quiz_screen.set_study_intent.assert_called_once_with(intent)
         navigate.assert_called_once_with(2)
+
+    def test_start_questions_owns_session_state_and_attaches_intent(self):
+        question = SimpleNamespace(
+            question_id="q1",
+            topic="cache",
+            topic_title=lambda: "Cache",
+        )
+        quiz_screen = SimpleNamespace(
+            start_quiz=Mock(),
+            start_quiz_custom=Mock(),
+            set_study_intent=Mock(),
+        )
+        controller = self._controller(quiz_screen=quiz_screen)
+        intent = StudyIntent(
+            course_id="course-a",
+            action=StudyAction.CUSTOM_PRACTICE,
+            question_ids=("q1",),
+            question_count=1,
+            submission_mode="exam",
+            source="retry",
+        )
+
+        active_questions = controller.start_questions(
+            intent,
+            [question],
+            label="重试",
+        )
+
+        self.assertEqual({"q1": question}, active_questions)
+        self.assertIs(intent, controller.active_intent)
+        self.assertIsNone(controller.pending_intent)
+        quiz_screen.start_quiz_custom.assert_called_once_with(
+            [question],
+            "重试",
+            show_timer=False,
+            submission_mode="exam",
+        )
+        quiz_screen.set_study_intent.assert_called_once_with(intent)
 
     def test_saved_set_intent_starts_real_set_in_requested_mode(self):
         question = SimpleNamespace(
@@ -109,6 +156,7 @@ class StudyFlowControllerTests(unittest.TestCase):
         quiz_screen = SimpleNamespace(
             start_quiz=Mock(),
             start_quiz_custom=Mock(),
+            set_study_intent=Mock(),
         )
         controller = self._controller(
             question_bank=question_bank,
@@ -143,7 +191,11 @@ class StudyFlowControllerTests(unittest.TestCase):
         )
         question_bank = Mock()
         question_bank.get_many.return_value = [question]
-        quiz_screen = SimpleNamespace(start_quiz_custom=Mock())
+        quiz_screen = SimpleNamespace(
+            start_quiz=Mock(),
+            start_quiz_custom=Mock(),
+            set_study_intent=Mock(),
+        )
         navigate = Mock(return_value=True)
         topic_screen = SimpleNamespace(apply_study_intent=Mock())
         controller = self._controller(

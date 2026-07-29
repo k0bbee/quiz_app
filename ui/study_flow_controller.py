@@ -96,11 +96,6 @@ class StudyFlowController:
         )
         if not questions:
             return {}
-        self.pending_intent = None
-        self.active_intent = intent
-        self.active_questions = {
-            question.question_id: question for question in questions
-        }
         if intent.topic_ids:
             course = self.course_manager.get(intent.course_id)
             label = topic_display_name(
@@ -114,11 +109,34 @@ class StudyFlowController:
                 "今日练习",
                 "Today's Practice",
             )
-        question_set = (
-            self.set_manager.get(intent.set_id)
-            if self.set_manager is not None and intent.set_id
-            else None
-        )
+        return self.start_questions(intent, questions, label=label)
+
+    def start_questions(
+        self,
+        intent: StudyIntent,
+        questions,
+        *,
+        label: str = "",
+        question_set=None,
+    ) -> dict:
+        """Start one session and make this controller its sole state owner."""
+        if not isinstance(intent, StudyIntent):
+            return {}
+        questions = [
+            question
+            for question in (questions or ())
+            if getattr(question, "question_id", "")
+        ]
+        if not questions:
+            return {}
+        self._activate_course(intent.course_id)
+        self.pending_intent = None
+        self.active_intent = intent
+        self.active_questions = {
+            question.question_id: question for question in questions
+        }
+        if question_set is None and self.set_manager is not None and intent.set_id:
+            question_set = self.set_manager.get(intent.set_id)
         if question_set is not None:
             self.quiz_screen.start_quiz(
                 question_set,
@@ -133,6 +151,7 @@ class StudyFlowController:
                 show_timer=self._show_timer(),
                 submission_mode=intent.submission_mode,
             )
+        self.quiz_screen.set_study_intent(intent)
         self._navigate(self._quiz_screen_index)
         return self.active_questions
 
