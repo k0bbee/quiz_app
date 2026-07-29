@@ -567,7 +567,7 @@ class MockExamExporterTests(unittest.TestCase):
 
             screen.set_current_course("", "")
 
-            self.assertIn("All courses", screen.course_context_label.text())
+            self.assertIn("None selected", screen.course_context_label.text())
 
 
 if __name__ == "__main__":
