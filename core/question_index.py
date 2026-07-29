@@ -116,6 +116,7 @@ class QuestionIndex:
         topic_values: Iterable[str] = (),
         difficulty: str = "",
         course_id: str = "",
+        unassigned_only: bool = False,
         offset: int = 0,
         limit: int | None = None,
     ) -> tuple[list[str], int]:
@@ -124,6 +125,7 @@ class QuestionIndex:
             topic_values=topic_values,
             difficulty=difficulty,
             course_id=course_id,
+            unassigned_only=unassigned_only,
         )
 
         def operation(connection: sqlite3.Connection) -> tuple[list[str], int]:
@@ -338,7 +340,12 @@ class QuestionIndex:
 
     @staticmethod
     def _filters(
-        *, query: str, topic_values: Iterable[str], difficulty: str, course_id: str
+        *,
+        query: str,
+        topic_values: Iterable[str],
+        difficulty: str,
+        course_id: str,
+        unassigned_only: bool = False,
     ) -> tuple[str, list[object]]:
         clauses: list[str] = []
         parameters: list[object] = []
@@ -357,6 +364,8 @@ class QuestionIndex:
         if course_id:
             clauses.append("course_id = ?")
             parameters.append(course_id)
+        elif unassigned_only:
+            clauses.append("course_id = ''")
         return (" WHERE " + " AND ".join(clauses) if clauses else ""), parameters
 
     def _directory_signature(self) -> tuple[tuple[str, int, int], ...]:

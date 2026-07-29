@@ -105,6 +105,25 @@ class QuestionQualityScanTests(unittest.TestCase):
         bank.question_ids.assert_not_called()
         bank.get.assert_not_called()
 
+    def test_scan_can_restrict_quality_results_to_unassigned_assets(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            bank.save_many([
+                question("assigned", course_id="course-a"),
+                question("unassigned", course_id=""),
+            ])
+
+            report = scan_question_bank_quality(
+                bank,
+                unassigned_only=True,
+            )
+
+        self.assertEqual(1, report.scanned_count)
+        self.assertEqual(
+            {"unassigned"},
+            {result.question_id for result in report.results},
+        )
+
     def test_scan_batches_progress_events_but_keeps_final_count(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             bank = QuestionBank(str(Path(tmpdir) / "questions"))

@@ -51,13 +51,19 @@ def scan_question_bank_quality(
     question_bank,
     *,
     course_id: str = "",
+    unassigned_only: bool = False,
     task: TaskControl | None = None,
 ) -> QuestionQualityScanReport:
     """Validate one course scope in deterministic, cancellable question units."""
     directory = str(question_bank.directory)
     filenames = list_json_files(directory)
     total = len(filenames)
-    _report(task, "discovering_questions", total=total, detail=course_id)
+    _report(
+        task,
+        "discovering_questions",
+        total=total,
+        detail="unassigned" if unassigned_only else course_id,
+    )
     results: list[QuestionQualityResult] = []
     counts: Counter[str] = Counter()
     matched_count = 0
@@ -68,7 +74,7 @@ def scan_question_bank_quality(
         data = read_json(str(Path(directory) / filename))
         progress_detail = filename
         if not isinstance(data, dict):
-            if course_id:
+            if course_id or unassigned_only:
                 _report_progress_if_due(task, index, total, progress_detail)
                 continue
             question_id = Path(filename).stem
@@ -87,6 +93,9 @@ def scan_question_bank_quality(
             else ""
         )
         if course_id and record_course_id != course_id:
+            _report_progress_if_due(task, index, total, progress_detail)
+            continue
+        if unassigned_only and record_course_id:
             _report_progress_if_due(task, index, total, progress_detail)
             continue
         try:

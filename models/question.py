@@ -337,6 +337,7 @@ class QuestionBank:
         topic: object = None,
         difficulty: Difficulty | str | None = None,
         course_id: str | None = None,
+        unassigned_only: bool = False,
         offset: int = 0,
         limit: int = 50,
         metadata_filter: Callable[[Question], bool] | None = None,
@@ -357,6 +358,7 @@ class QuestionBank:
                 topic_values=topic_values,
                 difficulty=str(difficulty_filter or ""),
                 course_id=course_filter,
+                unassigned_only=bool(unassigned_only),
                 offset=indexed_offset,
                 limit=indexed_limit,
             )
@@ -367,6 +369,7 @@ class QuestionBank:
                 topic=topic,
                 difficulty_filter=difficulty_filter,
                 course_filter=course_filter,
+                unassigned_only=bool(unassigned_only),
                 offset=offset,
                 limit=limit,
                 metadata_filter=metadata_filter,
@@ -522,6 +525,7 @@ class QuestionBank:
         topic: object,
         difficulty_filter: str | None,
         course_filter: str,
+        unassigned_only: bool,
         offset: int,
         limit: int,
         metadata_filter: Callable[[Question], bool] | None,
@@ -533,6 +537,8 @@ class QuestionBank:
             if difficulty_filter and question.difficulty.value != difficulty_filter:
                 continue
             if course_filter and not self._matches_course(question, course_filter):
+                continue
+            if unassigned_only and self._metadata_course_id(question):
                 continue
             if metadata_filter is not None and not metadata_filter(question):
                 continue
@@ -551,6 +557,15 @@ class QuestionBank:
                     continue
             matches.append(question)
         return matches[offset:offset + limit], len(matches)
+
+    @staticmethod
+    def _metadata_course_id(question: Question) -> str:
+        metadata = question.metadata or {}
+        return (
+            str(metadata.get("course_id", "") or "").strip()
+            if isinstance(metadata, dict)
+            else ""
+        )
 
     def _topic_index_from_json(self, course_id: str | None) -> dict[str, tuple[str, str]]:
         index: dict[str, tuple[str, str]] = {}

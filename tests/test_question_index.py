@@ -73,6 +73,37 @@ class QuestionIndexTests(unittest.TestCase):
             self.assertEqual(1, reader.call_count)
             self.assertTrue((questions_dir.parent / ".question_index.sqlite3").exists())
 
+    def test_unassigned_search_uses_course_index_without_loading_other_courses(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            questions_dir = Path(tmpdir) / "questions"
+            bank = QuestionBank(str(questions_dir))
+            bank.save_many([
+                self._question(
+                    "q1",
+                    course_id="",
+                    topic="ethics",
+                    marker="unassigned",
+                ),
+                self._question(
+                    "q2",
+                    course_id="course-a",
+                    topic="ethics",
+                    marker="assigned",
+                ),
+            ])
+            bank.clear_cache()
+
+            with patch("models.question.read_json", wraps=read_json) as reader:
+                items, total = bank.search(
+                    unassigned_only=True,
+                    offset=0,
+                    limit=25,
+                )
+
+            self.assertEqual(1, total)
+            self.assertEqual(["q1"], [item.question_id for item in items])
+            self.assertEqual(1, reader.call_count)
+
     def test_external_json_change_is_detected_and_rebuilt(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             questions_dir = Path(tmpdir) / "questions"
