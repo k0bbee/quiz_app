@@ -106,6 +106,7 @@ class GenerationLaunchController:
         *,
         course_override=None,
         material_pack=None,
+        allow_review_without_ai: bool = False,
     ) -> GenerationDialogPreparation:
         settings = self._settings_provider()
         course_content, available_topics, course_project = self._course_context(
@@ -126,14 +127,19 @@ class GenerationLaunchController:
                 issue=GenerationLaunchIssue.EMPTY_EXAM_SCOPE,
             )
 
-        api_key = self._secret_provider() if self._api_key_required(settings) else ""
-        settings_error = self._settings_validator(settings, api_key)
-        if settings_error:
-            return GenerationDialogPreparation(
-                course_project=course_project,
-                issue=GenerationLaunchIssue.INVALID_AI_SETTINGS,
-                message=settings_error,
+        if not allow_review_without_ai:
+            api_key = (
+                self._secret_provider()
+                if self._api_key_required(settings)
+                else ""
             )
+            settings_error = self._settings_validator(settings, api_key)
+            if settings_error:
+                return GenerationDialogPreparation(
+                    course_project=course_project,
+                    issue=GenerationLaunchIssue.INVALID_AI_SETTINGS,
+                    message=settings_error,
+                )
 
         dialog_type = self._dialog_factory or self._default_dialog_factory()
         dialog = dialog_type(

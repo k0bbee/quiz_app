@@ -31,6 +31,92 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class GenerationConfigTests(unittest.TestCase):
+    def test_generation_dialog_restores_review_pending_draft(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=["cache"],
+        )
+        self.addCleanup(dialog.close)
+        question = Question.create_new(
+            qtype=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": "缓存恢复题",
+                    "options": ["正确", "错误"],
+                    "explanation": "解释。",
+                },
+                "en": {
+                    "stem": "Cache recovery question",
+                    "options": ["True", "False"],
+                    "explanation": "Explanation.",
+                },
+            },
+            correct_answer=True,
+            topic="cache",
+        )
+        draft = SimpleNamespace(
+            questions=(question,),
+            question_set_title="缓存恢复练习",
+            exam_plan=ExamGenerationPlan(
+                question_count=10,
+                difficulty="mixed",
+                selected_topics=("cache",),
+                topic_weights={"cache": 100},
+            ),
+            review_warnings_only=True,
+        )
+
+        dialog.restore_generation_draft(draft)
+
+        self.assertEqual([question], dialog.generated_questions)
+        self.assertEqual("缓存恢复练习", dialog.question_set_title())
+        self.assertEqual("mixed", dialog.build_exam_plan().difficulty)
+        self.assertFalse(dialog.review_partial_btn.isHidden())
+        self.assertIn("1 道题", dialog.status_label.text())
+
+    def test_generation_dialog_notifies_when_new_questions_become_durable(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=["cache"],
+        )
+        self.addCleanup(dialog.close)
+        question = Question.create_new(
+            qtype=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": "新草稿题",
+                    "options": ["正确", "错误"],
+                    "explanation": "解释。",
+                },
+                "en": {
+                    "stem": "New draft question",
+                    "options": ["True", "False"],
+                    "explanation": "Explanation.",
+                },
+            },
+            correct_answer=True,
+            topic="cache",
+        )
+        notifications = []
+        dialog.draft_changed.connect(lambda: notifications.append("changed"))
+
+        dialog._on_question_ready([question])
+
+        self.assertEqual([question], dialog.generated_questions)
+        self.assertEqual(["changed"], notifications)
+
     def test_regenerated_question_set_returns_to_library_set_tab(self):
         from ui.main_window import MainWindow
 

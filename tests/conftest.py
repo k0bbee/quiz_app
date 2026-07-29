@@ -109,6 +109,7 @@ def _isolate_qt_settings_and_secrets(request, monkeypatch):
     from core.application_services import ApplicationServices
     from core.background_task_center import BackgroundTaskCenter
     from core.current_events import CurrentEventMaterialManager
+    from core.generation_draft_store import GenerationDraftStore
     from core.mastery_overrides import MasteryOverrideStore
     from core.progress_tracker import ProgressManager
     from core.quiz_snapshot_manager import QuizSnapshotManager
@@ -131,6 +132,9 @@ def _isolate_qt_settings_and_secrets(request, monkeypatch):
             past_exam_manager=PastExamManager(root / "past-exams"),
             current_event_manager=CurrentEventMaterialManager(root / "events"),
             task_center=BackgroundTaskCenter(root / "tasks.json"),
+            generation_draft_store=GenerationDraftStore(
+                root / "generation-drafts.json"
+            ),
         )
         monkeypatch.setattr(
             settings_screen,

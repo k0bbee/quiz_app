@@ -11,7 +11,7 @@ import time
 import re
 from collections import Counter
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QTextCursor
 
 from utils.constants import topic_alias_values, topic_label, topic_value
@@ -54,6 +54,8 @@ def _compact_label_text(text: str, limit: int = 34) -> str:
 
 class AIGenerationDialog(QDialog):
     """Dialog for generating questions via AI."""
+
+    draft_changed = pyqtSignal()
 
     def __init__(
         self,
@@ -1072,6 +1074,39 @@ class AIGenerationDialog(QDialog):
         """Auto-accept clean questions and review only quality warnings."""
         self._review_warnings_only = bool(enabled)
 
+    def restore_generation_draft(self, draft) -> None:
+        """Restore reviewable questions without starting another AI request."""
+        questions = [
+            question
+            for question in (getattr(draft, "questions", ()) or ())
+            if isinstance(question, Question) and question.question_id
+        ]
+        if not questions:
+            raise ValueError("generation draft has no reviewable questions")
+        plan = getattr(draft, "exam_plan", None)
+        if isinstance(plan, ExamGenerationPlan):
+            try:
+                self.apply_exam_plan(plan)
+            except ValueError:
+                # Course scope may have changed; the questions remain reviewable.
+                pass
+        title = str(
+            getattr(draft, "question_set_title", "") or ""
+        ).strip()
+        if title:
+            self.set_title_input.setText(title)
+        self._review_warnings_only = bool(
+            getattr(draft, "review_warnings_only", False)
+        )
+        self.generated_questions = questions
+        self._generation_failed = False
+        self._generation_cancelled = False
+        self._partial_generation_error = None
+        self._partial_generation_report = None
+        self.progress_bar.setVisible(False)
+        self.generate_btn.setEnabled(True)
+        self._show_review_pending_state()
+
     def _open_exam_assistant(self):
         """Open a reviewable dialogue and apply only its confirmed plan."""
         from ui.dialogs.exam_assistant_dialog import ExamAssistantDialog
@@ -1289,6 +1324,7 @@ class AIGenerationDialog(QDialog):
         self._partial_generation_report = None
         self._retry_carryover_questions = carryover_questions
         self.generated_questions = []
+        self.draft_changed.emit()
         self._generation_started_at = time.monotonic()
         self._last_generation_progress = self.lang_manager.get_text(
             "正在启动 AI 出题任务…",
@@ -1713,6 +1749,7 @@ class AIGenerationDialog(QDialog):
         if not new_questions:
             return
         self.generated_questions.extend(new_questions)
+        self.draft_changed.emit()
         self._append_generation_event(
             self.lang_manager.get_text(
                 f"已生成 {len(new_questions)} 道新题，当前累计 {len(self.generated_questions)} 道。",
@@ -1769,6 +1806,7 @@ class AIGenerationDialog(QDialog):
         self._partial_generation_report = None
         self._retry_source_report = None
         self.generated_questions = self._merge_retry_carryover(questions)
+        self.draft_changed.emit()
         self._refresh_review_button()
         self.partial_recovery_label.setHidden(True)
         self.partial_recovery_label.clear()
@@ -1787,6 +1825,7 @@ class AIGenerationDialog(QDialog):
         if self._generation_cancelled:
             return
         self.generated_questions = self._merge_retry_carryover(questions)
+        self.draft_changed.emit()
         self._refresh_review_button()
         self._append_generation_event(
             self.lang_manager.get_text(
@@ -1838,6 +1877,7 @@ class AIGenerationDialog(QDialog):
         self.partial_recovery_label.clear()
         if retry_carryover and not self.generated_questions:
             self.generated_questions = retry_carryover
+            self.draft_changed.emit()
             self._retry_carryover_questions = []
             self._partial_generation_report = retry_source_report
             self._partial_generation_error = retry_source_report.error if retry_source_report else None
@@ -2039,6 +2079,7 @@ class AIGenerationDialog(QDialog):
                 self._show_review_pending_state()
                 return
             self.generated_questions = accepted
+            self.draft_changed.emit()
             self.accept()
             return
         self._show_review_pending_state()

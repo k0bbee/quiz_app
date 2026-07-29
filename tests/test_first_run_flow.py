@@ -9,6 +9,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication
 
 from ai.generation_config import GenerationConfig
+from ai.exam_plan import ExamGenerationPlan
 from core.first_run_flow import (
     FirstRunStage,
     FirstRunState,
@@ -261,6 +262,207 @@ class FirstRunFlowTests(unittest.TestCase):
             "开始第一次练习",
             window.first_run_screen.primary_btn.text(),
         )
+
+    def test_first_run_restores_review_pending_generation_without_new_request(self):
+        with patch(
+            "ui.main_window.MainWindow._first_run_ai_error",
+            return_value="",
+            create=True,
+        ):
+            window = MainWindow()
+        self.addCleanup(window.close)
+        project = CourseProject(
+            course_id="course-draft",
+            title="Draft Course",
+            source_folder="",
+            summary_markdown="# Draft Course",
+            summary_path="",
+            topics=[CourseTopic("io", "I/O")],
+            documents=[],
+            created_at="2026-07-29T00:00:00+00:00",
+            updated_at="2026-07-29T00:00:00+00:00",
+        )
+        window.course_manager.save(project)
+        question = Question(
+            question_id="draft-question",
+            type=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": "草稿题",
+                    "options": ["正确", "错误"],
+                    "explanation": "草稿解释",
+                },
+                "en": {
+                    "stem": "Draft question",
+                    "options": ["True", "False"],
+                    "explanation": "Draft explanation",
+                },
+            },
+            correct_answer=True,
+            topic="io",
+            metadata={"course_id": project.course_id},
+        )
+        plan = ExamGenerationPlan(
+            question_count=10,
+            difficulty="mixed",
+            selected_topics=("io",),
+            topic_weights={"io": 100},
+        )
+        window.generation_draft_store.save(
+            course_id=project.course_id,
+            questions=[question],
+            question_set_title="待审核快速复习",
+            exam_plan=plan,
+            review_warnings_only=True,
+            source="first_run",
+        )
+
+        window._refresh_first_run()
+
+        self.assertEqual(
+            FirstRunStage.REVIEW_PENDING,
+            window.first_run_screen.state.stage,
+        )
+        self.assertEqual(
+            "继续审核 1 道题",
+            window.first_run_screen.primary_btn.text(),
+        )
+
+        from ui.dialogs.ai_generation_dialog import AIGenerationDialog
+
+        dialog = AIGenerationDialog(
+            project.summary_markdown,
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=project.topics,
+            course_project=project,
+        )
+        self.addCleanup(dialog.close)
+        dialog.exec = Mock(return_value=dialog.DialogCode.Rejected)
+        dialog.start_generation_when_shown = Mock()
+        preparation = Mock(dialog=dialog, course_project=project)
+
+        with patch.object(
+            MainWindow,
+            "_prepare_generation_dialog",
+            return_value=preparation,
+        ):
+            window._on_ai_generate(
+                course_override=project,
+                initial_plan=plan,
+                auto_start=True,
+                start_after_save=True,
+                review_warnings_only=True,
+                question_set_title="新标题不应覆盖草稿",
+                draft_source="first_run",
+            )
+
+        self.assertEqual(
+            ["draft-question"],
+            [item.question_id for item in dialog.generated_questions],
+        )
+        self.assertEqual("待审核快速复习", dialog.question_set_title())
+        dialog.start_generation_when_shown.assert_not_called()
+        self.assertIsNotNone(
+            window.generation_draft_store.get(project.course_id)
+        )
+
+    def test_saving_restored_generation_removes_draft_and_creates_set(self):
+        with patch(
+            "ui.main_window.MainWindow._first_run_ai_error",
+            return_value="",
+            create=True,
+        ):
+            window = MainWindow()
+        self.addCleanup(window.close)
+        project = CourseProject(
+            course_id="course-save-draft",
+            title="Save Draft Course",
+            source_folder="",
+            summary_markdown="# Save Draft Course",
+            summary_path="",
+            topics=[CourseTopic("io", "I/O")],
+            documents=[],
+            created_at="2026-07-29T00:00:00+00:00",
+            updated_at="2026-07-29T00:00:00+00:00",
+        )
+        window.course_manager.save(project)
+        question = Question(
+            question_id="saved-draft-question",
+            type=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": "待保存题",
+                    "options": ["正确", "错误"],
+                    "explanation": "待保存解释",
+                },
+                "en": {
+                    "stem": "Question to save",
+                    "options": ["True", "False"],
+                    "explanation": "Explanation to save",
+                },
+            },
+            correct_answer=True,
+            topic="io",
+            metadata={"course_id": project.course_id},
+        )
+        plan = ExamGenerationPlan(
+            question_count=10,
+            difficulty="mixed",
+            selected_topics=("io",),
+            topic_weights={"io": 100},
+        )
+        window.generation_draft_store.save(
+            course_id=project.course_id,
+            questions=[question],
+            question_set_title="恢复后保存",
+            exam_plan=plan,
+            review_warnings_only=True,
+            source="first_run",
+        )
+
+        from ui.dialogs.ai_generation_dialog import AIGenerationDialog
+
+        dialog = AIGenerationDialog(
+            project.summary_markdown,
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=project.topics,
+            course_project=project,
+        )
+        self.addCleanup(dialog.close)
+        dialog.exec = Mock(return_value=dialog.DialogCode.Accepted)
+        preparation = Mock(dialog=dialog, course_project=project)
+
+        with patch.object(
+            MainWindow,
+            "_prepare_generation_dialog",
+            return_value=preparation,
+        ), patch("ui.main_window.QMessageBox.information"):
+            window._on_ai_generate(
+                course_override=project,
+                start_after_save=False,
+                draft_source="first_run",
+            )
+
+        self.assertIsNone(
+            window.generation_draft_store.get(project.course_id)
+        )
+        saved_sets = [
+            question_set
+            for question_set in window.set_manager.load_all()
+            if question_set.metadata.get("course_id") == project.course_id
+        ]
+        self.assertEqual(1, len(saved_sets))
+        self.assertEqual("恢复后保存", saved_sets[0].get_title("zh"))
 
     def test_auto_generation_saves_and_starts_the_new_question_set(self):
         from PyQt6.QtWidgets import QDialog

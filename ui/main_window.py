@@ -42,6 +42,7 @@ from ui.screens.results_screen import ResultsScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.settings_window import SettingsWindow
 from utils.constants import Difficulty, topic_value
+from utils.logger import warning as log_warning
 from ai.course_summary_factory import provider_requires_api_key as _provider_requires_api_key
 from ai.exam_plan import ExamGenerationPlan
 from ai.settings_validation import (
@@ -84,6 +85,11 @@ class MainWindow(QMainWindow):
         self.current_event_manager = services.current_event_manager
         self.task_center = services.task_center
         self.daily_plan_store = getattr(services, "daily_plan_store", None)
+        self.generation_draft_store = getattr(
+            services,
+            "generation_draft_store",
+            None,
+        )
         self.lang_manager = LanguageManager.instance()
         self.startup_migration_report = startup_migration_report
         self._first_run_operation = ""
@@ -770,6 +776,9 @@ class MainWindow(QMainWindow):
         progress = self._first_run_progress
         has_course = bool(self._current_course_id())
         question_count = self._first_run_question_count()
+        generation_draft = self._generation_draft(
+            self._current_course_id()
+        )
         first_run_required = (
             bool(self._first_run_operation)
             or not has_course
@@ -785,6 +794,11 @@ class MainWindow(QMainWindow):
             progress_text=str(getattr(progress, "detail", "") or ""),
             progress_current=int(getattr(progress, "current", 0) or 0),
             progress_total=int(getattr(progress, "total", 0) or 0),
+            draft_question_count=(
+                len(generation_draft.questions)
+                if generation_draft is not None
+                else 0
+            ),
         )
         self.first_run_screen.set_state(state)
         self.home_workspace.setCurrentWidget(
@@ -884,6 +898,7 @@ class MainWindow(QMainWindow):
                 start_after_save=True,
                 review_warnings_only=True,
                 question_set_title=title,
+                draft_source="first_run",
             )
         finally:
             self._first_run_operation = ""
@@ -1483,11 +1498,14 @@ class MainWindow(QMainWindow):
         topic_key = topic_value(topic_key)
         if not topic_key:
             return
-        self._on_ai_generate(initial_plan=ExamGenerationPlan(
-            question_count=10,
-            selected_topics=(topic_key,),
-            topic_weights={topic_key: 100},
-        ))
+        self._on_ai_generate(
+            initial_plan=ExamGenerationPlan(
+                question_count=10,
+                selected_topics=(topic_key,),
+                topic_weights={topic_key: 100},
+            ),
+            draft_source="progress_topic",
+        )
 
     def _start_progress_topic_quiz(self, questions: list, label: str):
         """Open QuizScreen for a progress-topic action."""
@@ -1518,6 +1536,7 @@ class MainWindow(QMainWindow):
         course_override=None,
         material_pack=None,
         purpose: str = "create",
+        allow_review_without_ai: bool = False,
     ):
         """Prepare one validated generation dialog for create or regenerate."""
         gm = self.lang_manager.get_text
@@ -1537,6 +1556,7 @@ class MainWindow(QMainWindow):
             self,
             course_override=course_override,
             material_pack=material_pack,
+            allow_review_without_ai=allow_review_without_ai,
         )
         if preparation.ok:
             return preparation
@@ -1561,20 +1581,56 @@ class MainWindow(QMainWindow):
         start_after_save: bool = False,
         review_warnings_only: bool = False,
         question_set_title: str = "",
+        draft_source: str = "manual",
     ):
         """Open the AI question generation dialog."""
         gm = self.lang_manager.get_text
+        course_manager = getattr(self, "course_manager", None)
+        draft_course = (
+            course_override
+            if course_override is not None
+            else (
+                course_manager.current()
+                if course_manager is not None
+                else None
+            )
+        )
+        course_id = str(
+            getattr(draft_course, "course_id", "") or ""
+        ).strip()
+        candidate_draft = (
+            MainWindow._generation_draft(self, course_id)
+            if material_pack is None
+            else None
+        )
+        generation_draft = (
+            candidate_draft
+            if (
+                candidate_draft is not None
+                and candidate_draft.source == draft_source
+            )
+            else None
+        )
         preparation = MainWindow._prepare_generation_dialog(
             self,
             course_override=course_override,
             material_pack=material_pack,
             purpose="create",
+            allow_review_without_ai=generation_draft is not None,
         )
         if preparation is None:
             return
         dialog = preparation.dialog
         course_project = preparation.course_project
-        if initial_plan is not None:
+        restored_draft = False
+        if (
+            generation_draft is not None
+            and hasattr(dialog, "restore_generation_draft")
+        ):
+            dialog.restore_generation_draft(generation_draft)
+            restored_draft = True
+            draft_source = generation_draft.source
+        elif initial_plan is not None:
             try:
                 dialog.apply_exam_plan(initial_plan)
             except ValueError as exc:
@@ -1595,9 +1651,13 @@ class MainWindow(QMainWindow):
                 dialog.status_label.setText(
                     prediction_prefill_status(prediction, gm)
                 )
-        if question_set_title and hasattr(dialog, "set_title_input"):
+        if (
+            not restored_draft
+            and question_set_title
+            and hasattr(dialog, "set_title_input")
+        ):
             dialog.set_title_input.setText(str(question_set_title).strip())
-        if isinstance(recovery_context, dict):
+        if not restored_draft and isinstance(recovery_context, dict):
             if hasattr(dialog, "set_title_input"):
                 title = str(recovery_context.get("question_set_title", "") or "").strip()
                 if title:
@@ -1605,11 +1665,33 @@ class MainWindow(QMainWindow):
             if hasattr(dialog, "runtime_instruction_input"):
                 instruction = str(recovery_context.get("runtime_instruction", "") or "").strip()
                 dialog.runtime_instruction_input.setPlainText(instruction)
-        if review_warnings_only:
+        if review_warnings_only and not restored_draft:
             dialog.set_review_warnings_only(True)
-        if auto_start:
+        draft_signal = getattr(dialog, "draft_changed", None)
+        if (
+            material_pack is None
+            and draft_signal is not None
+            and hasattr(draft_signal, "connect")
+        ):
+            draft_signal.connect(
+                lambda: MainWindow._sync_generation_draft(
+                    self,
+                    dialog,
+                    course_project,
+                    source=draft_source,
+                )
+            )
+        if auto_start and not restored_draft:
             dialog.start_generation_when_shown()
-        if dialog.exec() == QDialog.DialogCode.Accepted:
+        dialog_result = dialog.exec()
+        if material_pack is None:
+            MainWindow._sync_generation_draft(
+                self,
+                dialog,
+                course_project,
+                source=draft_source,
+            )
+        if dialog_result == QDialog.DialogCode.Accepted:
             questions = dialog.generated_questions
             if questions:
                 lang = self.lang_manager.current
@@ -1636,6 +1718,10 @@ class MainWindow(QMainWindow):
                         str(exc),
                     )
                     return
+                MainWindow._delete_generation_draft(
+                    self,
+                    course_project.course_id,
+                )
                 refresh_question_bank = getattr(
                     self,
                     "_on_question_bank_changed",
@@ -1665,6 +1751,64 @@ class MainWindow(QMainWindow):
                 )
                 self.navigate_to(self.SCREEN_TOPIC_SELECTION)
 
+    def _generation_draft(self, course_id: str):
+        store = vars(self).get("generation_draft_store")
+        if store is None or not course_id:
+            return None
+        try:
+            return store.get(course_id)
+        except (OSError, TypeError, ValueError) as exc:
+            log_warning(f"Failed to load generation draft: {exc}")
+            return None
+
+    def _sync_generation_draft(
+        self,
+        dialog,
+        course_project,
+        *,
+        source: str,
+    ) -> bool:
+        store = vars(self).get("generation_draft_store")
+        course_id = str(
+            getattr(course_project, "course_id", "") or ""
+        ).strip()
+        if store is None or not course_id:
+            return False
+        questions = list(
+            getattr(dialog, "generated_questions", ()) or ()
+        )
+        try:
+            if not questions:
+                store.delete(course_id)
+                return True
+            plan = dialog.build_exam_plan()
+            store.save(
+                course_id=course_id,
+                questions=questions,
+                question_set_title=dialog.question_set_title(),
+                exam_plan=plan,
+                review_warnings_only=bool(
+                    getattr(dialog, "_review_warnings_only", False)
+                ),
+                source=source,
+                task_id=str(
+                    getattr(dialog, "_generation_task_id", "") or ""
+                ),
+            )
+            return True
+        except (OSError, TypeError, ValueError) as exc:
+            log_warning(f"Failed to persist generation draft: {exc}")
+            return False
+
+    def _delete_generation_draft(self, course_id: str) -> None:
+        store = vars(self).get("generation_draft_store")
+        if store is None or not course_id:
+            return
+        try:
+            store.delete(course_id)
+        except OSError as exc:
+            log_warning(f"Failed to delete generation draft: {exc}")
+
     def _on_current_event_generation(self, course_id: str, material_pack) -> None:
         """Generate against the reviewed material pack for its selected course."""
         project = self.course_manager.get(course_id)
@@ -1689,6 +1833,7 @@ class MainWindow(QMainWindow):
             course_override=course,
             initial_plan=prediction.plan,
             prediction=prediction,
+            draft_source="predicted_exam",
         )
 
     def _on_regenerate_question_set(self, set_id: str):

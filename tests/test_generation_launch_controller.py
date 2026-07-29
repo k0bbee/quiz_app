@@ -94,6 +94,36 @@ class GenerationLaunchControllerTests(unittest.TestCase):
         self.assertEqual(GenerationLaunchIssue.EMPTY_EXAM_SCOPE, result.issue)
         self.assertIs(course, result.course_project)
 
+    def test_review_only_launch_does_not_require_secret_or_valid_ai_settings(self):
+        course = SimpleNamespace(
+            summary_markdown="# Course",
+            topics=["io"],
+            exam_scope_mode="all",
+        )
+        secret_provider = Mock(
+            side_effect=AssertionError("review must not read the API key")
+        )
+        validator = Mock(
+            side_effect=AssertionError("review must not validate AI settings")
+        )
+        controller = GenerationLaunchController(
+            settings_provider=lambda: {"ai_provider": "anthropic"},
+            course_context_provider=lambda: ("# Course", ["io"], course),
+            api_key_required=lambda _settings: True,
+            settings_validator=validator,
+            secret_provider=secret_provider,
+            dialog_factory=FakeDialog,
+        )
+
+        result = controller.prepare(
+            "parent",
+            allow_review_without_ai=True,
+        )
+
+        self.assertTrue(result.ok)
+        secret_provider.assert_not_called()
+        validator.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
