@@ -14,6 +14,7 @@ class FirstRunStage(str, Enum):
     IMPORTING = "importing"
     GENERATE = "generate"
     GENERATING = "generating"
+    REVIEW_PENDING = "review_pending"
     READY = "ready"
 
 
@@ -26,6 +27,7 @@ class FirstRunState:
     progress_current: int = 0
     progress_total: int = 0
     question_count: int = 0
+    draft_question_count: int = 0
 
 
 def build_first_run_exam_plan(course_project) -> ExamGenerationPlan:
@@ -61,6 +63,7 @@ def resolve_first_run_state(
     progress_text: str = "",
     progress_current: int = 0,
     progress_total: int = 0,
+    draft_question_count: int = 0,
 ) -> FirstRunState:
     """Resolve one visible stage from durable resources plus transient work."""
     normalized_operation = str(operation or "").strip().lower()
@@ -70,6 +73,8 @@ def resolve_first_run_state(
         stage = FirstRunStage.GENERATING
     elif has_course and int(question_count or 0) > 0:
         stage = FirstRunStage.READY
+    elif has_course and int(draft_question_count or 0) > 0:
+        stage = FirstRunStage.REVIEW_PENDING
     elif str(ai_error or "").strip():
         stage = FirstRunStage.AI_SETUP
     elif not has_course:
@@ -86,4 +91,5 @@ def resolve_first_run_state(
         progress_current=max(0, int(progress_current or 0)),
         progress_total=max(0, int(progress_total or 0)),
         question_count=max(0, int(question_count or 0)),
+        draft_question_count=max(0, int(draft_question_count or 0)),
     )

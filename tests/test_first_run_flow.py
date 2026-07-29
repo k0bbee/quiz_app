@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import QApplication
 from ai.generation_config import GenerationConfig
 from core.first_run_flow import (
     FirstRunStage,
+    FirstRunState,
     build_first_run_exam_plan,
     resolve_first_run_state,
 )
@@ -107,6 +108,31 @@ class FirstRunFlowTests(unittest.TestCase):
                 question_count=10,
             ).stage,
         )
+
+    def test_review_pending_draft_precedes_ai_setup_and_regeneration(self):
+        state = resolve_first_run_state(
+            ai_error="API key missing",
+            has_course=True,
+            question_count=0,
+            draft_question_count=4,
+        )
+
+        self.assertEqual(FirstRunStage.REVIEW_PENDING, state.stage)
+        self.assertEqual(4, state.draft_question_count)
+
+    def test_first_run_workspace_offers_resume_for_review_pending_draft(self):
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+
+        workspace.set_state(
+            FirstRunState(
+                FirstRunStage.REVIEW_PENDING,
+                draft_question_count=4,
+            )
+        )
+
+        self.assertEqual("继续审核 4 道题", workspace.primary_btn.text())
+        self.assertTrue(workspace.primary_btn.isEnabled())
 
     def test_empty_application_routes_primary_workspaces_to_one_first_run_view(self):
         with patch(

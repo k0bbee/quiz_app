@@ -175,6 +175,8 @@ class FirstRunWorkspace(QWidget):
             return "done", "done", "active"
         if stage is FirstRunStage.GENERATING:
             return "done", "done", "active"
+        if stage is FirstRunStage.REVIEW_PENDING:
+            return "done", "done", "active"
         return "done", "done", "done"
 
     def _status_text(self, status: str) -> str:
@@ -193,6 +195,10 @@ class FirstRunWorkspace(QWidget):
             FirstRunStage.IMPORTING: gm("正在准备课程…", "Preparing Course…"),
             FirstRunStage.GENERATE: gm("生成 10 道快速复习题", "Generate 10 Quick-Review Questions"),
             FirstRunStage.GENERATING: gm("正在生成练习…", "Generating Practice…"),
+            FirstRunStage.REVIEW_PENDING: gm(
+                f"继续审核 {self.state.draft_question_count} 道题",
+                f"Continue Reviewing {self.state.draft_question_count} Questions",
+            ),
             FirstRunStage.READY: gm("开始第一次练习", "Start First Practice"),
         }
         self.primary_btn.setText(labels[stage])
@@ -228,6 +234,7 @@ class FirstRunWorkspace(QWidget):
             FirstRunStage.AI_SETUP: self.configure_ai_requested,
             FirstRunStage.MATERIALS: self.choose_materials_requested,
             FirstRunStage.GENERATE: self.generate_requested,
+            FirstRunStage.REVIEW_PENDING: self.generate_requested,
             FirstRunStage.READY: self.start_requested,
         }.get(self.state.stage)
         if signal is not None:
