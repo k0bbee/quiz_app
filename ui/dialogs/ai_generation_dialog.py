@@ -75,6 +75,7 @@ class AIGenerationDialog(QDialog):
         self.task_center = task_center
         self.material_pack = material_pack
         self._generation_task_id: str | None = None
+        self._draft_source = "manual"
         self.lang_manager = LanguageManager.instance()
         self.generated_questions: list[Question] = []
         self.worker: GenerationWorker = None
@@ -1074,6 +1075,10 @@ class AIGenerationDialog(QDialog):
         """Auto-accept clean questions and review only quality warnings."""
         self._review_warnings_only = bool(enabled)
 
+    def set_draft_source(self, source: str) -> None:
+        """Keep task recovery aligned with the owning generation workflow."""
+        self._draft_source = str(source or "").strip() or "manual"
+
     def restore_generation_draft(self, draft) -> None:
         """Restore reviewable questions without starting another AI request."""
         questions = [
@@ -1448,6 +1453,7 @@ class AIGenerationDialog(QDialog):
         topic_ids = [topic_value(topic) for topic in topics]
         metadata = {
             "course_id": str(getattr(self.course_project, "course_id", "") or ""),
+            "draft_source": self._draft_source,
             "requested_count": int(count),
             "topic_ids": topic_ids,
             "provider": str(provider or ""),

@@ -1658,6 +1658,7 @@ class GenerationConfigTests(unittest.TestCase):
                 task_center=center,
             )
             dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
+            dialog.set_draft_source("predicted_exam")
             dialog.set_title_input.setText("Cache recovery set")
             dialog.runtime_instruction_input.setPlainText("Avoid storage topics")
 
@@ -1671,6 +1672,7 @@ class GenerationConfigTests(unittest.TestCase):
             self.assertEqual("question_generation", task.kind)
             self.assertEqual(15, task.metadata["requested_count"])
             self.assertEqual(["cache"], task.metadata["topic_ids"])
+            self.assertEqual("predicted_exam", task.metadata["draft_source"])
             self.assertEqual("Cache recovery set", task.metadata["question_set_title"])
             self.assertEqual("Avoid storage topics", task.metadata["runtime_instruction"])
             self.assertEqual(15, task.metadata["exam_plan"]["question_count"])
@@ -2728,23 +2730,32 @@ class GenerationConfigTests(unittest.TestCase):
             "ai_base_url": "local-agent://auto",
             "ai_model": "codex",
         }
-        course = SimpleNamespace(generation_profile={"question_count": 20})
+        course = SimpleNamespace(
+            course_id="course-cache",
+            title="Cache",
+            generation_profile={"question_count": 20},
+        )
         task_center = object()
+        workspace = Mock()
+        workspace.generation_widget.return_value = None
         shell = SimpleNamespace(
             settings_screen=SimpleNamespace(settings_snapshot=lambda: dict(settings)),
             lang_manager=LanguageManager.instance(),
             _load_generation_context=lambda: ("summary", ["cache"], course),
             task_center=task_center,
+            _generation_workspace=workspace,
+            SCREEN_GENERATION=8,
+            navigate_to=Mock(return_value=True),
         )
 
         with patch("ui.main_window._ai_generation_settings_error", return_value=""), \
              patch("core.secrets_manager.SecretsManager.instance", return_value=ForbiddenSecrets()), \
              patch("ui.dialogs.ai_generation_dialog.AIGenerationDialog") as dialog_class:
-            dialog_class.return_value.exec.return_value = QDialog.DialogCode.Rejected
-
             MainWindow._on_ai_generate(shell)
 
         dialog_class.return_value.configure_from_course_profile.assert_called_once_with(course)
+        dialog_class.return_value.exec.assert_not_called()
+        workspace.show_generation_widget.assert_called_once()
         self.assertIs(task_center, dialog_class.call_args.kwargs["task_center"])
 
     def test_predicted_generation_prefills_reviewable_plan_after_course_defaults(self):
@@ -2771,15 +2782,19 @@ class GenerationConfigTests(unittest.TestCase):
             topic_weights={"io": 100},
         )
         prediction = SimpleNamespace(plan=plan, source_count=2, warnings=("short_answer",))
+        workspace = Mock()
+        workspace.generation_widget.return_value = None
         shell = SimpleNamespace(
             settings_screen=SimpleNamespace(settings_snapshot=lambda: dict(settings)),
             lang_manager=LanguageManager.instance(),
+            _generation_workspace=workspace,
+            SCREEN_GENERATION=8,
+            navigate_to=Mock(return_value=True),
         )
 
         with patch("ui.main_window._ai_generation_settings_error", return_value=""), \
              patch("ui.dialogs.ai_generation_dialog.AIGenerationDialog") as dialog_class:
             dialog = dialog_class.return_value
-            dialog.exec.return_value = QDialog.DialogCode.Rejected
 
             MainWindow._on_ai_generate(
                 shell,
@@ -2790,6 +2805,9 @@ class GenerationConfigTests(unittest.TestCase):
 
         dialog.configure_from_course_profile.assert_called_once_with(course)
         dialog.apply_exam_plan.assert_called_once_with(plan)
+        dialog.set_draft_source.assert_called_once_with("manual")
+        dialog.exec.assert_not_called()
+        workspace.show_generation_widget.assert_called_once()
         dialog.set_title_input.setText.assert_called_once_with("Systems预测模拟卷")
         self.assertIn("2 份历史真题画像", dialog.status_label.setText.call_args.args[0])
         self.assertIn("不代表未来考题", dialog.status_label.setText.call_args.args[0])
@@ -2827,20 +2845,18 @@ class GenerationConfigTests(unittest.TestCase):
                 "ai_base_url": "local-agent://auto",
                 "ai_model": "codex",
             }
-            navigated = {}
-
             class FakeDialog:
                 generated_questions = [question]
                 diff_combo = SimpleNamespace(currentData=lambda: "medium")
 
                 def __init__(self, *args, **kwargs):
-                    pass
+                    self.accepted = Mock()
+                    self.rejected = Mock()
+                    self.show_save_error = Mock()
+                    self.deleteLater = Mock()
 
                 def configure_from_course_profile(self, course_project):
                     pass
-
-                def exec(self):
-                    return QDialog.DialogCode.Accepted
 
                 def _build_generation_config(self):
                     return GenerationConfig(topic_weights={"cache": 100})
@@ -2848,14 +2864,20 @@ class GenerationConfigTests(unittest.TestCase):
                 def question_set_title(self):
                     return "AI 事务测试"
 
+            workspace = Mock()
+            workspace.generation_widget.return_value = None
+            navigate_to = Mock(return_value=True)
             shell = SimpleNamespace(
                 settings_screen=SimpleNamespace(settings_snapshot=lambda: dict(settings)),
                 lang_manager=LanguageManager.instance(),
                 question_bank=question_bank,
                 set_manager=set_manager,
                 SCREEN_TOPIC_SELECTION=1,
+                SCREEN_GENERATION=8,
+                _generation_workspace=workspace,
                 _load_generation_context=lambda: ("summary", ["cache"], None),
-                navigate_to=lambda screen: navigated.setdefault("screen", screen),
+                navigate_to=navigate_to,
+                _on_question_bank_changed=Mock(),
             )
 
             with patch("ui.main_window._ai_generation_settings_error", return_value=""), \
@@ -2863,10 +2885,16 @@ class GenerationConfigTests(unittest.TestCase):
                  patch.object(set_manager, "save", return_value=False), \
                  patch("ui.main_window.QMessageBox.critical") as critical:
                 MainWindow._on_ai_generate(shell)
+                dialog = workspace.show_generation_widget.call_args.args[0]
+                dialog.accepted.connect.call_args.args[0]()
 
-            self.assertTrue(critical.called)
+            critical.assert_not_called()
+            dialog.show_save_error.assert_called_once()
             self.assertIsNone(question_bank.get(question.question_id))
-            self.assertEqual({}, navigated)
+            navigate_to.assert_called_once_with(
+                8,
+                allow_first_run_redirect=False,
+            )
 
 
 if __name__ == "__main__":

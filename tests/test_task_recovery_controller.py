@@ -31,16 +31,23 @@ class TaskRecoveryControllerTests(unittest.TestCase):
         dependencies.update(overrides)
         return TaskRecoveryController(**dependencies)
 
-    def test_open_generation_task_only_navigates_to_course_page(self):
+    def test_open_generation_task_returns_to_course_generation_workspace(self):
         snapshot = SimpleNamespace(
             kind="question_generation",
-            metadata={"course_id": "missing-course"},
+            metadata={"course_id": "course-1", "draft_source": "manual"},
+        )
+        course = object()
+        course_manager = SimpleNamespace(
+            get=Mock(return_value=course),
+            current=Mock(return_value=None),
+            set_current=Mock(return_value=True),
         )
         navigate = Mock(return_value=True)
         get_course_screen = Mock()
-        generate_questions = Mock()
+        generate_questions = Mock(return_value=True)
         controller = self._controller(
             snapshot,
+            course_manager=course_manager,
             navigate=navigate,
             get_course_screen=get_course_screen,
             generate_questions=generate_questions,
@@ -49,9 +56,27 @@ class TaskRecoveryControllerTests(unittest.TestCase):
         opened = controller.open_page("task-1")
 
         self.assertTrue(opened)
-        navigate.assert_called_once_with(1)
+        navigate.assert_not_called()
         get_course_screen.assert_not_called()
-        generate_questions.assert_not_called()
+        generate_questions.assert_called_once_with(
+            course_override=course,
+            recovery_context=snapshot.metadata,
+            draft_source="manual",
+            present_error=False,
+        )
+
+    def test_open_generation_task_with_deleted_course_uses_course_recovery_page(self):
+        snapshot = SimpleNamespace(
+            kind="question_generation",
+            metadata={"course_id": "deleted-course"},
+        )
+        navigate = Mock(return_value=True)
+        controller = self._controller(snapshot, navigate=navigate)
+
+        opened = controller.open_page("task-1")
+
+        self.assertTrue(opened)
+        navigate.assert_called_once_with(1)
 
     def test_retry_rejects_incomplete_generation_metadata(self):
         snapshot = SimpleNamespace(
@@ -119,23 +144,22 @@ class TaskRecoveryControllerTests(unittest.TestCase):
             current=Mock(return_value=None),
             set_current=Mock(return_value=True),
         )
-        course_screen = SimpleNamespace(restore_task_context=Mock())
         course_changed = Mock()
-        generate_questions = Mock()
+        generate_questions = Mock(return_value=True)
         controller = self._controller(
             snapshot,
             course_manager=course_manager,
             course_changed=course_changed,
-            get_course_screen=Mock(return_value=course_screen),
             generate_questions=generate_questions,
         )
+        navigate = controller._navigate
 
         restored = controller.retry("task-1")
 
         self.assertTrue(restored)
+        navigate.assert_not_called()
         course_manager.set_current.assert_called_once_with("course-1")
         course_changed.assert_called_once_with()
-        course_screen.restore_task_context.assert_called_once_with(snapshot)
         kwargs = generate_questions.call_args.kwargs
         self.assertIs(course, kwargs["course_override"])
         self.assertEqual(6, kwargs["initial_plan"].question_count)

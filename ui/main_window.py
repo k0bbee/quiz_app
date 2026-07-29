@@ -36,6 +36,7 @@ from config import APP_NAME, APP_NAME_EN
 
 from ui.screens.home_screen import HomeScreen
 from ui.screens.first_run_workspace import FirstRunWorkspace
+from ui.screens.generation_workspace import GenerationWorkspace
 from ui.screens.topic_selection_screen import TopicSelectionScreen
 from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
@@ -63,6 +64,7 @@ class MainWindow(QMainWindow):
     SCREEN_COURSES = 5
     SCREEN_QUESTION_BANK = 6
     SCREEN_PAST_EXAMS = 7
+    SCREEN_GENERATION = 8
 
     def __init__(
         self,
@@ -153,8 +155,9 @@ class MainWindow(QMainWindow):
         self._course_screen = None
         self._question_bank_screen = None
         self._past_exam_screen = None
+        self._generation_workspace = None
 
-        # Management screens 6-8 are lazily created on first access.
+        # Secondary workspaces are lazily created on first access.
         self.stack.addWidget(self.home_workspace)    # 0
         self.stack.addWidget(self.topic_screen)       # 1
         self.stack.addWidget(self.quiz_screen)        # 2
@@ -165,6 +168,7 @@ class MainWindow(QMainWindow):
             (self.SCREEN_COURSES, "courses"),
             (self.SCREEN_QUESTION_BANK, "questionBank"),
             (self.SCREEN_PAST_EXAMS, "pastExams"),
+            (self.SCREEN_GENERATION, "generation"),
         ):
             placeholder = QWidget()
             placeholder.setObjectName(f"{name}WorkspacePlaceholder")
@@ -431,6 +435,16 @@ class MainWindow(QMainWindow):
             )
         return self._past_exam_screen
 
+    def _get_generation_workspace(self):
+        """Lazy-init the persistent course-owned generation workspace."""
+        if self._generation_workspace is None:
+            self._generation_workspace = GenerationWorkspace()
+            self._install_workspace(
+                self.SCREEN_GENERATION,
+                self._generation_workspace,
+            )
+        return self._generation_workspace
+
     def _install_workspace(self, index: int, screen: QWidget) -> None:
         """Replace one fixed-route placeholder without shifting other routes."""
         placeholder = self._workspace_placeholders.pop(index, None)
@@ -603,6 +617,8 @@ class MainWindow(QMainWindow):
             self._get_question_bank_screen()
         elif screen_index == self.SCREEN_PAST_EXAMS:
             self._get_past_exam_screen()
+        elif screen_index == self.SCREEN_GENERATION:
+            self._get_generation_workspace()
         self.navigation_router.navigate(screen_index, remember=remember)
         # Refresh data on certain screens
         if screen_index == self.SCREEN_TOPIC_SELECTION:
@@ -654,6 +670,7 @@ class MainWindow(QMainWindow):
             self.SCREEN_RESULTS: self.learning_nav_btn,
             self.SCREEN_PROGRESS: self.learning_nav_btn,
             self.SCREEN_COURSES: self.courses_nav_btn,
+            self.SCREEN_GENERATION: self.courses_nav_btn,
             self.SCREEN_QUESTION_BANK: self.library_nav_btn,
             self.SCREEN_PAST_EXAMS: self.library_nav_btn,
         }.get(current)
@@ -686,6 +703,7 @@ class MainWindow(QMainWindow):
             self.SCREEN_RESULTS: ("练习结果", "Results"),
             self.SCREEN_PROGRESS: ("学习", "Study"),
             self.SCREEN_COURSES: ("课程", "Courses"),
+            self.SCREEN_GENERATION: ("生成与审核", "Generate and Review"),
             self.SCREEN_QUESTION_BANK: ("题库", "Question Bank"),
             self.SCREEN_PAST_EXAMS: ("题库", "Question Bank"),
         }
@@ -1697,7 +1715,17 @@ class MainWindow(QMainWindow):
         draft_source: str = "manual",
         present_error: bool = True,
     ):
-        """Open the AI question generation dialog."""
+        """Open or resume AI generation in the persistent course workspace."""
+        existing_workspace = vars(self).get("_generation_workspace")
+        if (
+            existing_workspace is not None
+            and existing_workspace.generation_widget() is not None
+        ):
+            self.navigate_to(
+                self.SCREEN_GENERATION,
+                allow_first_run_redirect=False,
+            )
+            return True
         configured = MainWindow._configure_generation_dialog(
             self,
             course_override=course_override,
@@ -1711,11 +1739,51 @@ class MainWindow(QMainWindow):
             present_error=present_error,
         )
         if configured is None:
-            return
+            return False
         dialog, course_project, restored_draft, draft_source = configured
+        dialog.accepted.connect(
+            lambda: MainWindow._on_generation_workspace_accepted(
+                self,
+                dialog,
+                course_project,
+                draft_source=draft_source,
+                material_pack=material_pack,
+                start_after_save=start_after_save,
+            )
+        )
+        dialog.rejected.connect(
+            lambda: MainWindow._on_generation_workspace_rejected(
+                self,
+                dialog,
+                course_project,
+                draft_source=draft_source,
+                material_pack=material_pack,
+            )
+        )
+        workspace = MainWindow._get_generation_workspace(self)
+        workspace.show_generation_widget(
+            dialog,
+            course_id=str(getattr(course_project, "course_id", "") or ""),
+            course_title=str(getattr(course_project, "title", "") or ""),
+        )
+        self.navigate_to(
+            self.SCREEN_GENERATION,
+            allow_first_run_redirect=False,
+        )
         if auto_start and not restored_draft:
             dialog.start_generation_when_shown()
-        dialog_result = dialog.exec()
+        return True
+
+    def _on_generation_workspace_accepted(
+        self,
+        dialog,
+        course_project,
+        *,
+        draft_source: str,
+        material_pack=None,
+        start_after_save: bool = False,
+    ) -> None:
+        """Publish reviewed questions while retaining the surface on failure."""
         if material_pack is None:
             MainWindow._sync_generation_draft(
                 self,
@@ -1723,14 +1791,46 @@ class MainWindow(QMainWindow):
                 course_project,
                 source=draft_source,
             )
-        if dialog_result == QDialog.DialogCode.Accepted:
-            MainWindow._save_generated_dialog(
+        saved = MainWindow._save_generated_dialog(
+            self,
+            dialog,
+            course_project,
+            material_pack=material_pack,
+            start_after_save=start_after_save,
+            present_error=False,
+        )
+        if not saved:
+            MainWindow._get_generation_workspace(self).show_generation_widget(
+                dialog,
+                course_id=str(getattr(course_project, "course_id", "") or ""),
+                course_title=str(getattr(course_project, "title", "") or ""),
+            )
+            return
+        MainWindow._get_generation_workspace(self).clear_generation_widget(dialog)
+        dialog.deleteLater()
+
+    def _on_generation_workspace_rejected(
+        self,
+        dialog,
+        course_project,
+        *,
+        draft_source: str,
+        material_pack=None,
+    ) -> None:
+        """Leave generation without discarding a reviewable course draft."""
+        if material_pack is None:
+            MainWindow._sync_generation_draft(
                 self,
                 dialog,
                 course_project,
-                material_pack=material_pack,
-                start_after_save=start_after_save,
+                source=draft_source,
             )
+        MainWindow._get_generation_workspace(self).clear_generation_widget(dialog)
+        dialog.deleteLater()
+        self.navigate_to(
+            self.SCREEN_COURSES,
+            allow_first_run_redirect=False,
+        )
 
     def _configure_generation_dialog(
         self,
@@ -1830,6 +1930,9 @@ class MainWindow(QMainWindow):
                 dialog.runtime_instruction_input.setPlainText(instruction)
         if review_warnings_only and not restored_draft:
             dialog.set_review_warnings_only(True)
+        set_draft_source = getattr(dialog, "set_draft_source", None)
+        if callable(set_draft_source):
+            set_draft_source(draft_source)
         draft_signal = getattr(dialog, "draft_changed", None)
         if (
             material_pack is None

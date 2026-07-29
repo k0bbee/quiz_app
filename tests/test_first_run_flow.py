@@ -546,6 +546,7 @@ class FirstRunFlowTests(unittest.TestCase):
                 start_after_save=False,
                 draft_source="first_run",
             )
+            dialog.accept()
 
         self.assertIsNone(
             window.generation_draft_store.get(project.course_id)
@@ -559,8 +560,6 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual("恢复后保存", saved_sets[0].get_title("zh"))
 
     def test_auto_generation_saves_and_starts_the_new_question_set(self):
-        from PyQt6.QtWidgets import QDialog
-
         from ui.main_window import MainWindow
 
         question = Question(
@@ -594,7 +593,6 @@ class FirstRunFlowTests(unittest.TestCase):
             metadata={"course_id": "course-first-run"},
         )
         dialog = Mock()
-        dialog.exec.return_value = QDialog.DialogCode.Accepted
         dialog.generated_questions = [question]
         dialog.diff_combo.currentData.return_value = "mixed"
         dialog._build_generation_config.return_value = GenerationConfig(
@@ -610,6 +608,9 @@ class FirstRunFlowTests(unittest.TestCase):
         shell.question_bank = Mock()
         shell.set_manager = Mock()
         shell.SCREEN_TOPIC_SELECTION = 1
+        shell.SCREEN_GENERATION = 8
+        shell._generation_workspace = Mock()
+        shell._generation_workspace.generation_widget.return_value = None
         plan = build_first_run_exam_plan(
             CourseProject(
                 course_id="course-first-run",
@@ -643,11 +644,13 @@ class FirstRunFlowTests(unittest.TestCase):
                 review_warnings_only=True,
                 question_set_title="操作系统快速复习",
             )
+            dialog.accepted.connect.call_args.args[0]()
 
         dialog.apply_exam_plan.assert_called_once_with(plan)
         dialog.set_review_warnings_only.assert_called_once_with(True)
         dialog.start_generation_when_shown.assert_called_once_with()
         dialog.set_title_input.setText.assert_called_once_with("操作系统快速复习")
+        dialog.exec.assert_not_called()
         shell._on_question_bank_changed.assert_called_once_with()
         shell._on_study_quiz_start.assert_called_once()
         started_intent, started_question_ids = (

@@ -49,16 +49,30 @@ class TaskRecoveryController:
         if snapshot is None:
             return False
         destination = task_destination(snapshot.kind)
-        self._activate_course(self._metadata(snapshot))
+        metadata = self._metadata(snapshot)
+        course_id = self._activate_course(metadata)
 
         if destination == "settings_data":
             self._open_settings("data")
             return True
+        if destination == "generation":
+            course = (
+                self.course_manager.get(course_id)
+                if course_id
+                else self.course_manager.current()
+            )
+            if course is None:
+                return self._navigate(self._courses_screen_index) is not False
+            return self._generate_questions(
+                course_override=course,
+                recovery_context=metadata,
+                draft_source=str(metadata.get("draft_source", "") or "manual"),
+                present_error=False,
+            ) is not False
         screens = {
             "courses": self._courses_screen_index,
             "past_exams": self._past_exams_screen_index,
             "question_bank": self._question_bank_screen_index,
-            "generation": self._courses_screen_index,
         }
         screen = screens.get(destination)
         return screen is not None and self._navigate(screen) is not False
@@ -108,15 +122,12 @@ class TaskRecoveryController:
             )
             if course is None:
                 return self._navigate(self._courses_screen_index) is not False
-            if self._navigate(self._courses_screen_index) is False:
-                return False
-            self._get_course_screen().restore_task_context(snapshot)
-            self._generate_questions(
+            return self._generate_questions(
                 course_override=course,
                 initial_plan=generation_plan_from_task_metadata(metadata),
                 recovery_context=metadata,
-            )
-            return True
+                draft_source=str(metadata.get("draft_source", "") or "manual"),
+            ) is not False
         return False
 
     def _snapshot(self, task_id: str):

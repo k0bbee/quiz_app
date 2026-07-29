@@ -134,7 +134,8 @@ class UiThemeTests(unittest.TestCase):
         self.assertIsNone(window._course_screen)
         self.assertIsNone(window._question_bank_screen)
         self.assertIsNone(window._past_exam_screen)
-        self.assertEqual(8, window.stack.count())
+        self.assertIsNone(window._generation_workspace)
+        self.assertEqual(9, window.stack.count())
 
         self.assertTrue(window.navigate_to(window.SCREEN_QUESTION_BANK))
         self.assertEqual(window.SCREEN_QUESTION_BANK, window.stack.currentIndex())
@@ -146,6 +147,11 @@ class UiThemeTests(unittest.TestCase):
         self.assertEqual(window.SCREEN_PAST_EXAMS, window.stack.currentIndex())
         self.assertIsNone(window._course_screen)
         self.assertIsNotNone(window._past_exam_screen)
+
+        self.assertTrue(window.navigate_to(window.SCREEN_GENERATION))
+        self.assertEqual(window.SCREEN_GENERATION, window.stack.currentIndex())
+        self.assertIsNotNone(window._generation_workspace)
+        self.assertIsNone(window._generation_workspace.generation_widget())
 
     def test_stylesheet_font_scaling_is_based_on_original_sizes(self):
         from ui.font_scale import scale_stylesheet_font_sizes
