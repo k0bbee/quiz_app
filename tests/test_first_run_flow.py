@@ -587,6 +587,59 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual(question_set.questions, started_question_ids)
         information.assert_not_called()
 
+    def test_embedded_generation_save_failure_stays_on_generation_surface(self):
+        question = Question(
+            question_id="unsaved-inline-question",
+            type=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": "合同依法成立。",
+                    "options": ["正确", "错误"],
+                    "explanation": "依法成立的合同受法律保护。",
+                },
+                "en": {
+                    "stem": "A contract is formed according to law.",
+                    "options": ["True", "False"],
+                    "explanation": "A lawfully formed contract is protected.",
+                },
+            },
+            correct_answer=True,
+            topic="contract",
+            metadata={"course_id": "course-save-failure"},
+        )
+        dialog = Mock(
+            generated_questions=[question],
+            diff_combo=Mock(),
+        )
+        dialog.diff_combo.currentData.return_value = "mixed"
+        dialog._build_generation_config.return_value = GenerationConfig(
+            topic_weights={"contract": 100},
+        )
+        dialog.question_set_title.return_value = "合同法快速复习"
+        course = Mock(course_id="course-save-failure", title="合同法")
+        shell = Mock(
+            lang_manager=LanguageManager.instance(),
+            question_bank=Mock(),
+            set_manager=Mock(),
+        )
+
+        with patch(
+            "ui.main_window.persist_new_question_set",
+            side_effect=RuntimeError("disk full"),
+        ), patch("ui.main_window.QMessageBox.critical") as critical:
+            saved = MainWindow._save_generated_dialog(
+                shell,
+                dialog,
+                course,
+                start_after_save=True,
+                present_error=False,
+            )
+
+        self.assertFalse(saved)
+        critical.assert_not_called()
+        dialog.show_save_error.assert_called_once_with("disk full")
+
     def test_first_run_generate_uses_default_plan_without_configuration_step(self):
         with patch(
             "ui.main_window.MainWindow._first_run_ai_error",

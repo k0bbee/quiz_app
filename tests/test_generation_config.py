@@ -31,6 +31,45 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class GenerationConfigTests(unittest.TestCase):
+    def test_generation_dialog_keeps_review_action_after_save_error(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=["contract"],
+        )
+        self.addCleanup(dialog.close)
+        dialog.generated_questions = [
+            Question.create_new(
+                qtype=QuestionType.TRUE_FALSE,
+                difficulty=Difficulty.EASY,
+                bilingual={
+                    "zh": {
+                        "stem": "合同题",
+                        "options": ["正确", "错误"],
+                        "explanation": "解释。",
+                    },
+                    "en": {
+                        "stem": "Contract question",
+                        "options": ["True", "False"],
+                        "explanation": "Explanation.",
+                    },
+                },
+                correct_answer=True,
+                topic="contract",
+            )
+        ]
+
+        dialog.show_save_error("disk full")
+
+        self.assertFalse(dialog.review_partial_btn.isHidden())
+        self.assertTrue(dialog.review_partial_btn.isEnabled())
+        self.assertIn("disk full", dialog.status_label.text())
+        self.assertIn("仍保留", dialog.status_label.text())
+
     def test_generation_dialog_restores_review_pending_draft(self):
         dialog = AIGenerationDialog(
             "course content",

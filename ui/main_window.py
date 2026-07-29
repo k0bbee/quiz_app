@@ -953,11 +953,9 @@ class MainWindow(QMainWindow):
             dialog,
             course_project,
             start_after_save=True,
+            present_error=False,
         )
         if not saved:
-            show_pending = getattr(dialog, "_show_review_pending_state", None)
-            if callable(show_pending):
-                show_pending()
             self.first_run_screen.show_generation_widget(dialog)
             return
         self.first_run_screen.clear_generation_widget(dialog)
@@ -1823,6 +1821,7 @@ class MainWindow(QMainWindow):
         *,
         material_pack=None,
         start_after_save: bool = False,
+        present_error: bool = True,
     ) -> bool:
         """Persist accepted generation output from modal or embedded surfaces."""
         questions = list(getattr(dialog, "generated_questions", ()) or ())
@@ -1847,11 +1846,16 @@ class MainWindow(QMainWindow):
                 questions,
             )
         except RuntimeError as exc:
-            QMessageBox.critical(
-                self if isinstance(self, QWidget) else None,
-                gm("保存失败", "Save Failed"),
-                str(exc),
-            )
+            if present_error:
+                QMessageBox.critical(
+                    self if isinstance(self, QWidget) else None,
+                    gm("保存失败", "Save Failed"),
+                    str(exc),
+                )
+            else:
+                show_save_error = getattr(dialog, "show_save_error", None)
+                if callable(show_save_error):
+                    show_save_error(str(exc))
             return False
         MainWindow._delete_generation_draft(
             self,

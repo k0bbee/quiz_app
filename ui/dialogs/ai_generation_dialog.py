@@ -2011,6 +2011,19 @@ class AIGenerationDialog(QDialog):
             f"Review paused; {count} question(s) remain unsaved.",
         ))
 
+    def show_save_error(self, message: str) -> None:
+        """Keep accepted questions reviewable after persistence fails."""
+        self._show_review_pending_state()
+        detail = str(message or "").strip()
+        self.status_label.setObjectName("errorLabel")
+        self.status_label.setText(self.lang_manager.get_text(
+            f"保存失败：{detail}。题目仍保留，可再次审核并保存。",
+            f"Save failed: {detail}. Questions are still available to review "
+            "and save again.",
+        ))
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+
     def _review_generated_questions(self) -> None:
         if not self.generated_questions:
             return
