@@ -1,0 +1,23 @@
+name: Temporary PyQt Wheels 20260729
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  export-wheels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download PyQt wheels
+        run: |
+          mkdir -p wheels
+          python -m pip download --only-binary=:all: --dest wheels PyQt6
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: pyqt6-linux-wheels-20260729
+          path: wheels
+          retention-days: 1
