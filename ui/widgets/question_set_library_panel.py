@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from core.language_manager import LanguageManager
+from core.library_scope import LibraryAssetScope, LibraryScopeKind
 from models.question_set import SetManager
 from utils.constants import topic_label
 
@@ -47,6 +48,7 @@ class QuestionSetLibraryPanel(QWidget):
         self.progress_manager = progress_manager
         self.lang_manager = LanguageManager.instance()
         self._current_course_id = ""
+        self._asset_scope: LibraryAssetScope | None = None
         self._all_sets = []
         self.search_debounce_timer = QTimer(self)
         self.search_debounce_timer.setSingleShot(True)
@@ -143,9 +145,19 @@ class QuestionSetLibraryPanel(QWidget):
 
     def set_current_course(self, course_id: str | None) -> None:
         course_id = str(course_id or "").strip()
-        if course_id == self._current_course_id:
+        scope = LibraryAssetScope.course(course_id) if course_id else None
+        self.set_asset_scope(scope)
+
+    def set_asset_scope(self, scope: LibraryAssetScope | None) -> None:
+        if scope == self._asset_scope:
             return
-        self._current_course_id = course_id
+        self._asset_scope = scope
+        self._current_course_id = (
+            scope.course_id
+            if scope is not None
+            and scope.kind is LibraryScopeKind.COURSE
+            else ""
+        )
         self.refresh()
 
     def refresh(self) -> None:
@@ -332,6 +344,8 @@ class QuestionSetLibraryPanel(QWidget):
             item.setSelected(item.data(self.SET_ID_ROLE) in wanted)
 
     def _matches_current_course(self, question_set) -> bool:
+        if self._asset_scope is not None:
+            return self._asset_scope.matches(question_set)
         source_course_id = str(
             (question_set.metadata or {}).get("course_id", "") or ""
         )

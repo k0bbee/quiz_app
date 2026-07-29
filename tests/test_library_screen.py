@@ -5,24 +5,86 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
-from models.course_project import CourseProjectManager
-from models.question import QuestionBank
+from models.course_project import CourseProject, CourseProjectManager
+from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
-from utils.constants import Difficulty
+from utils.constants import Difficulty, QuestionType
 
 
 _APP = QApplication.instance() or QApplication([])
 
 
 class LibraryScreenTests(unittest.TestCase):
+    @staticmethod
+    def _project(course_id: str, title: str, *, status: str = "active"):
+        return CourseProject(
+            course_id=course_id,
+            title=title,
+            source_folder="",
+            summary_markdown=f"# {title}",
+            summary_path="",
+            topics=[],
+            documents=[],
+            created_at="2026-07-29T00:00:00+00:00",
+            updated_at="2026-07-29T00:00:00+00:00",
+            status=status,
+        )
+
+    @staticmethod
+    def _question(question_id: str, course_id: str = ""):
+        question = Question(
+            question_id=question_id,
+            type=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": question_id,
+                    "options": ["正确", "错误"],
+                    "explanation": "",
+                },
+                "en": {
+                    "stem": question_id,
+                    "options": ["True", "False"],
+                    "explanation": "",
+                },
+            },
+            correct_answer=True,
+            topic="general",
+        )
+        if course_id:
+            question.metadata["course_id"] = course_id
+        return question
+
+    @staticmethod
+    def _visible_question_ids(screen) -> set[str]:
+        model = screen.question_screen.question_table_model
+        return {
+            str(model.index(row, 0).data(Qt.ItemDataRole.UserRole))
+            for row in range(model.rowCount())
+        }
+
+    @staticmethod
+    def _visible_set_ids(screen) -> set[str]:
+        panel = screen.set_panel
+        return {
+            str(panel.set_list.item(row).data(panel.SET_ID_ROLE))
+            for row in range(panel.set_list.count())
+        }
+
     def test_library_separates_question_records_from_question_set_assets(self):
         from ui.screens.library_screen import LibraryScreen
 
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             set_manager = SetManager(str(root / "sets"))
+            course_manager = CourseProjectManager(str(root / "courses"))
+            course_manager.save(
+                self._project("course-os", "Operating Systems"),
+                make_current=True,
+            )
             question_set = QuestionSet.create_new(
                 title={"zh": "操作系统复习", "en": "OS Review"},
                 description={"zh": "", "en": ""},
@@ -35,7 +97,7 @@ class LibraryScreenTests(unittest.TestCase):
             screen = LibraryScreen(
                 QuestionBank(str(root / "questions")),
                 set_manager=set_manager,
-                course_manager=CourseProjectManager(str(root / "courses")),
+                course_manager=course_manager,
             )
             self.addCleanup(screen.close)
 
@@ -70,6 +132,113 @@ class LibraryScreenTests(unittest.TestCase):
                 screen.set_panel.delete_btn,
             ):
                 self.assertIsNotNone(button)
+
+    def test_library_uses_one_explicit_scope_for_questions_and_sets(self):
+        from ui.screens.library_screen import LibraryScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            course_manager = CourseProjectManager(str(root / "courses"))
+            active = self._project("course-active", "Active Course")
+            archived = self._project(
+                "course-archived",
+                "Archived Course",
+                status="archived",
+            )
+            self.assertTrue(course_manager.save(active, make_current=True))
+            self.assertTrue(course_manager.save(archived, make_current=False))
+            question_bank = QuestionBank(str(root / "questions"))
+            question_bank.save_many([
+                self._question("q-active", active.course_id),
+                self._question("q-archived", archived.course_id),
+                self._question("q-unassigned"),
+            ])
+            set_manager = SetManager(str(root / "sets"))
+            for set_id, course_id, question_id in (
+                ("set-active", active.course_id, "q-active"),
+                ("set-archived", archived.course_id, "q-archived"),
+                ("set-unassigned", "", "q-unassigned"),
+            ):
+                question_set = QuestionSet.create_new(
+                    title={"zh": set_id, "en": set_id},
+                    description={"zh": "", "en": ""},
+                    topics=["general"],
+                    question_ids=[question_id],
+                )
+                question_set.set_id = set_id
+                if course_id:
+                    question_set.metadata["course_id"] = course_id
+                set_manager.save(question_set)
+            screen = LibraryScreen(
+                question_bank,
+                set_manager=set_manager,
+                course_manager=course_manager,
+            )
+            self.addCleanup(screen.close)
+
+            screen.set_current_course(active.course_id)
+
+            self.assertTrue(screen.active_scope_btn.isChecked())
+            self.assertEqual(
+                {"q-active"},
+                self._visible_question_ids(screen),
+            )
+            self.assertEqual(
+                {"set-active"},
+                self._visible_set_ids(screen),
+            )
+
+            screen.archived_scope_btn.click()
+
+            self.assertEqual(archived.course_id, screen.current_scope.course_id)
+            self.assertEqual(
+                {"q-archived"},
+                self._visible_question_ids(screen),
+            )
+            self.assertEqual(
+                {"set-archived"},
+                self._visible_set_ids(screen),
+            )
+
+            screen.unassigned_scope_btn.click()
+
+            self.assertEqual("unassigned", screen.current_scope.kind.value)
+            self.assertEqual(
+                {"q-unassigned"},
+                self._visible_question_ids(screen),
+            )
+            self.assertEqual(
+                {"set-unassigned"},
+                self._visible_set_ids(screen),
+            )
+
+    def test_library_can_open_one_archived_course_directly(self):
+        from ui.screens.library_screen import LibraryScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            course_manager = CourseProjectManager(str(root / "courses"))
+            archived = self._project(
+                "course-archived",
+                "Archived Course",
+                status="archived",
+            )
+            self.assertTrue(course_manager.save(archived, make_current=False))
+            screen = LibraryScreen(
+                QuestionBank(str(root / "questions")),
+                set_manager=SetManager(str(root / "sets")),
+                course_manager=course_manager,
+            )
+            self.addCleanup(screen.close)
+
+            screen.show_course_assets(archived.course_id)
+
+            self.assertTrue(screen.archived_scope_btn.isChecked())
+            self.assertEqual(archived.course_id, screen.current_scope.course_id)
+            self.assertEqual(
+                archived.course_id,
+                screen.course_scope_combo.currentData(),
+            )
 
 
 if __name__ == "__main__":

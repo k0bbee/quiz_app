@@ -522,7 +522,7 @@ class MockExamExporterTests(unittest.TestCase):
             self.assertEqual("期末强化题集", renamed.get_title("en"))
             self.assertIn("期末强化题集", screen.set_list.item(0).text())
 
-    def test_topic_selection_screen_filters_generated_sets_by_current_course(self):
+    def test_question_set_library_keeps_unassigned_sets_out_of_course_scope(self):
         from models.question_set import SetManager
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -547,7 +547,7 @@ class MockExamExporterTests(unittest.TestCase):
                 screen.set_list.item(row).data(Qt.ItemDataRole.UserRole)
                 for row in range(screen.set_list.count())
             }
-            self.assertEqual({"set-course-a", "set-manual"}, visible_ids)
+            self.assertEqual({"set-course-a"}, visible_ids)
 
     def test_topic_selection_screen_shows_current_course_context(self):
         from models.question_set import SetManager

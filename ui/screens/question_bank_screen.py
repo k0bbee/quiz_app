@@ -23,6 +23,7 @@ from PyQt6.QtCore import (
 from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
 from core.background_task_bridge import BackgroundTaskBridge
 from core.language_manager import LanguageManager
+from core.library_scope import LibraryAssetScope, LibraryScopeKind
 from core.question_bank_maintenance import backfill_source_refs_from_course, remove_question_from_sets
 from core.question_quality_scan import scan_question_bank_quality
 from core.question_validation import validate_question_quality
@@ -50,6 +51,7 @@ class QuestionQualityScanWorker(QThread):
         question_bank,
         *,
         course_id: str = "",
+        unassigned_only: bool = False,
         task_center=None,
         task_id: str = "",
         parent=None,
@@ -57,6 +59,7 @@ class QuestionQualityScanWorker(QThread):
         super().__init__(parent)
         self.question_bank = question_bank
         self.course_id = str(course_id or "")
+        self.unassigned_only = bool(unassigned_only)
         self.task_id = str(task_id or "")
         self._bridge = (
             BackgroundTaskBridge(task_center, self.task_id)
@@ -81,6 +84,7 @@ class QuestionQualityScanWorker(QThread):
             report = scan_question_bank_quality(
                 self.question_bank,
                 course_id=self.course_id,
+                unassigned_only=self.unassigned_only,
                 task=self._control,
             )
             if self._bridge is not None:
@@ -128,6 +132,7 @@ class QuestionBankScreen(QWidget):
         self.total = 0
         self.current_question_id = ""
         self._current_course_id = ""
+        self._asset_scope: LibraryAssetScope | None = None
         self._refreshing_set_filter = False
         self._quality_scan_worker = None
         self._quality_scan_task_id = ""
@@ -370,10 +375,16 @@ class QuestionBankScreen(QWidget):
         query = self.search_input.text()
         difficulty = self.difficulty_filter.currentData()
         quality_filter = self.quality_filter.currentData()
-        metadata_filter = self._quality_filter_predicate(quality_filter)
+        metadata_filter = self._metadata_filter_predicate(quality_filter)
         self._refresh_set_filter()
         selected_set_id = self._selected_set_id()
-        if selected_set_id:
+        if (
+            self._asset_scope is not None
+            and self._asset_scope.kind is LibraryScopeKind.EMPTY
+        ):
+            items = []
+            self.total = 0
+        elif selected_set_id:
             all_items = self._questions_for_set(
                 selected_set_id,
                 query=query,
@@ -388,6 +399,10 @@ class QuestionBankScreen(QWidget):
                 query=query,
                 difficulty=difficulty,
                 course_id=self._current_course_id,
+                unassigned_only=(
+                    self._asset_scope is not None
+                    and self._asset_scope.kind is LibraryScopeKind.UNASSIGNED
+                ),
                 metadata_filter=metadata_filter,
                 offset=self.page * self.page_size,
                 limit=self.page_size,
@@ -437,10 +452,21 @@ class QuestionBankScreen(QWidget):
 
     def set_current_course(self, course_id: str | None):
         """Restrict generated questions to the active course."""
-        course_id = course_id or ""
-        if course_id == self._current_course_id:
+        course_id = str(course_id or "").strip()
+        scope = LibraryAssetScope.course(course_id) if course_id else None
+        self.set_asset_scope(scope)
+
+    def set_asset_scope(self, scope: LibraryAssetScope | None) -> None:
+        """Apply the parent library's exact asset scope."""
+        if scope == self._asset_scope:
             return
-        self._current_course_id = course_id
+        self._asset_scope = scope
+        self._current_course_id = (
+            scope.course_id
+            if scope is not None
+            and scope.kind is LibraryScopeKind.COURSE
+            else ""
+        )
         self._invalidate_quality_scan()
         self.form_editor.set_topics(self._current_course_topics())
         self.page = 0
@@ -764,8 +790,9 @@ class QuestionBankScreen(QWidget):
             return []
         return [
             question
-            for question in self.question_bank.get_many(qset.questions, course_id=self._current_course_id)
-            if self._matches_question_filters(
+            for question in self.question_bank.get_many(qset.questions)
+            if self._matches_asset_scope(question)
+            and self._matches_question_filters(
                 question,
                 query=query,
                 difficulty=difficulty,
@@ -774,12 +801,21 @@ class QuestionBankScreen(QWidget):
         ]
 
     def _matches_current_course(self, qset) -> bool:
+        if self._asset_scope is not None:
+            return self._asset_scope.matches(qset)
         source_course_id = (qset.metadata or {}).get("course_id", "")
         if not source_course_id:
             return True
         if not self._current_course_id:
             return True
         return source_course_id == self._current_course_id
+
+    def _matches_asset_scope(self, asset) -> bool:
+        return (
+            self._asset_scope.matches(asset)
+            if self._asset_scope is not None
+            else True
+        )
 
     def _matches_question_filters(
         self,
@@ -842,6 +878,25 @@ class QuestionBankScreen(QWidget):
             return None
         return lambda question: self._matches_quality_filter(question, filter_key)
 
+    def _metadata_filter_predicate(self, filter_key: str | None):
+        quality_predicate = self._quality_filter_predicate(filter_key)
+        scope = self._asset_scope
+        if (
+            scope is None
+            or scope.kind
+            in {LibraryScopeKind.COURSE, LibraryScopeKind.UNASSIGNED}
+        ):
+            return quality_predicate
+
+        def matches(question: Question) -> bool:
+            return scope.matches(question) and (
+                quality_predicate(question)
+                if quality_predicate is not None
+                else True
+            )
+
+        return matches
+
     def _matches_quality_filter(self, question: Question, filter_key: str | None) -> bool:
         if not filter_key:
             return True
@@ -879,16 +934,35 @@ class QuestionBankScreen(QWidget):
             return
         task_id = ""
         if self.task_center is not None:
+            unassigned_only = (
+                self._asset_scope is not None
+                and self._asset_scope.kind is LibraryScopeKind.UNASSIGNED
+            )
             snapshot = self.task_center.create(
                 kind="question_bank_validation",
                 title=self.lang_manager.get_text("题库质量检查", "Question Bank Quality Check"),
-                metadata={"course_id": self._current_course_id},
+                metadata={
+                    "course_id": self._current_course_id,
+                    "scope": (
+                        "unassigned"
+                        if unassigned_only
+                        else "course"
+                        if self._current_course_id
+                        else "all"
+                    ),
+                },
             )
             task_id = snapshot.task_id
+        else:
+            unassigned_only = (
+                self._asset_scope is not None
+                and self._asset_scope.kind is LibraryScopeKind.UNASSIGNED
+            )
         self._quality_scan_task_id = task_id
         worker = QuestionQualityScanWorker(
             self.question_bank,
             course_id=self._current_course_id,
+            unassigned_only=unassigned_only,
             task_center=self.task_center,
             task_id=task_id,
             parent=self,
