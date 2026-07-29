@@ -66,6 +66,7 @@ class FirstRunWorkspace(QWidget):
     generate_requested = pyqtSignal()
     start_requested = pyqtSignal()
     cancel_requested = pyqtSignal()
+    restore_courses_requested = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -120,6 +121,11 @@ class FirstRunWorkspace(QWidget):
 
         action_layout = QHBoxLayout()
         action_layout.addStretch(1)
+        self.alternate_btn = QPushButton()
+        self.alternate_btn.setObjectName("secondaryButton")
+        self.alternate_btn.clicked.connect(self.choose_materials_requested.emit)
+        self.alternate_btn.hide()
+        action_layout.addWidget(self.alternate_btn)
         self.cancel_btn = QPushButton()
         self.cancel_btn.setObjectName("secondaryButton")
         self.cancel_btn.clicked.connect(self.cancel_requested.emit)
@@ -200,12 +206,26 @@ class FirstRunWorkspace(QWidget):
 
     def _render(self, *_args) -> None:
         gm = self.lang_manager.get_text
-        self.title_label.setText(gm("创建第一门课程", "Create Your First Course"))
-        self.subtitle_label.setText(gm(
-            "完成下面三步即可直接开始第一次练习，无需先理解题库和题目集。",
-            "Complete these three steps to start your first practice without "
-            "learning the library structure first.",
-        ))
+        recovery = self.state.stage is FirstRunStage.ARCHIVED_RECOVERY
+        if recovery:
+            count = self.state.archived_course_count
+            self.title_label.setText(gm(
+                "暂无进行中的课程",
+                "No Active Courses",
+            ))
+            self.subtitle_label.setText(gm(
+                f"你有 {count} 门已归档课程。可以恢复原课程，或导入一门新课程。",
+                f"You have {count} archived course(s). Restore one or import a new course.",
+            ))
+        else:
+            self.title_label.setText(gm("创建第一门课程", "Create Your First Course"))
+            self.subtitle_label.setText(gm(
+                "完成下面三步即可直接开始第一次练习，无需先理解题库和题目集。",
+                "Complete these three steps to start your first practice without "
+                "learning the library structure first.",
+            ))
+        for step in (self.ai_step, self.materials_step, self.generation_step):
+            step.setVisible(not recovery)
         self.generation_title_label.setText(
             gm("准备第一次练习", "Prepare Your First Practice")
         )
@@ -238,6 +258,8 @@ class FirstRunWorkspace(QWidget):
 
     def _step_statuses(self) -> tuple[str, str, str]:
         stage = self.state.stage
+        if stage is FirstRunStage.ARCHIVED_RECOVERY:
+            return "pending", "pending", "pending"
         if stage is FirstRunStage.AI_SETUP:
             return "active", "pending", "pending"
         if stage is FirstRunStage.MATERIALS:
@@ -265,6 +287,7 @@ class FirstRunWorkspace(QWidget):
         labels = {
             FirstRunStage.AI_SETUP: gm("配置 AI", "Configure AI"),
             FirstRunStage.MATERIALS: gm("选择课程资料", "Choose Course Materials"),
+            FirstRunStage.ARCHIVED_RECOVERY: gm("恢复课程", "Restore Course"),
             FirstRunStage.IMPORTING: gm("正在准备课程…", "Preparing Course…"),
             FirstRunStage.GENERATE: gm("生成 10 道快速复习题", "Generate 10 Quick-Review Questions"),
             FirstRunStage.GENERATING: gm("正在生成练习…", "Generating Practice…"),
@@ -277,6 +300,10 @@ class FirstRunWorkspace(QWidget):
         self.primary_btn.setText(labels[stage])
         busy = stage in {FirstRunStage.IMPORTING, FirstRunStage.GENERATING}
         self.primary_btn.setEnabled(not busy)
+        self.alternate_btn.setText(gm("导入新课程", "Import New Course"))
+        self.alternate_btn.setVisible(
+            stage is FirstRunStage.ARCHIVED_RECOVERY
+        )
         self.cancel_btn.setText(gm("停止", "Stop"))
         self.cancel_btn.setVisible(busy)
         self.cancel_btn.setEnabled(busy)
@@ -292,7 +319,14 @@ class FirstRunWorkspace(QWidget):
             self.progress_bar.setValue(self.state.progress_current)
         elif busy:
             self.progress_bar.setRange(0, 0)
-        message = self.state.error or self.state.ai_error or self.state.progress_text
+        if self.state.stage is FirstRunStage.ARCHIVED_RECOVERY:
+            message = self.state.error
+        else:
+            message = (
+                self.state.error
+                or self.state.ai_error
+                or self.state.progress_text
+            )
         self.status_label.setText(message)
         self.status_label.setProperty(
             "statusRole",
@@ -306,6 +340,7 @@ class FirstRunWorkspace(QWidget):
         signal = {
             FirstRunStage.AI_SETUP: self.configure_ai_requested,
             FirstRunStage.MATERIALS: self.choose_materials_requested,
+            FirstRunStage.ARCHIVED_RECOVERY: self.restore_courses_requested,
             FirstRunStage.GENERATE: self.generate_requested,
             FirstRunStage.REVIEW_PENDING: self.generate_requested,
             FirstRunStage.READY: self.start_requested,

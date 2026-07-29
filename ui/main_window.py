@@ -502,6 +502,9 @@ class MainWindow(QMainWindow):
         self.first_run_screen.cancel_requested.connect(
             self._on_first_run_cancel
         )
+        self.first_run_screen.restore_courses_requested.connect(
+            self._open_archived_courses
+        )
         self.settings_screen.settings_saved.connect(
             self._on_first_run_settings_saved
         )
@@ -576,6 +579,7 @@ class MainWindow(QMainWindow):
             and self._first_run_required()
             and screen_index == self.SCREEN_COURSES
             and self._course_screen is None
+            and self._archived_course_count() <= 0
         ):
             screen_index = self.SCREEN_HOME
         if confirm_current and not self._confirm_current_navigation(screen_index):
@@ -783,6 +787,21 @@ class MainWindow(QMainWindow):
             return True
         return not self._first_run_has_completed_practice()
 
+    def _archived_course_count(self) -> int:
+        return sum(
+            1
+            for course in self.course_manager.load_all(include_archived=True)
+            if getattr(course, "is_archived", False)
+        )
+
+    def _open_archived_courses(self) -> None:
+        course_screen = self._get_course_screen()
+        course_screen.show_archived_courses()
+        self.navigate_to(
+            self.SCREEN_COURSES,
+            allow_first_run_redirect=False,
+        )
+
     def _refresh_first_run(self) -> None:
         if not hasattr(self, "first_run_screen"):
             return
@@ -812,6 +831,7 @@ class MainWindow(QMainWindow):
                 if generation_draft is not None
                 else 0
             ),
+            archived_course_count=self._archived_course_count(),
         )
         self.first_run_screen.set_state(state)
         self.home_workspace.setCurrentWidget(

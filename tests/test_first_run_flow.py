@@ -131,6 +131,46 @@ class FirstRunFlowTests(unittest.TestCase):
             ).stage,
         )
 
+    def test_archived_courses_offer_recovery_before_empty_install_onboarding(self):
+        state = resolve_first_run_state(
+            ai_error="API key missing",
+            has_course=False,
+            question_count=0,
+            archived_course_count=2,
+        )
+
+        self.assertEqual(FirstRunStage.ARCHIVED_RECOVERY, state.stage)
+        self.assertEqual(2, state.archived_course_count)
+
+    def test_first_run_workspace_offers_restore_or_new_import_for_archived_courses(self):
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+        requested = []
+        workspace.restore_courses_requested.connect(
+            lambda: requested.append("restore")
+        )
+        workspace.choose_materials_requested.connect(
+            lambda: requested.append("import")
+        )
+
+        workspace.set_state(
+            FirstRunState(
+                FirstRunStage.ARCHIVED_RECOVERY,
+                archived_course_count=2,
+            )
+        )
+
+        self.assertEqual("暂无进行中的课程", workspace.title_label.text())
+        self.assertIn("2 门已归档课程", workspace.subtitle_label.text())
+        self.assertTrue(workspace.ai_step.isHidden())
+        self.assertEqual("恢复课程", workspace.primary_btn.text())
+        self.assertEqual("导入新课程", workspace.alternate_btn.text())
+
+        workspace.primary_btn.click()
+        workspace.alternate_btn.click()
+
+        self.assertEqual(["restore", "import"], requested)
+
     def test_review_pending_draft_precedes_ai_setup_and_regeneration(self):
         state = resolve_first_run_state(
             ai_error="API key missing",
@@ -207,6 +247,39 @@ class FirstRunFlowTests(unittest.TestCase):
             FirstRunStage.IMPORTING,
             window.first_run_screen.state.stage,
         )
+
+    def test_archived_only_application_routes_to_course_recovery_workspace(self):
+        with patch(
+            "ui.main_window.MainWindow._first_run_ai_error",
+            return_value="",
+            create=True,
+        ):
+            window = MainWindow()
+        self.addCleanup(window.close)
+        project = CourseProject(
+            course_id="course-archived",
+            title="Archived Course",
+            source_folder="",
+            summary_markdown="# Archived Course",
+            summary_path="",
+            topics=[],
+            documents=[],
+            created_at="2026-07-28T00:00:00+00:00",
+            updated_at="2026-07-28T00:00:00+00:00",
+            status="archived",
+        )
+        self.assertTrue(window.course_manager.save(project, make_current=False))
+
+        window._refresh_first_run()
+
+        self.assertEqual(
+            FirstRunStage.ARCHIVED_RECOVERY,
+            window.first_run_screen.state.stage,
+        )
+        self.assertTrue(window.navigate_to(window.SCREEN_COURSES))
+        self.assertEqual(window.SCREEN_COURSES, window.stack.currentIndex())
+        self.assertTrue(window._course_screen.archived_scope_btn.isChecked())
+        self.assertEqual(1, window._course_screen.project_list.count())
 
     def test_first_run_offers_first_practice_after_questions_exist(self):
         with patch(

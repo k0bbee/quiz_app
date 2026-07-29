@@ -11,6 +11,7 @@ from ai.exam_plan import ExamGenerationPlan
 class FirstRunStage(str, Enum):
     AI_SETUP = "ai_setup"
     MATERIALS = "materials"
+    ARCHIVED_RECOVERY = "archived_recovery"
     IMPORTING = "importing"
     GENERATE = "generate"
     GENERATING = "generating"
@@ -28,6 +29,7 @@ class FirstRunState:
     progress_total: int = 0
     question_count: int = 0
     draft_question_count: int = 0
+    archived_course_count: int = 0
 
 
 def build_first_run_exam_plan(course_project) -> ExamGenerationPlan:
@@ -64,6 +66,7 @@ def resolve_first_run_state(
     progress_current: int = 0,
     progress_total: int = 0,
     draft_question_count: int = 0,
+    archived_course_count: int = 0,
 ) -> FirstRunState:
     """Resolve one visible stage from durable resources plus transient work."""
     normalized_operation = str(operation or "").strip().lower()
@@ -75,6 +78,8 @@ def resolve_first_run_state(
         stage = FirstRunStage.READY
     elif has_course and int(draft_question_count or 0) > 0:
         stage = FirstRunStage.REVIEW_PENDING
+    elif not has_course and int(archived_course_count or 0) > 0:
+        stage = FirstRunStage.ARCHIVED_RECOVERY
     elif str(ai_error or "").strip():
         stage = FirstRunStage.AI_SETUP
     elif not has_course:
@@ -92,4 +97,5 @@ def resolve_first_run_state(
         progress_total=max(0, int(progress_total or 0)),
         question_count=max(0, int(question_count or 0)),
         draft_question_count=max(0, int(draft_question_count or 0)),
+        archived_course_count=max(0, int(archived_course_count or 0)),
     )
