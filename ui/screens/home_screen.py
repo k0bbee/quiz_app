@@ -153,6 +153,21 @@ class HomeScreen(QWidget):
         self.diagnosis_label.setWordWrap(True)
         overview_layout.addWidget(self.diagnosis_label)
 
+        self.focus_action_layout = QHBoxLayout()
+        self.focus_action_buttons = []
+        for index in range(2):
+            button = QPushButton()
+            button.setObjectName("secondaryButton")
+            button.clicked.connect(
+                lambda _checked=False, position=index:
+                self._request_focus_topic(position)
+            )
+            button.hide()
+            self.focus_action_layout.addWidget(button)
+            self.focus_action_buttons.append(button)
+        self.focus_action_layout.addStretch()
+        overview_layout.addLayout(self.focus_action_layout)
+
         self.stats_label = QLabel()
         self.stats_label.setObjectName("homeStatsLabel")
         self.stats_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
@@ -410,6 +425,8 @@ class HomeScreen(QWidget):
                 self.lang_manager.get_text("学习重点", "Learning Focus")
             )
             self.diagnosis_label.hide()
+            for button in self.focus_action_buttons:
+                button.hide()
             return
         self.diagnosis_title.setText(
             self.lang_manager.get_text("当前需要巩固", "Focus Next")
@@ -430,6 +447,29 @@ class HomeScreen(QWidget):
             self.lang_manager.get_text("\n".join(zh_lines), "\n".join(en_lines))
         )
         self.diagnosis_label.show()
+        for index, button in enumerate(self.focus_action_buttons):
+            if index < len(focus_topics):
+                topic = focus_topics[index]
+                button.setText(self.lang_manager.get_text(
+                    f"强化 {topic.title}",
+                    f"Practice {topic.title}",
+                ))
+                button.show()
+            else:
+                button.hide()
+
+    def _request_focus_topic(self, index: int) -> None:
+        topics = self._learning_dashboard.focus_topics
+        if not 0 <= index < len(topics):
+            return
+        topic = topics[index]
+        self.study_requested.emit(StudyIntent(
+            course_id=self._current_course_id,
+            action=StudyAction.PRACTICE_TOPIC,
+            topic_ids=(topic.topic_id,),
+            question_count=10,
+            source="home_focus",
+        ))
 
     def _visible_question_ids(self) -> set[str]:
         """Return current-course question IDs inside the selected exam scope."""

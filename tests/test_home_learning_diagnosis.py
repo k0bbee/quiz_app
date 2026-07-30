@@ -6,6 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtWidgets import QApplication
 
+from core.study_intent import StudyAction
 from ui.screens.home_screen import HomeScreen
 
 
@@ -88,6 +89,23 @@ class HomeLearningDiagnosisTests(unittest.TestCase):
         self.assertIn("错误 2", screen.diagnosis_label.text())
         self.assertIn("高速缓存", screen.diagnosis_label.text())
         self.assertFalse(screen.diagnosis_label.isHidden())
+
+    def test_home_focus_topic_is_a_direct_learning_action(self):
+        screen = HomeScreen(_ProgressManager(), _QuestionBank())
+        self.addCleanup(screen.close)
+        requests = []
+        screen.study_requested.connect(requests.append)
+
+        screen.set_current_course("course-os", "操作系统")
+
+        self.assertFalse(screen.focus_action_buttons[0].isHidden())
+        self.assertIn("输入输出", screen.focus_action_buttons[0].text())
+        screen.focus_action_buttons[0].click()
+
+        self.assertEqual(1, len(requests))
+        self.assertIs(StudyAction.PRACTICE_TOPIC, requests[0].action)
+        self.assertEqual(("io",), requests[0].topic_ids)
+        self.assertEqual("home_focus", requests[0].source)
 
 
 if __name__ == "__main__":
