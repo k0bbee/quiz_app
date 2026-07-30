@@ -9,10 +9,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QTimer, Qt
 
 from core.application_services import ApplicationServices
-from core.first_run_flow import (
-    build_first_run_exam_plan,
-    resolve_first_run_state,
-)
 from core.language_manager import LanguageManager
 from core.question_set_regenerator import persist_regenerated_question_set
 from core.background_task_presenter import build_task_center_view, task_toolbar_text
@@ -21,6 +17,7 @@ from core.session_retry import SessionRetryMode, session_retry_question_ids
 from core.study_intent import StudyAction, StudyIntent
 from ui.dialogs.background_task_dialog import BackgroundTaskDialog
 from ui.generation_workspace_controller import GenerationWorkspaceController
+from ui.first_run_controller import FirstRunController
 from ui.history_protection_controller import HistoryProtectionController
 from ui.session_retry_presenter import session_retry_copy
 from ui.study_flow_controller import StudyFlowController
@@ -43,11 +40,7 @@ from ui.screens.results_screen import ResultsScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.settings_window import SettingsWindow
 from utils.constants import Difficulty, topic_value
-from ai.course_summary_factory import provider_requires_api_key as _provider_requires_api_key
 from ai.exam_plan import ExamGenerationPlan
-from ai.settings_validation import (
-    ai_generation_settings_error as _ai_generation_settings_error,
-)
 from models.question_set import QuestionSet
 
 
@@ -113,6 +106,7 @@ class MainWindow(QMainWindow):
             getattr(startup_migration_report, "has_failures", False)
         )
         self.history_protection = HistoryProtectionController(self)
+        self.first_run = FirstRunController(self)
 
         # Central stacked widget
         self.stack = QStackedWidget()
@@ -754,14 +748,7 @@ class MainWindow(QMainWindow):
         self.settings_window.show_settings(section)
 
     def _on_first_run_settings_saved(self) -> None:
-        """Resume onboarding in place after repairing AI configuration."""
-        if (
-            self._last_generation_launch_error
-            and self._first_run_error == self._last_generation_launch_error
-        ):
-            self._first_run_error = ""
-        self._last_generation_launch_error = ""
-        self._refresh_first_run()
+        self.first_run.settings_saved()
 
     def _refresh_task_center_action(self) -> None:
         """Keep the global task entry visible and surface tasks needing attention."""
@@ -796,229 +783,49 @@ class MainWindow(QMainWindow):
         self._refresh_task_center_action()
 
     def _first_run_ai_error(self) -> str:
-        settings = self.settings_screen.settings_snapshot()
-        api_key = ""
-        if _provider_requires_api_key(settings):
-            from core.secrets_manager import SecretsManager
-
-            api_key = SecretsManager.instance().get_key()
-        return _ai_generation_settings_error(settings, api_key)
+        return self.first_run.ai_error()
 
     def _first_run_practice_candidates(self):
-        course_id = self._current_course_id()
-        if not course_id:
-            return []
-        candidates = []
-        for question_set in self.set_manager.load_all():
-            set_course_id = str(
-                (getattr(question_set, "metadata", {}) or {}).get(
-                    "course_id",
-                    "",
-                )
-                or ""
-            )
-            if set_course_id and set_course_id != course_id:
-                continue
-            question_ids = [
-                question.question_id
-                for question in self.question_bank.get_many(
-                    question_set.questions,
-                    course_id=course_id,
-                )
-            ]
-            if question_ids:
-                candidates.append((question_set, question_ids))
-        return candidates
+        return self.first_run.practice_candidates()
 
     def _first_run_question_count(self) -> int:
-        return sum(
-            len(question_ids)
-            for _question_set, question_ids in self._first_run_practice_candidates()
-        )
+        return self.first_run.question_count()
 
     def _first_run_has_completed_practice(self) -> bool:
-        return any(
-            getattr(record, "status", "") == "completed"
-            for record in self.progress_manager.load_all()
-        )
+        return self.first_run.has_completed_practice()
 
     def _first_run_required(self) -> bool:
-        if self._first_run_operation:
-            return True
-        if not self._current_course_id():
-            return True
-        if self._first_run_question_count() <= 0:
-            return True
-        return not self._first_run_has_completed_practice()
+        return self.first_run.required()
 
     def _archived_course_count(self) -> int:
-        return sum(
-            1
-            for course in self.course_manager.load_all(include_archived=True)
-            if getattr(course, "is_archived", False)
-        )
+        return self.first_run.archived_course_count()
 
     def _open_archived_courses(self) -> None:
-        course_screen = self._get_course_screen()
-        course_screen.show_archived_courses()
-        self.navigate_to(
-            self.SCREEN_COURSES,
-            allow_first_run_redirect=False,
-        )
+        self.first_run.open_archived_courses()
 
     def _refresh_first_run(self) -> None:
-        if not hasattr(self, "first_run_screen"):
-            return
-        progress = self._first_run_progress
-        has_course = bool(self._current_course_id())
-        question_count = self._first_run_question_count()
-        generation_draft = self._generation_draft(
-            self._current_course_id()
-        )
-        first_run_required = (
-            bool(self._first_run_operation)
-            or not has_course
-            or question_count <= 0
-            or not self._first_run_has_completed_practice()
-        )
-        state = resolve_first_run_state(
-            ai_error=self._first_run_ai_error(),
-            has_course=has_course,
-            question_count=question_count,
-            operation=self._first_run_operation,
-            error=self._first_run_error,
-            progress_text=str(getattr(progress, "detail", "") or ""),
-            progress_current=int(getattr(progress, "current", 0) or 0),
-            progress_total=int(getattr(progress, "total", 0) or 0),
-            draft_question_count=(
-                len(generation_draft.questions)
-                if generation_draft is not None
-                else 0
-            ),
-            archived_course_count=self._archived_course_count(),
-        )
-        self.first_run_screen.set_state(state)
-        self.home_workspace.setCurrentWidget(
-            self.first_run_screen
-            if first_run_required
-            else self.home_screen
-        )
+        self.first_run.refresh()
 
     def _on_first_run_choose_materials(self) -> None:
-        folder = QFileDialog.getExistingDirectory(
-            self,
-            self.lang_manager.get_text(
-                "选择课程资料文件夹",
-                "Choose Course Materials Folder",
-            ),
-        )
-        if not folder:
-            return
-        course_screen = self._get_course_screen()
-        self._first_run_operation = "importing"
-        self._first_run_error = ""
-        self._first_run_progress = None
-        self._refresh_first_run()
-        if not course_screen.start_import(
-            folder,
-            "",
-            present_result=False,
-        ):
-            self._first_run_operation = ""
-            self._first_run_error = self.lang_manager.get_text(
-                "课程导入任务未能启动，请检查当前后台任务。",
-                "The course import could not start. Check the current background task.",
-            )
-            self._refresh_first_run()
+        self.first_run.choose_materials()
 
     def _on_first_run_import_started(self) -> None:
-        self._first_run_operation = "importing"
-        self._first_run_error = ""
-        self._first_run_progress = None
-        self._refresh_first_run()
+        self.first_run.import_started()
 
     def _on_first_run_import_progress(self, progress) -> None:
-        self._first_run_progress = progress
-        self._refresh_first_run()
+        self.first_run.import_progress(progress)
 
     def _on_first_run_import_completed(self, _project) -> None:
-        self._first_run_operation = ""
-        self._first_run_error = ""
-        self._first_run_progress = None
-        self._refresh_first_run()
+        self.first_run.import_completed(_project)
 
     def _on_first_run_import_failed(self, message: str) -> None:
-        self._first_run_operation = ""
-        self._first_run_error = str(message or "")
-        self._first_run_progress = None
-        self._refresh_first_run()
+        self.first_run.import_failed(message)
 
     def _on_first_run_import_cancelled(self) -> None:
-        self._first_run_operation = ""
-        self._first_run_error = self.lang_manager.get_text(
-            "课程导入已停止，未完成内容没有保存。",
-            "Course import stopped; incomplete content was not saved.",
-        )
-        self._first_run_progress = None
-        self._refresh_first_run()
+        self.first_run.import_cancelled()
 
     def _on_first_run_generate(self) -> None:
-        course_project = self.course_manager.current()
-        if course_project is None:
-            self._first_run_error = self.lang_manager.get_text(
-                "当前课程已不存在，请重新导入课程资料。",
-                "The current course no longer exists. Import the materials again.",
-            )
-            self._refresh_first_run()
-            return
-        try:
-            plan = build_first_run_exam_plan(course_project)
-        except ValueError:
-            self._first_run_error = self.lang_manager.get_text(
-                "课程中没有可用于出题的知识点，请重新解析课程资料。",
-                "The course has no topics available for generation. Parse the materials again.",
-            )
-            self._refresh_first_run()
-            return
-        title = self.lang_manager.get_text(
-            f"{course_project.title}快速复习",
-            f"{course_project.title} Quick Review",
-        )
-        self._first_run_operation = "generating"
-        self._first_run_error = ""
-        self._refresh_first_run()
-        configured = MainWindow._configure_generation_dialog(
-            self,
-            course_override=course_project,
-            initial_plan=plan,
-            review_warnings_only=True,
-            question_set_title=title,
-            draft_source="first_run",
-            present_error=False,
-        )
-        if configured is None:
-            self._first_run_operation = ""
-            self._first_run_error = self._last_generation_launch_error
-            self._refresh_first_run()
-            return
-        dialog, course_project, restored_draft, draft_source = configured
-        dialog.accepted.connect(
-            lambda: self._on_first_run_generation_accepted(
-                dialog,
-                course_project,
-                draft_source,
-            )
-        )
-        dialog.rejected.connect(
-            lambda: self._on_first_run_generation_rejected(
-                dialog,
-                course_project,
-                draft_source,
-            )
-        )
-        self.first_run_screen.show_generation_widget(dialog)
-        if not restored_draft:
-            dialog.start_generation_when_shown()
+        self.first_run.generate()
 
     def _on_first_run_generation_accepted(
         self,
@@ -1026,27 +833,11 @@ class MainWindow(QMainWindow):
         course_project,
         draft_source: str,
     ) -> None:
-        MainWindow._sync_generation_draft(
-            self,
+        self.first_run.generation_accepted(
             dialog,
             course_project,
-            source=draft_source,
+            draft_source,
         )
-        saved = MainWindow._save_generated_dialog(
-            self,
-            dialog,
-            course_project,
-            start_after_save=True,
-            present_error=False,
-        )
-        if not saved:
-            self.first_run_screen.show_generation_widget(dialog)
-            return
-        self.first_run_screen.clear_generation_widget(dialog)
-        dialog.deleteLater()
-        self._first_run_operation = ""
-        self._first_run_progress = None
-        self._refresh_first_run()
 
     def _on_first_run_generation_rejected(
         self,
@@ -1054,44 +845,17 @@ class MainWindow(QMainWindow):
         course_project,
         draft_source: str,
     ) -> None:
-        MainWindow._sync_generation_draft(
-            self,
+        self.first_run.generation_rejected(
             dialog,
             course_project,
-            source=draft_source,
+            draft_source,
         )
-        self.first_run_screen.clear_generation_widget(dialog)
-        dialog.deleteLater()
-        self._first_run_operation = ""
-        self._first_run_progress = None
-        self._refresh_first_run()
 
     def _on_first_run_start(self) -> None:
-        candidates = self._first_run_practice_candidates()
-        if not candidates:
-            self._first_run_error = self.lang_manager.get_text(
-                "尚未找到可开始的题目集，请先生成快速复习题。",
-                "No ready question set was found. Generate quick-review questions first.",
-            )
-            self._refresh_first_run()
-            return
-        question_set, question_ids = candidates[0]
-        self._on_study_quiz_start(
-            StudyIntent(
-                course_id=self._current_course_id(),
-                action=StudyAction.CUSTOM_PRACTICE,
-                set_id=question_set.set_id,
-                question_ids=tuple(question_ids),
-                question_count=len(question_ids),
-                submission_mode="practice",
-                source="first_run_ready",
-            ),
-            question_ids,
-        )
+        self.first_run.start()
 
     def _on_first_run_cancel(self) -> None:
-        if self._course_screen is not None:
-            self._course_screen.cancel_active_task()
+        self.first_run.cancel()
 
     # --- Slot handlers ---
 

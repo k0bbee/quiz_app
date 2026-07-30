@@ -233,7 +233,7 @@ class FirstRunFlowTests(unittest.TestCase):
         window._get_course_screen = Mock(return_value=course_screen)
 
         with tempfile.TemporaryDirectory() as source_dir, patch(
-            "ui.main_window.QFileDialog.getExistingDirectory",
+            "ui.first_run_controller.QFileDialog.getExistingDirectory",
             return_value=source_dir,
         ):
             window.first_run_screen.primary_btn.click()
