@@ -10,7 +10,6 @@ from core.application_services import ApplicationServices
 from core.language_manager import LanguageManager
 from core.background_task_presenter import build_task_center_view, task_toolbar_text
 from core.topic_display import topic_display_name
-from core.session_retry import SessionRetryMode
 from core.study_intent import StudyAction, StudyIntent
 from ui.dialogs.background_task_dialog import BackgroundTaskDialog
 from ui.course_context_controller import CourseContextController
@@ -202,7 +201,7 @@ class MainWindow(QMainWindow):
             current_course_id=self._current_course_id,
             course_changed=self._on_course_changed,
             resume_session=self._on_resume_abandoned,
-            review_questions=self._on_practice_incorrect,
+            review_questions=self.result_flow.practice_incorrect,
             generate_questions=self._on_ai_generate,
             show_timer=self._show_timer_setting,
         )
@@ -400,16 +399,6 @@ class MainWindow(QMainWindow):
             self.course_context = controller
         return controller
 
-    def _result_flow_controller(self) -> ResultFlowController:
-        """Return the result controller for real or lightweight hosts."""
-        controller = vars(self).get("result_flow")
-        if controller is None:
-            controller = ResultFlowController(self, message_box=QMessageBox)
-            self.result_flow = controller
-        else:
-            controller.message_box = QMessageBox
-        return controller
-
     def _install_workspace(self, index: int, screen: QWidget) -> None:
         """Replace one fixed-route placeholder without shifting other routes."""
         placeholder = self._workspace_placeholders.pop(index, None)
@@ -499,7 +488,9 @@ class MainWindow(QMainWindow):
         self.home_screen.start_practice.connect(self._on_start_practice)
         self.home_screen.study_requested.connect(self._handle_study_intent)
         self.home_screen.resume_practice.connect(self._on_resume_abandoned)
-        self.home_screen.practice_incorrect.connect(self._on_practice_incorrect)
+        self.home_screen.practice_incorrect.connect(
+            self.result_flow.practice_incorrect
+        )
         self.home_screen.ai_generate.connect(self._on_ai_generate)
         self.home_screen.view_progress.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
         self.home_screen.open_settings.connect(self.open_settings)
@@ -534,23 +525,31 @@ class MainWindow(QMainWindow):
         )
 
         # Quiz screen
-        self.quiz_screen.quiz_finished.connect(self._on_quiz_finished)
+        self.quiz_screen.quiz_finished.connect(self.result_flow.quiz_finished)
         self.quiz_screen.return_home.connect(
             lambda: self.navigate_to(self.SCREEN_HOME, confirm_current=False)
         )
 
         # Results screen
-        self.results_screen.retry_incorrect.connect(self._on_retry_incorrect)
-        self.results_screen.retry_unsure.connect(self._on_retry_unsure)
-        self.results_screen.retry_review.connect(self._on_retry_review)
-        self.results_screen.retry_all.connect(self._on_retry_all)
+        self.results_screen.retry_incorrect.connect(
+            self.result_flow.retry_incorrect
+        )
+        self.results_screen.retry_unsure.connect(
+            self.result_flow.retry_unsure
+        )
+        self.results_screen.retry_review.connect(
+            self.result_flow.retry_review
+        )
+        self.results_screen.retry_all.connect(self.result_flow.retry_all)
         self.results_screen.study_requested.connect(self._handle_study_intent)
         self.results_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
         self.results_screen.review_topic_requested.connect(self._on_review_progress_topic)
         self.progress_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
         self.progress_screen.review_topic_requested.connect(self._on_review_progress_topic)
         self.progress_screen.generate_topic_requested.connect(self._on_generate_progress_topic)
-        self.progress_screen.history_requested.connect(self._on_open_progress_record)
+        self.progress_screen.history_requested.connect(
+            self.result_flow.open_progress_record
+        )
         # Language manager
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -919,34 +918,6 @@ class MainWindow(QMainWindow):
         if hasattr(self, "home_screen"):
             self.home_screen.clear_resume_draft()
 
-    def _on_quiz_finished(self, progress_record):
-        """Show results screen after quiz completion."""
-        MainWindow._result_flow_controller(self).quiz_finished(progress_record)
-
-    def _on_open_progress_record(self, progress_id: str) -> None:
-        """Open one persisted result, using archived snapshots when assets are gone."""
-        MainWindow._result_flow_controller(self).open_progress_record(progress_id)
-
-    def _on_retry_incorrect(self):
-        """Retry only incorrectly answered questions."""
-        MainWindow._retry_current_session(self, SessionRetryMode.INCORRECT)
-
-    def _on_retry_unsure(self):
-        """Retry questions the user marked as unsure in the completed session."""
-        MainWindow._retry_current_session(self, SessionRetryMode.UNSURE)
-
-    def _on_retry_review(self):
-        """Retry questions the user marked for review in the completed session."""
-        MainWindow._retry_current_session(self, SessionRetryMode.REVIEW)
-
-    def _retry_current_session(self, mode: SessionRetryMode) -> None:
-        """Start one retry subset from the current completed session."""
-        MainWindow._result_flow_controller(self).retry(mode)
-
-    def _on_practice_incorrect(self, intent: StudyIntent | None = None):
-        """Start a quiz session from all historical incorrect questions."""
-        MainWindow._result_flow_controller(self).practice_incorrect(intent)
-
     def _on_practice_progress_topic(self, topic_key: str):
         """Start a short practice session for the selected progress topic."""
         gm = self.lang_manager.get_text
@@ -1233,10 +1204,6 @@ class MainWindow(QMainWindow):
             prediction=prediction,
             draft_source="predicted_exam",
         )
-
-    def _on_retry_all(self):
-        """Retry the entire question set."""
-        MainWindow._result_flow_controller(self).retry_all()
 
     def _show_timer_setting(self) -> bool:
         return bool(self.settings_screen.get_setting("show_timer", False))

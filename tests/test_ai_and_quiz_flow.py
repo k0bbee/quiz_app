@@ -32,6 +32,7 @@ from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
+from ui.result_flow_controller import ResultFlowController
 from ui.widgets.answer_area import AnswerArea, MatchingWidget, MultipleChoiceWidget
 from utils.constants import Difficulty, QuestionType, QuizState, topic_value
 
@@ -1576,8 +1577,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             _current_course_id=lambda: "course-a",
         )
 
-        with patch("ui.main_window.QMessageBox.warning") as warning:
-            MainWindow._on_retry_incorrect(shell)
+        with patch("ui.result_flow_controller.QMessageBox.warning") as warning:
+            ResultFlowController(shell).retry_incorrect()
 
         self.assertEqual(["q-wrong"], requested)
         self.assertIn("题目不可用", warning.call_args.args[1])
@@ -2005,7 +2006,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
 
-            MainWindow._on_retry_unsure(shell)
+            ResultFlowController(shell).retry_unsure()
 
             self.assertEqual([unsure_current.question_id], [q.question_id for q in started["questions"]])
             self.assertIn("不确定", started["label"])
@@ -2056,7 +2057,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
 
-            MainWindow._on_retry_review(shell)
+            ResultFlowController(shell).retry_review()
 
             self.assertEqual([marked_current.question_id], [q.question_id for q in started["questions"]])
             self.assertIn("复查", started["label"])
@@ -2100,7 +2101,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
 
-            MainWindow._on_retry_all(shell)
+            ResultFlowController(shell).retry_all()
 
             self.assertEqual(qset.set_id, started["question_set"].set_id)
             self.assertEqual([q1.question_id, q2.question_id], [q.question_id for q in started["questions"]])
@@ -2122,8 +2123,10 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 lang_manager=LanguageManager.instance(),
             )
 
-            with patch("ui.main_window.QMessageBox.warning") as warning:
-                MainWindow._on_retry_all(shell)
+            with patch(
+                "ui.result_flow_controller.QMessageBox.warning"
+            ) as warning:
+                ResultFlowController(shell).retry_all()
 
             warning.assert_called_once()
             self.assertIn("已被删除", warning.call_args.args[2])
@@ -3501,7 +3504,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
 
-            MainWindow._on_practice_incorrect(shell)
+            ResultFlowController(shell).practice_incorrect()
 
             self.assertEqual(
                 {course_a.question_id},
@@ -3565,7 +3568,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
 
-            MainWindow._on_practice_incorrect(shell)
+            ResultFlowController(shell).practice_incorrect()
 
             self.assertEqual(
                 [higher_priority.question_id, lower_priority.question_id],
@@ -3760,7 +3763,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
 
-            MainWindow._on_practice_incorrect(shell)
+            ResultFlowController(shell).practice_incorrect()
 
             self.assertEqual([active.question_id], [q.question_id for q in started["questions"]])
 
@@ -4157,7 +4160,9 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 SCREEN_RESULTS=3,
             )
 
-            MainWindow._on_open_progress_record(shell, record.progress_id)
+            ResultFlowController(shell).open_progress_record(
+                record.progress_id
+            )
 
             self.assertEqual(record.progress_id, shown["record"].progress_id)
             self.assertEqual({}, shown["questions"])
@@ -4223,7 +4228,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 _refresh_first_run=Mock(),
             )
 
-            MainWindow._on_quiz_finished(shell, record)
+            ResultFlowController(shell).quiz_finished(record)
 
             self.assertIsNone(snapshot_manager.get(snapshot.snapshot_id))
             self.assertEqual(record.progress_id, shown["record"].progress_id)
@@ -4295,7 +4300,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 _refresh_first_run=Mock(),
             )
 
-            MainWindow._on_quiz_finished(shell, record)
+            ResultFlowController(shell).quiz_finished(record)
 
             self.assertEqual(("q-1",), shown["intent"].remaining_question_ids)
             self.assertEqual("daily-set", shown["intent"].set_id)

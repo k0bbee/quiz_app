@@ -152,6 +152,18 @@ class ResultFlowController:
             label=gm(copy.session_title_zh, copy.session_title_en),
         )
 
+    def retry_incorrect(self) -> None:
+        """Qt signal adapter for retrying incorrectly answered questions."""
+        self.retry(SessionRetryMode.INCORRECT)
+
+    def retry_unsure(self) -> None:
+        """Qt signal adapter for retrying questions marked as unsure."""
+        self.retry(SessionRetryMode.UNSURE)
+
+    def retry_review(self) -> None:
+        """Qt signal adapter for retrying questions marked for review."""
+        self.retry(SessionRetryMode.REVIEW)
+
     def practice_incorrect(self, intent: StudyIntent | None = None) -> None:
         """Start a session from prioritized historical incorrect questions."""
         host = self.host
