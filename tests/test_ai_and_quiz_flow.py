@@ -1217,6 +1217,49 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
         self.assertIn("答对但不确定: 1", screen.stats_label.text())
 
+    def test_results_can_generate_a_bounded_course_reinforcement_plan(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+            course = self._make_course("course-a", "课程 A")
+            course.topics = [
+                CourseTopic("cache", "高速缓存", source_files=["cache.pdf"]),
+                CourseTopic("io", "输入输出", source_files=["io.pdf"]),
+            ]
+            self.assertTrue(manager.save(course))
+            screen = ResultsScreen(course_manager=manager)
+            cache = self._make_question("q-cache", "cache")
+            io = self._make_question("q-io", "io")
+            for question in (cache, io):
+                question.metadata["course_id"] = course.course_id
+            record = ProgressRecord.create_new("set-a")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord("q-cache", 0, "B", False),
+                AnswerRecord(
+                    "q-io",
+                    1,
+                    "A",
+                    True,
+                    confidence="unsure",
+                ),
+            ]
+            record.summary = SessionSummary.compute(record.answers, 2, 20)
+            requests = []
+            screen.generate_reinforcement_requested.connect(requests.append)
+
+            screen.set_results(
+                record,
+                {"q-cache": cache, "q-io": io},
+                "zh",
+            )
+            screen.reinforce_btn.click()
+
+            self.assertEqual([{
+                "course_id": "course-a",
+                "topic_ids": ("cache", "io"),
+                "question_count": 6,
+            }], requests)
+
     def test_results_screen_recomputes_course_context_for_displayed_questions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             manager = CourseProjectManager(str(Path(tmpdir) / "courses"))

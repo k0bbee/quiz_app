@@ -36,6 +36,7 @@ class ResultsScreen(QWidget):
     practice_topic_requested = pyqtSignal(str)
     review_topic_requested = pyqtSignal(str)
     study_requested = pyqtSignal(object)
+    generate_reinforcement_requested = pyqtSignal(object)
 
     def __init__(self, parent=None, *, course_manager: CourseProjectManager):
         super().__init__(parent)
@@ -109,6 +110,14 @@ class ResultsScreen(QWidget):
         self.next_action_btn.setVisible(False)
         self.next_action_btn.clicked.connect(self._emit_next_action)
         layout.addWidget(self.next_action_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.reinforce_btn = QPushButton()
+        self.reinforce_btn.setObjectName("secondaryButton")
+        self.reinforce_btn.hide()
+        self.reinforce_btn.clicked.connect(self._emit_reinforcement_request)
+        layout.addWidget(
+            self.reinforce_btn,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
         self.repeat_study_btn = QPushButton()
         self.repeat_study_btn.setObjectName("secondaryButton")
         self.repeat_study_btn.setMinimumHeight(40)
@@ -121,6 +130,7 @@ class ResultsScreen(QWidget):
         )
         self._recommended_topic_id = ""
         self._recommended_action = ""
+        self._reinforcement_topic_ids: tuple[str, ...] = ()
 
         # Divider
         line = QFrame()
@@ -190,6 +200,12 @@ class ResultsScreen(QWidget):
         self.retry_unsure_action.setText(self.lang_manager.get_text("重做不确定题", "Retry Unsure"))
         self.retry_review_action.setText(self.lang_manager.get_text("重做复查题", "Retry Review"))
         self.retry_all_action.setText(self.lang_manager.get_text("重新练习全部", "Retry Entire Set"))
+        self.reinforce_btn.setText(
+            self.lang_manager.get_text(
+                "生成补强练习",
+                "Generate Reinforcement Practice",
+            )
+        )
 
         # Re-render results if a record is loaded
         if self.current_record is not None:
@@ -247,6 +263,7 @@ class ResultsScreen(QWidget):
         self._recommended_topic_id = ""
         self._recommended_action = ""
         self.next_action_btn.setVisible(False)
+        self.reinforce_btn.setVisible(False)
         self.repeat_study_btn.setVisible(False)
         self._set_retry_action_state(False, False, False, False)
         context_parts = [
@@ -334,6 +351,7 @@ class ResultsScreen(QWidget):
         self.topic_stats_label.setText(self._build_topic_summary(record, lang))
         self.next_action_label.setText(self._build_next_action_text(record))
         self._configure_next_action(record, lang)
+        self._configure_reinforcement(record)
 
         # Review cards
         self._clear_reviews()
@@ -494,6 +512,54 @@ class ResultsScreen(QWidget):
                 self.study_requested.emit(continued)
             return
         self.study_requested.emit(intent)
+
+    def _configure_reinforcement(self, record: ProgressRecord) -> None:
+        """Offer one bounded, source-backed generation action for weak topics."""
+        self._reinforcement_topic_ids = ()
+        project = self._live_course_project
+        if project is None:
+            self.reinforce_btn.hide()
+            return
+        available_topics = {
+            topic_value(topic.topic_id)
+            for topic in getattr(project, "topics", ()) or ()
+            if topic_value(topic.topic_id)
+        }
+        signals: dict[str, int] = {}
+        for answer in getattr(record, "answers", ()) or ():
+            if getattr(answer, "skipped", False):
+                continue
+            question = self._live_retry_questions.get(answer.question_id)
+            if question is None:
+                continue
+            topic_id = topic_value(question.topic)
+            if not topic_id or topic_id not in available_topics:
+                continue
+            score = 0
+            if not getattr(answer, "is_correct", False):
+                score += 2
+            if getattr(answer, "confidence", "sure") == "unsure":
+                score += 1
+            if score:
+                signals[topic_id] = signals.get(topic_id, 0) + score
+        self._reinforcement_topic_ids = tuple(
+            topic_id
+            for topic_id, _score in sorted(
+                signals.items(),
+                key=lambda item: (-item[1], item[0]),
+            )[:3]
+        )
+        self.reinforce_btn.setVisible(bool(self._reinforcement_topic_ids))
+
+    def _emit_reinforcement_request(self) -> None:
+        project = self._live_course_project
+        if project is None or not self._reinforcement_topic_ids:
+            return
+        self.generate_reinforcement_requested.emit({
+            "course_id": project.course_id,
+            "topic_ids": self._reinforcement_topic_ids,
+            "question_count": min(8, len(self._reinforcement_topic_ids) * 3),
+        })
 
     def _set_daily_primary_action(self, active: bool) -> None:
         repeat_role = "primaryButton" if active else "secondaryButton"

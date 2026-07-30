@@ -533,6 +533,9 @@ class MainWindow(QMainWindow):
         self.results_screen.study_requested.connect(self._handle_study_intent)
         self.results_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
         self.results_screen.review_topic_requested.connect(self._on_review_progress_topic)
+        self.results_screen.generate_reinforcement_requested.connect(
+            self._on_generate_result_reinforcement
+        )
         self.progress_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
         self.progress_screen.review_topic_requested.connect(self._on_review_progress_topic)
         self.progress_screen.generate_topic_requested.connect(self._on_generate_progress_topic)
@@ -988,6 +991,35 @@ class MainWindow(QMainWindow):
                 topic_weights={topic_key: 100},
             ),
             draft_source="progress_topic",
+        )
+
+    def _on_generate_result_reinforcement(self, request) -> None:
+        """Generate at most eight variants for up to three weak course topics."""
+        if not isinstance(request, dict):
+            return
+        course_id = str(request.get("course_id", "") or "").strip()
+        topics = tuple(dict.fromkeys(
+            topic_value(topic_id)
+            for topic_id in (request.get("topic_ids", ()) or ())
+            if topic_value(topic_id)
+        ))[:3]
+        if not course_id or not topics:
+            return
+        if self.course_context.current_course_id() != course_id:
+            if not self.course_manager.set_current(course_id):
+                return
+            self.course_context.course_changed()
+        count = min(8, max(1, int(request.get("question_count", 0) or 0)))
+        base = 100 // len(topics)
+        weights = {topic_id: base for topic_id in topics}
+        weights[topics[-1]] += 100 - sum(weights.values())
+        self.generation_flow.open(
+            initial_plan=ExamGenerationPlan(
+                question_count=count,
+                selected_topics=topics,
+                topic_weights=weights,
+            ),
+            draft_source="result_reinforcement",
         )
 
     def _start_progress_topic_quiz(self, questions: list, label: str):
