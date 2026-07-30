@@ -17,6 +17,7 @@ from PyQt6.QtGui import QTextCursor
 from utils.constants import topic_alias_values, topic_label, topic_value
 from core.app_errors import coerce_app_error, format_app_error
 from core.language_manager import LanguageManager
+from core.generation_session_state import GenerationSessionState, GenerationStage
 from core.question_validation import validate_question_quality
 from ai.llm_client import LLMClient
 from ai.batch_generator import GenerationWorker
@@ -75,6 +76,7 @@ class AIGenerationDialog(QDialog):
         self.task_center = task_center
         self.material_pack = material_pack
         self._generation_task_id: str | None = None
+        self._session_state = GenerationSessionState()
         self._draft_source = "manual"
         self.lang_manager = LanguageManager.instance()
         self.generated_questions: list[Question] = []
@@ -102,6 +104,11 @@ class AIGenerationDialog(QDialog):
         self.setMinimumSize(820, 600)
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
+
+    @property
+    def generation_stage(self) -> GenerationStage:
+        """Expose the durable session state without leaking worker details."""
+        return self._session_state.stage
 
     def _setup_ui(self):
         # Desktop layout: two-pane work area + fixed status/action footer.
@@ -1323,6 +1330,7 @@ class AIGenerationDialog(QDialog):
             carryover_questions = []
 
         # Disable UI during generation
+        self._session_state.start()
         self._generation_failed = False
         self._generation_cancelled = False
         self._partial_generation_error = None
@@ -1831,6 +1839,7 @@ class AIGenerationDialog(QDialog):
         if self._generation_cancelled:
             return
         self.generated_questions = self._merge_retry_carryover(questions)
+        self._session_state.keep_partial_results()
         self.draft_changed.emit()
         self._refresh_review_button()
         self._append_generation_event(
@@ -1865,6 +1874,7 @@ class AIGenerationDialog(QDialog):
         if self._generation_cancelled:
             return
         self._generation_failed = True
+        self._session_state.fail()
         app_error = coerce_app_error(
             message,
             default_code="GEN-AI-001",
@@ -1947,6 +1957,7 @@ class AIGenerationDialog(QDialog):
                 self._set_generate_button_role("secondaryButton")
                 return
             self._set_generate_button_role("primaryButton")
+            self._session_state.request_review()
             self._review_generated_questions()
         else:
             self.status_label.setText(self.lang_manager.get_text("未生成任何题目。", "No questions were generated."))
@@ -2008,6 +2019,9 @@ class AIGenerationDialog(QDialog):
         )
 
     def _show_review_pending_state(self) -> None:
+        if self.generated_questions:
+            self._session_state.recover_for_review()
+        self._session_state.request_review()
         self._refresh_review_button()
         self.review_partial_btn.setHidden(False)
         self.review_partial_btn.setEnabled(True)
@@ -2120,6 +2134,7 @@ class AIGenerationDialog(QDialog):
     def reject(self):
         """Cancel generation if the dialog is closed while a worker is running."""
         if self.worker and self.worker.isRunning():
+            self._session_state.cancel()
             self._generation_cancelled = True
             self._close_when_worker_stops = True
             self.generation_status_timer.stop()
