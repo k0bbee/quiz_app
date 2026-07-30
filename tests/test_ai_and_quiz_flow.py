@@ -2837,9 +2837,10 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen.set_current_course("course-a")
             screen.refresh()
 
-            self.assertIn("Matched questions: 1", screen.overall_label.text())
-            self.assertIn("Partial: 1", screen.overall_label.text())
-            self.assertIn("Correct: 1 / 1", screen.detail_label.text())
+            self.assertEqual("Learning Analysis", screen.title.text())
+            self.assertIn("This week: 1 day", screen.overall_label.text())
+            self.assertIn("1 answered", screen.detail_label.text())
+            self.assertIn("100.0% accuracy", screen.detail_label.text())
             self.assertEqual(1, screen.topic_table.rowCount())
             self.assertEqual("100%", screen.topic_table.item(0, 2).text())
             self.assertEqual("75%", screen.topic_table.item(0, 3).text())
@@ -3104,6 +3105,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertNotIn("Process", screen.recommendation_label.text())
             self.assertNotIn("Virtual Memory", screen.recommendation_label.text())
             self.assertFalse(screen.recommendation_label.isHidden())
+            self.assertFalse(screen.focus_action_buttons[0].isHidden())
             self.assertEqual("", screen.source_refs_label.text())
             self.assertTrue(screen.source_refs_label.isHidden())
 
@@ -3221,9 +3223,14 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen.set_current_course("course-a")
             screen.refresh()
 
+            self.assertTrue(screen.source_refs_label.isHidden())
+
+            screen.topic_table.selectRow(0)
+            screen.view_topic_source_action.trigger()
+
             source_text = screen.source_refs_label.text()
             self.assertFalse(screen.source_refs_label.isHidden())
-            self.assertIn("相关来源", source_text)
+            self.assertIn("主题来源", source_text)
             self.assertIn("Cache.pdf", source_text)
             self.assertIn("页码/幻灯片 8", source_text)
             self.assertIn("cache-chunk-8", source_text)
@@ -3403,60 +3410,26 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         self.assertEqual(("cache",), plan.selected_topics)
         self.assertEqual({"cache": 100}, dict(plan.topic_weights))
 
-    def test_progress_reset_clears_mastered_topic_overrides(self):
-        from core.daily_study_plan_store import DailyStudyPlanStore
-        from core.study_queue import build_daily_study_queue
-
+    def test_learning_analysis_leaves_destructive_reset_in_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             progress_manager = ProgressManager(str(root / "progress"))
             question_bank = QuestionBank(str(root / "questions"))
             mastery_overrides = MasteryOverrideStore(root / "mastery_overrides.json")
             mastery_overrides.mark_topic_mastered("course-a", "cache")
-            daily_plan_store = DailyStudyPlanStore(root / "daily-plans.json")
-            daily_plan = daily_plan_store.get_or_create(
-                plan_id="2026-07-28:course-a",
-                plan_date="2026-07-28",
-                course_id="course-a",
-                queue=build_daily_study_queue({"q-1"}, []),
-                valid_question_ids={"q-1"},
-            )
 
             screen = self._make_progress_dashboard(
                 root,
                 progress_manager,
                 question_bank,
                 mastery_overrides=mastery_overrides,
-                daily_plan_store=daily_plan_store,
             )
-            screen.set_current_course("course-a")
 
-            # Two-step: first click arms, second click executes
-            screen._reset_progress()
-            screen._reset_progress()
-
-            self.assertFalse(mastery_overrides.is_topic_mastered("course-a", "cache"))
-            self.assertIsNone(daily_plan_store.get(daily_plan.plan_id))
-
-    def test_progress_reset_button_requires_two_clicks(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            progress_manager = ProgressManager(str(root / "progress"))
-            question_bank = QuestionBank(str(root / "questions"))
-
-            screen = self._make_progress_dashboard(
-                root, progress_manager, question_bank
+            self.assertFalse(hasattr(screen, "reset_btn"))
+            self.assertFalse(hasattr(screen, "_reset_progress"))
+            self.assertTrue(
+                mastery_overrides.is_topic_mastered("course-a", "cache")
             )
-            original_text = screen.reset_btn.text()
-
-            # First click — arms the button, does NOT reset
-            screen._reset_progress()
-            armed_text = screen.reset_btn.text()
-            self.assertNotEqual(original_text, armed_text)
-
-            # Second click — executes reset and restores original text
-            screen._reset_progress()
-            self.assertEqual(original_text, screen.reset_btn.text())
 
     def test_incorrect_review_uses_current_course_filter(self):
         from ui.main_window import MainWindow

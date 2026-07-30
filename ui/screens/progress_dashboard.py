@@ -1,5 +1,7 @@
 """Progress dashboard — aggregated stats, history, per-topic breakdown."""
 
+from datetime import date
+
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -9,6 +11,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from core.progress_tracker import ProgressManager
+from core.learning_dashboard import build_learning_dashboard
 from core.mastery import build_topic_mastery
 from core.mastery_overrides import MasteryOverrideStore
 from models.question import QuestionBank
@@ -19,6 +22,7 @@ from ui.components import PageHeader
 from ui.widgets.source_refs_panel import SourceRefsPanel
 from utils.constants import topic_value
 from core.language_manager import LanguageManager
+from core.today_learning_plan import LearningPlanAction, TodayLearningPlan
 from ui.archive_status_presenter import build_archive_status_view
 
 
@@ -52,6 +56,7 @@ class ProgressDashboard(QWidget):
         self._current_course_id = ""
         self._current_project = None
         self._recent_history_expanded = False
+        self._recommended_topic_ids: list[str] = []
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -79,6 +84,21 @@ class ProgressDashboard(QWidget):
         self.recommendation_label.setObjectName("dashboardRecommendationLabel")
         self.recommendation_label.setWordWrap(True)
         summary_layout.addWidget(self.recommendation_label)
+
+        self.focus_action_layout = QHBoxLayout()
+        self.focus_action_buttons = []
+        for index in range(3):
+            button = QPushButton()
+            button.setObjectName("secondaryButton")
+            button.clicked.connect(
+                lambda _checked=False, position=index:
+                self._request_focus_topic(position)
+            )
+            button.hide()
+            self.focus_action_layout.addWidget(button)
+            self.focus_action_buttons.append(button)
+        self.focus_action_layout.addStretch()
+        summary_layout.addLayout(self.focus_action_layout)
 
         self.source_refs_panel = SourceRefsPanel()
         self.source_refs_panel.setObjectName("dashboardSourceRefsLabel")
@@ -140,6 +160,7 @@ class ProgressDashboard(QWidget):
         topic_layout.addLayout(self.topic_action_layout)
 
         layout.addWidget(self.topic_group, 1)
+        self.topic_group.hide()
 
         # Recent sessions
         self.recent_group = QGroupBox()
@@ -170,14 +191,10 @@ class ProgressDashboard(QWidget):
         self.refresh_btn.clicked.connect(self.refresh)
         btn_layout.addWidget(self.refresh_btn)
 
-        btn_layout.addSpacing(24)
-
-        self.reset_btn = QPushButton()
-        self.reset_btn.setObjectName("dangerButton")
-        self.reset_btn.clicked.connect(self._reset_progress)
-        btn_layout.addWidget(self.reset_btn)
-
-        self._reset_pending = False
+        self.details_toggle_btn = QPushButton()
+        self.details_toggle_btn.setObjectName("secondaryButton")
+        self.details_toggle_btn.clicked.connect(self._toggle_topic_details)
+        btn_layout.addWidget(self.details_toggle_btn)
 
         layout.addLayout(btn_layout)
 
@@ -185,11 +202,12 @@ class ProgressDashboard(QWidget):
 
     def _update_ui_strings(self):
         """Update all static UI text based on current language."""
-        self.title.setText(self.lang_manager.get_text("进度面板", "Progress Dashboard"))
-        self.summary_group.setTitle(self.lang_manager.get_text("总览", "Overall"))
-        self.topic_group.setTitle(self.lang_manager.get_text("按主题", "By Topic"))
-        self.recent_group.setTitle(self.lang_manager.get_text("最近记录", "Recent Sessions"))
+        self.title.setText(self.lang_manager.get_text("学习分析", "Learning Analysis"))
+        self.summary_group.setTitle(self.lang_manager.get_text("本周与重点", "This Week and Focus"))
+        self.topic_group.setTitle(self.lang_manager.get_text("知识点详情", "Topic Details"))
+        self.recent_group.setTitle(self.lang_manager.get_text("最近练习", "Recent Practice"))
         self.refresh_btn.setText(self.lang_manager.get_text("刷新", "Refresh"))
+        self._update_details_toggle_text()
         self.topic_action_hint.setText(self.lang_manager.get_text("选中主题后可继续练习：", "Select a topic to continue:"))
         self.practice_topic_btn.setText(self.lang_manager.get_text("练 10 题", "Practice 10"))
         self.review_topic_btn.setText(self.lang_manager.get_text("复习错题", "Review Incorrect"))
@@ -197,8 +215,6 @@ class ProgressDashboard(QWidget):
         self.generate_topic_action.setText(self.lang_manager.get_text("生成新题", "Generate Questions"))
         self.view_topic_source_action.setText(self.lang_manager.get_text("查看来源", "View Sources"))
         self._update_mastery_action_state()
-        self._reset_pending = False
-        self.reset_btn.setText(self.lang_manager.get_text("重置全部进度", "Reset All Progress"))
         self.topic_table.setHorizontalHeaderLabels([
             self.lang_manager.get_text("主题", "Topic"),
             self.lang_manager.get_text("练习次数", "Sessions"),
@@ -226,7 +242,32 @@ class ProgressDashboard(QWidget):
             else {question.question_id for question in visible_questions}
         )
         stats = self.progress_manager.get_aggregated_stats(visible_question_ids)
+        records = self.progress_manager.load_all()
         lang = self.lang_manager.current
+        questions = (
+            list(visible_questions)
+            if visible_questions is not None
+            else self.question_bank.load_all()
+        )
+        topic_index = {
+            question.question_id: (
+                topic_value(question.topic),
+                topic_display_name(
+                    question.topic,
+                    self._current_course_project(),
+                    lang,
+                    question.topic_title(),
+                ),
+            )
+            for question in questions
+        }
+        daily_plan = self._today_plan_view()
+        self._learning_dashboard = build_learning_dashboard(
+            topic_index,
+            records=records,
+            daily_plan=daily_plan,
+            max_focus_topics=10,
+        )
 
         # Overall
         if stats["total_sessions"] == 0:
@@ -237,23 +278,41 @@ class ProgressDashboard(QWidget):
             self.detail_label.clear()
             self.recommendation_label.clear()
             self.recommendation_label.hide()
+            self._show_focus_actions(())
             self._set_source_refs([])
         else:
-            partial_sessions = stats.get("partial_sessions", 0)
-            partial_hint_zh = f" | 部分命中: {partial_sessions} 次" if partial_sessions else ""
-            partial_hint_en = f" | Partial: {partial_sessions}" if partial_sessions else ""
+            weekly = self._learning_dashboard.weekly_summary
             self.overall_label.setText(self.lang_manager.get_text(
-                f"练习: {stats['total_sessions']} 次{partial_hint_zh} | 命中题目: {stats['total_questions']} 题 | 正确率: {stats['overall_accuracy']:.1f}%",
-                f"Sessions: {stats['total_sessions']}{partial_hint_en} | Matched questions: {stats['total_questions']} | Accuracy: {stats['overall_accuracy']:.1f}%"
+                f"本周：学习 {weekly.study_days} 天",
+                f"This week: {weekly.study_days} day"
+                f"{'' if weekly.study_days == 1 else 's'}",
             ))
-            self.detail_label.setText(self.lang_manager.get_text(
-                f"正确: {stats['total_correct']} / {stats['total_questions']}",
-                f"Correct: {stats['total_correct']} / {stats['total_questions']}"
-            ))
-            self._update_recommendations(lang, visible_question_ids)
+            zh_detail = (
+                f"完成 {weekly.completed_questions} 题 · "
+                f"正确率 {weekly.accuracy:.1%}"
+            )
+            en_detail = (
+                f"{weekly.completed_questions} answered · "
+                f"{weekly.accuracy:.1%} accuracy"
+            )
+            progress = self._learning_dashboard.plan_progress
+            if progress.total_count:
+                zh_detail += f" · 今日计划完成率 {progress.completion_rate:.0%}"
+                en_detail += (
+                    f" · today's plan {progress.completion_rate:.0%} complete"
+                )
+            self.detail_label.setText(
+                self.lang_manager.get_text(zh_detail, en_detail)
+            )
+            self._update_recommendations()
 
         # Per-topic breakdown
-        self._populate_topic_table(lang, visible_question_ids, visible_questions)
+        self._populate_topic_table(
+            lang,
+            visible_question_ids,
+            questions,
+            records=records,
+        )
 
         # Recent sessions
         self.recent_list.clear()
@@ -357,10 +416,16 @@ class ProgressDashboard(QWidget):
         lang: str,
         visible_question_ids: set[str] | None,
         visible_questions: list | None = None,
+        *,
+        records=None,
     ):
         """Fill the per-topic breakdown table."""
         # Build per-topic stats from all completed sessions
-        all_records = self.progress_manager.load_all()
+        all_records = (
+            list(records)
+            if records is not None
+            else self.progress_manager.load_all()
+        )
         completed = [r for r in all_records if r.status == "completed" and r.summary]
 
         # Map question_id -> topic
@@ -415,47 +480,107 @@ class ProgressDashboard(QWidget):
             self.topic_table.setItem(row, 4, QTableWidgetItem(f"{stats['correct']}/{stats['total']}"))
         self._update_mastery_action_state()
 
-    def _update_recommendations(self, lang: str, visible_question_ids: set[str] | None):
-        """Show compact next-review topic suggestions."""
-        prioritized_ids = self.progress_manager.get_prioritized_review_question_ids(visible_question_ids)
-        questions = self.question_bank.get_many(
-            prioritized_ids,
-            course_id=self._current_course_id,
-        )
-
-        labels = []
-        seen_topics = set()
-        recommended_topic_values = []
-        for question in questions:
-            if self.mastery_overrides.is_topic_mastered(self._current_course_id, question.topic):
+    def _update_recommendations(self):
+        """Show at most three diagnosis-first actions without auto-opening sources."""
+        topics = []
+        for topic in self._learning_dashboard.focus_topics:
+            if self.mastery_overrides.is_topic_mastered(
+                self._current_course_id,
+                topic.topic_id,
+            ):
                 continue
-            value = topic_value(question.topic)
-            if value in seen_topics:
-                continue
-            seen_topics.add(value)
-            recommended_topic_values.append(value)
-            labels.append(topic_display_name(
-                question.topic,
-                self._current_course_project(),
-                lang,
-                question.topic_title(),
-            ))
-            if len(labels) >= 3:
+            topics.append(topic)
+            if len(topics) >= 3:
                 break
 
-        if not labels:
+        if not topics:
             self.recommendation_label.clear()
             self.recommendation_label.hide()
+            self._show_focus_actions(())
             self._set_source_refs([])
             return
 
-        topics = ", ".join(labels)
+        zh_lines = [
+            f"{index}. {topic.title} · 正确率 {topic.accuracy:.0%}"
+            for index, topic in enumerate(topics, start=1)
+        ]
+        en_lines = [
+            f"{index}. {topic.title} · {topic.accuracy:.0%} accuracy"
+            for index, topic in enumerate(topics, start=1)
+        ]
         self.recommendation_label.setText(self.lang_manager.get_text(
-            f"建议复习: {topics}",
-            f"Suggested review: {topics}",
+            "最需要关注 · 建议复习\n" + "\n".join(zh_lines),
+            "Needs the most attention · Suggested review\n"
+            + "\n".join(en_lines),
         ))
         self.recommendation_label.show()
-        self._set_source_refs(self._source_refs_for_topics(questions, set(recommended_topic_values)))
+        self._show_focus_actions(topics)
+        self._set_source_refs([])
+
+    def _show_focus_actions(self, topics) -> None:
+        self._recommended_topic_ids = [
+            topic.topic_id for topic in topics
+        ]
+        for index, button in enumerate(self.focus_action_buttons):
+            if index < len(topics):
+                topic = topics[index]
+                button.setText(self.lang_manager.get_text(
+                    f"强化 {topic.title}",
+                    f"Practice {topic.title}",
+                ))
+                button.show()
+            else:
+                button.hide()
+
+    def _request_focus_topic(self, index: int) -> None:
+        if 0 <= index < len(self._recommended_topic_ids):
+            self.practice_topic_requested.emit(
+                self._recommended_topic_ids[index]
+            )
+
+    def _toggle_topic_details(self) -> None:
+        self.topic_group.setVisible(self.topic_group.isHidden())
+        self._update_details_toggle_text()
+
+    def _update_details_toggle_text(self) -> None:
+        visible = (
+            hasattr(self, "topic_group")
+            and not self.topic_group.isHidden()
+        )
+        self.details_toggle_btn.setText(self.lang_manager.get_text(
+            "收起知识点详情" if visible else "查看知识点详情",
+            "Hide Topic Details" if visible else "View Topic Details",
+        ))
+
+    def _today_plan_view(self) -> TodayLearningPlan | None:
+        if self.daily_plan_store is None:
+            return None
+        plan_id = f"{date.today().isoformat()}:{self._current_course_id or 'all'}"
+        try:
+            plan = self.daily_plan_store.get(plan_id)
+        except (OSError, TypeError, ValueError):
+            return None
+        if plan is None:
+            return None
+        current_ids, remaining_ids = plan.next_session()
+        action = (
+            LearningPlanAction.DAILY_COMPLETE
+            if plan.is_complete
+            else LearningPlanAction.START_DAILY_QUEUE
+        )
+        return TodayLearningPlan(
+            action=action,
+            target_question_count=len(current_ids),
+            estimated_minutes=len(plan.pending_ids) * 2,
+            question_ids=current_ids,
+            remaining_question_ids=remaining_ids,
+            plan_id=plan.plan_id,
+            plan_total_count=len(plan.planned_ids),
+            backlog_count=plan.backlog_count,
+            completed_count=len(plan.completed_ids),
+            remediation_count=len(plan.remediation_ids),
+            deferred_count=len(plan.deferred_ids),
+        )
 
     def _set_source_refs(
         self,
@@ -580,22 +705,3 @@ class ProgressDashboard(QWidget):
         else:
             self.mastery_overrides.mark_topic_mastered(self._current_course_id, topic_key)
         self.refresh()
-
-    def _reset_progress(self):
-        """Two-step confirmation reset: first click arms, second click executes."""
-        if not self._reset_pending:
-            self._reset_pending = True
-            self.reset_btn.setText(
-                self.lang_manager.get_text("确认重置？", "Confirm Reset?")
-            )
-            return
-
-        self._reset_pending = False
-        if self.daily_plan_store is not None:
-            self.daily_plan_store.clear()
-        self.progress_manager.reset_all()
-        self.mastery_overrides.clear()
-        self.refresh()
-        self.reset_btn.setText(
-            self.lang_manager.get_text("重置全部进度", "Reset All Progress")
-        )
