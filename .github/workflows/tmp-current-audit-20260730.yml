@@ -1,0 +1,24 @@
+name: Temporary Current Audit 20260730
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  export:
+    if: github.head_ref == 'tmp/current-audit-20260730' || github.ref_name == 'tmp/current-audit-20260730'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package current source
+        run: |
+          mkdir -p /tmp/quiz_app_current
+          rsync -a --exclude '.git' --exclude '.github/workflows/tmp-current-audit-20260730.yml' ./ /tmp/quiz_app_current/
+          cd /tmp
+          zip -qr quiz-app-current-main-source-20260730.zip quiz_app_current
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quiz-app-current-main-source-20260730
+          path: /tmp/quiz-app-current-main-source-20260730.zip
+          retention-days: 1
