@@ -158,7 +158,9 @@ class GenerationConfigTests(unittest.TestCase):
         self.assertEqual(["changed"], notifications)
 
     def test_regenerated_question_set_returns_to_library_set_tab(self):
-        from ui.main_window import MainWindow
+        from ui.question_set_action_controller import (
+            QuestionSetActionController,
+        )
 
         question = Question.create_new(
             qtype=QuestionType.TRUE_FALSE,
@@ -194,35 +196,37 @@ class GenerationConfigTests(unittest.TestCase):
         )
         navigated = []
         shell = SimpleNamespace(
-            _history_protection_blocked=False,
             lang_manager=SimpleNamespace(
                 current="zh",
                 get_text=lambda zh, _en: zh,
+            ),
+            history_protection=SimpleNamespace(
+                confirm_navigation=lambda _screen: True,
             ),
             set_manager=SimpleNamespace(get=lambda _set_id: question_set),
             question_bank=Mock(),
             progress_manager=Mock(),
             topic_screen=SimpleNamespace(refresh=Mock()),
             navigate_route=navigated.append,
-            SCREEN_TOPIC_SELECTION=1,
             SCREEN_QUESTION_BANK=6,
+            _generation_controller=lambda: SimpleNamespace(
+                prepare=lambda **_kwargs: SimpleNamespace(
+                    dialog=dialog,
+                    course_project=Mock(),
+                )
+            ),
+        )
+        controller = QuestionSetActionController(
+            shell,
+            message_box=SimpleNamespace(
+                information=Mock(),
+                warning=Mock(),
+                critical=Mock(),
+            ),
+            regenerator=Mock(return_value=(question_set, 1, [])),
         )
 
-        with patch.object(
-            MainWindow,
-            "_prepare_generation_dialog",
-            return_value=SimpleNamespace(
-                dialog=dialog,
-                course_project=Mock(),
-            ),
-        ), patch(
-            "ui.main_window.persist_regenerated_question_set",
-            return_value=(question_set, 1, []),
-        ), patch("ui.main_window.QMessageBox.information"):
-            MainWindow._on_regenerate_question_set(
-                shell,
-                question_set.set_id,
-            )
+        controller.regenerate(question_set.set_id)
 
         self.assertEqual([Route.library("sets")], navigated)
 

@@ -1,16 +1,13 @@
 """Main window — application shell with QStackedWidget navigation."""
 
-from pathlib import Path
-
 from PyQt6.QtWidgets import (
-    QMainWindow, QStackedWidget, QDialog,
-    QMessageBox, QWidget, QPushButton, QFileDialog,
+    QMainWindow, QStackedWidget,
+    QMessageBox, QWidget, QPushButton,
 )
 from PyQt6.QtCore import QTimer, Qt
 
 from core.application_services import ApplicationServices
 from core.language_manager import LanguageManager
-from core.question_set_regenerator import persist_regenerated_question_set
 from core.background_task_presenter import build_task_center_view, task_toolbar_text
 from core.topic_display import topic_display_name
 from core.session_retry import SessionRetryMode
@@ -20,6 +17,7 @@ from ui.course_context_controller import CourseContextController
 from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.first_run_controller import FirstRunController
 from ui.history_protection_controller import HistoryProtectionController
+from ui.question_set_action_controller import QuestionSetActionController
 from ui.result_flow_controller import ResultFlowController
 from ui.study_flow_controller import StudyFlowController
 from ui.task_recovery_controller import TaskRecoveryController
@@ -112,6 +110,7 @@ class MainWindow(QMainWindow):
         self.course_context = CourseContextController(self)
         self.workspace_navigation = WorkspaceNavigationController(self)
         self.result_flow = ResultFlowController(self)
+        self.question_set_actions = QuestionSetActionController(self)
 
         # Central stacked widget
         self.stack = QStackedWidget()
@@ -328,13 +327,13 @@ class MainWindow(QMainWindow):
                 self.topic_screen.refresh
             )
             self._question_bank_screen.export_mock_exam.connect(
-                self._on_export_mock_exam
+                self.question_set_actions.export_mock_exam
             )
             self._question_bank_screen.export_mock_exams.connect(
-                self._on_export_mock_exams
+                self.question_set_actions.export_mock_exams
             )
             self._question_bank_screen.regenerate_questions.connect(
-                self._on_regenerate_question_set
+                self.question_set_actions.regenerate
             )
             self._question_bank_screen.resume_generation_draft.connect(
                 self._on_resume_generation_draft
@@ -920,112 +919,6 @@ class MainWindow(QMainWindow):
         if hasattr(self, "home_screen"):
             self.home_screen.clear_resume_draft()
 
-    def _on_export_mock_exam(self, set_id: str):
-        """Export a selected question set as a Markdown mock exam."""
-        gm = self.lang_manager.get_text
-        question_set = self.set_manager.get(set_id)
-        if not question_set:
-            QMessageBox.warning(self, gm("错误", "Error"), gm("未找到题目集。", "Question set not found."))
-            return
-
-        questions = self.question_bank.get_many(question_set.questions)
-        if not questions:
-            QMessageBox.warning(self, gm("错误", "Error"), gm("未找到该题目集的题目。", "No questions found for this set."))
-            return
-
-        default_name = f"{question_set.set_id}_mock_exam.md"
-        filepath, _ = QFileDialog.getSaveFileName(
-            self,
-            gm("导出模拟卷", "Export Mock Exam"),
-            default_name,
-            "Markdown Files (*.md);;All Files (*)",
-        )
-        if not filepath:
-            return
-
-        from core.mock_exam_exporter import MockExamExporter
-
-        try:
-            written = MockExamExporter.write_markdown(
-                filepath,
-                question_set,
-                questions,
-                lang=self.lang_manager.current,
-                include_answers=True,
-            )
-        except OSError as exc:
-            QMessageBox.critical(self, gm("导出失败", "Export Failed"), str(exc))
-            return
-
-        QMessageBox.information(
-            self,
-            gm("导出完成", "Export Complete"),
-            gm(f"模拟卷已导出到:\n{written}", f"Mock exam exported to:\n{written}"),
-        )
-
-    def _on_export_mock_exams(self, set_ids: list[str]):
-        """Export multiple selected question sets to one folder."""
-        gm = self.lang_manager.get_text
-        unique_set_ids = list(dict.fromkeys(set_ids))
-        if not unique_set_ids:
-            return
-        if len(unique_set_ids) == 1:
-            self._on_export_mock_exam(unique_set_ids[0])
-            return
-
-        folder = QFileDialog.getExistingDirectory(
-            self,
-            gm("批量导出模拟卷", "Export Mock Exams"),
-        )
-        if not folder:
-            return
-
-        from core.mock_exam_exporter import MockExamExporter
-        from utils.json_io import sanitize_filename_part
-
-        output_dir = Path(folder)
-        written: list[Path] = []
-        failures: list[str] = []
-        for set_id in unique_set_ids:
-            question_set = self.set_manager.get(set_id)
-            if not question_set:
-                failures.append(gm(f"{set_id}: 未找到题目集", f"{set_id}: question set not found"))
-                continue
-
-            questions = self.question_bank.get_many(question_set.questions)
-            if not questions:
-                failures.append(gm(f"{set_id}: 未找到题目", f"{set_id}: no questions found"))
-                continue
-
-            output_path = output_dir / f"{sanitize_filename_part(question_set.set_id)}_mock_exam.md"
-            try:
-                written.append(
-                    MockExamExporter.write_markdown(
-                        output_path,
-                        question_set,
-                        questions,
-                        lang=self.lang_manager.current,
-                        include_answers=True,
-                    )
-                )
-            except OSError as exc:
-                failures.append(f"{set_id}: {exc}")
-
-        if written:
-            preview = "\n".join(str(path) for path in written[:5])
-            extra = "" if len(written) <= 5 else gm(f"\n等 {len(written)} 份文件", f"\nand {len(written)} files total")
-            QMessageBox.information(
-                self,
-                gm("导出完成", "Export Complete"),
-                gm(f"已导出模拟卷:\n{preview}{extra}", f"Mock exams exported:\n{preview}{extra}"),
-            )
-        if failures:
-            QMessageBox.warning(
-                self,
-                gm("部分导出失败", "Export Partially Failed"),
-                "\n".join(failures),
-            )
-
     def _on_quiz_finished(self, progress_record):
         """Show results screen after quiz completion."""
         MainWindow._result_flow_controller(self).quiz_finished(progress_record)
@@ -1340,72 +1233,6 @@ class MainWindow(QMainWindow):
             prediction=prediction,
             draft_source="predicted_exam",
         )
-
-    def _on_regenerate_question_set(self, set_id: str):
-        """Regenerate questions for an existing question set in place."""
-        if (
-            self._history_protection_blocked
-            and not self._confirm_history_sensitive_navigation(
-                self.SCREEN_QUESTION_BANK
-            )
-        ):
-            return
-        gm = self.lang_manager.get_text
-        qset = self.set_manager.get(set_id)
-        if not qset:
-            QMessageBox.warning(self, gm("错误", "Error"), gm("未找到题目集。", "Question set not found."))
-            return
-
-        preparation = MainWindow._prepare_generation_dialog(
-            self,
-            purpose="regenerate",
-        )
-        if preparation is None:
-            return
-        dialog = preparation.dialog
-        course_project = preparation.course_project
-        dialog.configure_from_question_set(qset)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-
-        questions = dialog.generated_questions
-        if not questions:
-            QMessageBox.warning(self, gm("没有题目", "No Questions"), gm("未生成可保存的题目。", "No generated questions to save."))
-            return
-
-        selected_diff = dialog.diff_combo.currentData()
-        difficulty = qset.difficulty
-        if selected_diff in {d.value for d in Difficulty}:
-            difficulty = Difficulty(selected_diff)
-        try:
-            qset, saved, deleted = persist_regenerated_question_set(
-                self.question_bank,
-                self.set_manager,
-                self.progress_manager,
-                qset,
-                questions,
-                difficulty=difficulty,
-                course_project=course_project,
-            )
-        except RuntimeError as exc:
-            QMessageBox.critical(
-                self,
-                gm("保存失败", "Save Failed"),
-                str(exc),
-            )
-            return
-        self.topic_screen.refresh()
-        cleanup_note = gm(
-            f"\n已清理 {len(deleted)} 道无引用旧 AI 题目。" if deleted else "",
-            f"\nCleaned up {len(deleted)} unreferenced old AI question(s)." if deleted else "",
-        )
-        QMessageBox.information(
-            self,
-            gm("已重新生成", "Regenerated"),
-            gm(f"已保存 {saved} 道新题，并更新题目集：\n{qset.get_title(self.lang_manager.current)}{cleanup_note}",
-               f"Saved {saved} new questions and updated question set:\n{qset.get_title(self.lang_manager.current)}{cleanup_note}"),
-        )
-        self.navigate_route(Route.library("sets"))
 
     def _on_retry_all(self):
         """Retry the entire question set."""
