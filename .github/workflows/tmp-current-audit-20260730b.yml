@@ -1,0 +1,21 @@
+name: Temporary Current Audit 20260730b
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  export-source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Archive source
+        run: |
+          zip -r quiz-app-current-main-source-20260730b.zip . \
+            -x '.git/*' '.venv/*' '__pycache__/*' '*.pyc'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quiz-app-current-main-source-20260730b
+          path: quiz-app-current-main-source-20260730b.zip
