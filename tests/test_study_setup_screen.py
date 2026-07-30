@@ -90,6 +90,19 @@ class StudySetupScreenTests(unittest.TestCase):
         self.assertEqual("exam", intent.submission_mode)
         self.assertEqual(2, len(question_ids))
 
+    def test_scope_changes_refresh_a_user_facing_practice_preview(self):
+        screen, _bank = self._screen()
+
+        screen.question_count_input.setValue(6)
+
+        self.assertFalse(screen.practice_preview_card.isHidden())
+        self.assertIn("本次练习", screen.practice_preview_title.text())
+        self.assertIn("4 题", screen.practice_preview_primary.text())
+        self.assertIn("约 8 分钟", screen.practice_preview_primary.text())
+        self.assertIn("高速缓存 2", screen.practice_preview_coverage.text())
+        self.assertIn("还差 2 题", screen.practice_preview_gap.text())
+        self.assertIn("补齐后约 12 分钟", screen.practice_preview_gap.text())
+
     def test_today_mode_routes_back_to_the_daily_plan(self):
         screen, _bank = self._screen()
         requested = []

@@ -1003,6 +1003,27 @@ QWidget#homeOverviewPanel {
     border-radius: 14px;
 }
 
+QFrame#studySetupCard,
+QFrame#practicePreviewCard {
+    background-color: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 12px;
+}
+
+QLabel#practicePreviewPrimary {
+    color: #f0f0f0;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+QLabel#practicePreviewGap {
+    color: #dcdcaa;
+    background-color: #2a2718;
+    border: 1px solid #5a4d1f;
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
 QLabel#homeTodayPlanTitle,
 QLabel#homeContextTitle,
 QLabel#homeOverviewTitle {

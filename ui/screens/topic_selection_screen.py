@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from collections import Counter
-
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
+    QBoxLayout,
     QButtonGroup,
     QComboBox,
     QFormLayout,
@@ -18,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from core.language_manager import LanguageManager
+from core.practice_plan_preview import build_practice_plan_preview
 from core.practice_selection import select_practice_question_ids
 from core.study_intent import StudyAction, StudyIntent
 from models.question import QuestionBank
@@ -151,12 +151,32 @@ class TopicSelectionScreen(QWidget):
         form.addRow(self.question_count_label, self.question_count_input)
         setup_layout.addLayout(form)
 
-        self.coverage_label = QLabel()
-        self.coverage_label.setObjectName("secondaryText")
-        self.coverage_label.setWordWrap(True)
-        setup_layout.addWidget(self.coverage_label)
-        layout.addWidget(self.setup_card)
-        layout.addStretch(1)
+        self.practice_preview_card = QFrame()
+        self.practice_preview_card.setObjectName("practicePreviewCard")
+        preview_layout = QVBoxLayout(self.practice_preview_card)
+        preview_layout.setContentsMargins(18, 18, 18, 18)
+        preview_layout.setSpacing(10)
+        self.practice_preview_title = QLabel()
+        self.practice_preview_title.setObjectName("sectionTitle")
+        preview_layout.addWidget(self.practice_preview_title)
+        self.practice_preview_primary = QLabel()
+        self.practice_preview_primary.setObjectName("practicePreviewPrimary")
+        self.practice_preview_primary.setWordWrap(True)
+        preview_layout.addWidget(self.practice_preview_primary)
+        self.practice_preview_coverage = QLabel()
+        self.practice_preview_coverage.setObjectName("secondaryText")
+        self.practice_preview_coverage.setWordWrap(True)
+        preview_layout.addWidget(self.practice_preview_coverage)
+        self.coverage_label = self.practice_preview_coverage
+        self.practice_preview_difficulty = QLabel()
+        self.practice_preview_difficulty.setObjectName("secondaryText")
+        self.practice_preview_difficulty.setWordWrap(True)
+        preview_layout.addWidget(self.practice_preview_difficulty)
+        self.practice_preview_gap = QLabel()
+        self.practice_preview_gap.setObjectName("practicePreviewGap")
+        self.practice_preview_gap.setWordWrap(True)
+        preview_layout.addWidget(self.practice_preview_gap)
+        preview_layout.addStretch(1)
 
         action_layout = QHBoxLayout()
         action_layout.addStretch(1)
@@ -173,9 +193,19 @@ class TopicSelectionScreen(QWidget):
         self.start_btn.setMinimumHeight(40)
         self.start_btn.clicked.connect(self._start_quiz)
         action_layout.addWidget(self.start_btn)
-        layout.addLayout(action_layout)
+        preview_layout.addLayout(action_layout)
+
+        self.practice_workspace_layout = QBoxLayout(
+            QBoxLayout.Direction.LeftToRight
+        )
+        self.practice_workspace_layout.setSpacing(16)
+        self.practice_workspace_layout.addWidget(self.setup_card, 1)
+        self.practice_workspace_layout.addWidget(self.practice_preview_card, 1)
+        layout.addLayout(self.practice_workspace_layout, 1)
+        layout.addStretch(1)
 
         self._on_language_changed()
+        self._update_workspace_direction()
         self._sync_mode_buttons()
 
     def _mode_button(self, object_name: str) -> QPushButton:
@@ -194,7 +224,8 @@ class TopicSelectionScreen(QWidget):
         self.today_mode_btn.setText(gm("今日学习", "Today"))
         self.free_practice_mode_btn.setText(gm("练习模式", "Practice Mode"))
         self.mock_exam_mode_btn.setText(gm("模拟考试", "Mock Exam"))
-        self.setup_title.setText(gm("练习范围", "Practice Scope"))
+        self.setup_title.setText(gm("练习目标", "Practice Goal"))
+        self.practice_preview_title.setText(gm("本次练习", "This Session"))
         self.preset_label.setText(gm("保存的方案", "Saved Preset"))
         self.topic_label.setText(gm("知识点", "Topics"))
         self.difficulty_label.setText(gm("难度", "Difficulty"))
@@ -533,30 +564,50 @@ class TopicSelectionScreen(QWidget):
             if self.study_mode == "practice"
             else "Submit at the end",
         )
-        topic_counts = Counter(
-            self._scheduling_index[question_id][1]
-            for question_id in question_ids
-            if question_id in self._scheduling_index
+        preview = build_practice_plan_preview(
+            self._scheduling_index,
+            question_ids=question_ids,
+            requested_count=requested,
         )
         coverage = " · ".join(
-            f"{title} {count}" for title, count in topic_counts.items()
+            f"{title} {count}" for title, count in preview.topic_counts
         )
-        self.coverage_label.setText(gm(
-            f"预计覆盖：{coverage or '按保存方案'}\n"
-            f"已准备 {len(question_ids)}/{requested} 题 · {mode_text}",
-            f"Expected coverage: {coverage or 'saved preset'}\n"
-            f"{len(question_ids)}/{requested} questions ready · {mode_text}",
+        difficulties = " · ".join(
+            f"{_difficulty_label(difficulty, gm)} {count}"
+            for difficulty, count in preview.difficulty_counts
+        )
+        self.practice_preview_primary.setText(gm(
+            f"{preview.ready_count} 题 · 约 {preview.ready_minutes} 分钟 · {mode_text}",
+            f"{preview.ready_count} questions · about {preview.ready_minutes} min · {mode_text}",
         ))
+        self.practice_preview_coverage.setText(gm(
+            f"知识点覆盖：{coverage or '当前范围没有可用题目'}",
+            f"Topic coverage: {coverage or 'No available questions in this scope'}",
+        ))
+        self.practice_preview_difficulty.setText(gm(
+            f"难度分布：{difficulties or '暂无'}",
+            f"Difficulty mix: {difficulties or 'None'}",
+        ))
+        if preview.missing_count:
+            self.practice_preview_gap.setText(gm(
+                f"还差 {preview.missing_count} 题。补齐后约 {preview.target_minutes} 分钟。",
+                f"{preview.missing_count} more needed. About {preview.target_minutes} min when complete.",
+            ))
+        else:
+            self.practice_preview_gap.setText(gm(
+                "题量已满足，可直接开始。",
+                "Your target is ready to start.",
+            ))
         self.start_btn.setText(gm(
-            f"开始练习 {len(question_ids)} 题"
+            f"开始练习 {preview.ready_count} 题"
             if self.study_mode == "practice"
-            else f"开始模拟考试 {len(question_ids)} 题",
-            f"Start Practice {len(question_ids)} Questions"
+            else f"开始模拟考试 {preview.ready_count} 题",
+            f"Start Practice {preview.ready_count} Questions"
             if self.study_mode == "practice"
-            else f"Start Mock Exam {len(question_ids)} Questions",
+            else f"Start Mock Exam {preview.ready_count} Questions",
         ))
-        self.start_btn.setEnabled(bool(question_ids))
-        missing = max(0, requested - len(question_ids))
+        self.start_btn.setEnabled(preview.ready_count > 0)
+        missing = preview.missing_count
         self.generate_missing_btn.setText(gm(
             f"补生成 {missing} 题",
             f"Generate {missing} More",
@@ -566,10 +617,24 @@ class TopicSelectionScreen(QWidget):
         )
         if self._study_intent is not None:
             self.study_intent_banner.setText(gm(
-                f"已按学习建议预填：{len(question_ids)}/{requested} 题",
-                f"Study suggestion applied: {len(question_ids)}/{requested} ready",
+                f"已按学习建议预填：{preview.ready_count}/{requested} 题",
+                f"Study suggestion applied: {preview.ready_count}/{requested} ready",
             ))
             self.study_intent_banner.show()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._update_workspace_direction()
+
+    def _update_workspace_direction(self) -> None:
+        if not hasattr(self, "practice_workspace_layout"):
+            return
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if self.width() < 940
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self.practice_workspace_layout.setDirection(direction)
 
     def _update_course_context_label(self) -> None:
         title = self._current_course_title or self._current_course_id
@@ -586,3 +651,11 @@ class TopicSelectionScreen(QWidget):
             not source_course_id
             or source_course_id == self._current_course_id
         ) if self._current_course_id else False
+
+
+def _difficulty_label(difficulty: str, get_text) -> str:
+    return {
+        "easy": get_text("简单", "Easy"),
+        "medium": get_text("中等", "Medium"),
+        "hard": get_text("困难", "Hard"),
+    }.get(difficulty, get_text("其他", "Other"))
