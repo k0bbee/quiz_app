@@ -16,6 +16,7 @@ from core.topic_display import topic_display_name
 from core.session_retry import SessionRetryMode, session_retry_question_ids
 from core.study_intent import StudyAction, StudyIntent
 from ui.dialogs.background_task_dialog import BackgroundTaskDialog
+from ui.course_context_controller import CourseContextController
 from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.first_run_controller import FirstRunController
 from ui.history_protection_controller import HistoryProtectionController
@@ -108,6 +109,7 @@ class MainWindow(QMainWindow):
         )
         self.history_protection = HistoryProtectionController(self)
         self.first_run = FirstRunController(self)
+        self.course_context = CourseContextController(self)
         self.workspace_navigation = WorkspaceNavigationController(self)
 
         # Central stacked widget
@@ -388,6 +390,14 @@ class MainWindow(QMainWindow):
                 workspace_provider=lambda: MainWindow._get_generation_workspace(self),
             )
             self._generation_flow_controller = controller
+        return controller
+
+    def _course_context_controller(self) -> CourseContextController:
+        """Return the course-context controller for real or lightweight hosts."""
+        controller = vars(self).get("course_context")
+        if controller is None:
+            controller = CourseContextController(self)
+            self.course_context = controller
         return controller
 
     def _install_workspace(self, index: int, screen: QWidget) -> None:
@@ -1616,115 +1626,37 @@ class MainWindow(QMainWindow):
 
     def _on_course_changed(self):
         """Refresh app state after switching/importing course projects."""
-        self._sync_home_screen_course()
-        self._sync_topic_screen_course()
-        self._sync_question_bank_screen_course()
-        self._sync_progress_screen_course()
-        self._refresh_results_retry_availability()
-        self._refresh_first_run()
-        self._on_language_changed()
+        MainWindow._course_context_controller(self).course_changed()
 
     def _on_question_bank_changed(self):
         """Refresh views affected by question CRUD."""
-        self.question_bank.clear_cache()
-        self.home_screen.refresh()
-        self.topic_screen.refresh()
-        self._refresh_results_retry_availability()
-        self._refresh_first_run()
+        MainWindow._course_context_controller(self).question_bank_changed()
 
     def _refresh_results_retry_availability(self) -> None:
-        record = getattr(self.results_screen, "current_record", None)
-        if record is None:
-            return
-        answer_ids = [answer.question_id for answer in record.answers]
-        available = self.question_bank.get_many(
-            answer_ids,
-            course_id=self._current_course_id(),
-        )
-        question_set = self.set_manager.get(record.set_id) if record.set_id else None
-        set_questions = (
-            self.question_bank.get_many(question_set.questions)
-            if question_set is not None
-            else []
-        )
-        self.results_screen.set_retry_availability(
-            [question.question_id for question in available],
-            can_retry_all=bool(question_set is not None and set_questions),
-        )
+        MainWindow._course_context_controller(
+            self
+        ).refresh_results_retry_availability()
 
     def _load_generation_context(self) -> tuple[str, list, object]:
         """Load active course summary and topics for AI generation.
         Returns (content, topics, project). Caller should check for empty content
         and show a message if needed."""
-        gm = self.lang_manager.get_text
-        course = self.course_manager.current()
-        if course:
-            scoped_topics = getattr(course, "exam_topics", None)
-            topics = list(
-                scoped_topics()
-                if callable(scoped_topics)
-                else getattr(course, "topics", []) or []
-            )
-            if not topics and getattr(course, "exam_scope_mode", "all") != "selected":
-                topics = [gm("综合", "General")]
-            return course.summary_markdown, topics, course
-        return "", [], None
+        return MainWindow._course_context_controller(self).generation_context()
 
     def _sync_topic_screen_course(self):
-        course = self.course_manager.current()
-        self.topic_screen.set_current_course(
-            course.course_id if course else "",
-            course.title if course else "",
-        )
+        MainWindow._course_context_controller(self).sync_topic_screen()
 
     def _sync_question_bank_screen_course(self):
-        if self._question_bank_screen is None:
-            return
-        self._question_bank_screen.set_current_course(self._current_course_id())
+        MainWindow._course_context_controller(self).sync_question_bank()
 
     def _sync_home_screen_course(self):
-        course = self.course_manager.current()
-        exam_topic_ids = None
-        exam_scope_weights = {}
-        if course and getattr(course, "exam_scope_mode", "all") == "selected":
-            scoped_topics = getattr(course, "exam_topics", None)
-            topics = scoped_topics() if callable(scoped_topics) else getattr(course, "topics", [])
-            exam_topic_ids = {topic.topic_id for topic in topics}
-        if course:
-            allowed_topics = {
-                topic.topic_id
-                for topic in (
-                    course.exam_topics()
-                    if callable(getattr(course, "exam_topics", None))
-                    else getattr(course, "topics", [])
-                )
-            }
-            profile = getattr(course, "generation_profile", {}) or {}
-            raw_weights = (
-                profile.get("topic_weights", {})
-                if isinstance(profile, dict)
-                else {}
-            )
-            if isinstance(raw_weights, dict):
-                exam_scope_weights = {
-                    str(topic_id): weight
-                    for topic_id, weight in raw_weights.items()
-                    if str(topic_id) in allowed_topics
-                }
-        self.home_screen.set_current_course(
-            course.course_id if course else "",
-            course.title if course else "",
-            exam_topic_ids,
-            exam_scope_weights=exam_scope_weights,
-        )
-        self._update_home_resume_draft()
+        MainWindow._course_context_controller(self).sync_home()
 
     def _sync_progress_screen_course(self):
-        self.progress_screen.set_current_course(self._current_course_id())
+        MainWindow._course_context_controller(self).sync_progress()
 
     def _current_course_id(self) -> str:
-        course = self.course_manager.current()
-        return course.course_id if course else ""
+        return MainWindow._course_context_controller(self).current_course_id()
 
     def _show_about(self):
         """Show the About dialog."""
