@@ -1111,6 +1111,7 @@ class AIGenerationDialog(QDialog):
             getattr(draft, "review_warnings_only", False)
         )
         self.generated_questions = questions
+        self._session_state.restore_review()
         self._generation_failed = False
         self._generation_cancelled = False
         self._partial_generation_error = None

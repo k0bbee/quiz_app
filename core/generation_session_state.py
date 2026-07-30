@@ -38,6 +38,11 @@ class GenerationSessionState:
         if self.stage is GenerationStage.FAILED:
             self.stage = GenerationStage.REVIEW_PENDING
 
+    def restore_review(self) -> None:
+        """Restore a persisted review draft without pretending a run started."""
+        if self.stage is GenerationStage.CONFIGURING:
+            self.stage = GenerationStage.REVIEW_PENDING
+
     def save(self) -> None:
         if self.stage is GenerationStage.REVIEW_PENDING:
             self.stage = GenerationStage.SAVED
