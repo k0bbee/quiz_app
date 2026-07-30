@@ -7,6 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication
 
 from core.study_intent import StudyAction
+from core.exam_goal_store import ExamGoal
 from ui.screens.home_screen import HomeScreen
 
 
@@ -106,6 +107,20 @@ class HomeLearningDiagnosisTests(unittest.TestCase):
         self.assertIs(StudyAction.PRACTICE_TOPIC, requests[0].action)
         self.assertEqual(("io",), requests[0].topic_ids)
         self.assertEqual("home_focus", requests[0].source)
+
+    def test_home_surfaces_exam_countdown_and_load_forecast(self):
+        goal = ExamGoal("course-os", "2026-08-17", 30, 0.8)
+        screen = HomeScreen(
+            _ProgressManager(),
+            _QuestionBank(),
+            exam_goal_store=SimpleNamespace(get=lambda _course_id: goal),
+        )
+        self.addCleanup(screen.close)
+
+        screen.set_current_course("course-os", "操作系统")
+
+        self.assertIn("距考试", screen.next_step_label.text())
+        self.assertIn("覆盖当前范围", screen.next_step_label.text())
 
 
 if __name__ == "__main__":

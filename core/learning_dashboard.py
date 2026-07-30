@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from math import ceil
 
+from core.exam_goal_store import ExamGoal
 from core.today_learning_plan import TodayLearningPlan
 
 
@@ -70,6 +72,8 @@ class ExamStatus:
 
     configured: bool = False
     days_remaining: int | None = None
+    predicted_study_days: int = 0
+    on_track: bool = True
     message: str = ""
 
 
@@ -106,6 +110,7 @@ def build_learning_dashboard(
     *,
     records,
     daily_plan: TodayLearningPlan | None = None,
+    exam_goal: ExamGoal | None = None,
     reference_date: date | None = None,
     max_focus_topics: int = 2,
 ) -> LearningDashboardViewModel:
@@ -179,6 +184,7 @@ def build_learning_dashboard(
             topic.topic_id,
         ),
     )
+    current_date = reference_date or date.today()
     plan_progress = _plan_progress(daily_plan)
     return LearningDashboardViewModel(
         daily_plan=daily_plan,
@@ -191,7 +197,12 @@ def build_learning_dashboard(
         weekly_summary=_weekly_summary(
             records,
             visible_question_ids=set(normalized_index),
-            reference_date=reference_date or date.today(),
+            reference_date=current_date,
+        ),
+        exam_status=_exam_status(
+            exam_goal,
+            daily_plan=daily_plan,
+            reference_date=current_date,
         ),
         next_day_preview=_next_day_preview(daily_plan),
     )
@@ -279,3 +290,29 @@ def _next_day_preview(plan: TodayLearningPlan | None) -> NextDayPreview:
     deferred = max(0, int(getattr(plan, "deferred_count", 0) or 0))
     future_count = max(deferred, backlog - total)
     return NextDayPreview(question_count=min(15, future_count))
+
+
+def _exam_status(
+    goal: ExamGoal | None,
+    *,
+    daily_plan: TodayLearningPlan | None,
+    reference_date: date,
+) -> ExamStatus:
+    if goal is None:
+        return ExamStatus()
+    days_remaining = goal.days_remaining(reference_date)
+    backlog = max(
+        0,
+        int(getattr(daily_plan, "backlog_count", 0) or 0),
+    )
+    predicted_days = (
+        ceil(backlog * 2 / goal.daily_minutes)
+        if backlog
+        else 0
+    )
+    return ExamStatus(
+        configured=True,
+        days_remaining=days_remaining,
+        predicted_study_days=predicted_days,
+        on_track=predicted_days <= days_remaining,
+    )

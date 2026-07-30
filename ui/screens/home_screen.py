@@ -44,12 +44,14 @@ class HomeScreen(QWidget):
         *,
         mastery_overrides=None,
         daily_plan_store=None,
+        exam_goal_store=None,
     ):
         super().__init__(parent)
         self.progress_manager = progress_manager
         self.question_bank = question_bank
         self.mastery_overrides = mastery_overrides
         self.daily_plan_store = daily_plan_store
+        self.exam_goal_store = exam_goal_store
         self.lang_manager = LanguageManager.instance()
         self._current_course_id = ""
         self._current_course_title = ""
@@ -738,6 +740,12 @@ class HomeScreen(QWidget):
             topic_index,
             records=progress_records,
             daily_plan=self._today_plan,
+            exam_goal=(
+                self.exam_goal_store.get(self._current_course_id)
+                if self.exam_goal_store is not None
+                and self._current_course_id
+                else None
+            ),
         )
         self._render_learning_diagnosis()
         self._render_next_step()
@@ -856,8 +864,29 @@ class HomeScreen(QWidget):
             ))
 
     def _render_next_step(self) -> None:
+        exam = self._learning_dashboard.exam_status
         preview = self._learning_dashboard.next_day_preview
-        if preview.question_count:
+        if exam.configured:
+            if exam.on_track:
+                zh_status = (
+                    f"距考试 {exam.days_remaining} 天 · "
+                    f"预计 {exam.predicted_study_days} 天覆盖当前范围"
+                )
+                en_status = (
+                    f"{exam.days_remaining} days to exam · "
+                    f"about {exam.predicted_study_days} study days to cover the scope"
+                )
+            else:
+                delay = exam.predicted_study_days - (exam.days_remaining or 0)
+                zh_status = f"当前进度预计落后 {delay} 天，需要调整每日投入"
+                en_status = (
+                    f"Current pace is about {delay} day(s) behind; "
+                    "adjust daily study time"
+                )
+            self.next_step_label.setText(
+                self.lang_manager.get_text(zh_status, en_status)
+            )
+        elif preview.question_count:
             self.next_step_label.setText(self.lang_manager.get_text(
                 f"明日预计 {preview.question_count} 题",
                 f"About {preview.question_count} questions tomorrow",

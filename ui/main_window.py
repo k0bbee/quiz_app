@@ -94,6 +94,7 @@ class MainWindow(QMainWindow):
             "generation_draft_store",
             None,
         )
+        self.exam_goal_store = getattr(services, "exam_goal_store", None)
         self.lang_manager = LanguageManager.instance()
         self.startup_migration_report = startup_migration_report
         self._first_run_operation = ""
@@ -131,6 +132,7 @@ class MainWindow(QMainWindow):
             self.question_bank,
             mastery_overrides=self.mastery_overrides,
             daily_plan_store=self.daily_plan_store,
+            exam_goal_store=self.exam_goal_store,
         )
         self.first_run_screen = FirstRunWorkspace()
         self.home_workspace = QStackedWidget()
@@ -279,6 +281,7 @@ class MainWindow(QMainWindow):
                 mastery_overrides=self.mastery_overrides,
                 current_event_manager=self.current_event_manager,
                 generation_draft_store=self.generation_draft_store,
+                exam_goal_store=self.exam_goal_store,
                 task_center=self.task_center,
             )
             self._course_screen.current_course_changed.connect(
