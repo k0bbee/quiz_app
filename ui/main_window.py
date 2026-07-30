@@ -22,6 +22,7 @@ from ui.history_protection_controller import HistoryProtectionController
 from ui.session_retry_presenter import session_retry_copy
 from ui.study_flow_controller import StudyFlowController
 from ui.task_recovery_controller import TaskRecoveryController
+from ui.workspace_navigation_controller import WorkspaceNavigationController
 from ui.navigation import (
     NavigationRouter,
     Route,
@@ -107,6 +108,7 @@ class MainWindow(QMainWindow):
         )
         self.history_protection = HistoryProtectionController(self)
         self.first_run = FirstRunController(self)
+        self.workspace_navigation = WorkspaceNavigationController(self)
 
         # Central stacked widget
         self.stack = QStackedWidget()
@@ -551,8 +553,8 @@ class MainWindow(QMainWindow):
         allow_first_run_redirect: bool = True,
     ) -> bool:
         """Compatibility boundary for callers that still hold a stack index."""
-        return self.navigate_route(
-            self._default_route_for_screen_index(screen_index),
+        return self.workspace_navigation.navigate_index(
+            screen_index,
             remember=remember,
             confirm_current=confirm_current,
             allow_first_run_redirect=allow_first_run_redirect,
@@ -560,42 +562,16 @@ class MainWindow(QMainWindow):
 
     @property
     def current_route(self) -> Route:
-        destination = self.navigation_router.current_destination
-        if isinstance(destination, Route):
-            return destination
-        return self._default_route_for_screen_index(self.stack.currentIndex())
+        return self.workspace_navigation.current_route()
 
     def _screen_index_for_route(self, route) -> int:
-        if isinstance(route, Route):
-            return self.SCREEN_INDEX_BY_KEY[route.screen]
-        return int(route)
+        return self.workspace_navigation.screen_index(route)
 
     def _default_route_for_screen_index(self, screen_index: int) -> Route:
-        routes = {
-            self.SCREEN_HOME: Route.study("today"),
-            self.SCREEN_TOPIC_SELECTION: Route.study("practice"),
-            self.SCREEN_QUIZ: Route.focus("quiz"),
-            self.SCREEN_RESULTS: Route.focus("results"),
-            self.SCREEN_PROGRESS: Route.study("analysis"),
-            self.SCREEN_COURSES: Route.course(),
-            self.SCREEN_QUESTION_BANK: Route.library("questions"),
-            self.SCREEN_PAST_EXAMS: Route.library("past_exams"),
-            self.SCREEN_GENERATION: Route.course(
-                self._current_course_id(),
-                tab="generation",
-            ),
-        }
-        try:
-            return routes[int(screen_index)]
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError(f"unknown screen index: {screen_index}") from exc
+        return self.workspace_navigation.default_route(screen_index)
 
     def _course_context_id(self) -> str:
-        if self._course_screen is not None:
-            selected = self._course_screen.selected_course_id()
-            if selected:
-                return selected
-        return self._current_course_id()
+        return self.workspace_navigation.course_context_id()
 
     def navigate_route(
         self,
@@ -606,142 +582,24 @@ class MainWindow(QMainWindow):
         allow_first_run_redirect: bool = True,
     ) -> bool:
         """Navigate by product semantics instead of numeric widget position."""
-        if not isinstance(route, Route):
-            raise TypeError("route must be a Route")
-        if route.workspace is Workspace.COURSE and not route.course_id:
-            route = Route.course(
-                self._course_context_id(),
-                tab=route.tab,
-                draft_id=route.draft_id,
-            )
-        screen_index = self._screen_index_for_route(route)
-        if not self._confirm_history_sensitive_navigation(screen_index):
-            self._update_navigation_actions()
-            return False
-        if (
-            allow_first_run_redirect
-            and self._first_run_required()
-            and route == Route.study("practice")
-        ):
-            route = Route.study("today")
-        elif (
-            allow_first_run_redirect
-            and self._first_run_required()
-            and route.workspace is Workspace.COURSE
-            and route.tab != "generation"
-            and self._course_screen is None
-            and self._archived_course_count() <= 0
-        ):
-            route = Route.study("today")
-        screen_index = self._screen_index_for_route(route)
-        if confirm_current and not self._confirm_current_navigation(screen_index):
-            self._update_navigation_actions()
-            return False
-        active_generation_workspace = vars(self).get("_generation_workspace")
-        if (
-            route.tab == "generation"
-            and active_generation_workspace is not None
-            and active_generation_workspace.generation_widget() is not None
-            and active_generation_workspace.course_id
-        ):
-            route = Route.course(
-                active_generation_workspace.course_id,
-                tab="generation",
-                draft_id=route.draft_id,
-            )
-        if (
-            route.workspace is Workspace.COURSE
-            and route.tab == "generation"
-            and route.course_id
-            and self.course_manager.get(route.course_id) is not None
-            and self._current_course_id() != route.course_id
-            and self.course_manager.set_current(route.course_id)
-        ):
-            self._on_course_changed()
-        if screen_index == self.SCREEN_COURSES:
-            self._get_course_screen()
-        elif screen_index == self.SCREEN_QUESTION_BANK:
-            self._get_question_bank_screen()
-        elif screen_index == self.SCREEN_PAST_EXAMS:
-            self._get_past_exam_screen()
-        elif screen_index == self.SCREEN_GENERATION:
-            generation_workspace = self._get_generation_workspace()
-            if (
-                route.course_id
-                and generation_workspace.generation_widget() is None
-            ):
-                project = self.course_manager.get(route.course_id)
-                if project is not None:
-                    return bool(self._on_ai_generate(course_override=project))
-        self.navigation_router.navigate(route, remember=remember)
-        # Refresh data on certain screens
-        if screen_index == self.SCREEN_TOPIC_SELECTION:
-            self._sync_topic_screen_course()
-            self.topic_screen.refresh()
-        elif screen_index == self.SCREEN_PROGRESS:
-            self._sync_progress_screen_course()
-            self.progress_screen.refresh()
-        elif screen_index == self.SCREEN_HOME:
-            self._sync_home_screen_course()
-            self.home_screen.refresh()
-        elif screen_index == self.SCREEN_COURSES:
-            course_screen = self._get_course_screen()
-            course_screen.show_course(route.course_id, route.tab)
-        elif screen_index == self.SCREEN_QUESTION_BANK:
-            self._sync_question_bank_screen_course()
-            library = self._get_question_bank_screen()
-            if route.tab == "sets":
-                library.show_question_sets()
-            elif route.tab == "drafts":
-                library.show_generation_drafts()
-            else:
-                library.show_questions()
-            library.refresh()
-        elif screen_index == self.SCREEN_PAST_EXAMS:
-            self._get_past_exam_screen().refresh()
-        self._update_navigation_actions()
-        return True
+        return self.workspace_navigation.navigate(
+            route,
+            remember=remember,
+            confirm_current=confirm_current,
+            allow_first_run_redirect=allow_first_run_redirect,
+        )
 
     def navigate_back(self):
         """Return to the previous screen if navigation history exists."""
-        previous = self.navigation_router.peek_back()
-        if previous is None:
-            self._update_navigation_actions()
-            return
-        target_screen = self._screen_index_for_route(previous)
-        if not self._confirm_current_navigation(target_screen):
-            self._update_navigation_actions()
-            return
-        self.navigation_router.discard_back()
-        if isinstance(previous, Route):
-            self.navigate_route(
-                previous,
-                remember=False,
-                confirm_current=False,
-            )
-        else:
-            self.navigate_to(
-                previous,
-                remember=False,
-                confirm_current=False,
-            )
+        self.workspace_navigation.back()
 
     def _confirm_current_navigation(self, target_screen: int) -> bool:
         """Return whether navigation away from the current screen may proceed."""
-        if self.stack.currentIndex() == self.SCREEN_QUIZ and target_screen != self.SCREEN_QUIZ:
-            return self.quiz_screen.confirm_exit()
-        return True
+        return self.workspace_navigation.confirm_current(target_screen)
 
     def _update_navigation_actions(self):
         """Keep shell navigation buttons in sync with current location."""
-        if not hasattr(self, "context_back_btn"):
-            return
-        self.app_shell.apply_route(
-            self.current_route,
-            can_go_back=self.navigation_router.can_go_back,
-            get_text=self.lang_manager.get_text,
-        )
-        self._refresh_task_center_action()
+        self.workspace_navigation.update_actions()
 
     def open_settings(self, section: str = "") -> None:
         """Open settings as a utility window without leaving the workspace."""
