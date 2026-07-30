@@ -27,6 +27,7 @@ from ui.generation_launch_controller import (
     GenerationLaunchController,
     generation_launch_copy,
 )
+from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.session_retry_presenter import session_retry_copy
 from ui.study_flow_controller import StudyFlowController
 from ui.task_recovery_controller import TaskRecoveryController
@@ -1823,64 +1824,23 @@ class MainWindow(QMainWindow):
         draft_source: str = "manual",
         present_error: bool = True,
     ):
-        """Open or resume AI generation in the persistent course workspace."""
-        existing_workspace = vars(self).get("_generation_workspace")
-        if (
-            existing_workspace is not None
-            and existing_workspace.generation_widget() is not None
-        ):
-            self.navigate_to(
-                self.SCREEN_GENERATION,
-                allow_first_run_redirect=False,
-            )
-            return True
-        configured = MainWindow._configure_generation_dialog(
+        """Compatibility entry point for the generation workspace controller."""
+        return GenerationWorkspaceController(
             self,
+            workspace_provider=lambda: MainWindow._get_generation_workspace(self),
+        ).open(
             course_override=course_override,
             initial_plan=initial_plan,
             prediction=prediction,
             material_pack=material_pack,
             recovery_context=recovery_context,
+            auto_start=auto_start,
+            start_after_save=start_after_save,
             review_warnings_only=review_warnings_only,
             question_set_title=question_set_title,
             draft_source=draft_source,
             present_error=present_error,
         )
-        if configured is None:
-            return False
-        dialog, course_project, restored_draft, draft_source = configured
-        dialog.accepted.connect(
-            lambda: MainWindow._on_generation_workspace_accepted(
-                self,
-                dialog,
-                course_project,
-                draft_source=draft_source,
-                material_pack=material_pack,
-                start_after_save=start_after_save,
-            )
-        )
-        dialog.rejected.connect(
-            lambda: MainWindow._on_generation_workspace_rejected(
-                self,
-                dialog,
-                course_project,
-                draft_source=draft_source,
-                material_pack=material_pack,
-            )
-        )
-        workspace = MainWindow._get_generation_workspace(self)
-        workspace.show_generation_widget(
-            dialog,
-            course_id=str(getattr(course_project, "course_id", "") or ""),
-            course_title=str(getattr(course_project, "title", "") or ""),
-        )
-        self.navigate_to(
-            self.SCREEN_GENERATION,
-            allow_first_run_redirect=False,
-        )
-        if auto_start and not restored_draft:
-            dialog.start_generation_when_shown()
-        return True
 
     def _on_generation_workspace_accepted(
         self,

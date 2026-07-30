@@ -2742,7 +2742,7 @@ class GenerationConfigTests(unittest.TestCase):
             navigate_to=Mock(return_value=True),
         )
 
-        with patch("ui.main_window._ai_generation_settings_error", return_value=""), \
+        with patch("ui.generation_workspace_controller.ai_generation_settings_error", return_value=""), \
              patch("core.secrets_manager.SecretsManager.instance", return_value=ForbiddenSecrets()), \
              patch("ui.dialogs.ai_generation_dialog.AIGenerationDialog") as dialog_class:
             MainWindow._on_ai_generate(shell)
@@ -2786,7 +2786,7 @@ class GenerationConfigTests(unittest.TestCase):
             navigate_to=Mock(return_value=True),
         )
 
-        with patch("ui.main_window._ai_generation_settings_error", return_value=""), \
+        with patch("ui.generation_workspace_controller.ai_generation_settings_error", return_value=""), \
              patch("ui.dialogs.ai_generation_dialog.AIGenerationDialog") as dialog_class:
             dialog = dialog_class.return_value
 
@@ -2874,10 +2874,10 @@ class GenerationConfigTests(unittest.TestCase):
                 _on_question_bank_changed=Mock(),
             )
 
-            with patch("ui.main_window._ai_generation_settings_error", return_value=""), \
+            with patch("ui.generation_workspace_controller.ai_generation_settings_error", return_value=""), \
                  patch("ui.dialogs.ai_generation_dialog.AIGenerationDialog", FakeDialog), \
                  patch.object(set_manager, "save", return_value=False), \
-                 patch("ui.main_window.QMessageBox.critical") as critical:
+                 patch("ui.generation_workspace_controller.QMessageBox.critical") as critical:
                 MainWindow._on_ai_generate(shell)
                 dialog = workspace.show_generation_widget.call_args.args[0]
                 dialog.accepted.connect.call_args.args[0]()

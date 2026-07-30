@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import QApplication, QDialog, QLabel
 
 from models.course_project import CourseProject, CourseTopic
 from ui.main_window import MainWindow
+from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.screens.generation_workspace import GenerationWorkspace
 
 
@@ -17,6 +18,22 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class GenerationWorkspaceTests(unittest.TestCase):
+
+    def test_main_window_delegates_generation_opening_to_workspace_controller(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+
+        with patch.object(
+            GenerationWorkspaceController,
+            "open",
+            return_value=True,
+        ) as open_generation:
+            opened = window._on_ai_generate(auto_start=True)
+
+        self.assertTrue(opened)
+        open_generation.assert_called_once()
+        self.assertTrue(open_generation.call_args.kwargs["auto_start"])
+
     def test_workspace_hosts_generation_surface_without_turning_it_into_a_window(self):
         workspace = GenerationWorkspace()
         self.addCleanup(workspace.close)
@@ -57,8 +74,8 @@ class GenerationWorkspaceTests(unittest.TestCase):
         dialog.start_generation_when_shown = Mock()
 
         with patch.object(
-            MainWindow,
-            "_configure_generation_dialog",
+            GenerationWorkspaceController,
+            "configure",
             return_value=(dialog, course, False, "manual"),
         ):
             opened = window._on_ai_generate(auto_start=True)

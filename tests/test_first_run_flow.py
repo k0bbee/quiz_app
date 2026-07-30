@@ -440,9 +440,8 @@ class FirstRunFlowTests(unittest.TestCase):
         dialog.start_generation_when_shown = Mock()
         preparation = Mock(dialog=dialog, course_project=project)
 
-        with patch.object(
-            MainWindow,
-            "_prepare_generation_dialog",
+        with patch(
+            "ui.generation_workspace_controller.GenerationWorkspaceController.prepare",
             return_value=preparation,
         ):
             window._on_ai_generate(
@@ -536,11 +535,10 @@ class FirstRunFlowTests(unittest.TestCase):
         dialog.exec = Mock(return_value=dialog.DialogCode.Accepted)
         preparation = Mock(dialog=dialog, course_project=project)
 
-        with patch.object(
-            MainWindow,
-            "_prepare_generation_dialog",
+        with patch(
+            "ui.generation_workspace_controller.GenerationWorkspaceController.prepare",
             return_value=preparation,
-        ), patch("ui.main_window.QMessageBox.information"):
+        ), patch("ui.generation_workspace_controller.QMessageBox.information"):
             window._on_ai_generate(
                 course_override=project,
                 start_after_save=False,
@@ -625,17 +623,16 @@ class FirstRunFlowTests(unittest.TestCase):
             )
         )
 
-        with patch.object(
-            MainWindow,
-            "_prepare_generation_dialog",
+        with patch(
+            "ui.generation_workspace_controller.GenerationWorkspaceController.prepare",
             return_value=Mock(dialog=dialog, course_project=course),
         ), patch(
-            "ui.main_window.build_ai_question_set",
+            "ui.generation_workspace_controller.build_ai_question_set",
             return_value=question_set,
         ), patch(
-            "ui.main_window.persist_new_question_set",
+            "ui.generation_workspace_controller.persist_new_question_set",
             return_value=(question_set, 1),
-        ), patch("ui.main_window.QMessageBox.information") as information:
+        ), patch("ui.generation_workspace_controller.QMessageBox.information") as information:
             MainWindow._on_ai_generate(
                 shell,
                 initial_plan=plan,

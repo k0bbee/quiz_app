@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import QApplication, QDialog
 from ai.exam_plan import ExamGenerationPlan
 from models.course_project import CourseProject, CourseTopic
 from models.question import Question
+from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.main_window import MainWindow
 from ui.navigation import Route
 from utils.constants import Difficulty, QuestionType
@@ -91,8 +92,8 @@ class GenerationDraftLibraryTests(unittest.TestCase):
         dialog = QDialog()
         self.addCleanup(dialog.close)
         with patch.object(
-            MainWindow,
-            "_configure_generation_dialog",
+            GenerationWorkspaceController,
+            "configure",
             return_value=(dialog, self.project, True, "manual"),
         ):
             library.draft_panel.resume_btn.click()

@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import QApplication, QDialog
 from core.course_hub_presenter import build_course_hub_view
 from models.course_project import CourseProject, CourseTopic
 from models.question import Question, QuestionBank
+from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.main_window import MainWindow
 from ui.navigation import Route
 from utils.constants import Difficulty, QuestionType
@@ -235,8 +236,8 @@ class CourseHubNavigationTests(unittest.TestCase):
             )
         )
         with patch.object(
-            MainWindow,
-            "_configure_generation_dialog",
+            GenerationWorkspaceController,
+            "configure",
             return_value=(dialog, self.project, False, "manual"),
         ):
             self.window.course_generation_tab_btn.click()
