@@ -8,6 +8,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import QApplication, QDialog, QLabel
 
+from core.generation_session_state import GenerationStage
 from models.course_project import CourseProject, CourseTopic
 from ui.main_window import MainWindow
 from ui.generation_workspace_controller import GenerationWorkspaceController
@@ -51,6 +52,13 @@ class GenerationWorkspaceTests(unittest.TestCase):
         self.assertEqual(Qt.WindowType.Widget, generation_surface.windowType())
         self.assertEqual("course-os", workspace.course_id)
         self.assertIn("操作系统", workspace.context_label.text())
+        self.assertEqual(4, len(workspace.stage_labels))
+        self.assertIn("1 计划", workspace.stage_labels[0].text())
+
+        generation_surface.generation_stage = GenerationStage.REVIEW_PENDING
+        workspace.refresh_stage()
+
+        self.assertTrue(workspace.stage_labels[2].property("activeStage"))
 
     def test_main_generation_flow_uses_persistent_route_without_modal_exec(self):
         window = MainWindow()

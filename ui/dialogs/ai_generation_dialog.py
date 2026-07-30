@@ -186,6 +186,32 @@ class AIGenerationDialog(QDialog):
         right_layout.setContentsMargins(4, 0, 4, 0)
         right_layout.setSpacing(12)
 
+        self.goal_group = QGroupBox(
+            self.lang_manager.get_text("生成目标", "Generation Goal")
+        )
+        goal_layout = QHBoxLayout(self.goal_group)
+        self.quick_review_goal_btn = QPushButton(
+            self.lang_manager.get_text("快速复习", "Quick Review")
+        )
+        self.gap_fill_goal_btn = QPushButton(
+            self.lang_manager.get_text("补齐知识缺口", "Fill Knowledge Gaps")
+        )
+        self.mock_exam_goal_btn = QPushButton(
+            self.lang_manager.get_text("模拟考试", "Mock Exam")
+        )
+        for button, goal in (
+            (self.quick_review_goal_btn, "quick_review"),
+            (self.gap_fill_goal_btn, "gap_fill"),
+            (self.mock_exam_goal_btn, "mock_exam"),
+        ):
+            button.setObjectName("secondaryButton")
+            button.clicked.connect(
+                lambda _checked=False, selected=goal:
+                self._apply_generation_goal(selected)
+            )
+            goal_layout.addWidget(button)
+        right_layout.addWidget(self.goal_group)
+
         self.config_group = QGroupBox(
             self.lang_manager.get_text("生成参数", "Generation Settings")
         )
@@ -665,10 +691,40 @@ class AIGenerationDialog(QDialog):
             "Collapse Advanced Settings" if expanded else "Show Advanced Settings",
         ))
 
+    def _apply_generation_goal(self, goal: str) -> None:
+        """Apply a transparent starting point; every field remains editable."""
+        presets = {
+            "quick_review": ("quick_review", 10, "mixed"),
+            "gap_fill": ("quick_review", 8, "mixed"),
+            "mock_exam": ("final_exam", 30, "mixed"),
+        }
+        template, count, difficulty = presets.get(
+            str(goal or ""),
+            presets["quick_review"],
+        )
+        template_index = self.template_combo.findData(template)
+        if template_index >= 0:
+            self.template_combo.setCurrentIndex(template_index)
+        difficulty_index = self.diff_combo.findData(difficulty)
+        if difficulty_index >= 0:
+            self.diff_combo.setCurrentIndex(difficulty_index)
+        self.count_spin.setValue(count)
+        self._update_preview()
+
     def _on_language_changed(self, lang):
         """Update all UI strings when language changes."""
         self.setWindowTitle(self.lang_manager.get_text("AI 出题", "AI Question Generation"))
         self.topic_group.setTitle(self.lang_manager.get_text("选择主题", "Select Topics"))
+        self.goal_group.setTitle(self.lang_manager.get_text("生成目标", "Generation Goal"))
+        self.quick_review_goal_btn.setText(
+            self.lang_manager.get_text("快速复习", "Quick Review")
+        )
+        self.gap_fill_goal_btn.setText(
+            self.lang_manager.get_text("补齐知识缺口", "Fill Knowledge Gaps")
+        )
+        self.mock_exam_goal_btn.setText(
+            self.lang_manager.get_text("模拟考试", "Mock Exam")
+        )
         self.select_all_btn.setText(self.lang_manager.get_text("全选", "Select All"))
         self.deselect_btn.setText(self.lang_manager.get_text("取消全选", "Deselect All"))
 

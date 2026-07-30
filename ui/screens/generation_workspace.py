@@ -7,11 +7,13 @@ from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
     QSizePolicy,
+    QHBoxLayout,
     QVBoxLayout,
     QWidget,
 )
 
 from core.language_manager import LanguageManager
+from core.generation_session_state import GenerationStage
 
 
 class GenerationWorkspace(QWidget):
@@ -43,6 +45,17 @@ class GenerationWorkspace(QWidget):
         self.context_label.setObjectName("secondaryText")
         self.context_label.setWordWrap(True)
         header_layout.addWidget(self.context_label)
+
+        self.stage_layout = QHBoxLayout()
+        self.stage_layout.setSpacing(8)
+        self.stage_labels = []
+        for index in range(4):
+            label = QLabel()
+            label.setObjectName("generationStage")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.stage_layout.addWidget(label, 1)
+            self.stage_labels.append(label)
+        header_layout.addLayout(self.stage_layout)
         layout.addWidget(self.header)
 
         self.generation_host = QWidget()
@@ -74,9 +87,14 @@ class GenerationWorkspace(QWidget):
             )
             self.generation_host_layout.addWidget(widget)
             self._generation_widget = widget
+            draft_changed = getattr(widget, "draft_changed", None)
+            connect = getattr(draft_changed, "connect", None)
+            if callable(connect):
+                connect(self.refresh_stage)
         self.course_id = str(course_id or "").strip()
         self.course_title = str(course_title or "").strip()
         self._render()
+        self.refresh_stage()
         widget.show()
 
     def clear_generation_widget(self, widget: QWidget | None = None):
@@ -122,3 +140,35 @@ class GenerationWorkspace(QWidget):
                 "从课程页开始生成，任务与待审核草稿会保留在这里。",
                 "Start from a course. The active task and review draft remain here.",
             ))
+        labels = (
+            gm("1 计划", "1 Plan"),
+            gm("2 生成", "2 Generate"),
+            gm("3 审核", "3 Review"),
+            gm("4 发布", "4 Publish"),
+        )
+        for label, text in zip(self.stage_labels, labels):
+            label.setText(text)
+        self.refresh_stage()
+
+    def refresh_stage(self) -> None:
+        """Reflect the hosted generation lifecycle as four user-facing steps."""
+        stage = getattr(
+            self._generation_widget,
+            "generation_stage",
+            GenerationStage.CONFIGURING,
+        )
+        active_index = {
+            GenerationStage.CONFIGURING: 0,
+            GenerationStage.RUNNING: 1,
+            GenerationStage.PARTIAL: 1,
+            GenerationStage.FAILED: 1,
+            GenerationStage.CANCELLED: 1,
+            GenerationStage.REVIEW_PENDING: 2,
+            GenerationStage.SAVED: 3,
+        }.get(stage, 0)
+        for index, label in enumerate(self.stage_labels):
+            active = index == active_index
+            if label.property("activeStage") != active:
+                label.setProperty("activeStage", active)
+                label.style().unpolish(label)
+                label.style().polish(label)

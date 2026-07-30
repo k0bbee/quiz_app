@@ -59,6 +59,25 @@ class GenerationDialogStageTests(unittest.TestCase):
 
         self.assertEqual(GenerationStage.REVIEW_PENDING, dialog.generation_stage)
 
+    def test_goal_presets_configure_a_clear_generation_intent(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto"},
+            available_topics=["cache"],
+        )
+        self.addCleanup(dialog.close)
+
+        dialog.mock_exam_goal_btn.click()
+
+        self.assertEqual("final_exam", dialog.template_combo.currentData())
+        self.assertEqual(30, dialog.count_spin.value())
+        self.assertEqual("mixed", dialog.diff_combo.currentData())
+
+        dialog.gap_fill_goal_btn.click()
+
+        self.assertEqual("quick_review", dialog.template_combo.currentData())
+        self.assertEqual(8, dialog.count_spin.value())
+
 
 if __name__ == "__main__":
     unittest.main()
