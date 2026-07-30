@@ -71,6 +71,7 @@ class CourseScreen(QWidget):
         past_exam_manager=None,
         mastery_overrides=None,
         current_event_manager=None,
+        generation_draft_store=None,
         parent=None,
         task_center=None,
         qa_service_factory=None,
@@ -87,6 +88,7 @@ class CourseScreen(QWidget):
         self.past_exam_manager = past_exam_manager
         self.mastery_overrides = mastery_overrides
         self.current_event_manager = current_event_manager
+        self.generation_draft_store = generation_draft_store
         self.task_center = task_center
         self.qa_service_factory = qa_service_factory or self._create_qa_service
         self.current_event_dialog_factory = (
@@ -402,6 +404,29 @@ class CourseScreen(QWidget):
         self.overview_metrics_label.setWordWrap(True)
         right_layout.addWidget(self.overview_metrics_label)
         self.content_stack = QStackedWidget()
+        self.overview_panel = QWidget()
+        overview_layout = QVBoxLayout(self.overview_panel)
+        overview_layout.setContentsMargins(0, 0, 0, 0)
+        overview_layout.setSpacing(8)
+        self.course_health_label = QLabel()
+        self.course_health_label.setObjectName("courseHealthSummary")
+        self.course_health_label.setWordWrap(True)
+        overview_layout.addWidget(self.course_health_label)
+        self.course_coverage_label = QLabel()
+        self.course_coverage_label.setObjectName("courseCoverageSummary")
+        self.course_coverage_label.setWordWrap(True)
+        overview_layout.addWidget(self.course_coverage_label)
+        self.course_learning_label = QLabel()
+        self.course_learning_label.setObjectName("courseLearningSummary")
+        self.course_learning_label.setWordWrap(True)
+        overview_layout.addWidget(self.course_learning_label)
+        self.course_production_label = QLabel()
+        self.course_production_label.setObjectName("courseProductionSummary")
+        self.course_production_label.setWordWrap(True)
+        overview_layout.addWidget(self.course_production_label)
+        self.course_summary_heading = QLabel()
+        self.course_summary_heading.setObjectName("courseSummaryHeading")
+        overview_layout.addWidget(self.course_summary_heading)
         self.summary_preview = QTextBrowser()
         self.summary_preview.setObjectName("courseSummaryPreview")
         self.summary_preview.setReadOnly(True)
@@ -423,7 +448,8 @@ class CourseScreen(QWidget):
                 font-size: 12px;
             }
         """)
-        self.content_stack.addWidget(self.summary_preview)
+        overview_layout.addWidget(self.summary_preview, 1)
+        self.content_stack.addWidget(self.overview_panel)
         self.sources_panel = CourseSourcesPanel()
         self.sources_table = self.sources_panel.table
         self.content_stack.addWidget(self.sources_panel)
@@ -485,7 +511,7 @@ class CourseScreen(QWidget):
         """Show one Course Hub section without creating nested navigation."""
         normalized = str(section or "").strip()
         widgets = {
-            "overview": self.summary_preview,
+            "overview": self.overview_panel,
             "sources": self.sources_panel,
             "knowledge": self.knowledge_panel,
             "qa": self.qa_panel,
@@ -501,7 +527,13 @@ class CourseScreen(QWidget):
         self._update_content_header(project)
 
     def _render_course_hub(self, project) -> None:
-        view = build_course_hub_view(project, self.question_bank)
+        view = build_course_hub_view(
+            project,
+            self.question_bank,
+            progress_manager=self.progress_manager,
+            mastery_overrides=self.mastery_overrides,
+            generation_draft_store=self.generation_draft_store,
+        )
         self._course_hub_view = view
         gm = self.lang_manager.get_text
         warning_text = (
@@ -524,12 +556,52 @@ class CourseScreen(QWidget):
                 f"{warning_text}",
             )
         )
+        self.course_health_label.setText(gm(
+            f"资料健康\n{view.document_count} 份资料 · "
+            f"{view.document_count - view.warning_count} 份正常 · "
+            f"{view.warning_count} 份需要处理",
+            f"Source health\n{view.document_count} sources · "
+            f"{view.document_count - view.warning_count} ready · "
+            f"{view.warning_count} need attention",
+        ))
+        self.course_coverage_label.setText(gm(
+            f"内容覆盖\n考试知识点 {view.exam_topic_count} 个 · "
+            f"已有题目 {view.covered_exam_topic_count} 个 · "
+            f"缺少题目 {view.uncovered_exam_topic_count} 个",
+            f"Content coverage\n{view.exam_topic_count} exam topics · "
+            f"{view.covered_exam_topic_count} covered · "
+            f"{view.uncovered_exam_topic_count} missing questions",
+        ))
+        unstarted = sum(topic.status == "not_started" for topic in view.topics)
+        self.course_learning_label.setText(gm(
+            f"学习状态\n薄弱知识点 {view.weak_topic_count} 个 · "
+            f"未开始 {unstarted} 个",
+            f"Learning status\n{view.weak_topic_count} weak · "
+            f"{unstarted} not started",
+        ))
+        self.course_production_label.setText(gm(
+            f"内容生产\n待审核题目 {view.pending_review_question_count} 道 · "
+            f"质量警告 {view.quality_warning_count} 道",
+            f"Content production\n{view.pending_review_question_count} pending review · "
+            f"{view.quality_warning_count} quality warnings",
+        ))
+        self.course_summary_heading.setText(
+            gm("课程总结", "Course Summary")
+        )
         self.sources_panel.render(view, gm)
         self.knowledge_panel.render(view, gm)
 
     def _clear_course_hub(self) -> None:
         self._course_hub_view = None
         self.overview_metrics_label.clear()
+        for label in (
+            self.course_health_label,
+            self.course_coverage_label,
+            self.course_learning_label,
+            self.course_production_label,
+            self.course_summary_heading,
+        ):
+            label.clear()
         self.sources_table.setRowCount(0)
         self.knowledge_table.setRowCount(0)
 
@@ -1960,7 +2032,7 @@ class CourseScreen(QWidget):
         ))
         self.summary_mode_btn.setEnabled(False)
         if hasattr(self, "content_stack"):
-            self.content_stack.setCurrentWidget(self.summary_preview)
+            self.content_stack.setCurrentWidget(self.overview_panel)
             self.overview_metrics_label.setVisible(True)
             self.summary_mode_btn.setVisible(True)
         if hasattr(self, "qa_mode_btn"):

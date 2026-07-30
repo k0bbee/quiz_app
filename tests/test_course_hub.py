@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -158,6 +159,59 @@ class CourseHubPresenterTests(unittest.TestCase):
         self.assertEqual(0, view.covered_exam_topic_count)
         self.assertEqual(1, view.uncovered_exam_topic_count)
 
+    def test_course_health_includes_source_details_learning_and_review_work(self):
+        project = _course()
+        project.generation_profile = {
+            "topic_weights": {"input-output": 70, "virtual-memory": 30}
+        }
+        record = SimpleNamespace(
+            status="completed",
+            started_at="2026-07-29T09:00:00+08:00",
+            completed_at="2026-07-29T09:10:00+08:00",
+            answers=(
+                SimpleNamespace(
+                    question_id="q-io",
+                    skipped=False,
+                    is_correct=False,
+                ),
+            ),
+        )
+        question_bank = Mock()
+        question_bank.topic_index.return_value = {
+            "q-io": ("input-output", "Input / Output")
+        }
+        question_bank.get_many.return_value = [
+            SimpleNamespace(
+                question_id="q-io",
+                metadata={"quality_warnings": ["weak explanation"]},
+            )
+        ]
+        draft_store = Mock()
+        draft_store.get.return_value = SimpleNamespace(questions=(1, 2, 3))
+
+        view = build_course_hub_view(
+            project,
+            question_bank,
+            progress_manager=SimpleNamespace(load_all=lambda: [record]),
+            mastery_overrides=SimpleNamespace(
+                is_topic_mastered=lambda _course_id, _topic_id: False
+            ),
+            generation_draft_store=draft_store,
+        )
+
+        self.assertEqual(1, view.quality_warning_count)
+        self.assertEqual(3, view.pending_review_question_count)
+        self.assertEqual(1, view.weak_topic_count)
+        self.assertEqual(
+            "Interrupts and DMA",
+            view.sources[0].excerpt,
+        )
+        io_topic = view.topics[0]
+        self.assertEqual(70, io_topic.exam_weight)
+        self.assertEqual("0%", io_topic.mastery)
+        self.assertEqual("2026-07-29", io_topic.recent_practice)
+        self.assertEqual("weak", io_topic.status)
+
 
 class CourseHubNavigationTests(unittest.TestCase):
     def setUp(self):
@@ -173,6 +227,12 @@ class CourseHubNavigationTests(unittest.TestCase):
                 allow_first_run_redirect=False,
             )
         )
+        screen = self.window._course_screen
+        self.assertIn("资料健康", screen.course_health_label.text())
+        self.assertIn("内容覆盖", screen.course_coverage_label.text())
+        self.assertIn("学习状态", screen.course_learning_label.text())
+        self.assertIn("内容生产", screen.course_production_label.text())
+        self.assertIs(screen.overview_panel, screen.content_stack.currentWidget())
 
         self.assertEqual(
             ["overview", "sources", "knowledge", "generation", "qa"],
@@ -211,6 +271,13 @@ class CourseHubNavigationTests(unittest.TestCase):
         self.assertIs(screen.sources_panel, screen.content_stack.currentWidget())
         self.assertEqual(2, screen.sources_table.rowCount())
         self.assertEqual("I/O Lecture", screen.sources_table.item(0, 0).text())
+        screen.sources_table.selectRow(0)
+        self.assertIn("18", screen.sources_panel.detail_label.text())
+        self.assertIn("Input / Output", screen.sources_panel.detail_label.text())
+        self.assertIn(
+            "Interrupts and DMA",
+            screen.sources_panel.excerpt.toPlainText(),
+        )
 
         self.assertTrue(
             self.window.navigate_route(
@@ -221,8 +288,10 @@ class CourseHubNavigationTests(unittest.TestCase):
 
         self.assertIs(screen.knowledge_panel, screen.content_stack.currentWidget())
         self.assertEqual(2, screen.knowledge_table.rowCount())
+        self.assertEqual(8, screen.knowledge_table.columnCount())
         self.assertEqual("Input / Output", screen.knowledge_table.item(0, 0).text())
         self.assertEqual("0", screen.knowledge_table.item(0, 3).text())
+        self.assertEqual("尚未覆盖", screen.knowledge_table.item(0, 6).text())
 
     def test_generation_route_initializes_selected_course_workspace(self):
         dialog = QDialog()

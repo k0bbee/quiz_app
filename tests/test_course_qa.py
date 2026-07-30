@@ -359,12 +359,12 @@ class CourseQAPanelTests(unittest.TestCase):
             screen = CourseScreen(manager, qa_service_factory=lambda _project: ImmediateService())
             screen.project_list.setCurrentRow(0)
 
-            self.assertIs(screen.content_stack.currentWidget(), screen.summary_preview)
+            self.assertIs(screen.content_stack.currentWidget(), screen.overview_panel)
             screen.qa_mode_btn.click()
             self.assertIs(screen.content_stack.currentWidget(), screen.qa_panel)
             self.assertEqual("systems", screen.qa_panel.course.course_id)
             screen.qa_mode_btn.click()
-            self.assertIs(screen.content_stack.currentWidget(), screen.summary_preview)
+            self.assertIs(screen.content_stack.currentWidget(), screen.overview_panel)
 
     def test_course_task_stops_and_disables_active_qa(self):
         with tempfile.TemporaryDirectory() as tmpdir:
