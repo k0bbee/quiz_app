@@ -219,8 +219,11 @@ class QuestionBankScreen(QWidget):
         layout.addLayout(quality_scan_row)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.content_splitter = splitter
+        self._responsive_inspector_open = False
 
         left = QWidget()
+        self.question_list_panel = left
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         self.question_table = QTableView()
@@ -255,6 +258,12 @@ class QuestionBankScreen(QWidget):
         self.question_table.selectionModel().selectionChanged.connect(
             self._on_selection_changed
         )
+        self.question_table.activated.connect(
+            lambda _index: self._open_responsive_inspector()
+        )
+        self.question_table.doubleClicked.connect(
+            lambda _index: self._open_responsive_inspector()
+        )
         left_layout.addWidget(self.question_table, 1)
 
         page_row = QHBoxLayout()
@@ -273,6 +282,7 @@ class QuestionBankScreen(QWidget):
         splitter.addWidget(left)
 
         right = QWidget()
+        self.inspector_panel = right
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
         self.source_refs_panel = SourceRefsPanel()
@@ -282,6 +292,13 @@ class QuestionBankScreen(QWidget):
         right_layout.addWidget(self.source_refs_panel)
 
         editor_header = QHBoxLayout()
+        self.inspector_back_btn = QPushButton(
+            self.lang_manager.get_text("返回题目列表", "Back to Questions")
+        )
+        self.inspector_back_btn.setObjectName("secondaryButton")
+        self.inspector_back_btn.clicked.connect(self._close_responsive_inspector)
+        self.inspector_back_btn.hide()
+        editor_header.addWidget(self.inspector_back_btn)
         self.json_label = QLabel(self.lang_manager.get_text("题目编辑", "Question Editor"))
         editor_header.addWidget(self.json_label, 1)
         self.editor_mode_btn = QPushButton()
@@ -319,6 +336,35 @@ class QuestionBankScreen(QWidget):
         splitter.setSizes([520, 640])
 
         layout.addWidget(splitter, 1)
+        self._apply_responsive_layout()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "content_splitter"):
+            self._apply_responsive_layout()
+
+    def _apply_responsive_layout(self) -> None:
+        narrow = self.width() < 1100
+        if not narrow:
+            self.question_list_panel.show()
+            self.inspector_panel.show()
+            self.inspector_back_btn.hide()
+            self._responsive_inspector_open = False
+            self.content_splitter.setSizes([520, 640])
+            return
+        self.inspector_back_btn.setVisible(self._responsive_inspector_open)
+        self.question_list_panel.setVisible(not self._responsive_inspector_open)
+        self.inspector_panel.setVisible(self._responsive_inspector_open)
+
+    def _open_responsive_inspector(self) -> None:
+        if self.width() >= 1100:
+            return
+        self._responsive_inspector_open = True
+        self._apply_responsive_layout()
+
+    def _close_responsive_inspector(self) -> None:
+        self._responsive_inspector_open = False
+        self._apply_responsive_layout()
 
     def _on_language_changed(self, lang):
         """Update all UI text when language changes."""
@@ -350,6 +396,9 @@ class QuestionBankScreen(QWidget):
         self.prev_btn.setText(self.lang_manager.get_text("上一页", "Prev"))
         self.next_btn.setText(self.lang_manager.get_text("下一页", "Next"))
         self.json_label.setText(self.lang_manager.get_text("题目编辑", "Question Editor"))
+        self.inspector_back_btn.setText(
+            self.lang_manager.get_text("返回题目列表", "Back to Questions")
+        )
         self.new_btn.setText(self.lang_manager.get_text("新建", "New"))
         self.save_btn.setText(self.lang_manager.get_text("保存", "Save"))
         self.delete_btn.setText(self.lang_manager.get_text("删除", "Delete"))

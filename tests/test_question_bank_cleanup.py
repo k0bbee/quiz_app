@@ -99,6 +99,31 @@ class QuestionBankCleanupTests(unittest.TestCase):
             topic=topic,
         )
 
+    def test_narrow_library_opens_editor_as_a_full_height_inspector(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bank = QuestionBank(str(root / "questions"))
+            bank.save(self._question("q-1"))
+            screen = self._screen(root, bank)
+            self.addCleanup(screen.close)
+            screen.setFixedWidth(900)
+            screen.resize(900, 680)
+            screen.show()
+            _APP.processEvents()
+
+            self.assertTrue(screen.inspector_panel.isHidden())
+            screen.question_table.selectRow(0)
+            screen._open_responsive_inspector()
+
+            self.assertTrue(screen.question_list_panel.isHidden())
+            self.assertFalse(screen.inspector_panel.isHidden())
+            self.assertFalse(screen.inspector_back_btn.isHidden())
+
+            screen.inspector_back_btn.click()
+
+            self.assertFalse(screen.question_list_panel.isHidden())
+            self.assertTrue(screen.inspector_panel.isHidden())
+
     def _set(self, set_id: str, question_ids: list[str]) -> QuestionSet:
         return QuestionSet(
             set_id=set_id,
