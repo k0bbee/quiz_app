@@ -20,6 +20,7 @@ from models.past_exam import (
     PastExamTopicProfile,
 )
 from ui.main_window import MainWindow
+from ui.course_context_controller import CourseContextController
 from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.screens.home_screen import HomeScreen
 
@@ -171,7 +172,9 @@ class CourseExamScopeConsumerTests(unittest.TestCase):
             lang_manager=SimpleNamespace(get_text=lambda zh, _en: zh),
         )
 
-        content, topics, returned_project = MainWindow._load_generation_context(window)
+        content, topics, returned_project = CourseContextController(
+            window
+        ).generation_context()
 
         self.assertEqual("# Systems", content)
         self.assertIs(project, returned_project)
@@ -187,7 +190,9 @@ class CourseExamScopeConsumerTests(unittest.TestCase):
             lang_manager=SimpleNamespace(get_text=lambda zh, _en: zh),
         )
 
-        _content, topics, _project_value = MainWindow._load_generation_context(window)
+        _content, topics, _project_value = CourseContextController(
+            window
+        ).generation_context()
 
         self.assertEqual([], topics)
 
@@ -199,7 +204,9 @@ class CourseExamScopeConsumerTests(unittest.TestCase):
         window = SimpleNamespace(
             lang_manager=SimpleNamespace(get_text=lambda zh, _en: zh),
             settings_screen=SimpleNamespace(settings_snapshot=lambda: {}),
-            _load_generation_context=lambda: ("# Systems", [], project),
+            course_context=SimpleNamespace(
+                generation_context=lambda: ("# Systems", [], project),
+            ),
         )
 
         with patch.object(QMessageBox, "warning") as warning:

@@ -202,8 +202,8 @@ class MainWindow(QMainWindow):
             setup_screen_index=self.SCREEN_TOPIC_SELECTION,
             quiz_screen_index=self.SCREEN_QUIZ,
             courses_screen_index=self.SCREEN_COURSES,
-            current_course_id=self._current_course_id,
-            course_changed=self._on_course_changed,
+            current_course_id=self.course_context.current_course_id,
+            course_changed=self.course_context.course_changed,
             resume_session=self._on_resume_abandoned,
             review_questions=self.result_flow.practice_incorrect,
             generate_questions=self.generation_flow.open,
@@ -218,7 +218,7 @@ class MainWindow(QMainWindow):
                 allow_first_run_redirect=False,
             ),
             open_settings=self.open_settings,
-            course_changed=self._on_course_changed,
+            course_changed=self.course_context.course_changed,
             get_course_screen=self._get_course_screen,
             get_past_exam_screen=self._get_past_exam_screen,
             generate_questions=self.generation_flow.open,
@@ -232,9 +232,9 @@ class MainWindow(QMainWindow):
 
         # Connect screen navigation signals
         self._connect_signals()
-        self._sync_home_screen_course()
-        self._sync_topic_screen_course()
-        self._sync_progress_screen_course()
+        self.course_context.sync_home()
+        self.course_context.sync_topic_screen()
+        self.course_context.sync_progress()
         self._refresh_first_run()
 
         # Apply initial language
@@ -281,7 +281,7 @@ class MainWindow(QMainWindow):
                 task_center=self.task_center,
             )
             self._course_screen.current_course_changed.connect(
-                self._on_course_changed
+                self.course_context.course_changed
             )
             self._course_screen.generate_questions_requested.connect(
                 lambda _course_id: self.generation_flow.open()
@@ -322,9 +322,9 @@ class MainWindow(QMainWindow):
                 task_center=self.task_center,
                 generation_draft_store=self.generation_draft_store,
             )
-            self._sync_question_bank_screen_course()
+            self.course_context.sync_question_bank()
             self._question_bank_screen.question_bank_changed.connect(
-                self._on_question_bank_changed
+                self.course_context.question_bank_changed
             )
             self._question_bank_screen.sets_changed.connect(
                 self.topic_screen.refresh
@@ -383,14 +383,6 @@ class MainWindow(QMainWindow):
                 self._generation_workspace,
             )
         return self._generation_workspace
-
-    def _course_context_controller(self) -> CourseContextController:
-        """Return the course-context controller for real or lightweight hosts."""
-        controller = vars(self).get("course_context")
-        if controller is None:
-            controller = CourseContextController(self)
-            self.course_context = controller
-        return controller
 
     def _install_workspace(self, index: int, screen: QWidget) -> None:
         """Replace one fixed-route placeholder without shifting other routes."""
@@ -755,7 +747,7 @@ class MainWindow(QMainWindow):
             return None
         questions = self.question_bank.get_many(
             question_set.questions,
-            course_id=self._current_course_id(),
+            course_id=self.course_context.current_course_id(),
         )
         answered_ids = {answer.question_id for answer in draft.answers}
         remaining = [question for question in questions if question.question_id not in answered_ids]
@@ -803,7 +795,7 @@ class MainWindow(QMainWindow):
         course_id = (
             study_intent.course_id
             if study_intent is not None and study_intent.course_id
-            else self._current_course_id()
+            else self.course_context.current_course_id()
         )
         questions = self.question_bank.get_many(
             snapshot.question_order,
@@ -855,7 +847,7 @@ class MainWindow(QMainWindow):
             )
             if study_intent is None:
                 study_intent = StudyIntent(
-                    course_id=self._current_course_id(),
+                    course_id=self.course_context.current_course_id(),
                     action=StudyAction.CUSTOM_PRACTICE,
                     set_id=question_set.set_id,
                     question_ids=tuple(snapshot.question_order),
@@ -892,7 +884,7 @@ class MainWindow(QMainWindow):
             f"Resume Draft: {question_set.get_title('en')}",
         )
         intent = StudyIntent(
-            course_id=self._current_course_id(),
+            course_id=self.course_context.current_course_id(),
             action=StudyAction.CUSTOM_PRACTICE,
             set_id=question_set.set_id,
             question_ids=tuple(
@@ -942,7 +934,7 @@ class MainWindow(QMainWindow):
             question
             for question in self.question_bank.get_many(
                 prioritized_ids,
-                course_id=self._current_course_id(),
+                course_id=self.course_context.current_course_id(),
             )
             if topic_value(question.topic) == topic_key
         ]
@@ -964,7 +956,7 @@ class MainWindow(QMainWindow):
         """Return current-course questions matching a progress topic key."""
         return self.question_bank.filter_by_topic(
             topic_key,
-            course_id=self._current_course_id(),
+            course_id=self.course_context.current_course_id(),
         )
 
     def _progress_topic_label(self, topic_key: str, questions: list) -> str:
@@ -972,7 +964,9 @@ class MainWindow(QMainWindow):
         lang = self.lang_manager.current
         course_manager = getattr(self, "course_manager", None)
         course_project = (
-            course_manager.get(self._current_course_id()) if course_manager else None
+            course_manager.get(self.course_context.current_course_id())
+            if course_manager
+            else None
         )
         fallback_title = questions[0].topic_title() if questions else ""
         topic = questions[0].topic if questions else topic_key
@@ -995,7 +989,7 @@ class MainWindow(QMainWindow):
     def _start_progress_topic_quiz(self, questions: list, label: str):
         """Open QuizScreen for a progress-topic action."""
         intent = StudyIntent(
-            course_id=self._current_course_id(),
+            course_id=self.course_context.current_course_id(),
             action=StudyAction.PRACTICE_TOPIC,
             topic_ids=tuple(dict.fromkeys(
                 topic_value(question.topic)
@@ -1047,40 +1041,6 @@ class MainWindow(QMainWindow):
 
     def _show_timer_setting(self) -> bool:
         return bool(self.settings_screen.get_setting("show_timer", False))
-
-    def _on_course_changed(self):
-        """Refresh app state after switching/importing course projects."""
-        MainWindow._course_context_controller(self).course_changed()
-
-    def _on_question_bank_changed(self):
-        """Refresh views affected by question CRUD."""
-        MainWindow._course_context_controller(self).question_bank_changed()
-
-    def _refresh_results_retry_availability(self) -> None:
-        MainWindow._course_context_controller(
-            self
-        ).refresh_results_retry_availability()
-
-    def _load_generation_context(self) -> tuple[str, list, object]:
-        """Load active course summary and topics for AI generation.
-        Returns (content, topics, project). Caller should check for empty content
-        and show a message if needed."""
-        return MainWindow._course_context_controller(self).generation_context()
-
-    def _sync_topic_screen_course(self):
-        MainWindow._course_context_controller(self).sync_topic_screen()
-
-    def _sync_question_bank_screen_course(self):
-        MainWindow._course_context_controller(self).sync_question_bank()
-
-    def _sync_home_screen_course(self):
-        MainWindow._course_context_controller(self).sync_home()
-
-    def _sync_progress_screen_course(self):
-        MainWindow._course_context_controller(self).sync_progress()
-
-    def _current_course_id(self) -> str:
-        return MainWindow._course_context_controller(self).current_course_id()
 
     def _show_about(self):
         """Show the About dialog."""

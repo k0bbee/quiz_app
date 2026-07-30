@@ -32,12 +32,19 @@ from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
+from ui.course_context_controller import CourseContextController
 from ui.result_flow_controller import ResultFlowController
 from ui.widgets.answer_area import AnswerArea, MatchingWidget, MultipleChoiceWidget
 from utils.constants import Difficulty, QuestionType, QuizState, topic_value
 
 
 _APP = QApplication.instance() or QApplication([])
+
+
+def _course_context(course_id: str = "", **overrides):
+    values = {"current_course_id": lambda: course_id}
+    values.update(overrides)
+    return types.SimpleNamespace(**values)
 
 
 class _StudyFlowSpy:
@@ -1574,7 +1581,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             results_screen=types.SimpleNamespace(current_record=record),
             lang_manager=LanguageManager.instance(),
             question_bank=question_bank,
-            _current_course_id=lambda: "course-a",
+            course_context=_course_context("course-a"),
         )
 
         with patch("ui.result_flow_controller.QMessageBox.warning") as warning:
@@ -2001,7 +2008,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 quiz_screen=FakeQuizScreen(),
                 study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
-                _current_course_id=lambda: "course-a",
+                course_context=_course_context("course-a"),
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
@@ -2052,7 +2059,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 quiz_screen=FakeQuizScreen(),
                 study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
-                _current_course_id=lambda: "course-a",
+                course_context=_course_context("course-a"),
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
@@ -2096,7 +2103,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 quiz_screen=FakeQuizScreen(),
                 study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
-                _current_course_id=lambda: "course-a",
+                course_context=_course_context("course-a"),
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
@@ -2584,7 +2591,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             _update_home_resume_draft=lambda: None,
         )
 
-        MainWindow._sync_home_screen_course(shell)
+        CourseContextController(shell).sync_home()
 
         self.assertEqual({"memory", "process"}, captured["args"][2])
         self.assertEqual(
@@ -3503,7 +3510,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 quiz_screen=FakeQuizScreen(),
                 study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
-                _current_course_id=lambda: "course-a",
+                course_context=_course_context("course-a"),
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
@@ -3567,7 +3574,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 quiz_screen=FakeQuizScreen(),
                 study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
-                _current_course_id=lambda: "course-a",
+                course_context=_course_context("course-a"),
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
@@ -3625,7 +3632,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 quiz_screen=FakeQuizScreen(),
                 study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
-                _current_course_id=lambda: "course-a",
+                course_context=_course_context("course-a"),
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
@@ -3701,7 +3708,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 quiz_screen=FakeQuizScreen(),
                 study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
-                _current_course_id=lambda: "course-a",
+                course_context=_course_context("course-a"),
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
@@ -3762,7 +3769,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 quiz_screen=FakeQuizScreen(),
                 study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
-                _current_course_id=lambda: "course-a",
+                course_context=_course_context("course-a"),
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
@@ -3833,7 +3840,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 quiz_screen=FakeQuizScreen(),
                 study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
-                _current_course_id=lambda: "course-a",
+                course_context=_course_context("course-a"),
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
@@ -3911,7 +3918,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 quiz_screen=FakeQuizScreen(),
                 study_flow=_StudyFlowSpy(started),
                 SCREEN_QUIZ=2,
-                _current_course_id=lambda: "course-a",
+                course_context=_course_context("course-a"),
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: started.setdefault("screen", screen),
             )
@@ -3976,7 +3983,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             set_manager=FakeSetManager(),
             question_bank=FakeQuestionBank(),
             lang_manager=LanguageManager.instance(),
-            _current_course_id=lambda: "",
+            course_context=_course_context(),
         )
 
         MainWindow._update_home_resume_draft(shell)
@@ -4048,7 +4055,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 study_flow=study_flow,
                 home_screen=types.SimpleNamespace(clear_resume_draft=Mock()),
                 SCREEN_QUIZ=2,
-                _current_course_id=lambda: "course-a",
+                course_context=_course_context("course-a"),
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: shown.setdefault("screen", screen),
             )
@@ -4106,7 +4113,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             set_manager=FakeSetManager(),
             question_bank=FakeQuestionBank(),
             lang_manager=LanguageManager.instance(),
-            _current_course_id=lambda: "",
+            course_context=_course_context(),
         )
 
         MainWindow._update_home_resume_draft(shell)
@@ -4156,9 +4163,11 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 study_flow=types.SimpleNamespace(
                     active_questions={"stale": object()},
                 ),
-                _refresh_results_retry_availability=lambda: shown.setdefault(
-                    "availability_refreshed",
-                    True,
+                course_context=_course_context(
+                    refresh_results_retry_availability=lambda: shown.setdefault(
+                        "availability_refreshed",
+                        True,
+                    ),
                 ),
                 navigate_to=lambda index: shown.setdefault("navigated", index),
                 SCREEN_RESULTS=3,
@@ -4350,7 +4359,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 question_bank=question_bank,
                 progress_manager=ProgressManager(str(root / "progress")),
                 lang_manager=LanguageManager.instance(),
-                _current_course_id=lambda: "",
+                course_context=_course_context(),
             )
 
             MainWindow._update_home_resume_draft(shell)
@@ -4384,7 +4393,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 lang_manager=LanguageManager.instance(),
                 quiz_screen=types.SimpleNamespace(),
                 SCREEN_QUIZ=2,
-                _current_course_id=lambda: "",
+                course_context=_course_context(),
                 _show_timer_setting=lambda: False,
                 navigate_to=lambda screen: None,
             )

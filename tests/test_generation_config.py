@@ -2740,7 +2740,9 @@ class GenerationConfigTests(unittest.TestCase):
         shell = SimpleNamespace(
             settings_screen=SimpleNamespace(settings_snapshot=lambda: dict(settings)),
             lang_manager=LanguageManager.instance(),
-            _load_generation_context=lambda: ("summary", ["cache"], course),
+            course_context=SimpleNamespace(
+                generation_context=lambda: ("summary", ["cache"], course),
+            ),
             task_center=task_center,
             _generation_workspace=workspace,
             SCREEN_GENERATION=8,
@@ -2786,6 +2788,9 @@ class GenerationConfigTests(unittest.TestCase):
         shell = SimpleNamespace(
             settings_screen=SimpleNamespace(settings_snapshot=lambda: dict(settings)),
             lang_manager=LanguageManager.instance(),
+            course_context=SimpleNamespace(
+                generation_context=lambda: ("", [], None),
+            ),
             _generation_workspace=workspace,
             SCREEN_GENERATION=8,
             navigate_to=Mock(return_value=True),
@@ -2870,12 +2875,14 @@ class GenerationConfigTests(unittest.TestCase):
                 lang_manager=LanguageManager.instance(),
                 question_bank=question_bank,
                 set_manager=set_manager,
+                course_context=SimpleNamespace(
+                    generation_context=lambda: ("summary", ["cache"], None),
+                    question_bank_changed=Mock(),
+                ),
                 SCREEN_TOPIC_SELECTION=1,
                 SCREEN_GENERATION=8,
                 _generation_workspace=workspace,
-                _load_generation_context=lambda: ("summary", ["cache"], None),
                 navigate_to=navigate_to,
-                _on_question_bank_changed=Mock(),
             )
 
             with patch("ui.generation_workspace_controller.ai_generation_settings_error", return_value=""), \

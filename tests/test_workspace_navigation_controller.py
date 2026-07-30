@@ -18,7 +18,9 @@ class WorkspaceNavigationControllerTests(unittest.TestCase):
             SCREEN_PAST_EXAMS=7,
             SCREEN_GENERATION=8,
             SCREEN_INDEX_BY_KEY={ScreenKey.GENERATION: 8},
-            _current_course_id=lambda: "course-current",
+            course_context=SimpleNamespace(
+                current_course_id=lambda: "course-current",
+            ),
         )
 
         route = WorkspaceNavigationController(host).default_route(8)

@@ -98,7 +98,7 @@ class ResultFlowController:
             lang=host.lang_manager.current,
             study_intent=None,
         )
-        host._refresh_results_retry_availability()
+        host.course_context.refresh_results_retry_availability()
         host.navigate_to(host.SCREEN_RESULTS)
 
     def retry(self, mode: SessionRetryMode) -> None:
@@ -119,7 +119,7 @@ class ResultFlowController:
             )
             return
 
-        course_id = host._current_course_id()
+        course_id = host.course_context.current_course_id()
         questions = host.question_bank.get_many(
             question_ids,
             course_id=course_id,
@@ -184,7 +184,7 @@ class ResultFlowController:
             )
             return
 
-        course_id = host._current_course_id()
+        course_id = host.course_context.current_course_id()
         questions = host.question_bank.get_many(
             incorrect_ids,
             course_id=course_id,
@@ -271,7 +271,7 @@ class ResultFlowController:
             return
 
         intent = StudyIntent(
-            course_id=host._current_course_id(),
+            course_id=host.course_context.current_course_id(),
             action=StudyAction.CUSTOM_PRACTICE,
             set_id=question_set.set_id,
             question_ids=tuple(question_set.questions),

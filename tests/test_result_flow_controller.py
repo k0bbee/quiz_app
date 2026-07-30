@@ -53,7 +53,9 @@ def test_result_flow_retries_only_incorrect_non_skipped_questions():
             get_text=lambda zh, en: zh,
         ),
         study_flow=StudyFlowRecorder(),
-        _current_course_id=lambda: "course-a",
+        course_context=SimpleNamespace(
+            current_course_id=lambda: "course-a",
+        ),
     )
 
     ResultFlowController(host).retry(SessionRetryMode.INCORRECT)

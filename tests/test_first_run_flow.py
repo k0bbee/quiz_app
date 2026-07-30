@@ -648,7 +648,7 @@ class FirstRunFlowTests(unittest.TestCase):
         dialog.start_generation_when_shown.assert_called_once_with()
         dialog.set_title_input.setText.assert_called_once_with("操作系统快速复习")
         dialog.exec.assert_not_called()
-        shell._on_question_bank_changed.assert_called_once_with()
+        shell.course_context.question_bank_changed.assert_called_once_with()
         shell._on_study_quiz_start.assert_called_once()
         started_intent, started_question_ids = (
             shell._on_study_quiz_start.call_args.args

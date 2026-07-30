@@ -54,14 +54,9 @@ class GenerationWorkspaceController:
         """Prepare one validated generation dialog for create or regenerate."""
         host = self._host
         gm = host.lang_manager.get_text
-        context_provider = getattr(
-            host,
-            "_load_generation_context",
-            lambda: ("", [], None),
-        )
         controller = GenerationLaunchController(
             settings_provider=host.settings_screen.settings_snapshot,
-            course_context_provider=context_provider,
+            course_context_provider=host.course_context.generation_context,
             task_center=getattr(host, "task_center", None),
             api_key_required=provider_requires_api_key,
             settings_validator=ai_generation_settings_error,
@@ -336,9 +331,7 @@ class GenerationWorkspaceController:
                     show_save_error(str(exc))
             return False
         self.delete_draft(course_project.course_id)
-        refresh_question_bank = getattr(host, "_on_question_bank_changed", None)
-        if callable(refresh_question_bank):
-            refresh_question_bank()
+        host.course_context.question_bank_changed()
         if start_after_save:
             host._on_study_quiz_start(
                 StudyIntent(

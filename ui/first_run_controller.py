@@ -38,7 +38,7 @@ class FirstRunController:
 
     def practice_candidates(self):
         host = self._host
-        course_id = host._current_course_id()
+        course_id = host.course_context.current_course_id()
         if not course_id:
             return []
         candidates = []
@@ -79,7 +79,7 @@ class FirstRunController:
         host = self._host
         if host._first_run_operation:
             return True
-        if not host._current_course_id():
+        if not host.course_context.current_course_id():
             return True
         if self.question_count() <= 0:
             return True
@@ -107,7 +107,7 @@ class FirstRunController:
         if not hasattr(host, "first_run_screen"):
             return
         progress = host._first_run_progress
-        course_id = host._current_course_id()
+        course_id = host.course_context.current_course_id()
         has_course = bool(course_id)
         question_count = self.question_count()
         generation_draft = host.generation_flow.draft(course_id)
@@ -314,7 +314,7 @@ class FirstRunController:
         question_set, question_ids = candidates[0]
         host._on_study_quiz_start(
             StudyIntent(
-                course_id=host._current_course_id(),
+                course_id=host.course_context.current_course_id(),
                 action=StudyAction.CUSTOM_PRACTICE,
                 set_id=question_set.set_id,
                 question_ids=tuple(question_ids),

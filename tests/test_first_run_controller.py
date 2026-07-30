@@ -25,7 +25,9 @@ class FirstRunControllerTests(unittest.TestCase):
             "q-other": SimpleNamespace(question_id="q-other"),
         }
         host = SimpleNamespace(
-            _current_course_id=lambda: "course-current",
+            course_context=SimpleNamespace(
+                current_course_id=lambda: "course-current",
+            ),
             set_manager=SimpleNamespace(
                 load_all=lambda: [current_set, other_set]
             ),

@@ -60,3 +60,33 @@ def test_main_window_does_not_wrap_generation_flow_actions():
             "_on_resume_generation_draft",
         }
     )
+
+
+def test_main_window_does_not_wrap_course_context_actions():
+    source = Path("ui/main_window.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    main_window = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "MainWindow"
+    )
+    method_names = {
+        node.name
+        for node in main_window.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+    assert method_names.isdisjoint(
+        {
+            "_course_context_controller",
+            "_on_course_changed",
+            "_on_question_bank_changed",
+            "_refresh_results_retry_availability",
+            "_load_generation_context",
+            "_sync_topic_screen_course",
+            "_sync_question_bank_screen_course",
+            "_sync_home_screen_course",
+            "_sync_progress_screen_course",
+            "_current_course_id",
+        }
+    )

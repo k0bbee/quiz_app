@@ -6,6 +6,7 @@ import pytest
 from core.language_manager import LanguageManager
 from models.course_project import CourseTopic
 from ui.main_window import MainWindow
+from ui.course_context_controller import CourseContextController
 
 
 pytestmark = pytest.mark.qt
@@ -28,7 +29,9 @@ class TopicLabelUiTests(unittest.TestCase):
             course_manager=SimpleNamespace(current=lambda: course),
         )
 
-        content, topics, project = MainWindow._load_generation_context(shell)
+        content, topics, project = CourseContextController(
+            shell
+        ).generation_context()
 
         self.assertEqual("# Cache Mapping", content)
         self.assertEqual([topic], topics)

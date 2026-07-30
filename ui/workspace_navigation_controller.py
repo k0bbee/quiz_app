@@ -50,7 +50,7 @@ class WorkspaceNavigationController:
             host.SCREEN_QUESTION_BANK: Route.library("questions"),
             host.SCREEN_PAST_EXAMS: Route.library("past_exams"),
             host.SCREEN_GENERATION: Route.course(
-                host._current_course_id(),
+                host.course_context.current_course_id(),
                 tab="generation",
             ),
         }
@@ -66,7 +66,7 @@ class WorkspaceNavigationController:
             selected = course_screen.selected_course_id()
             if selected:
                 return selected
-        return host._current_course_id()
+        return host.course_context.current_course_id()
 
     def navigate(
         self,
@@ -125,10 +125,10 @@ class WorkspaceNavigationController:
             and route.tab == "generation"
             and route.course_id
             and host.course_manager.get(route.course_id) is not None
-            and host._current_course_id() != route.course_id
+            and host.course_context.current_course_id() != route.course_id
             and host.course_manager.set_current(route.course_id)
         ):
-            host._on_course_changed()
+            host.course_context.course_changed()
         if screen_index == host.SCREEN_COURSES:
             host._get_course_screen()
         elif screen_index == host.SCREEN_QUESTION_BANK:
@@ -145,18 +145,18 @@ class WorkspaceNavigationController:
                     )
         host.navigation_router.navigate(route, remember=remember)
         if screen_index == host.SCREEN_TOPIC_SELECTION:
-            host._sync_topic_screen_course()
+            host.course_context.sync_topic_screen()
             host.topic_screen.refresh()
         elif screen_index == host.SCREEN_PROGRESS:
-            host._sync_progress_screen_course()
+            host.course_context.sync_progress()
             host.progress_screen.refresh()
         elif screen_index == host.SCREEN_HOME:
-            host._sync_home_screen_course()
+            host.course_context.sync_home()
             host.home_screen.refresh()
         elif screen_index == host.SCREEN_COURSES:
             host._get_course_screen().show_course(route.course_id, route.tab)
         elif screen_index == host.SCREEN_QUESTION_BANK:
-            host._sync_question_bank_screen_course()
+            host.course_context.sync_question_bank()
             library = host._get_question_bank_screen()
             if route.tab == "sets":
                 library.show_question_sets()
