@@ -2,6 +2,10 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
+pytestmark = pytest.mark.qt
+
 from ui.generation_workspace_controller import GenerationWorkspaceController
 
 
