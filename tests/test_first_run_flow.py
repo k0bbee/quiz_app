@@ -698,9 +698,11 @@ class FirstRunFlowTests(unittest.TestCase):
         )
 
         with patch(
-            "ui.main_window.persist_new_question_set",
+            "ui.generation_workspace_controller.persist_new_question_set",
             side_effect=RuntimeError("disk full"),
-        ), patch("ui.main_window.QMessageBox.critical") as critical:
+        ), patch(
+            "ui.generation_workspace_controller.QMessageBox.critical"
+        ) as critical:
             saved = MainWindow._save_generated_dialog(
                 shell,
                 dialog,
@@ -777,9 +779,11 @@ class FirstRunFlowTests(unittest.TestCase):
         )
 
         with patch(
-            "ui.main_window.GenerationLaunchController.prepare",
+            "ui.generation_workspace_controller.GenerationLaunchController.prepare",
             return_value=failed,
-        ), patch("ui.main_window.QMessageBox.warning") as warning:
+        ), patch(
+            "ui.generation_workspace_controller.QMessageBox.warning"
+        ) as warning:
             window._on_first_run_generate()
 
         warning.assert_not_called()
@@ -842,9 +846,8 @@ class FirstRunFlowTests(unittest.TestCase):
         dialog.start_generation_when_shown = Mock()
         preparation = Mock(dialog=dialog, course_project=project)
 
-        with patch.object(
-            MainWindow,
-            "_prepare_generation_dialog",
+        with patch(
+            "ui.generation_workspace_controller.GenerationWorkspaceController.prepare",
             return_value=preparation,
         ):
             window._on_first_run_generate()
