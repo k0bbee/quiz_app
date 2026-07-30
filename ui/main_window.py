@@ -8,7 +8,6 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import QTimer, Qt
 
-from core.application_data_migration import ApplicationDataMigrator
 from core.application_services import ApplicationServices
 from core.first_run_flow import (
     build_first_run_exam_plan,
@@ -28,6 +27,7 @@ from ui.generation_launch_controller import (
     generation_launch_copy,
 )
 from ui.generation_workspace_controller import GenerationWorkspaceController
+from ui.history_protection_controller import HistoryProtectionController
 from ui.session_retry_presenter import session_retry_copy
 from ui.study_flow_controller import StudyFlowController
 from ui.task_recovery_controller import TaskRecoveryController
@@ -119,6 +119,7 @@ class MainWindow(QMainWindow):
         self._history_protection_blocked = bool(
             getattr(startup_migration_report, "has_failures", False)
         )
+        self.history_protection = HistoryProtectionController(self)
 
         # Central stacked widget
         self.stack = QStackedWidget()
@@ -256,99 +257,19 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, self._show_startup_migration_warning)
 
     def _show_startup_migration_warning(self) -> None:
-        if not self._history_protection_blocked:
-            return
-        reply = QMessageBox.warning(
-            self,
-            self.lang_manager.get_text(
-                "旧历史保护未完成",
-                "Legacy History Protection Incomplete",
-            ),
-            self._history_protection_message(),
-            QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Retry,
-        )
-        if reply == QMessageBox.StandardButton.Retry:
-            self._retry_startup_migration()
+        self.history_protection.show_startup_warning()
 
     def _history_protection_message(self) -> str:
-        report = self.startup_migration_report
-        failed_count = len(tuple(getattr(report, "failed_progress_ids", ()) or ()))
-        detail = "\n".join(
-            str(error)
-            for error in tuple(getattr(report, "errors", ()) or ())[:3]
-        )
-        suffix = f"\n\n{detail}" if detail else ""
-        return self.lang_manager.get_text(
-            f"{failed_count} 条旧练习记录暂未完成保护。请先检查数据目录权限，"
-            f"为避免历史答案失真，课程、题库、历史真题维护以及数据导入/重置"
-            f"已暂时停用。修复后可重试。{suffix}",
-            f"{failed_count} legacy practice record(s) could not be protected. "
-            f"To preserve historical answers, course, question-bank and "
-            f"historical-exam maintenance plus data import/reset are temporarily "
-            f"disabled. Fix the data-directory issue, then retry.{suffix}",
-        )
+        return self.history_protection.message()
 
     def _set_history_protection_blocked(self, blocked: bool, report=None) -> None:
-        if report is not None:
-            self.startup_migration_report = report
-        self._history_protection_blocked = bool(blocked)
-        self.settings_screen.set_history_protection_blocked(
-            self._history_protection_blocked,
-            self._history_protection_message()
-            if self._history_protection_blocked
-            else "",
-        )
+        self.history_protection.set_blocked(blocked, report)
 
     def _retry_startup_migration(self) -> bool:
-        report = ApplicationDataMigrator(self.services).migrate()
-        blocked = bool(getattr(report, "has_failures", False))
-        self._set_history_protection_blocked(blocked, report)
-        if blocked:
-            QMessageBox.warning(
-                self,
-                self.lang_manager.get_text(
-                    "仍未完成保护",
-                    "Protection Still Incomplete",
-                ),
-                self._history_protection_message(),
-            )
-            return False
-        QMessageBox.information(
-            self,
-            self.lang_manager.get_text(
-                "历史保护已完成",
-                "History Protection Complete",
-            ),
-            self.lang_manager.get_text(
-                "旧历史已完成保护，课程与资料维护功能已恢复。",
-                "Legacy history is now protected. Course and library "
-                "maintenance are available again.",
-            ),
-        )
-        return True
+        return self.history_protection.retry()
 
     def _confirm_history_sensitive_navigation(self, screen_index: int) -> bool:
-        if not self._history_protection_blocked or screen_index not in {
-            self.SCREEN_COURSES,
-            self.SCREEN_QUESTION_BANK,
-            self.SCREEN_PAST_EXAMS,
-        }:
-            return True
-        reply = QMessageBox.warning(
-            self,
-            self.lang_manager.get_text(
-                "数据保护模式",
-                "Data Protection Mode",
-            ),
-            self._history_protection_message(),
-            QMessageBox.StandardButton.Retry | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Retry,
-        )
-        return (
-            reply == QMessageBox.StandardButton.Retry
-            and self._retry_startup_migration()
-        )
+        return self.history_protection.confirm_navigation(screen_index)
 
     def _get_course_screen(self):
         """Lazy-init the course screen on first access."""
