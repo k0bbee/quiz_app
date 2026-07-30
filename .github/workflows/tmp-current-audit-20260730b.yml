@@ -1,8 +1,8 @@
 name: Temporary Current Audit 20260730b
 
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches: [tmp/current-audit-trigger2-20260730]
 
 jobs:
   export-source:
