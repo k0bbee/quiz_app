@@ -1026,7 +1026,8 @@ QLabel#practicePreviewGap {
 
 QLabel#homeTodayPlanTitle,
 QLabel#homeContextTitle,
-QLabel#homeOverviewTitle {
+QLabel#homeOverviewTitle,
+QLabel#homeDiagnosisTitle {
     color: #f0f0f0;
     font-size: 14px;
     font-weight: 600;
@@ -1035,7 +1036,8 @@ QLabel#homeOverviewTitle {
 QLabel#homeTodayPlanDetail,
 QLabel#homeCourseContextLabel,
 QLabel#homeScopeContextLabel,
-QLabel#homeQuestionContextLabel {
+QLabel#homeQuestionContextLabel,
+QLabel#homeDiagnosisLabel {
     color: #b8b8b8;
     font-size: 13px;
 }

@@ -9,6 +9,7 @@ from PyQt6.QtCore import pyqtSignal, Qt
 
 from config import APP_NAME_EN, APP_NAME_ZH
 from core.language_manager import LanguageManager
+from core.learning_dashboard import LearningDashboard, build_learning_dashboard
 from core.study_intent import StudyAction, StudyIntent
 from core.study_queue import StudyQueueCategory, build_daily_study_queue
 from core.today_learning_plan import (
@@ -58,6 +59,7 @@ class HomeScreen(QWidget):
         self._resume_total_count: int | None = None
         self._resume_mode: str | None = None
         self._today_plan = TodayLearningPlan(LearningPlanAction.IMPORT_COURSE)
+        self._learning_dashboard = LearningDashboard()
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -141,6 +143,14 @@ class HomeScreen(QWidget):
         self.overview_title.setObjectName("homeOverviewTitle")
         overview_layout.addWidget(self.overview_title)
 
+        self.diagnosis_title = QLabel()
+        self.diagnosis_title.setObjectName("homeDiagnosisTitle")
+        overview_layout.addWidget(self.diagnosis_title)
+        self.diagnosis_label = QLabel()
+        self.diagnosis_label.setObjectName("homeDiagnosisLabel")
+        self.diagnosis_label.setWordWrap(True)
+        overview_layout.addWidget(self.diagnosis_label)
+
         self.stats_label = QLabel()
         self.stats_label.setObjectName("homeStatsLabel")
         self.stats_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
@@ -204,6 +214,7 @@ class HomeScreen(QWidget):
         self.first_use_label.setWordWrap(True)
         self.first_use_label.hide()
 
+        self._render_learning_diagnosis()
         self._render_today_plan()
 
     def _on_language_changed(self, lang):
@@ -230,6 +241,8 @@ class HomeScreen(QWidget):
     def refresh(self):
         """Called when navigating back to home. Update stats."""
         if self.progress_manager is None or self.question_bank is None:
+            self._learning_dashboard = LearningDashboard()
+            self._render_learning_diagnosis()
             self.stats_label.show()
             self.stats_label.setText(self.lang_manager.get_text(
                 "暂无可用的学习数据。",
@@ -272,6 +285,16 @@ class HomeScreen(QWidget):
         else:
             incorrect_ids = []
         incorrect_count = len(incorrect_ids)
+        diagnostic_index = {
+            question_id: topic
+            for question_id, topic in self._visible_topic_index().items()
+            if question_id in visible_question_ids
+        }
+        self._learning_dashboard = build_learning_dashboard(
+            diagnostic_index,
+            records=progress_records,
+        )
+        self._render_learning_diagnosis()
         self._refresh_today_plan(
             len(visible_question_ids),
             incorrect_ids,
@@ -384,6 +407,35 @@ class HomeScreen(QWidget):
         self._exam_scope_weights = normalized_weights
         self._update_course_context_label()
         self.refresh()
+
+    def _render_learning_diagnosis(self) -> None:
+        """Render at most two actionable weaknesses beside the daily plan."""
+        focus_topics = self._learning_dashboard.focus_topics
+        if not focus_topics:
+            self.diagnosis_title.setText(
+                self.lang_manager.get_text("学习重点", "Learning Focus")
+            )
+            self.diagnosis_label.hide()
+            return
+        self.diagnosis_title.setText(
+            self.lang_manager.get_text("当前需要巩固", "Focus Next")
+        )
+        zh_lines = []
+        en_lines = []
+        for topic in focus_topics:
+            zh_signals = [f"错误 {topic.incorrect_count}"]
+            en_signals = [f"{topic.incorrect_count} incorrect"]
+            if topic.unsure_count:
+                zh_signals.append(f"不确定 {topic.unsure_count}")
+                en_signals.append(f"{topic.unsure_count} unsure")
+            zh_signals.append(f"正确率 {topic.accuracy:.0%}")
+            en_signals.append(f"{topic.accuracy:.0%} accuracy")
+            zh_lines.append(f"{topic.title}：{' · '.join(zh_signals)}")
+            en_lines.append(f"{topic.title}: {' · '.join(en_signals)}")
+        self.diagnosis_label.setText(
+            self.lang_manager.get_text("\n".join(zh_lines), "\n".join(en_lines))
+        )
+        self.diagnosis_label.show()
 
     def _visible_question_ids(self) -> set[str]:
         """Return current-course question IDs inside the selected exam scope."""
