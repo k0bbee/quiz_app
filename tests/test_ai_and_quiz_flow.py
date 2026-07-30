@@ -3381,7 +3381,11 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
         from ui.main_window import MainWindow
 
         calls = []
-        host = types.SimpleNamespace(_on_ai_generate=lambda **kwargs: calls.append(kwargs))
+        host = types.SimpleNamespace(
+            generation_flow=types.SimpleNamespace(
+                open=lambda **kwargs: calls.append(kwargs)
+            )
+        )
 
         MainWindow._on_generate_progress_topic(host, "cache")
 

@@ -118,7 +118,11 @@ class CurrentEventCourseFlowTests(unittest.TestCase):
         shell = type("Shell", (), {})()
         shell.course_manager = Manager(project)
         calls = []
-        shell._on_ai_generate = lambda **kwargs: calls.append(kwargs)
+        shell.generation_flow = type(
+            "GenerationFlow",
+            (),
+            {"open": lambda _self, **kwargs: calls.append(kwargs)},
+        )()
 
         MainWindow._on_current_event_generation(shell, project.course_id, pack)
 

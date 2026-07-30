@@ -498,10 +498,9 @@ class UiThemeTests(unittest.TestCase):
             center = BackgroundTaskCenter(Path(tmpdir) / "generation-tasks.json")
             task = center.create(kind="question_generation", title="Generate questions")
             center.fail(task.task_id, "provider timeout")
-            generate_patch = patch.object(MainWindow, "_on_ai_generate")
-            generate = generate_patch.start()
-            self.addCleanup(generate_patch.stop)
             main_window = MainWindow()
+            generate = Mock()
+            main_window.generation_flow.open = generate
             self.addCleanup(main_window.close)
             self.addCleanup(main_window.lang_manager.set_language, "zh")
             main_window.task_center = center

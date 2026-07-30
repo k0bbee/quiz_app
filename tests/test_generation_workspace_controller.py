@@ -12,12 +12,13 @@ from ui.main_window import MainWindow
 
 class GenerationWorkspaceControllerTests(unittest.TestCase):
     def test_main_window_reuses_one_generation_controller(self):
-        host = SimpleNamespace(_generation_workspace=Mock())
+        window = MainWindow()
+        self.addCleanup(window.close)
 
-        first = MainWindow._generation_controller(host)
-        second = MainWindow._generation_controller(host)
-
-        self.assertIs(first, second)
+        self.assertIsInstance(
+            window.generation_flow,
+            GenerationWorkspaceController,
+        )
 
     def test_open_reuses_the_active_course_generation_workspace(self):
         workspace = Mock()

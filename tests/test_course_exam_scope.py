@@ -20,6 +20,7 @@ from models.past_exam import (
     PastExamTopicProfile,
 )
 from ui.main_window import MainWindow
+from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.screens.home_screen import HomeScreen
 
 
@@ -202,7 +203,7 @@ class CourseExamScopeConsumerTests(unittest.TestCase):
         )
 
         with patch.object(QMessageBox, "warning") as warning:
-            MainWindow._on_ai_generate(window)
+            GenerationWorkspaceController(window).open()
 
         warning.assert_called_once()
         self.assertEqual("考试范围为空", warning.call_args.args[1])

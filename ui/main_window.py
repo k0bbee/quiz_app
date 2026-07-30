@@ -101,6 +101,7 @@ class MainWindow(QMainWindow):
         self._first_run_progress = None
         self._last_generation_launch_error = ""
         self._generation_close_pending = False
+        self._generation_workspace = None
         self._history_protection_blocked = bool(
             getattr(startup_migration_report, "has_failures", False)
         )
@@ -109,6 +110,10 @@ class MainWindow(QMainWindow):
         self.course_context = CourseContextController(self)
         self.workspace_navigation = WorkspaceNavigationController(self)
         self.result_flow = ResultFlowController(self)
+        self.generation_flow = GenerationWorkspaceController(
+            self,
+            workspace_provider=lambda: self._get_generation_workspace(),
+        )
         self.question_set_actions = QuestionSetActionController(self)
 
         # Central stacked widget
@@ -166,7 +171,6 @@ class MainWindow(QMainWindow):
         self._course_screen = None
         self._question_bank_screen = None
         self._past_exam_screen = None
-        self._generation_workspace = None
 
         # Secondary workspaces are lazily created on first access.
         self.stack.addWidget(self.home_workspace)    # 0
@@ -202,7 +206,7 @@ class MainWindow(QMainWindow):
             course_changed=self._on_course_changed,
             resume_session=self._on_resume_abandoned,
             review_questions=self.result_flow.practice_incorrect,
-            generate_questions=self._on_ai_generate,
+            generate_questions=self.generation_flow.open,
             show_timer=self._show_timer_setting,
         )
         self.task_recovery = TaskRecoveryController(
@@ -217,7 +221,7 @@ class MainWindow(QMainWindow):
             course_changed=self._on_course_changed,
             get_course_screen=self._get_course_screen,
             get_past_exam_screen=self._get_past_exam_screen,
-            generate_questions=self._on_ai_generate,
+            generate_questions=self.generation_flow.open,
             courses_screen_index=self.SCREEN_COURSES,
             past_exams_screen_index=self.SCREEN_PAST_EXAMS,
             question_bank_screen_index=self.SCREEN_QUESTION_BANK,
@@ -280,7 +284,7 @@ class MainWindow(QMainWindow):
                 self._on_course_changed
             )
             self._course_screen.generate_questions_requested.connect(
-                lambda _course_id: self._on_ai_generate()
+                lambda _course_id: self.generation_flow.open()
             )
             self._course_screen.view_course_library_requested.connect(
                 self._open_course_library
@@ -335,7 +339,7 @@ class MainWindow(QMainWindow):
                 self.question_set_actions.regenerate
             )
             self._question_bank_screen.resume_generation_draft.connect(
-                self._on_resume_generation_draft
+                self.generation_flow.resume_draft
             )
             self._install_workspace(
                 self.SCREEN_QUESTION_BANK,
@@ -379,17 +383,6 @@ class MainWindow(QMainWindow):
                 self._generation_workspace,
             )
         return self._generation_workspace
-
-    def _generation_controller(self) -> GenerationWorkspaceController:
-        """Return the single generation-flow controller owned by this shell."""
-        controller = vars(self).get("_generation_flow_controller")
-        if controller is None:
-            controller = GenerationWorkspaceController(
-                self,
-                workspace_provider=lambda: MainWindow._get_generation_workspace(self),
-            )
-            self._generation_flow_controller = controller
-        return controller
 
     def _course_context_controller(self) -> CourseContextController:
         """Return the course-context controller for real or lightweight hosts."""
@@ -491,7 +484,7 @@ class MainWindow(QMainWindow):
         self.home_screen.practice_incorrect.connect(
             self.result_flow.practice_incorrect
         )
-        self.home_screen.ai_generate.connect(self._on_ai_generate)
+        self.home_screen.ai_generate.connect(self.generation_flow.open)
         self.home_screen.view_progress.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
         self.home_screen.open_settings.connect(self.open_settings)
         self.home_screen.manage_courses.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
@@ -990,7 +983,7 @@ class MainWindow(QMainWindow):
         topic_key = topic_value(topic_key)
         if not topic_key:
             return
-        self._on_ai_generate(
+        self.generation_flow.open(
             initial_plan=ExamGenerationPlan(
                 question_count=10,
                 selected_topics=(topic_key,),
@@ -1022,168 +1015,15 @@ class MainWindow(QMainWindow):
             label=label,
         )
 
-    def _prepare_generation_dialog(
-        self,
-        *,
-        course_override=None,
-        material_pack=None,
-        purpose: str = "create",
-        allow_review_without_ai: bool = False,
-        present_error: bool = True,
-    ):
-        """Compatibility entry point for generation preflight."""
-        return MainWindow._generation_controller(self).prepare(
-            course_override=course_override,
-            material_pack=material_pack,
-            purpose=purpose,
-            allow_review_without_ai=allow_review_without_ai,
-            present_error=present_error,
-        )
-
-    def _on_ai_generate(
-        self,
-        *,
-        course_override=None,
-        initial_plan=None,
-        prediction=None,
-        material_pack=None,
-        recovery_context=None,
-        auto_start: bool = False,
-        start_after_save: bool = False,
-        review_warnings_only: bool = False,
-        question_set_title: str = "",
-        draft_source: str = "manual",
-        present_error: bool = True,
-    ):
-        """Compatibility entry point for the generation workspace controller."""
-        return MainWindow._generation_controller(self).open(
-            course_override=course_override,
-            initial_plan=initial_plan,
-            prediction=prediction,
-            material_pack=material_pack,
-            recovery_context=recovery_context,
-            auto_start=auto_start,
-            start_after_save=start_after_save,
-            review_warnings_only=review_warnings_only,
-            question_set_title=question_set_title,
-            draft_source=draft_source,
-            present_error=present_error,
-        )
-
-    def _on_generation_workspace_accepted(
-        self,
-        dialog,
-        course_project,
-        *,
-        draft_source: str,
-        material_pack=None,
-        start_after_save: bool = False,
-    ) -> None:
-        """Compatibility entry point for publishing reviewed questions."""
-        MainWindow._generation_controller(self).accept(
-            dialog,
-            course_project,
-            draft_source=draft_source,
-            material_pack=material_pack,
-            start_after_save=start_after_save,
-        )
-
-    def _on_generation_workspace_rejected(
-        self,
-        dialog,
-        course_project,
-        *,
-        draft_source: str,
-        material_pack=None,
-    ) -> None:
-        """Compatibility entry point for leaving generation review."""
-        MainWindow._generation_controller(self).reject(
-            dialog,
-            course_project,
-            draft_source=draft_source,
-            material_pack=material_pack,
-        )
-
-    def _configure_generation_dialog(
-        self,
-        *,
-        course_override=None,
-        initial_plan=None,
-        prediction=None,
-        material_pack=None,
-        recovery_context=None,
-        review_warnings_only: bool = False,
-        question_set_title: str = "",
-        draft_source: str = "manual",
-        present_error: bool = True,
-    ):
-        """Compatibility entry point for generation-surface configuration."""
-        return MainWindow._generation_controller(self).configure(
-            course_override=course_override,
-            initial_plan=initial_plan,
-            prediction=prediction,
-            material_pack=material_pack,
-            recovery_context=recovery_context,
-            review_warnings_only=review_warnings_only,
-            question_set_title=question_set_title,
-            draft_source=draft_source,
-            present_error=present_error,
-        )
-
-    def _save_generated_dialog(
-        self,
-        dialog,
-        course_project,
-        *,
-        material_pack=None,
-        start_after_save: bool = False,
-        present_error: bool = True,
-    ) -> bool:
-        """Compatibility entry point for generated-question persistence."""
-        return MainWindow._generation_controller(self).save(
-            dialog,
-            course_project,
-            material_pack=material_pack,
-            start_after_save=start_after_save,
-            present_error=present_error,
-        )
-
-    def _generation_draft(self, course_id: str):
-        return MainWindow._generation_controller(self).draft(course_id)
-
-    def _sync_generation_draft(
-        self,
-        dialog,
-        course_project,
-        *,
-        source: str,
-    ) -> bool:
-        return MainWindow._generation_controller(self).sync_draft(
-            dialog,
-            course_project,
-            source=source,
-        )
-
-    def _delete_generation_draft(self, course_id: str) -> None:
-        MainWindow._generation_controller(self).delete_draft(course_id)
-
-    def _on_resume_generation_draft(
-        self,
-        course_id: str,
-        _source: str = "",
-    ) -> bool:
-        """Compatibility entry point for resuming a stored generation draft."""
-        return MainWindow._generation_controller(self).resume_draft(
-            course_id,
-            _source,
-        )
-
     def _on_current_event_generation(self, course_id: str, material_pack) -> None:
         """Generate against the reviewed material pack for its selected course."""
         project = self.course_manager.get(course_id)
         if project is None or material_pack is None:
             return
-        self._on_ai_generate(course_override=project, material_pack=material_pack)
+        self.generation_flow.open(
+            course_override=project,
+            material_pack=material_pack,
+        )
 
     def _on_generate_predicted_exam(self, course_id: str, prediction):
         """Open the normal generation review flow with a historical profile plan."""
@@ -1198,7 +1038,7 @@ class MainWindow(QMainWindow):
                 ),
             )
             return
-        self._on_ai_generate(
+        self.generation_flow.open(
             course_override=course,
             initial_plan=prediction.plan,
             prediction=prediction,

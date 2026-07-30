@@ -140,7 +140,9 @@ class WorkspaceNavigationController:
             if route.course_id and generation_workspace.generation_widget() is None:
                 project = host.course_manager.get(route.course_id)
                 if project is not None:
-                    return bool(host._on_ai_generate(course_override=project))
+                    return bool(
+                        host.generation_flow.open(course_override=project)
+                    )
         host.navigation_router.navigate(route, remember=remember)
         if screen_index == host.SCREEN_TOPIC_SELECTION:
             host._sync_topic_screen_course()

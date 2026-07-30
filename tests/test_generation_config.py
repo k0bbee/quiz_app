@@ -21,6 +21,7 @@ from core.background_task_center import BackgroundTaskCenter, TaskStatus
 from core import course_index
 from core.question_set_builder import build_ai_question_set
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
+from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.navigation import Route
 from models.course_project import CourseProject, CourseTopic
 from models.question import Question
@@ -209,7 +210,7 @@ class GenerationConfigTests(unittest.TestCase):
             topic_screen=SimpleNamespace(refresh=Mock()),
             navigate_route=navigated.append,
             SCREEN_QUESTION_BANK=6,
-            _generation_controller=lambda: SimpleNamespace(
+            generation_flow=SimpleNamespace(
                 prepare=lambda **_kwargs: SimpleNamespace(
                     dialog=dialog,
                     course_project=Mock(),
@@ -2749,7 +2750,7 @@ class GenerationConfigTests(unittest.TestCase):
         with patch("ui.generation_workspace_controller.ai_generation_settings_error", return_value=""), \
              patch("core.secrets_manager.SecretsManager.instance", return_value=ForbiddenSecrets()), \
              patch("ui.dialogs.ai_generation_dialog.AIGenerationDialog") as dialog_class:
-            MainWindow._on_ai_generate(shell)
+            GenerationWorkspaceController(shell).open()
 
         dialog_class.return_value.configure_from_course_profile.assert_called_once_with(course)
         dialog_class.return_value.exec.assert_not_called()
@@ -2794,8 +2795,7 @@ class GenerationConfigTests(unittest.TestCase):
              patch("ui.dialogs.ai_generation_dialog.AIGenerationDialog") as dialog_class:
             dialog = dialog_class.return_value
 
-            MainWindow._on_ai_generate(
-                shell,
+            GenerationWorkspaceController(shell).open(
                 course_override=course,
                 initial_plan=plan,
                 prediction=prediction,
@@ -2882,7 +2882,7 @@ class GenerationConfigTests(unittest.TestCase):
                  patch("ui.dialogs.ai_generation_dialog.AIGenerationDialog", FakeDialog), \
                  patch.object(set_manager, "save", return_value=False), \
                  patch("ui.generation_workspace_controller.QMessageBox.critical") as critical:
-                MainWindow._on_ai_generate(shell)
+                GenerationWorkspaceController(shell).open()
                 dialog = workspace.show_generation_widget.call_args.args[0]
                 dialog.accepted.connect.call_args.args[0]()
 

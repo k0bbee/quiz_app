@@ -28,7 +28,7 @@ class GenerationWorkspaceTests(unittest.TestCase):
             "open",
             return_value=True,
         ) as open_generation:
-            opened = window._on_ai_generate(auto_start=True)
+            opened = window.generation_flow.open(auto_start=True)
 
         self.assertTrue(opened)
         open_generation.assert_called_once()
@@ -78,7 +78,7 @@ class GenerationWorkspaceTests(unittest.TestCase):
             "configure",
             return_value=(dialog, course, False, "manual"),
         ):
-            opened = window._on_ai_generate(auto_start=True)
+            opened = window.generation_flow.open(auto_start=True)
 
         self.assertTrue(opened)
         self.assertEqual(window.SCREEN_GENERATION, window.stack.currentIndex())

@@ -110,7 +110,7 @@ class FirstRunController:
         course_id = host._current_course_id()
         has_course = bool(course_id)
         question_count = self.question_count()
-        generation_draft = host._generation_draft(course_id)
+        generation_draft = host.generation_flow.draft(course_id)
         first_run_required = (
             bool(host._first_run_operation)
             or not has_course
@@ -224,7 +224,7 @@ class FirstRunController:
         host._first_run_operation = "generating"
         host._first_run_error = ""
         self.refresh()
-        configured = host._configure_generation_dialog(
+        configured = host.generation_flow.configure(
             course_override=course_project,
             initial_plan=plan,
             review_warnings_only=True,
@@ -263,12 +263,12 @@ class FirstRunController:
         draft_source: str,
     ) -> None:
         host = self._host
-        host._sync_generation_draft(
+        host.generation_flow.sync_draft(
             dialog,
             course_project,
             source=draft_source,
         )
-        saved = host._save_generated_dialog(
+        saved = host.generation_flow.save(
             dialog,
             course_project,
             start_after_save=True,
@@ -290,7 +290,7 @@ class FirstRunController:
         draft_source: str,
     ) -> None:
         host = self._host
-        host._sync_generation_draft(
+        host.generation_flow.sync_draft(
             dialog,
             course_project,
             source=draft_source,

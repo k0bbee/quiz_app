@@ -23,6 +23,7 @@ from models.question import Question
 from models.question_set import QuestionSet
 from ui.main_window import MainWindow
 from ui.generation_launch_controller import GenerationLaunchIssue
+from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.screens.first_run_workspace import FirstRunWorkspace
 from utils.constants import Difficulty, QuestionType
 
@@ -444,7 +445,7 @@ class FirstRunFlowTests(unittest.TestCase):
             "ui.generation_workspace_controller.GenerationWorkspaceController.prepare",
             return_value=preparation,
         ):
-            window._on_ai_generate(
+            window.generation_flow.open(
                 course_override=project,
                 initial_plan=plan,
                 auto_start=True,
@@ -539,7 +540,7 @@ class FirstRunFlowTests(unittest.TestCase):
             "ui.generation_workspace_controller.GenerationWorkspaceController.prepare",
             return_value=preparation,
         ), patch("ui.generation_workspace_controller.QMessageBox.information"):
-            window._on_ai_generate(
+            window.generation_flow.open(
                 course_override=project,
                 start_after_save=False,
                 draft_source="first_run",
@@ -633,8 +634,7 @@ class FirstRunFlowTests(unittest.TestCase):
             "ui.generation_workspace_controller.persist_new_question_set",
             return_value=(question_set, 1),
         ), patch("ui.generation_workspace_controller.QMessageBox.information") as information:
-            MainWindow._on_ai_generate(
-                shell,
+            GenerationWorkspaceController(shell).open(
                 initial_plan=plan,
                 auto_start=True,
                 start_after_save=True,
@@ -703,8 +703,7 @@ class FirstRunFlowTests(unittest.TestCase):
         ), patch(
             "ui.generation_workspace_controller.QMessageBox.critical"
         ) as critical:
-            saved = MainWindow._save_generated_dialog(
-                shell,
+            saved = GenerationWorkspaceController(shell).save(
                 dialog,
                 course,
                 start_after_save=True,
@@ -737,8 +736,8 @@ class FirstRunFlowTests(unittest.TestCase):
         window.course_manager.save(project)
 
         with patch.object(
-            MainWindow,
-            "_configure_generation_dialog",
+            window.generation_flow,
+            "configure",
             return_value=None,
         ) as configure:
             window._on_first_run_generate()

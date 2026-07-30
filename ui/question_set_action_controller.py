@@ -191,7 +191,7 @@ class QuestionSetActionController:
             )
             return
 
-        preparation = host._generation_controller().prepare(
+        preparation = host.generation_flow.prepare(
             purpose="regenerate",
         )
         if preparation is None:
