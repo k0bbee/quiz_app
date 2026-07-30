@@ -2391,9 +2391,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             screen.set_current_course("course-a")
             screen.refresh()
 
-            self.assertIn("累计 1 题", screen.stats_label.text())
-            self.assertIn("历史错题 1 题", screen.stats_label.text())
-            self.assertIn("题库总量 1 题", screen.stats_label.text())
+            self.assertIn("本周学习 1 天", screen.stats_label.text())
+            self.assertIn("完成 1 题", screen.stats_label.text())
 
     def test_home_screen_refresh_uses_lightweight_question_counts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2422,9 +2421,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
                 screen.refresh()
 
             load_all.assert_called_once_with()
-            self.assertIn("累计 1 题", screen.stats_label.text())
-            self.assertIn("历史错题 1 题", screen.stats_label.text())
-            self.assertIn("题库总量 1 题", screen.stats_label.text())
+            self.assertIn("本周学习 1 天", screen.stats_label.text())
+            self.assertIn("完成 1 题", screen.stats_label.text())
 
     def test_home_today_queue_emits_direct_course_scoped_intent(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -2455,7 +2453,7 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             self.assertEqual("today_plan", intent.source)
             self.assertIn("course-a", intent.plan_id)
 
-    def test_home_today_queue_summarizes_new_items_and_keeps_remaining_work(self):
+    def test_home_today_queue_distinguishes_current_group_from_today_total(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
             questions = [
@@ -2473,8 +2471,11 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             requests = []
             screen.study_requested.connect(requests.append)
 
-            self.assertIn("新题 12", screen.today_plan_detail.text())
-            self.assertIn("约 24 分钟", screen.today_plan_title.text())
+            self.assertEqual("今日计划", screen.today_plan_title.text())
+            self.assertIn("今日进度 0 / 12 题", screen.today_plan_detail.text())
+            self.assertIn("第一组 10 题", screen.today_plan_detail.text())
+            self.assertIn("完成后还有 2 题", screen.today_plan_detail.text())
+            self.assertIn("开始第一组", screen.start_btn.text())
             screen.start_btn.click()
 
             intent = requests[0]
@@ -2502,9 +2503,10 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
 
             screen.set_current_course("course-a", "Systems")
 
-            self.assertIn("今日计划 15 题", screen.today_plan_detail.text())
-            self.assertIn("新题 15", screen.today_plan_detail.text())
-            self.assertIn("待学习总量 100 题", screen.today_plan_detail.text())
+            self.assertIn("今日进度 0 / 15 题", screen.today_plan_detail.text())
+            self.assertIn("第一组 10 题", screen.today_plan_detail.text())
+            self.assertIn("完成后还有 5 题", screen.today_plan_detail.text())
+            self.assertIn("明日预计 15 题", screen.next_step_label.text())
 
     def test_home_daily_plan_uses_balanced_topic_and_difficulty_metadata(self):
         from core.daily_study_plan_store import DailyStudyPlanStore
@@ -2741,8 +2743,8 @@ class QuizWidgetAndSessionTests(unittest.TestCase):
             review_requests = []
             screen.study_requested.connect(review_requests.append)
 
-            self.assertIn("今日学习", screen.start_btn.text())
-            self.assertIn("连续错误 1", screen.today_plan_detail.text())
+            self.assertIn("开始第一组", screen.start_btn.text())
+            self.assertIn("今日进度 0 / 1 题", screen.today_plan_detail.text())
             screen.start_btn.click()
 
             self.assertEqual(1, len(review_requests))
