@@ -3,6 +3,12 @@ name: Temporary Current Audit 20260730b
 on:
   push:
     branches: [tmp/current-audit-trigger2-20260730]
+    paths:
+      - '.github/tmp-current-audit-trigger2-20260730.txt'
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   export-source:
@@ -19,3 +25,9 @@ jobs:
         with:
           name: quiz-app-current-main-source-20260730b
           path: quiz-app-current-main-source-20260730b.zip
+      - name: Report run id
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/issues/10/comments" \
+            -f body="temporary-audit-run-id:${GITHUB_RUN_ID}"
