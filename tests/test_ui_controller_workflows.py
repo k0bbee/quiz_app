@@ -359,25 +359,236 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
             allow_first_run_redirect=False,
         )
 
-    def test_open_does_not_reuse_a_generation_workspace_bound_to_another_course(self):
+    def test_open_switches_to_a_new_session_without_destroying_the_active_one(self):
+        active = SimpleNamespace(
+            course_id="course-a",
+            _generation_draft_id="session-a",
+            _draft_source="course_hub_gap",
+        )
         workspace = Mock()
-        workspace.generation_widget.return_value = object()
         workspace.course_id = "course-a"
+        workspace.generation_widget.return_value = active
+        dialog = SimpleNamespace(
+            _generation_draft_id="session-b",
+            accepted=Mock(),
+            rejected=Mock(),
+        )
+        course = SimpleNamespace(course_id="course-a", title="课程 A")
         host = SimpleNamespace(
             _generation_workspace=workspace,
             SCREEN_GENERATION=8,
             navigate_to=Mock(return_value=True),
             course_manager=SimpleNamespace(
-                current=lambda: SimpleNamespace(course_id="course-b")
+                current=lambda: course,
             ),
             lang_manager=SimpleNamespace(
                 get_text=lambda zh_text, _en_text: zh_text,
             ),
         )
 
-        with patch("ui.generation_workspace_controller.QMessageBox.warning") as warning:
-            opened = GenerationWorkspaceController(host).open()
+        controller = GenerationWorkspaceController(host)
+        with patch.object(
+            controller,
+            "configure",
+            return_value=(dialog, course, False, "result_reinforcement"),
+        ) as configure:
+            opened = controller.open(draft_source="result_reinforcement")
 
-        self.assertFalse(opened)
+        self.assertTrue(opened)
+        configure.assert_called_once()
+        workspace.show_generation_widget.assert_called_once_with(
+            dialog,
+            course_id="course-a",
+            course_title="课程 A",
+            draft_id="session-b",
+        )
+        workspace.clear_generation_widget.assert_not_called()
+
+    def test_open_with_a_new_plan_does_not_reuse_same_source_session(self):
+        active = SimpleNamespace(
+            course_id="course-a",
+            _generation_draft_id="session-a",
+            _draft_source="course_hub_gap",
+        )
+        workspace = Mock()
+        workspace.course_id = "course-a"
+        workspace.generation_widget.return_value = active
+        dialog = SimpleNamespace(
+            _generation_draft_id="session-b",
+            accepted=Mock(),
+            rejected=Mock(),
+        )
+        course = SimpleNamespace(course_id="course-a", title="课程 A")
+        host = SimpleNamespace(
+            _generation_workspace=workspace,
+            SCREEN_GENERATION=8,
+            navigate_to=Mock(return_value=True),
+            course_manager=SimpleNamespace(current=lambda: course),
+            lang_manager=SimpleNamespace(
+                get_text=lambda zh_text, _en_text: zh_text,
+            ),
+        )
+        controller = GenerationWorkspaceController(host)
+        plan = ExamGenerationPlan(
+            question_count=4,
+            selected_topics=("topic-a",),
+        )
+
+        with patch.object(
+            controller,
+            "configure",
+            return_value=(dialog, course, False, "course_hub_gap"),
+        ) as configure:
+            opened = controller.open(
+                initial_plan=plan,
+                draft_source="course_hub_gap",
+            )
+
+        self.assertTrue(opened)
+        configure.assert_called_once()
+        workspace.show_generation_widget.assert_called_once_with(
+            dialog,
+            course_id="course-a",
+            course_title="课程 A",
+            draft_id="session-b",
+        )
+
+    def test_open_selects_an_existing_hidden_session_by_draft_id(self):
+        workspace = Mock()
+        workspace.course_id = "course-a"
+        workspace.generation_widget.return_value = SimpleNamespace(
+            _generation_draft_id="session-b",
+            _draft_source="result_reinforcement",
+        )
+        workspace.session_course_id.return_value = "course-a"
+        workspace.select_session.return_value = True
+        host = SimpleNamespace(
+            _generation_workspace=workspace,
+            SCREEN_GENERATION=8,
+            navigate_to=Mock(return_value=True),
+            course_manager=SimpleNamespace(
+                current=lambda: SimpleNamespace(course_id="course-a"),
+            ),
+        )
+
+        controller = GenerationWorkspaceController(host)
+        with patch.object(controller, "configure") as configure:
+            opened = controller.open(draft_id="session-b")
+
+        self.assertTrue(opened)
+        workspace.select_session.assert_called_once_with("session-b")
+        configure.assert_not_called()
+        host.navigate_to.assert_called_once_with(
+            8,
+            allow_first_run_redirect=False,
+        )
+
+    def test_configure_rejects_missing_explicit_draft(self):
+        course = SimpleNamespace(course_id="course-a")
+        host = SimpleNamespace(
+            course_manager=SimpleNamespace(current=lambda: course),
+            lang_manager=SimpleNamespace(
+                get_text=lambda zh_text, _en_text: zh_text,
+            ),
+            _last_generation_launch_error="",
+        )
+        controller = GenerationWorkspaceController(host)
+        with patch.object(controller, "draft_by_id", return_value=None), patch.object(
+            controller, "prepare"
+        ) as prepare:
+            configured = controller.configure(
+                draft_id="missing-draft",
+                present_error=False,
+            )
+
+        self.assertIsNone(configured)
+        self.assertIn("找不到指定", host._last_generation_launch_error)
+        prepare.assert_not_called()
+
+    def test_configure_rejects_explicit_draft_from_another_course(self):
+        course = SimpleNamespace(course_id="course-a")
+        foreign_draft = SimpleNamespace(course_id="course-b")
+        host = SimpleNamespace(
+            course_manager=SimpleNamespace(current=lambda: course),
+            lang_manager=SimpleNamespace(
+                get_text=lambda zh_text, _en_text: zh_text,
+            ),
+            _last_generation_launch_error="",
+        )
+        controller = GenerationWorkspaceController(host)
+        with patch.object(
+            controller, "draft_by_id", return_value=foreign_draft
+        ), patch.object(controller, "prepare") as prepare:
+            configured = controller.configure(
+                draft_id="foreign-draft",
+                present_error=False,
+            )
+
+        self.assertIsNone(configured)
+        self.assertIn("不匹配", host._last_generation_launch_error)
+        prepare.assert_not_called()
+
+    def test_reject_during_workspace_shutdown_does_not_navigate_away(self):
+        workspace = SimpleNamespace(
+            _shutting_down=True,
+            clear_generation_widget=Mock(),
+            generation_widget=Mock(return_value=object()),
+        )
+        host = SimpleNamespace(
+            _generation_workspace=workspace,
+            _generation_close_pending=True,
+            navigate_to=Mock(),
+        )
+        dialog = SimpleNamespace(deleteLater=Mock())
+        course = SimpleNamespace(course_id="course-a")
+        controller = GenerationWorkspaceController(host)
+
+        controller.reject(
+            dialog,
+            course,
+            draft_source="manual",
+            material_pack=object(),
+        )
+
         host.navigate_to.assert_not_called()
-        warning.assert_called_once()
+        self.assertTrue(host._generation_close_pending)
+        dialog.deleteLater.assert_called_once_with()
+
+    def test_open_starts_a_new_session_for_another_course(self):
+        workspace = Mock()
+        workspace.generation_widget.return_value = object()
+        workspace.course_id = "course-a"
+        dialog = SimpleNamespace(
+            _generation_draft_id="session-b",
+            accepted=Mock(),
+            rejected=Mock(),
+        )
+        course = SimpleNamespace(course_id="course-b", title="课程 B")
+        host = SimpleNamespace(
+            _generation_workspace=workspace,
+            SCREEN_GENERATION=8,
+            navigate_to=Mock(return_value=True),
+            course_manager=SimpleNamespace(
+                current=lambda: course,
+            ),
+            lang_manager=SimpleNamespace(
+                get_text=lambda zh_text, _en_text: zh_text,
+            ),
+        )
+
+        controller = GenerationWorkspaceController(host)
+        with patch.object(
+            controller,
+            "configure",
+            return_value=(dialog, course, False, "manual"),
+        ) as configure:
+            opened = controller.open()
+
+        self.assertTrue(opened)
+        configure.assert_called_once()
+        workspace.show_generation_widget.assert_called_once_with(
+            dialog,
+            course_id="course-b",
+            course_title="课程 B",
+            draft_id="session-b",
+        )

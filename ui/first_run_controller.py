@@ -224,12 +224,20 @@ class FirstRunController:
         host._first_run_operation = "generating"
         host._first_run_error = ""
         self.refresh()
+        existing_draft = host.generation_flow.draft(course_project.course_id)
+        draft_id = (
+            existing_draft.draft_id
+            if existing_draft is not None
+            and existing_draft.source == "first_run"
+            else ""
+        )
         configured = host.generation_flow.configure(
             course_override=course_project,
             initial_plan=plan,
             review_warnings_only=True,
             question_set_title=title,
             draft_source="first_run",
+            draft_id=draft_id,
             present_error=False,
         )
         if configured is None:

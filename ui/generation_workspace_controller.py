@@ -140,24 +140,71 @@ class GenerationWorkspaceController:
             and existing_workspace.generation_widget() is not None
         ):
             requested_course_id = self._requested_course_id(course_override)
+            active_widget = existing_workspace.generation_widget()
             existing_course_id = str(
                 getattr(existing_workspace, "course_id", "") or ""
             ).strip()
-            if (
-                requested_course_id
-                and existing_course_id
-                and requested_course_id != existing_course_id
-            ):
-                self._show_course_conflict(
-                    existing_course_id,
-                    requested_course_id,
-                )
-                return False
-            host.navigate_to(
-                host.SCREEN_GENERATION,
-                allow_first_run_redirect=False,
+            active_draft_id = str(
+                getattr(active_widget, "_generation_draft_id", "") or ""
+            ).strip()
+            active_source = str(
+                getattr(active_widget, "_draft_source", "") or ""
+            ).strip()
+            requested_draft_id = str(draft_id or "").strip()
+            existing_session_course = ""
+            session_course_id = getattr(
+                existing_workspace,
+                "session_course_id",
+                None,
             )
-            return True
+            if requested_draft_id and callable(session_course_id):
+                existing_session_course = str(
+                    session_course_id(requested_draft_id) or ""
+                ).strip()
+            select_session = getattr(existing_workspace, "select_session", None)
+            if (
+                requested_draft_id
+                and existing_session_course
+                and (
+                    not requested_course_id
+                    or requested_course_id == existing_session_course
+                )
+                and callable(select_session)
+                and select_session(requested_draft_id)
+            ):
+                host.navigate_to(
+                    host.SCREEN_GENERATION,
+                    allow_first_run_redirect=False,
+                )
+                return True
+            new_session_request = (
+                initial_plan is not None
+                or prediction is not None
+                or material_pack is not None
+                or bool(recovery_context)
+                or bool(str(question_set_title or "").strip())
+            )
+            same_course = (
+                not requested_course_id
+                or not existing_course_id
+                or requested_course_id == existing_course_id
+            )
+            same_session = (
+                same_course
+                and requested_draft_id
+                and requested_draft_id == active_draft_id
+            ) or (
+                not requested_draft_id
+                and not new_session_request
+                and same_course
+                and (not active_source or active_source == draft_source)
+            )
+            if same_session:
+                host.navigate_to(
+                    host.SCREEN_GENERATION,
+                    allow_first_run_redirect=False,
+                )
+                return True
         configured = self.configure(
             course_override=course_override,
             initial_plan=initial_plan,
@@ -199,6 +246,7 @@ class GenerationWorkspaceController:
             dialog,
             course_id=str(getattr(course_project, "course_id", "") or ""),
             course_title=str(getattr(course_project, "title", "") or ""),
+            draft_id=str(getattr(dialog, "_generation_draft_id", "") or ""),
         )
         host.navigate_to(
             host.SCREEN_GENERATION,
@@ -263,6 +311,7 @@ class GenerationWorkspaceController:
                 dialog,
                 course_id=str(getattr(course_project, "course_id", "") or ""),
                 course_title=str(getattr(course_project, "title", "") or ""),
+                draft_id=str(getattr(dialog, "_generation_draft_id", "") or ""),
             )
             return
         workspace.clear_generation_widget(dialog)
@@ -280,8 +329,18 @@ class GenerationWorkspaceController:
         host = self._host
         if material_pack is None:
             self.sync_draft(dialog, course_project, source=draft_source)
-        self._workspace().clear_generation_widget(dialog)
+        workspace = self._workspace()
+        workspace.clear_generation_widget(dialog)
         dialog.deleteLater()
+        if bool(getattr(workspace, "_shutting_down", False)):
+            if (
+                bool(getattr(host, "_generation_close_pending", False))
+                and workspace.generation_widget() is None
+            ):
+                host._generation_close_pending = False
+                workspace._shutting_down = False
+                QTimer.singleShot(0, host.close)
+            return
         if bool(getattr(host, "_generation_close_pending", False)):
             host._generation_close_pending = False
             QTimer.singleShot(0, host.close)
@@ -316,11 +375,66 @@ class GenerationWorkspaceController:
         )
         course_id = str(getattr(draft_course, "course_id", "") or "").strip()
         requested_draft_id = str(draft_id or "").strip()
+        if requested_draft_id:
+            if material_pack is not None:
+                detail = gm(
+                    "带材料包的任务不能恢复指定草稿，请从课程页重新开始。",
+                    "A material-pack task cannot resume a specific draft. Start it again from the course page.",
+                )
+                host._last_generation_launch_error = detail
+                if present_error:
+                    QMessageBox.warning(
+                        host if isinstance(host, QWidget) else None,
+                        gm("无法恢复生成任务", "Cannot Resume Generation"),
+                        detail,
+                    )
+                return None
+            requested_draft = self.draft_by_id(requested_draft_id)
+            if requested_draft is None:
+                detail = gm(
+                    "找不到指定的生成草稿，可能已被删除或已完成。请从课程页重新开始。",
+                    "The requested generation draft was not found. It may have been deleted or completed. Start again from the course page.",
+                )
+                host._last_generation_launch_error = detail
+                if present_error:
+                    QMessageBox.warning(
+                        host if isinstance(host, QWidget) else None,
+                        gm("无法恢复生成任务", "Cannot Resume Generation"),
+                        detail,
+                    )
+                return None
+            if requested_draft.course_id != course_id:
+                detail = gm(
+                    "生成草稿与所选课程不匹配，未执行恢复。",
+                    "The generation draft does not belong to the selected course and was not resumed.",
+                )
+                host._last_generation_launch_error = detail
+                if present_error:
+                    QMessageBox.warning(
+                        host if isinstance(host, QWidget) else None,
+                        gm("课程与草稿不匹配", "Course and Draft Do Not Match"),
+                        detail,
+                    )
+                return None
+        new_session_request = (
+            initial_plan is not None
+            or prediction is not None
+            or material_pack is not None
+            or bool(recovery_context)
+            or bool(str(question_set_title or "").strip())
+        )
+        resume_latest = (
+            not requested_draft_id
+            and (
+                not new_session_request
+                or str(draft_source or "").strip() == "first_run"
+            )
+        )
         candidate_draft = (
             self.draft_by_id(requested_draft_id)
             if requested_draft_id and material_pack is None
             else self.draft(course_id)
-            if material_pack is None
+            if material_pack is None and resume_latest
             else None
         )
         generation_draft = (
