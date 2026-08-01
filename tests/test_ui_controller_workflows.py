@@ -309,6 +309,7 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
             _review_warnings_only=False,
             publish_destination="practice_now",
             review_state={"draft-q": "rejected"},
+            _generation_draft_id="session-reinforcement",
         )
         course = SimpleNamespace(course_id="course-1")
 
@@ -326,6 +327,10 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
         self.assertEqual(
             {"draft-q": "rejected"},
             store.save.call_args.kwargs["review_state"],
+        )
+        self.assertEqual(
+            "session-reinforcement",
+            store.save.call_args.kwargs["draft_id"],
         )
 
     def test_main_window_reuses_one_generation_controller(self):

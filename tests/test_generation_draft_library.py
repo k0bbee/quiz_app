@@ -116,6 +116,36 @@ class GenerationDraftLibraryTests(unittest.TestCase):
         self.assertEqual(1, panel.table.rowCount())
         self.assertFalse(panel.resume_btn.isEnabled())
 
+    def test_resume_signal_identifies_the_selected_draft(self):
+        self.window.generation_draft_store.save(
+            course_id=self.project.course_id,
+            draft_id="session-prediction",
+            questions=[_question()],
+            question_set_title="预测草稿",
+            exam_plan=ExamGenerationPlan(
+                question_count=3,
+                selected_topics=("topic-a",),
+            ),
+            source="prediction",
+        )
+
+        self.assertTrue(self.window.navigate_route(Route.library("drafts")))
+        panel = self.window._question_bank_screen.draft_panel
+        events = []
+        panel.resume_requested.connect(lambda *args: events.append(args))
+        row = next(
+            index
+            for index, draft in enumerate(panel._visible_drafts)
+            if draft.draft_id == "session-prediction"
+        )
+        panel.table.selectRow(row)
+        panel._resume_selected()
+
+        self.assertEqual(
+            [(self.project.course_id, "prediction", "session-prediction")],
+            events,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

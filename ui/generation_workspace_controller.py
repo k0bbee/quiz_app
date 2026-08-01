@@ -129,6 +129,7 @@ class GenerationWorkspaceController:
         review_warnings_only: bool = False,
         question_set_title: str = "",
         draft_source: str = "manual",
+        draft_id: str = "",
         present_error: bool = True,
     ) -> bool:
         """Open or resume AI generation in the persistent course workspace."""
@@ -166,6 +167,7 @@ class GenerationWorkspaceController:
             review_warnings_only=review_warnings_only,
             question_set_title=question_set_title,
             draft_source=draft_source,
+            draft_id=draft_id,
             present_error=present_error,
         )
         if configured is None:
@@ -300,6 +302,7 @@ class GenerationWorkspaceController:
         review_warnings_only: bool = False,
         question_set_title: str = "",
         draft_source: str = "manual",
+        draft_id: str = "",
         present_error: bool = True,
     ):
         """Configure one generation surface without deciding how it is shown."""
@@ -312,10 +315,22 @@ class GenerationWorkspaceController:
             else (course_manager.current() if course_manager is not None else None)
         )
         course_id = str(getattr(draft_course, "course_id", "") or "").strip()
-        candidate_draft = self.draft(course_id) if material_pack is None else None
+        requested_draft_id = str(draft_id or "").strip()
+        candidate_draft = (
+            self.draft_by_id(requested_draft_id)
+            if requested_draft_id and material_pack is None
+            else self.draft(course_id)
+            if material_pack is None
+            else None
+        )
         generation_draft = (
             candidate_draft
-            if candidate_draft is not None and candidate_draft.source == draft_source
+            if candidate_draft is not None
+            and candidate_draft.course_id == course_id
+            and (
+                requested_draft_id
+                or candidate_draft.source == draft_source
+            )
             else None
         )
         preparation = self.prepare(
@@ -334,6 +349,7 @@ class GenerationWorkspaceController:
             dialog.restore_generation_draft(generation_draft)
             restored_draft = True
             draft_source = generation_draft.source
+            draft_id = generation_draft.draft_id
         elif initial_plan is not None:
             try:
                 dialog.apply_exam_plan(initial_plan)
@@ -367,6 +383,12 @@ class GenerationWorkspaceController:
         set_draft_source = getattr(dialog, "set_draft_source", None)
         if callable(set_draft_source):
             set_draft_source(draft_source)
+        if material_pack is None:
+            if not str(draft_id or "").strip():
+                store = getattr(host, "generation_draft_store", None)
+                new_id = getattr(store, "new_draft_id", None)
+                draft_id = new_id() if callable(new_id) else ""
+            setattr(dialog, "_generation_draft_id", str(draft_id or "").strip())
         draft_signal = getattr(dialog, "draft_changed", None)
         if material_pack is None and draft_signal is not None and hasattr(draft_signal, "connect"):
             draft_signal.connect(
@@ -417,7 +439,10 @@ class GenerationWorkspaceController:
                 if callable(show_save_error):
                     show_save_error(str(exc))
             return False
-        self.delete_draft(course_project.course_id)
+        self.delete_draft(
+            course_project.course_id,
+            draft_id=str(getattr(dialog, "_generation_draft_id", "") or ""),
+        )
         host.course_context.question_bank_changed()
         if start_after_save:
             host._on_study_quiz_start(
@@ -455,18 +480,37 @@ class GenerationWorkspaceController:
             log_warning(f"Failed to load generation draft: {exc}")
             return None
 
+    def draft_by_id(self, draft_id: str):
+        store = getattr(self._host, "generation_draft_store", None)
+        draft_id = str(draft_id or "").strip()
+        if store is None or not draft_id:
+            return None
+        getter = getattr(store, "get_by_id", None)
+        if not callable(getter):
+            return None
+        try:
+            return getter(draft_id)
+        except (OSError, TypeError, ValueError) as exc:
+            log_warning(f"Failed to load generation draft {draft_id}: {exc}")
+            return None
+
     def sync_draft(self, dialog, course_project, *, source: str) -> bool:
         store = getattr(self._host, "generation_draft_store", None)
         course_id = str(getattr(course_project, "course_id", "") or "").strip()
         if store is None or not course_id:
             return False
         questions = list(getattr(dialog, "generated_questions", ()) or ())
+        draft_id = str(getattr(dialog, "_generation_draft_id", "") or "").strip()
         try:
             if not questions:
-                store.delete(course_id)
+                if draft_id:
+                    store.delete(course_id, draft_id=draft_id)
+                else:
+                    store.delete(course_id)
                 return True
             store.save(
                 course_id=course_id,
+                draft_id=draft_id,
                 questions=questions,
                 question_set_title=dialog.question_set_title(),
                 exam_plan=dialog.build_exam_plan(),
@@ -483,21 +527,35 @@ class GenerationWorkspaceController:
             log_warning(f"Failed to persist generation draft: {exc}")
             return False
 
-    def delete_draft(self, course_id: str) -> None:
+    def delete_draft(self, course_id: str, *, draft_id: str = "") -> None:
         store = getattr(self._host, "generation_draft_store", None)
         if store is None or not course_id:
             return
         try:
-            store.delete(course_id)
+            if draft_id:
+                store.delete(course_id, draft_id=draft_id)
+            else:
+                store.delete(course_id)
         except OSError as exc:
             log_warning(f"Failed to delete generation draft: {exc}")
 
-    def resume_draft(self, course_id: str, _source: str = "") -> bool:
+    def resume_draft(
+        self,
+        course_id: str,
+        _source: str = "",
+        draft_id: str = "",
+    ) -> bool:
         """Resume the authoritative stored draft in its owning course."""
         course = self._host.course_manager.get(str(course_id or "").strip())
         if course is None or getattr(course, "is_archived", False):
             return False
-        draft = self.draft(course.course_id)
+        draft = self.draft_by_id(draft_id) if draft_id else self.draft(course.course_id)
         if draft is None:
             return False
-        return bool(self.open(course_override=course, draft_source=draft.source))
+        return bool(
+            self.open(
+                course_override=course,
+                draft_source=draft.source,
+                draft_id=draft.draft_id,
+            )
+        )

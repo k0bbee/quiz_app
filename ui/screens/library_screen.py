@@ -35,7 +35,7 @@ class LibraryScreen(QWidget):
     export_mock_exams = pyqtSignal(list)
     regenerate_questions = pyqtSignal(str)
     sets_changed = pyqtSignal()
-    resume_generation_draft = pyqtSignal(str, str)
+    resume_generation_draft = pyqtSignal(str, str, str)
 
     def __init__(
         self,

@@ -23,7 +23,7 @@ from core.library_scope import LibraryAssetScope, LibraryScopeKind
 class GenerationDraftLibraryPanel(QWidget):
     """List and resume course-owned review drafts without owning their state."""
 
-    resume_requested = pyqtSignal(str, str)
+    resume_requested = pyqtSignal(str, str, str)
 
     def __init__(
         self,
@@ -201,7 +201,11 @@ class GenerationDraftLibraryPanel(QWidget):
             return
         draft = self._selected_draft()
         if draft is not None:
-            self.resume_requested.emit(draft.course_id, draft.source)
+            self.resume_requested.emit(
+                draft.course_id,
+                draft.source,
+                draft.draft_id,
+            )
 
 
 def _source_label(source: str, get_text) -> str:

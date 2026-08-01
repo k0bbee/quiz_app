@@ -192,6 +192,46 @@ class GenerationDraftStoreTests(unittest.TestCase):
             )
             self.assertEqual("prediction", drafts[0].source)
 
+    def test_explicit_draft_ids_keep_multiple_sessions_for_one_course(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = GenerationDraftStore(Path(tmpdir) / "generation-drafts.json")
+            plan = ExamGenerationPlan(
+                question_count=3,
+                selected_topics=("topic-io",),
+            )
+
+            first = store.save(
+                course_id="course-a",
+                draft_id="session-gap",
+                questions=[self._question("gap-q")],
+                question_set_title="缺口补齐",
+                exam_plan=plan,
+                source="course_hub_gap",
+            )
+            second = store.save(
+                course_id="course-a",
+                draft_id="session-reinforcement",
+                questions=[self._question("reinforce-q")],
+                question_set_title="弱项补强",
+                exam_plan=plan,
+                source="result_reinforcement",
+            )
+
+            self.assertEqual("session-gap", first.draft_id)
+            self.assertEqual("session-reinforcement", second.draft_id)
+            self.assertEqual(
+                {"session-gap", "session-reinforcement"},
+                {draft.draft_id for draft in store.list_for_course("course-a")},
+            )
+            self.assertEqual(
+                "gap-q",
+                store.get_by_id("session-gap").questions[0].question_id,
+            )
+            self.assertEqual(
+                "reinforce-q",
+                store.get("course-a").questions[0].question_id,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

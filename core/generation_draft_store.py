@@ -7,13 +7,14 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
+from uuid import uuid4
 
 from ai.exam_plan import ExamGenerationPlan
 from models.question import Question
 from utils.json_io import read_json, write_json
 
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 _PUBLISH_DESTINATIONS = {"library", "practice_now"}
 _REVIEW_STATES = {"accepted", "rejected", "pending"}
 
@@ -39,6 +40,7 @@ def _normalize_review_state(value: object) -> dict[str, str]:
 class GenerationDraft:
     """One course-scoped generation result that has not become a question set."""
 
+    draft_id: str
     course_id: str
     questions: tuple[Question, ...]
     question_set_title: str
@@ -53,6 +55,7 @@ class GenerationDraft:
 
     def to_dict(self) -> dict:
         return {
+            "draft_id": self.draft_id,
             "course_id": self.course_id,
             "stage": self.stage,
             "questions": [question.to_dict() for question in self.questions],
@@ -73,6 +76,9 @@ class GenerationDraft:
         course_id = str(data.get("course_id", "") or "").strip()
         if not course_id:
             raise ValueError("generation draft course_id is required")
+        draft_id = str(data.get("draft_id", "") or "").strip()
+        if not draft_id:
+            draft_id = f"legacy-{course_id}"
         stage = str(data.get("stage", "") or "").strip()
         if stage != "review_pending":
             raise ValueError(f"unsupported generation draft stage: {stage}")
@@ -99,6 +105,7 @@ class GenerationDraft:
             topic_weights=plan_data.get("topic_weights", {}),
         )
         return cls(
+            draft_id=draft_id,
             course_id=course_id,
             questions=questions,
             question_set_title=str(
@@ -119,7 +126,12 @@ class GenerationDraft:
 
 
 class GenerationDraftStore:
-    """Persist one review-pending generation draft per course."""
+    """Persist review-pending generation drafts by stable draft ID.
+
+    ``get(course_id)`` remains a compatibility API and returns the newest
+    draft. New callers can keep multiple sessions for the same course by
+    supplying ``draft_id`` to :meth:`save`.
+    """
 
     def __init__(
         self,
@@ -134,26 +146,43 @@ class GenerationDraftStore:
         course_id = str(course_id or "").strip()
         if not course_id:
             return None
-        data = self._load_payload()["drafts"].get(course_id)
+        drafts = self.list_for_course(course_id)
+        return drafts[0] if drafts else None
+
+    def get_by_id(self, draft_id: str) -> GenerationDraft | None:
+        draft_id = str(draft_id or "").strip()
+        if not draft_id:
+            return None
+        data = self._load_payload()["drafts"].get(draft_id)
         if not isinstance(data, dict):
             return None
         try:
             draft = GenerationDraft.from_dict(data)
         except (TypeError, ValueError):
             return None
-        return draft if draft.course_id == course_id else None
+        return draft if draft.draft_id == draft_id else None
+
+    def list_for_course(self, course_id: str) -> tuple[GenerationDraft, ...]:
+        course_id = str(course_id or "").strip()
+        if not course_id:
+            return ()
+        return tuple(
+            draft
+            for draft in self.list_all()
+            if draft.course_id == course_id
+        )
 
     def list_all(self) -> tuple[GenerationDraft, ...]:
         """Return every valid draft newest first without exposing storage rows."""
         drafts: list[GenerationDraft] = []
-        for course_id, data in self._load_payload()["drafts"].items():
+        for draft_id, data in self._load_payload()["drafts"].items():
             if not isinstance(data, dict):
                 continue
             try:
                 draft = GenerationDraft.from_dict(data)
             except (TypeError, ValueError):
                 continue
-            if draft.course_id == str(course_id or "").strip():
+            if draft.draft_id == str(draft_id or "").strip():
                 drafts.append(draft)
         return tuple(
             sorted(
@@ -167,6 +196,7 @@ class GenerationDraftStore:
         self,
         *,
         course_id: str,
+        draft_id: str = "",
         questions,
         question_set_title: str,
         exam_plan: ExamGenerationPlan,
@@ -186,10 +216,15 @@ class GenerationDraftStore:
             for question in (questions or ())
             if isinstance(question, Question) and question.question_id
         )
+        draft_id = str(draft_id or "").strip()
+        if not draft_id:
+            existing = self.get(course_id)
+            draft_id = existing.draft_id if existing is not None else self.new_draft_id()
         if not questions:
-            self.delete(course_id)
+            self.delete(course_id, draft_id=draft_id)
             return None
         draft = GenerationDraft(
+            draft_id=draft_id,
             course_id=course_id,
             questions=questions,
             question_set_title=str(question_set_title or "").strip(),
@@ -202,30 +237,73 @@ class GenerationDraftStore:
             updated_at=self._clock(),
         )
         payload = self._load_payload()
-        payload["drafts"][course_id] = draft.to_dict()
+        existing = payload["drafts"].get(draft_id)
+        if isinstance(existing, dict):
+            existing_course_id = str(
+                existing.get("course_id", "") or ""
+            ).strip()
+            if existing_course_id and existing_course_id != course_id:
+                raise ValueError("draft_id already belongs to another course")
+        payload["drafts"][draft_id] = draft.to_dict()
         if not write_json(self._path, payload):
             raise OSError("failed to persist generation draft")
         return draft
 
-    def delete(self, course_id: str) -> bool:
+    def delete(self, course_id: str = "", *, draft_id: str = "") -> bool:
         course_id = str(course_id or "").strip()
-        if not course_id:
+        draft_id = str(draft_id or "").strip()
+        if not course_id and not draft_id:
             return True
         payload = self._load_payload()
-        if course_id not in payload["drafts"]:
-            return True
-        payload["drafts"].pop(course_id, None)
+        if draft_id:
+            data = payload["drafts"].get(draft_id)
+            if not isinstance(data, dict):
+                return True
+            stored_course_id = str(data.get("course_id", "") or "").strip()
+            if course_id and stored_course_id != course_id:
+                return False
+            payload["drafts"].pop(draft_id, None)
+        else:
+            matching = [
+                key
+                for key, data in payload["drafts"].items()
+                if isinstance(data, dict)
+                and str(data.get("course_id", "") or "").strip() == course_id
+            ]
+            if not matching:
+                return True
+            for key in matching:
+                payload["drafts"].pop(key, None)
         if not write_json(self._path, payload):
             raise OSError("failed to delete generation draft")
         return True
+
+    @staticmethod
+    def new_draft_id() -> str:
+        return f"draft-{uuid4().hex}"
 
     def _load_payload(self) -> dict:
         payload = read_json(self._path) or {}
         if not isinstance(payload, dict):
             payload = {}
-        drafts = payload.get("drafts")
-        if not isinstance(drafts, dict):
-            drafts = {}
+        raw_drafts = payload.get("drafts")
+        if not isinstance(raw_drafts, dict):
+            raw_drafts = {}
+        drafts: dict[str, dict] = {}
+        for storage_key, raw_data in raw_drafts.items():
+            if not isinstance(raw_data, dict):
+                continue
+            data = dict(raw_data)
+            course_id = str(data.get("course_id", "") or "").strip()
+            draft_id = str(data.get("draft_id", "") or "").strip()
+            if not draft_id:
+                draft_id = str(storage_key or "").strip()
+            if not draft_id or draft_id == course_id:
+                draft_id = f"legacy-{course_id}" if course_id else ""
+            if not draft_id:
+                continue
+            data["draft_id"] = draft_id
+            drafts[draft_id] = data
         return {
             "schema_version": _SCHEMA_VERSION,
             "drafts": drafts,
