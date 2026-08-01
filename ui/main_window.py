@@ -1035,6 +1035,12 @@ class MainWindow(QMainWindow):
             )
         elif action == "practice":
             self._on_practice_progress_topic(topic_id)
+        elif action == "view":
+            if self.navigate_route(
+                Route.course(course_id, tab="knowledge"),
+                allow_first_run_redirect=False,
+            ):
+                self._get_course_screen().focus_knowledge_topic(topic_id)
 
     def _on_generate_result_reinforcement(self, request) -> None:
         """Open a source-aware generation plan for concrete answer signals."""

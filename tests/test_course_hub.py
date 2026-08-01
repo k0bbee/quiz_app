@@ -367,6 +367,22 @@ class CourseHubNavigationTests(unittest.TestCase):
         self.assertEqual({"input-output": 100}, plan.topic_weights)
         self.assertEqual("course_hub_gap", call.kwargs["draft_source"])
 
+    def test_view_topic_action_opens_knowledge_route_and_selects_topic(self):
+        self.assertTrue(
+            self.window.navigate_route(
+                Route.course(self.project.course_id, tab="overview"),
+                allow_first_run_redirect=False,
+            )
+        )
+
+        self.window._course_screen.knowledge_table.cellClicked.emit(1, 7)
+
+        self.assertEqual(
+            Route.course(self.project.course_id, tab="knowledge"),
+            self.window.current_route,
+        )
+        self.assertEqual(1, self.window._course_screen.knowledge_table.currentRow())
+
     def test_browsing_another_course_does_not_change_the_active_course(self):
         other = _course()
         other.course_id = "course-other"

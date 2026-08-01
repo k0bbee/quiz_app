@@ -543,6 +543,20 @@ class CourseScreen(QWidget):
         project = self.manager.get(self.selected_course_id())
         self._update_content_header(project)
 
+    def focus_knowledge_topic(self, topic_id: str) -> bool:
+        """Select a knowledge-point row after a contextual action navigates here."""
+        wanted = str(topic_id or "").strip()
+        if not wanted:
+            return False
+        for row in range(self.knowledge_table.rowCount()):
+            item = self.knowledge_table.item(row, 0)
+            if item is not None and str(
+                item.data(Qt.ItemDataRole.UserRole) or ""
+            ).strip() == wanted:
+                self.knowledge_table.selectRow(row)
+                return True
+        return False
+
     def _edit_exam_goal(self) -> None:
         if self.exam_goal_store is None:
             return
