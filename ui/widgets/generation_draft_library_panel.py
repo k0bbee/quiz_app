@@ -211,6 +211,10 @@ class GenerationDraftLibraryPanel(QWidget):
 def _source_label(source: str, get_text) -> str:
     return {
         "first_run": get_text("首次使用", "First Run"),
+        "course_hub_gap": get_text("补齐缺口", "Fill Gaps"),
+        "result_reinforcement": get_text("弱项补强", "Reinforcement"),
+        "progress_topic": get_text("按知识点生成", "By Topic"),
+        "predicted_exam": get_text("真题预测", "Exam Prediction"),
         "prediction": get_text("真题预测", "Exam Prediction"),
         "current_event": get_text("热点材料", "Current Events"),
         "manual": get_text("手动生成", "Manual"),

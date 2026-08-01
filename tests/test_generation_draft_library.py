@@ -12,6 +12,7 @@ from models.question import Question
 from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.main_window import MainWindow
 from ui.navigation import Route
+from ui.widgets.generation_draft_library_panel import _source_label
 from utils.constants import Difficulty, QuestionType
 
 
@@ -145,6 +146,15 @@ class GenerationDraftLibraryTests(unittest.TestCase):
             [(self.project.course_id, "prediction", "session-prediction")],
             events,
         )
+
+    def test_library_uses_specific_labels_for_generation_workflows(self):
+        get_text = lambda zh, _en: zh
+
+        self.assertEqual("补齐缺口", _source_label("course_hub_gap", get_text))
+        self.assertEqual("弱项补强", _source_label("result_reinforcement", get_text))
+        self.assertEqual("按知识点生成", _source_label("progress_topic", get_text))
+        self.assertEqual("真题预测", _source_label("predicted_exam", get_text))
+        self.assertEqual("热点材料", _source_label("current_event", get_text))
 
 
 if __name__ == "__main__":
