@@ -3,6 +3,7 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
 from core.generation_session_state import GenerationStage
@@ -77,6 +78,39 @@ class GenerationDialogStageTests(unittest.TestCase):
 
         self.assertEqual("quick_review", dialog.template_combo.currentData())
         self.assertEqual(8, dialog.count_spin.value())
+
+    def test_gap_fill_goal_selects_only_real_gap_topics_when_available(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto"},
+            available_topics=["cache", "process", "io"],
+        )
+        self.addCleanup(dialog.close)
+
+        dialog.set_generation_gap_topics(("process", "io"))
+        dialog.gap_fill_goal_btn.click()
+
+        selected = [
+            item.data(Qt.ItemDataRole.UserRole)
+            for index in range(dialog.topic_list.count())
+            if (item := dialog.topic_list.item(index)).checkState() == Qt.CheckState.Checked
+        ]
+        self.assertEqual(["process", "io"], selected)
+        self.assertTrue(dialog.generate_btn.isEnabled())
+
+    def test_gap_fill_goal_disables_generation_when_scope_has_no_gaps(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto"},
+            available_topics=["cache"],
+        )
+        self.addCleanup(dialog.close)
+
+        dialog.set_generation_gap_topics(())
+        dialog.gap_fill_goal_btn.click()
+
+        self.assertFalse(dialog.generate_btn.isEnabled())
+        self.assertIn("没有待补齐", dialog.status_label.text())
 
 
 if __name__ == "__main__":

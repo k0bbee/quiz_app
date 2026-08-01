@@ -95,6 +95,9 @@ class AIGenerationDialog(QDialog):
         self._generation_started_at: float | None = None
         self._last_generation_progress = ""
         self._generation_events: list[str] = []
+        # ``None`` means the caller did not provide course coverage data;
+        # an empty tuple is a real result meaning the exam scope is complete.
+        self._generation_gap_topic_ids: tuple[str, ...] | None = None
         self.generation_status_timer = QTimer(self)
         self.generation_status_timer.setInterval(1000)
         self.generation_status_timer.timeout.connect(self._refresh_generation_status)
@@ -709,7 +712,48 @@ class AIGenerationDialog(QDialog):
         if difficulty_index >= 0:
             self.diff_combo.setCurrentIndex(difficulty_index)
         self.count_spin.setValue(count)
+        if str(goal or "") == "gap_fill" and self._generation_gap_topic_ids is not None:
+            self._select_topic_keys(self._generation_gap_topic_ids)
+            if self._generation_gap_topic_ids:
+                self.status_label.setText(self.lang_manager.get_text(
+                    f"已自动选择 {len(self._generation_gap_topic_ids)} 个待补齐知识点。",
+                    f"Automatically selected {len(self._generation_gap_topic_ids)} topic gap(s).",
+                ))
+            else:
+                self.status_label.setText(self.lang_manager.get_text(
+                    "当前考试范围没有待补齐知识点，可手动选择主题生成。",
+                    "The current exam scope has no remaining gaps. You can select topics manually.",
+                ))
         self._update_preview()
+
+    def set_generation_gap_topics(self, topic_ids) -> None:
+        """Provide the current exam-scope gaps for the gap-fill goal.
+
+        The workspace computes this from the persisted question index. Keeping
+        it as an explicit input prevents the dialog from guessing from labels
+        or selecting every course topic when the user asks to fill gaps.
+        """
+        self._generation_gap_topic_ids = tuple(dict.fromkeys(
+            str(topic_id or "").strip()
+            for topic_id in (topic_ids or ())
+            if str(topic_id or "").strip()
+        ))
+
+    def _select_topic_keys(self, topic_ids) -> None:
+        wanted = {str(topic_id or "").strip() for topic_id in (topic_ids or ())}
+        was_blocked = self.topic_list.blockSignals(True)
+        try:
+            for index in range(self.topic_list.count()):
+                item = self.topic_list.item(index)
+                key = topic_value(item.data(Qt.ItemDataRole.UserRole))
+                item.setCheckState(
+                    Qt.CheckState.Checked
+                    if key in wanted
+                    else Qt.CheckState.Unchecked
+                )
+        finally:
+            self.topic_list.blockSignals(was_blocked)
+        self._on_topics_changed()
 
     def _on_language_changed(self, lang):
         """Update all UI strings when language changes."""

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Callable
 
 from PyQt6.QtCore import QTimer
@@ -18,6 +19,37 @@ from ui.generation_launch_controller import (
     generation_launch_copy,
 )
 from utils.logger import warning as log_warning
+
+
+def find_generation_gap_topic_ids(course_project, question_bank) -> tuple[str, ...] | None:
+    """Return exam-scope topics with no indexed questions.
+
+    ``None`` means coverage could not be read and the dialog should keep its
+    manual topic selection. An empty tuple is a valid, complete scope.
+    """
+    if course_project is None or question_bank is None:
+        return None
+    try:
+        topic_index = question_bank.topic_index(
+            course_id=str(getattr(course_project, "course_id", "") or "").strip()
+        )
+    except Exception:
+        return None
+    if not isinstance(topic_index, Mapping):
+        return None
+    covered = {
+        str(row[0] or "").strip()
+        for row in topic_index.values()
+        if isinstance(row, (tuple, list)) and row and str(row[0] or "").strip()
+    }
+    scope = getattr(course_project, "exam_topics", None)
+    topics = list(scope() if callable(scope) else getattr(course_project, "topics", ()) or ())
+    return tuple(
+        topic_id
+        for topic in topics
+        if (topic_id := str(getattr(topic, "topic_id", topic) or "").strip())
+        and topic_id not in covered
+    )
 
 
 class GenerationWorkspaceController:
@@ -69,6 +101,13 @@ class GenerationWorkspaceController:
         )
         if preparation.ok:
             host._last_generation_launch_error = ""
+            gap_topic_ids = find_generation_gap_topic_ids(
+                preparation.course_project,
+                getattr(host, "question_bank", None),
+            )
+            set_gap_topics = getattr(preparation.dialog, "set_generation_gap_topics", None)
+            if gap_topic_ids is not None and callable(set_gap_topics):
+                set_gap_topics(gap_topic_ids)
             return preparation
         copy = generation_launch_copy(preparation.issue, purpose=purpose)
         detail = preparation.message or gm(copy.detail_zh, copy.detail_en)

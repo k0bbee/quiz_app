@@ -2,13 +2,16 @@ import unittest
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
 from core.session_retry import SessionRetryMode
 from ui.first_run_controller import FirstRunController
-from ui.generation_workspace_controller import GenerationWorkspaceController
+from ui.generation_workspace_controller import (
+    GenerationWorkspaceController,
+    find_generation_gap_topic_ids,
+)
 from ui.history_protection_controller import HistoryProtectionController
 from ui.main_window import MainWindow
 from ui.question_set_action_controller import QuestionSetActionController
@@ -201,6 +204,60 @@ class QuestionSetActionControllerTests(unittest.TestCase):
 
 
 class GenerationWorkspaceControllerTests(unittest.TestCase):
+    def test_generation_gap_scan_uses_exam_scope_and_question_index(self):
+        course = SimpleNamespace(
+            course_id="course-1",
+            topics=[
+                SimpleNamespace(topic_id="cache"),
+                SimpleNamespace(topic_id="process"),
+                SimpleNamespace(topic_id="io"),
+            ],
+            exam_topics=lambda: [
+                SimpleNamespace(topic_id="cache"),
+                SimpleNamespace(topic_id="process"),
+            ],
+        )
+        bank = SimpleNamespace(
+            topic_index=lambda course_id: {
+                "q-1": ("cache", "Cache"),
+                "q-2": ("io", "I/O"),
+            }
+        )
+
+        self.assertEqual(
+            ("process",),
+            find_generation_gap_topic_ids(course, bank),
+        )
+
+    def test_prepare_attaches_generation_gaps_to_dialog(self):
+        course = SimpleNamespace(
+            course_id="course-1",
+            topics=[SimpleNamespace(topic_id="cache"), SimpleNamespace(topic_id="process")],
+            exam_topics=lambda: [SimpleNamespace(topic_id="cache"), SimpleNamespace(topic_id="process")],
+        )
+        dialog = SimpleNamespace(set_generation_gap_topics=Mock())
+        preparation = SimpleNamespace(ok=True, dialog=dialog, course_project=course)
+        host = SimpleNamespace(
+            lang_manager=SimpleNamespace(get_text=lambda zh_text, _en_text: zh_text),
+            settings_screen=SimpleNamespace(settings_snapshot=lambda: {}),
+            course_context=SimpleNamespace(generation_context=lambda: ("# Course", [], course)),
+            task_center=None,
+            question_bank=SimpleNamespace(
+                topic_index=lambda course_id: {"q-1": ("cache", "Cache")}
+            ),
+        )
+        launcher = Mock()
+        launcher.prepare.return_value = preparation
+
+        with patch(
+            "ui.generation_workspace_controller.GenerationLaunchController",
+            return_value=launcher,
+        ):
+            result = GenerationWorkspaceController(host).prepare()
+
+        self.assertIs(preparation, result)
+        dialog.set_generation_gap_topics.assert_called_once_with(("process",))
+
     def test_main_window_reuses_one_generation_controller(self):
         window = MainWindow()
         self.addCleanup(window.close)
