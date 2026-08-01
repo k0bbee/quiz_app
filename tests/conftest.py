@@ -99,7 +99,24 @@ class _InMemorySecrets:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_qt_settings_and_secrets(request, monkeypatch):
+def _ensure_qt_application(request):
+    """Give every Qt test an application without relying on module order."""
+    if request.node.get_closest_marker("qt") is None or not _pyqt6_available():
+        yield None
+        return
+
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    yield app
+
+
+@pytest.fixture(autouse=True)
+def _isolate_qt_settings_and_secrets(
+    request,
+    monkeypatch,
+    _ensure_qt_application,
+):
     """Prevent UI tests from touching real settings files or OS credentials."""
     if request.node.get_closest_marker("qt") is None or not _pyqt6_available():
         yield
@@ -155,7 +172,7 @@ def _isolate_qt_settings_and_secrets(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _cleanup_qt_top_level_widgets(request):
+def _cleanup_qt_top_level_widgets(request, _ensure_qt_application):
     """Keep Qt tests isolated instead of accumulating windows across modules."""
     yield
     if request.node.get_closest_marker("qt") is None or not _pyqt6_available():
