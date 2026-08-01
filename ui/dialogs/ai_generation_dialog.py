@@ -1630,6 +1630,7 @@ class AIGenerationDialog(QDialog):
             "template": str(template or ""),
             "question_set_title": str(question_set_title or "").strip(),
             "runtime_instruction": str(runtime_instruction or "").strip(),
+            "publish_destination": self.publish_destination,
         }
         if generation_config is not None:
             metadata["exam_plan"] = {
