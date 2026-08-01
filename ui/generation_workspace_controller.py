@@ -138,6 +138,20 @@ class GenerationWorkspaceController:
             existing_workspace is not None
             and existing_workspace.generation_widget() is not None
         ):
+            requested_course_id = self._requested_course_id(course_override)
+            existing_course_id = str(
+                getattr(existing_workspace, "course_id", "") or ""
+            ).strip()
+            if (
+                requested_course_id
+                and existing_course_id
+                and requested_course_id != existing_course_id
+            ):
+                self._show_course_conflict(
+                    existing_course_id,
+                    requested_course_id,
+                )
+                return False
             host.navigate_to(
                 host.SCREEN_GENERATION,
                 allow_first_run_redirect=False,
@@ -187,6 +201,33 @@ class GenerationWorkspaceController:
         if auto_start and not restored_draft:
             dialog.start_generation_when_shown()
         return True
+
+    def _requested_course_id(self, course_override=None) -> str:
+        if course_override is not None:
+            return str(getattr(course_override, "course_id", "") or "").strip()
+        course_manager = getattr(self._host, "course_manager", None)
+        current = course_manager.current() if course_manager is not None else None
+        return str(getattr(current, "course_id", "") or "").strip()
+
+    def _show_course_conflict(
+        self,
+        existing_course_id: str,
+        requested_course_id: str,
+    ) -> None:
+        host = self._host
+        gm = getattr(getattr(host, "lang_manager", None), "get_text", None)
+        if not callable(gm):
+            gm = lambda zh_text, _en_text: zh_text
+        detail = gm(
+            f"当前生成工作区属于课程 {existing_course_id}，不能直接切换到 {requested_course_id}。请先完成、保存或取消当前任务。",
+            f"The generation workspace belongs to course {existing_course_id} and cannot switch directly to {requested_course_id}. Finish, save, or cancel the current task first.",
+        )
+        host._last_generation_launch_error = detail
+        QMessageBox.warning(
+            host if isinstance(host, QWidget) else None,
+            gm("生成任务属于其他课程", "Generation Belongs to Another Course"),
+            detail,
+        )
 
     def accept(
         self,

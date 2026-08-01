@@ -307,3 +307,26 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
             8,
             allow_first_run_redirect=False,
         )
+
+    def test_open_does_not_reuse_a_generation_workspace_bound_to_another_course(self):
+        workspace = Mock()
+        workspace.generation_widget.return_value = object()
+        workspace.course_id = "course-a"
+        host = SimpleNamespace(
+            _generation_workspace=workspace,
+            SCREEN_GENERATION=8,
+            navigate_to=Mock(return_value=True),
+            course_manager=SimpleNamespace(
+                current=lambda: SimpleNamespace(course_id="course-b")
+            ),
+            lang_manager=SimpleNamespace(
+                get_text=lambda zh_text, _en_text: zh_text,
+            ),
+        )
+
+        with patch("ui.generation_workspace_controller.QMessageBox.warning") as warning:
+            opened = GenerationWorkspaceController(host).open()
+
+        self.assertFalse(opened)
+        host.navigate_to.assert_not_called()
+        warning.assert_called_once()
