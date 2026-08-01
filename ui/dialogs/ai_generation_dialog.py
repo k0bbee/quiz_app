@@ -1963,6 +1963,8 @@ class AIGenerationDialog(QDialog):
         clean = " ".join(str(message or "").split())
         if not clean:
             return
+        if self._generation_events and self._generation_events[-1] == clean:
+            return
         self._generation_events.append(clean)
         self._generation_events = self._generation_events[-40:]
         if hasattr(self, "generation_log"):

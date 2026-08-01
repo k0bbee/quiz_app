@@ -656,6 +656,23 @@ class GenerationDialogUiTests(unittest.TestCase):
             self.assertIn("本批接受 2 道，拒绝 1 道", log_text)
             self.assertEqual("generationProgressLog", dialog.generation_log.objectName())
 
+    def test_generation_progress_log_collapses_consecutive_duplicate_events(self):
+            dialog = AIGenerationDialog(
+                "course content",
+                {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+                available_topics=["cache"],
+            )
+
+            dialog._append_generation_event("正在等待 AI 响应…")
+            dialog._append_generation_event("正在等待 AI 响应…")
+            dialog._append_generation_event("收到候选题")
+            dialog._append_generation_event("正在等待 AI 响应…")
+
+            self.assertEqual(
+                ["正在等待 AI 响应…", "收到候选题", "正在等待 AI 响应…"],
+                dialog._generation_events,
+            )
+
     def test_generation_progress_log_scrolls_to_latest_event(self):
             dialog = AIGenerationDialog(
                 "course content",
