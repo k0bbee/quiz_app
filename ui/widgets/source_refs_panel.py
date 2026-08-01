@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import QUrl
+from PyQt6.QtCore import QUrl, Qt
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QApplication,
@@ -47,6 +47,13 @@ class SourceRefsPanel(QWidget):
         self.source_list.setMaximumHeight(130)
         self.source_list.currentRowChanged.connect(self._update_action_state)
         layout.addWidget(self.source_list)
+        self.excerpt_label = QLabel()
+        self.excerpt_label.setObjectName("sourcePanelExcerpt")
+        self.excerpt_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.excerpt_label.setWordWrap(True)
+        self.excerpt_label.setMaximumHeight(76)
+        self.excerpt_label.setVisible(False)
+        layout.addWidget(self.excerpt_label)
 
         actions = QHBoxLayout()
         actions.addStretch()
@@ -150,7 +157,26 @@ class SourceRefsPanel(QWidget):
         )
         self.copy_btn.setEnabled(bool(event_url) or location is not None)
         self.details_btn.setEnabled(ref is not None)
+        self._update_excerpt(ref)
         self._update_strings()
+
+    def _update_excerpt(self, ref: dict | None) -> None:
+        """Show a bounded plain-text excerpt for the selected source."""
+        if not isinstance(ref, dict):
+            self.excerpt_label.clear()
+            self.excerpt_label.hide()
+            return
+        excerpt = " ".join(str(ref.get("excerpt", "") or "").split())
+        if not excerpt:
+            self.excerpt_label.clear()
+            self.excerpt_label.hide()
+            return
+        if len(excerpt) > 240:
+            excerpt = excerpt[:237].rstrip() + "…"
+        prefix = "摘录：" if self._language == "zh" else "Excerpt: "
+        self.excerpt_label.setText(f"{prefix}{excerpt}")
+        self.excerpt_label.setToolTip(excerpt)
+        self.excerpt_label.show()
 
     def copy_selected_location(self) -> None:
         ref, location = self._selected()

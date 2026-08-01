@@ -99,6 +99,31 @@ class SourceNavigationTests(unittest.TestCase):
         self.assertFalse(panel.copy_btn.isEnabled())
         self.assertTrue(panel.details_btn.isEnabled())
 
+    def test_source_panel_shows_selected_excerpt_inline(self):
+        panel = SourceRefsPanel()
+        panel.set_source_refs([
+            {
+                "source_file": "lecture.pdf",
+                "page_or_slide": 4,
+                "heading": "Interrupts",
+                "excerpt": "设备完成操作后通过中断通知 CPU。",
+            },
+            {
+                "source_file": "lecture.pdf",
+                "page_or_slide": 5,
+                "heading": "DMA",
+                "excerpt": "DMA 在设备与内存之间直接传输数据。",
+            },
+        ], language="zh")
+
+        self.assertFalse(panel.excerpt_label.isHidden())
+        self.assertIn("设备完成操作后", panel.excerpt_label.text())
+
+        panel.source_list.setCurrentRow(1)
+
+        self.assertIn("DMA", panel.excerpt_label.text())
+        self.assertIn("直接传输数据", panel.excerpt_label.text())
+
     def test_source_panel_opens_pdf_with_page_fragment(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

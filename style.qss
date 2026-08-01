@@ -1051,6 +1051,14 @@ QWidget#homeOverviewPanel QLabel#homeStatsLabel {
     padding: 0;
 }
 
+QLabel#sourcePanelExcerpt {
+    color: #d8d8d8;
+    background-color: #1f1f1f;
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+    padding: 6px 8px;
+}
+
 QLabel#pastExamAssignmentStatus {
     color: #f0f0f0;
     background-color: #252526;
