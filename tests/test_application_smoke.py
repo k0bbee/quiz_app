@@ -122,18 +122,9 @@ class ApplicationSmokeTests(unittest.TestCase):
                 window.home_screen.start_btn.click()
                 _APP.processEvents()
                 self.assertEqual(
-                    window.SCREEN_TOPIC_SELECTION,
+                    window.SCREEN_QUIZ,
                     window.stack.currentIndex(),
                 )
-                self.assertIn(
-                    "启动测试",
-                    window.topic_screen.study_intent_banner.text(),
-                )
-                self.assertTrue(window.topic_screen.start_btn.isEnabled())
-
-                window.topic_screen.start_btn.click()
-                _APP.processEvents()
-                self.assertEqual(window.SCREEN_QUIZ, window.stack.currentIndex())
                 window.quiz_screen.answer_area.set_answer("A")
                 window.quiz_screen.next_question_btn.click()
                 self.assertTrue(window.quiz_screen.feedback_frame.isVisibleTo(window.quiz_screen))
@@ -146,17 +137,14 @@ class ApplicationSmokeTests(unittest.TestCase):
                 self.assertEqual(1, records[0].summary.correct)
                 self.assertTrue(records[0].set_id.startswith("set-"))
                 self.assertNotEqual(question_set.set_id, records[0].set_id)
-                self.assertFalse(window.results_screen.repeat_study_btn.isHidden())
+                self.assertTrue(window.results_screen.repeat_study_btn.isHidden())
+                self.assertTrue(window.results_screen.retry_all_action.isEnabled())
 
-                window.results_screen.repeat_study_btn.click()
+                window.results_screen.retry_all_action.trigger()
                 _APP.processEvents()
                 self.assertEqual(
-                    window.SCREEN_TOPIC_SELECTION,
+                    window.SCREEN_QUIZ,
                     window.stack.currentIndex(),
-                )
-                self.assertIn(
-                    "启动测试",
-                    window.topic_screen.study_intent_banner.text(),
                 )
 
                 window.deleteLater()

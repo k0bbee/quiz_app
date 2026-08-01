@@ -1156,3 +1156,36 @@ class ResultsFlowTests(unittest.TestCase):
 
                 warning.assert_called_once()
                 self.assertIn("已被删除", warning.call_args.args[2])
+
+    def test_retry_all_uses_live_questions_when_ephemeral_set_is_missing(self):
+            q1 = self._make_question("live-retry-1")
+            q2 = self._make_question("live-retry-2")
+            record = ProgressRecord.create_new("temporary-set")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord(q1.question_id, 0, "A", True),
+                AnswerRecord(q2.question_id, 1, "A", True),
+            ]
+            record.summary = SessionSummary.compute(record.answers, 2, 20)
+            screen = self._make_results_screen()
+            screen.set_results(record, {q1.question_id: q1, q2.question_id: q2}, "zh")
+            started = {}
+            temp_dir = tempfile.TemporaryDirectory(prefix="quiz-retry-live-")
+            self.addCleanup(temp_dir.cleanup)
+            host = types.SimpleNamespace(
+                results_screen=screen,
+                set_manager=SetManager(str(Path(temp_dir.name) / "sets")),
+                question_bank=QuestionBank(str(Path(temp_dir.name) / "questions")),
+                study_flow=_StudyFlowSpy(started),
+                course_context=_course_context("course-a"),
+                lang_manager=LanguageManager.instance(),
+            )
+
+            ResultFlowController(host).retry_all()
+
+            self.assertEqual(
+                [q1.question_id, q2.question_id],
+                [question.question_id for question in started["questions"]],
+            )
+            self.assertEqual("", started["intent"].set_id)
+            self.assertIn("重新练习", started["label"])

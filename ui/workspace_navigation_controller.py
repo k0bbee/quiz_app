@@ -102,6 +102,7 @@ class WorkspaceNavigationController:
             and route.tab != "generation"
             and host._course_screen is None
             and host._archived_course_count() <= 0
+            and not self._has_active_courses()
         ):
             route = Route.study("today")
         screen_index = self.screen_index(route)
@@ -169,6 +170,13 @@ class WorkspaceNavigationController:
             host._get_past_exam_screen().refresh()
         self.update_actions()
         return True
+
+    def _has_active_courses(self) -> bool:
+        """Keep course management reachable during onboarding with seed data."""
+        try:
+            return bool(self._host.course_manager.load_all())
+        except (OSError, TypeError, ValueError):
+            return False
 
     def back(self) -> None:
         host = self._host

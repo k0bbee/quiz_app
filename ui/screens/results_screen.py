@@ -768,6 +768,10 @@ class ResultsScreen(QWidget):
         self._review_questions = self._historical_questions
         self._snapshot_question_ids = set()
 
+    def retryable_questions(self) -> dict[str, Question]:
+        """Return live questions that can back a retry without a persisted set."""
+        return dict(self._live_retry_questions)
+
     @staticmethod
     def _question_from_snapshot(snapshot: QuestionReviewSnapshot) -> Question:
         try:

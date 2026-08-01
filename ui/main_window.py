@@ -96,6 +96,7 @@ class MainWindow(QMainWindow):
             None,
         )
         self.exam_goal_store = getattr(services, "exam_goal_store", None)
+        self._ensure_default_current_course()
         self.lang_manager = LanguageManager.instance()
         self.startup_migration_report = startup_migration_report
         self._first_run_operation = ""
@@ -255,6 +256,18 @@ class MainWindow(QMainWindow):
 
     def _show_startup_migration_warning(self) -> None:
         self.history_protection.show_startup_warning()
+
+    def _ensure_default_current_course(self) -> None:
+        """Restore a usable course context when persisted data has no selection."""
+        try:
+            if self.course_manager.current() is not None:
+                return
+            courses = self.course_manager.load_all()
+            if courses:
+                self.course_manager.set_current(courses[0].course_id)
+        except (OSError, TypeError, ValueError):
+            # Startup remains usable even when course metadata needs repair.
+            return
 
     def _history_protection_message(self) -> str:
         return self.history_protection.message()

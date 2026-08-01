@@ -254,10 +254,35 @@ class ResultFlowController:
 
         question_set = host.set_manager.get(record.set_id)
         if question_set is None:
-            self._warn_original_unavailable(
-                "原题集已被删除。当前历史记录仍可查看，但无法重新练习。",
-                "The original question set was deleted. The archived result "
-                "remains viewable, but it cannot be retried.",
+            retryable_questions = getattr(
+                host.results_screen,
+                "retryable_questions",
+                lambda: {},
+            )()
+            if not retryable_questions:
+                self._warn_original_unavailable(
+                    "原题集已被删除。当前历史记录仍可查看，但无法重新练习。",
+                    "The original question set was deleted. The archived result "
+                    "remains viewable, but it cannot be retried.",
+                )
+                return
+            question_ids = tuple(retryable_questions)
+            intent = StudyIntent(
+                course_id=host.course_context.current_course_id(),
+                action=StudyAction.CUSTOM_PRACTICE,
+                set_id="",
+                question_ids=question_ids,
+                question_count=len(question_ids),
+                submission_mode="practice",
+                source="results_retry_all",
+            )
+            host.study_flow.start_questions(
+                intent,
+                list(retryable_questions.values()),
+                label=host.lang_manager.get_text(
+                    "重新练习当前题目",
+                    "Retry Current Questions",
+                ),
             )
             return
 
