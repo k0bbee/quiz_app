@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal, Qt
 
 from core.language_manager import LanguageManager
+from core.global_study_agenda import GlobalStudyAgenda, build_global_study_agenda
 from core.learning_dashboard import (
     LearningDashboardViewModel,
     build_learning_dashboard,
@@ -35,6 +36,7 @@ class HomeScreen(QWidget):
     open_settings = pyqtSignal()
     manage_courses = pyqtSignal()
     study_requested = pyqtSignal(object)
+    open_course_requested = pyqtSignal(str)
 
     def __init__(
         self,
@@ -42,6 +44,7 @@ class HomeScreen(QWidget):
         question_bank=None,
         parent=None,
         *,
+        course_manager=None,
         mastery_overrides=None,
         daily_plan_store=None,
         exam_goal_store=None,
@@ -49,6 +52,7 @@ class HomeScreen(QWidget):
         super().__init__(parent)
         self.progress_manager = progress_manager
         self.question_bank = question_bank
+        self.course_manager = course_manager
         self.mastery_overrides = mastery_overrides
         self.daily_plan_store = daily_plan_store
         self.exam_goal_store = exam_goal_store
@@ -64,6 +68,7 @@ class HomeScreen(QWidget):
         self._resume_mode: str | None = None
         self._today_plan = TodayLearningPlan(LearningPlanAction.IMPORT_COURSE)
         self._learning_dashboard = LearningDashboardViewModel()
+        self._global_agenda = GlobalStudyAgenda()
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -137,6 +142,39 @@ class HomeScreen(QWidget):
         self.hero_layout.addWidget(self.today_plan_frame, 13)
         self.hero_layout.addWidget(self.context_frame, 7)
         main_layout.addLayout(self.hero_layout)
+
+        self.agenda_frame = QWidget()
+        self.agenda_frame.setObjectName("homeAgendaPanel")
+        agenda_layout = QVBoxLayout(self.agenda_frame)
+        agenda_layout.setContentsMargins(20, 14, 20, 14)
+        agenda_layout.setSpacing(7)
+        self.agenda_heading_label = QLabel(
+            self.lang_manager.get_text("全部课程", "All Courses")
+        )
+        self.agenda_heading_label.setObjectName("homeAgendaHeading")
+        agenda_layout.addWidget(self.agenda_heading_label)
+        self.agenda_summary_label = QLabel()
+        self.agenda_summary_label.setObjectName("homeAgendaSummary")
+        self.agenda_summary_label.setWordWrap(True)
+        agenda_layout.addWidget(self.agenda_summary_label)
+        self.agenda_action_layout = QHBoxLayout()
+        self.agenda_action_layout.setSpacing(8)
+        self.agenda_action_buttons = []
+        for index in range(3):
+            button = QPushButton()
+            button.setObjectName("secondaryButton")
+            button.setProperty("homeAction", "secondary")
+            button.clicked.connect(
+                lambda _checked=False, position=index:
+                self._request_agenda_course(position)
+            )
+            button.hide()
+            self.agenda_action_layout.addWidget(button)
+            self.agenda_action_buttons.append(button)
+        self.agenda_action_layout.addStretch()
+        agenda_layout.addLayout(self.agenda_action_layout)
+        main_layout.addWidget(self.agenda_frame)
+        self.agenda_frame.hide()
 
         self.overview_frame = QWidget()
         self.overview_frame.setObjectName("homeOverviewPanel")
@@ -256,6 +294,9 @@ class HomeScreen(QWidget):
         self.context_title.setText(self.lang_manager.get_text("当前学习范围", "Current Scope"))
         self.overview_title.setText(self.lang_manager.get_text("需要关注", "Needs Attention"))
         self.next_step_title.setText(self.lang_manager.get_text("接下来", "Next"))
+        self.agenda_heading_label.setText(
+            self.lang_manager.get_text("全部课程", "All Courses")
+        )
         self._update_resume_text()
         self.free_practice_btn.setText(self.lang_manager.get_text("自由练习", "Free Practice"))
         self.incorrect_btn.setText(self.lang_manager.get_text("练习历史错题", "Practice Incorrect"))
@@ -279,6 +320,7 @@ class HomeScreen(QWidget):
             self.incorrect_btn.setEnabled(False)
             self._set_incorrect_empty_state(True)
             self._refresh_today_plan()
+            self._refresh_global_agenda([])
             return
 
         all_course_question_ids = (
@@ -293,6 +335,7 @@ class HomeScreen(QWidget):
             else 0
         )
         progress_records = self.progress_manager.load_all()
+        self._refresh_global_agenda(progress_records)
         self.question_context_label.setText(self.lang_manager.get_text(
             f"题目：{len(visible_question_ids)} 题",
             f"Questions: {len(visible_question_ids)}",
@@ -459,6 +502,66 @@ class HomeScreen(QWidget):
                 button.show()
             else:
                 button.hide()
+
+    def _refresh_global_agenda(self, progress_records) -> None:
+        """Render a compact cross-course summary without replacing today's plan."""
+        if self.course_manager is None or self.question_bank is None:
+            self._global_agenda = GlobalStudyAgenda()
+            self.agenda_frame.hide()
+            return
+        self._global_agenda = build_global_study_agenda(
+            self.course_manager,
+            question_bank=self.question_bank,
+            progress_records=progress_records,
+            mastery_overrides=self.mastery_overrides,
+            exam_goal_store=self.exam_goal_store,
+            current_course_id=self._current_course_id,
+        )
+        items = self._global_agenda.items
+        if len(items) <= 1:
+            self.agenda_frame.hide()
+            return
+        self.agenda_frame.show()
+        working_count = self._global_agenda.courses_with_work
+        self.agenda_summary_label.setText(self.lang_manager.get_text(
+            f"{len(items)} 门课程 · {working_count} 门有待学习 · "
+            f"共 {self._global_agenda.total_actionable_count} 题",
+            f"{len(items)} course(s) · {working_count} with work queued · "
+            f"{self._global_agenda.total_actionable_count} question(s) total",
+        ))
+        for index, button in enumerate(self.agenda_action_buttons):
+            if index >= min(3, len(items)):
+                button.hide()
+                button.setProperty("courseId", "")
+                continue
+            item = items[index]
+            exam_suffix_zh = (
+                f" · {item.exam_days_remaining} 天后考试"
+                if item.exam_days_remaining is not None
+                else ""
+            )
+            exam_suffix_en = (
+                f" · exam in {item.exam_days_remaining} day(s)"
+                if item.exam_days_remaining is not None
+                else ""
+            )
+            button.setText(self.lang_manager.get_text(
+                f"{item.title} · 今日 {item.today_question_count} 题{exam_suffix_zh}",
+                f"{item.title} · {item.today_question_count} today{exam_suffix_en}",
+            ))
+            button.setProperty("courseId", item.course_id)
+            button.setToolTip(self.lang_manager.get_text(
+                f"切换到 {item.title}，继续该课程的今日计划。",
+                f"Switch to {item.title} and continue its daily plan.",
+            ))
+            button.show()
+        self.agenda_frame.adjustSize()
+
+    def _request_agenda_course(self, index: int) -> None:
+        items = self._global_agenda.items
+        if not 0 <= index < len(items):
+            return
+        self.open_course_requested.emit(items[index].course_id)
 
     def _request_focus_topic(self, index: int) -> None:
         topics = self._learning_dashboard.focus_topics

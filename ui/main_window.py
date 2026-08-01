@@ -132,6 +132,7 @@ class MainWindow(QMainWindow):
         self.home_screen = HomeScreen(
             self.progress_manager,
             self.question_bank,
+            course_manager=self.course_manager,
             mastery_overrides=self.mastery_overrides,
             daily_plan_store=self.daily_plan_store,
             exam_goal_store=self.exam_goal_store,
@@ -501,6 +502,9 @@ class MainWindow(QMainWindow):
         self.home_screen.view_progress.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
         self.home_screen.open_settings.connect(self.open_settings)
         self.home_screen.manage_courses.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
+        self.home_screen.open_course_requested.connect(
+            self._on_home_course_requested
+        )
         self.first_run_screen.configure_ai_requested.connect(
             lambda: self.open_settings("ai")
         )
@@ -571,6 +575,13 @@ class MainWindow(QMainWindow):
         self.app_shell.render_language(gm)
         self._refresh_task_center_action()
         self._update_navigation_actions()
+
+    def _on_home_course_requested(self, course_id: str) -> None:
+        """Switch the active course from the compact home agenda."""
+        course_id = str(course_id or "").strip()
+        if not course_id or not self.course_manager.set_current(course_id):
+            return
+        self.course_context.course_changed()
 
     def navigate_to(
         self,
