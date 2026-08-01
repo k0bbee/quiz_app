@@ -481,6 +481,7 @@ class CourseScreenFlowTests(unittest.TestCase):
                     snapshot_manager,
                     past_exam_manager,
                     current_event_manager,
+                    generation_draft_store=None,
                 )
                 remove.assert_called_once_with(
                     project.course_id,
@@ -490,6 +491,7 @@ class CourseScreenFlowTests(unittest.TestCase):
                     set_manager=set_manager,
                     progress_manager=progress_manager,
                     snapshot_manager=snapshot_manager,
+                    generation_draft_store=None,
                     past_exam_manager=past_exam_manager,
                     current_event_manager=current_event_manager,
                 )

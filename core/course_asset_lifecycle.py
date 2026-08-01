@@ -24,6 +24,7 @@ class CourseAssetImpact:
     legacy_archive_ids: tuple[str, ...] = ()
     draft_progress_ids: tuple[str, ...] = ()
     snapshot_ids: tuple[str, ...] = ()
+    generation_draft_ids: tuple[str, ...] = ()
     past_exam_ids: tuple[str, ...] = ()
     current_event_pack_ids: tuple[str, ...] = ()
 
@@ -61,7 +62,15 @@ class CourseAssetImpact:
 
     @property
     def unfinished_draft_count(self) -> int:
-        return self.draft_progress_count + self.snapshot_count
+        return (
+            self.draft_progress_count
+            + self.snapshot_count
+            + self.generation_draft_count
+        )
+
+    @property
+    def generation_draft_count(self) -> int:
+        return len(self.generation_draft_ids)
 
     @property
     def past_exam_count(self) -> int:
@@ -97,6 +106,7 @@ def analyze_course_asset_impact(
     snapshot_manager=None,
     past_exam_manager=None,
     current_event_manager=None,
+    generation_draft_store=None,
 ) -> CourseAssetImpact:
     """Return direct and indirect assets linked to ``course_id``."""
     normalized_course_id = str(course_id or "").strip()
@@ -164,6 +174,13 @@ def analyze_course_asset_impact(
         == normalized_course_id
     }
     past_exam_ids.discard("")
+    generation_draft_ids = {
+        str(getattr(draft, "draft_id", "") or "").strip()
+        for draft in _load_all(generation_draft_store)
+        if str(getattr(draft, "course_id", "") or "").strip()
+        == normalized_course_id
+    }
+    generation_draft_ids.discard("")
     current_event_pack_ids = {
         str(getattr(pack, "pack_id", "") or "").strip()
         for pack in _load_all(current_event_manager)
@@ -183,6 +200,7 @@ def analyze_course_asset_impact(
         legacy_archive_ids=tuple(sorted(legacy_archive_ids)),
         draft_progress_ids=tuple(sorted(draft_progress_ids)),
         snapshot_ids=tuple(sorted(snapshot_ids)),
+        generation_draft_ids=tuple(sorted(generation_draft_ids)),
         past_exam_ids=tuple(sorted(past_exam_ids)),
         current_event_pack_ids=tuple(sorted(current_event_pack_ids)),
     )
@@ -199,6 +217,7 @@ def remove_course_assets(
     snapshot_manager=None,
     past_exam_manager=None,
     current_event_manager=None,
+    generation_draft_store=None,
 ) -> CourseRemovalResult:
     """Apply one course-removal policy with compensating rollback on failure."""
     mode = CourseRemovalMode(mode)
@@ -210,6 +229,7 @@ def remove_course_assets(
         snapshot_manager,
         past_exam_manager,
         current_event_manager,
+        generation_draft_store=generation_draft_store,
     )
     project = course_manager.get(impact.course_id)
     if project is None:
@@ -244,6 +264,7 @@ def remove_course_assets(
         snapshot_manager,
         past_exam_manager,
         current_event_manager,
+        generation_draft_store=generation_draft_store,
     )
     project = course_manager.get(impact.course_id)
     if project is None:
@@ -259,6 +280,12 @@ def remove_course_assets(
         impact.draft_progress_ids,
     )
     snapshots = _load_by_ids(snapshot_manager, "get", impact.snapshot_ids)
+    generation_drafts = _load_by_ids(
+        generation_draft_store,
+        "get_by_id",
+        impact.generation_draft_ids,
+        copy_items=False,
+    )
     past_exams = _load_by_ids(past_exam_manager, "get", impact.past_exam_ids)
     current_event_packs = _load_by_ids(
         current_event_manager,
@@ -270,8 +297,10 @@ def remove_course_assets(
         _delete_drafts(
             draft_progress_records,
             snapshots,
+            generation_drafts,
             progress_manager,
             snapshot_manager,
+            generation_draft_store,
         )
         if mode is CourseRemovalMode.UNLINK_ASSETS:
             _unlink_course_assets(
@@ -306,6 +335,7 @@ def remove_course_assets(
             question_sets,
             draft_progress_records,
             snapshots,
+            generation_drafts,
             past_exams,
             current_event_packs,
             course_manager,
@@ -313,6 +343,7 @@ def remove_course_assets(
             set_manager,
             progress_manager,
             snapshot_manager,
+            generation_draft_store,
             past_exam_manager,
             current_event_manager,
         )
@@ -432,8 +463,10 @@ def _delete_linked_bank(
 def _delete_drafts(
     draft_progress_records,
     snapshots,
+    generation_drafts,
     progress_manager,
     snapshot_manager,
+    generation_draft_store,
 ):
     if progress_manager is not None:
         for record in draft_progress_records:
@@ -446,6 +479,15 @@ def _delete_drafts(
             _require_success(
                 snapshot_manager.delete(snapshot.snapshot_id),
                 f"delete quiz draft {snapshot.snapshot_id}",
+            )
+    if generation_draft_store is not None:
+        for draft in generation_drafts:
+            _require_success(
+                generation_draft_store.delete(
+                    getattr(draft, "course_id", ""),
+                    draft_id=getattr(draft, "draft_id", ""),
+                ),
+                f"delete generation draft {draft.draft_id}",
             )
 
 
@@ -482,6 +524,7 @@ def _restore_assets(
     question_sets,
     draft_progress_records,
     snapshots,
+    generation_drafts,
     past_exams,
     current_event_packs,
     course_manager,
@@ -489,6 +532,7 @@ def _restore_assets(
     set_manager,
     progress_manager,
     snapshot_manager,
+    generation_draft_store,
     past_exam_manager,
     current_event_manager,
 ) -> list[str]:
@@ -505,6 +549,15 @@ def _restore_assets(
         for item in items:
             try:
                 _require_success(manager.save(deepcopy(item)), f"restore {label}")
+            except Exception as exc:
+                errors.append(str(exc))
+    if generation_draft_store is not None:
+        for draft in generation_drafts:
+            try:
+                _require_success(
+                    generation_draft_store.save_draft(draft),
+                    f"restore generation draft {draft.draft_id}",
+                )
             except Exception as exc:
                 errors.append(str(exc))
     if past_exam_manager is not None:
@@ -535,7 +588,13 @@ def _restore_assets(
     return errors
 
 
-def _load_by_ids(manager, method_name: str, item_ids) -> list:
+def _load_by_ids(
+    manager,
+    method_name: str,
+    item_ids,
+    *,
+    copy_items: bool = True,
+) -> list:
     if manager is None:
         return []
     method = getattr(manager, method_name)
@@ -543,7 +602,7 @@ def _load_by_ids(manager, method_name: str, item_ids) -> list:
     for item_id in item_ids:
         item = method(item_id)
         if item is not None:
-            items.append(deepcopy(item))
+            items.append(deepcopy(item) if copy_items else item)
     return items
 
 
@@ -562,7 +621,12 @@ def _require_success(success, operation: str) -> None:
 def _load_all(manager) -> list:
     if manager is None:
         return []
-    return list(manager.load_all())
+    loader = getattr(manager, "load_all", None)
+    if not callable(loader):
+        loader = getattr(manager, "list_all", None)
+    if not callable(loader):
+        return []
+    return list(loader())
 
 
 def _metadata_course_id(item) -> str:

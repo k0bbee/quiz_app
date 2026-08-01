@@ -1,5 +1,7 @@
 import unittest
 from copy import deepcopy
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
 from core.course_asset_lifecycle import (
@@ -7,6 +9,8 @@ from core.course_asset_lifecycle import (
     analyze_course_asset_impact,
     remove_course_assets,
 )
+from core.generation_draft_store import GenerationDraftStore
+from ai.exam_plan import ExamGenerationPlan
 from models.past_exam import PastExamRecord
 from models.progress import AnswerRecord, ProgressRecord
 from models.question import Question
@@ -90,6 +94,86 @@ class _CurrentEventManager(_StoreManager):
 
 
 class CourseAssetLifecycleTests(unittest.TestCase):
+    def test_course_removal_cleans_review_pending_generation_drafts(self):
+        managers = self._lifecycle_managers()
+        with TemporaryDirectory() as tmpdir:
+            draft_store = GenerationDraftStore(Path(tmpdir) / "drafts.json")
+            draft_store.save(
+                course_id="course-a",
+                draft_id="generation-draft-a",
+                questions=[self._draft_question()],
+                question_set_title="待审核题目",
+                exam_plan=ExamGenerationPlan(question_count=3),
+            )
+
+            result = remove_course_assets(
+                "course-a",
+                CourseRemovalMode.UNLINK_ASSETS,
+                generation_draft_store=draft_store,
+                **managers,
+            )
+
+            self.assertTrue(result.success, result.error)
+            self.assertEqual(("generation-draft-a",), result.impact.generation_draft_ids)
+            self.assertEqual(1, result.impact.generation_draft_count)
+            self.assertEqual(0, len(draft_store.list_all()))
+
+    def test_failed_course_removal_restores_generation_drafts(self):
+        managers = self._lifecycle_managers()
+        real_delete = managers["question_bank"].delete
+
+        def fail_question_delete(item_id):
+            if item_id == "q-course":
+                return False
+            return real_delete(item_id)
+
+        managers["question_bank"].delete = fail_question_delete
+        with TemporaryDirectory() as tmpdir:
+            draft_store = GenerationDraftStore(Path(tmpdir) / "drafts.json")
+            draft_store.save(
+                course_id="course-a",
+                draft_id="generation-draft-a",
+                questions=[self._draft_question()],
+                question_set_title="待审核题目",
+                exam_plan=ExamGenerationPlan(question_count=3),
+            )
+
+            result = remove_course_assets(
+                "course-a",
+                CourseRemovalMode.DELETE_LINKED_BANK,
+                generation_draft_store=draft_store,
+                **managers,
+            )
+
+            self.assertFalse(result.success)
+            restored = draft_store.get_by_id("generation-draft-a")
+            self.assertIsNotNone(restored)
+            self.assertEqual("待审核题目", restored.question_set_title)
+            self.assertTrue(restored.updated_at)
+
+    @staticmethod
+    def _draft_question():
+        return Question(
+            question_id="generation-q",
+            type=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {
+                    "stem": "草稿题",
+                    "options": ["正确", "错误"],
+                    "explanation": "草稿解释",
+                },
+                "en": {
+                    "stem": "Draft question",
+                    "options": ["True", "False"],
+                    "explanation": "Draft explanation",
+                },
+            },
+            correct_answer=True,
+            topic="topic-a",
+            metadata={"course_id": "course-a"},
+        )
+
     def test_impact_classifies_completed_history_archive_state(self):
         progress = _Manager([
             SimpleNamespace(

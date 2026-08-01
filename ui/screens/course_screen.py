@@ -1575,6 +1575,7 @@ class CourseScreen(QWidget):
             set_manager=self.set_manager,
             progress_manager=self.progress_manager,
             snapshot_manager=self.snapshot_manager,
+            generation_draft_store=self.generation_draft_store,
             past_exam_manager=self.past_exam_manager,
             current_event_manager=self.current_event_manager,
         )
@@ -1646,6 +1647,7 @@ class CourseScreen(QWidget):
             self.snapshot_manager,
             self.past_exam_manager,
             self.current_event_manager,
+            generation_draft_store=self.generation_draft_store,
         )
         mode = self._choose_course_removal_mode(project, impact)
         if mode is None:
@@ -1658,6 +1660,7 @@ class CourseScreen(QWidget):
             set_manager=self.set_manager,
             progress_manager=self.progress_manager,
             snapshot_manager=self.snapshot_manager,
+            generation_draft_store=self.generation_draft_store,
             past_exam_manager=self.past_exam_manager,
             current_event_manager=self.current_event_manager,
         )
