@@ -7,6 +7,8 @@ from core.current_events import (
     CurrentEventMaterialManager,
     CurrentEventMaterialPack,
 )
+from core.generation_draft_store import GenerationDraftStore
+from ai.exam_plan import ExamGenerationPlan
 from core.background_task import TaskControl
 from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
@@ -133,6 +135,17 @@ class CourseMergeTests(unittest.TestCase):
                 selected_candidate_ids=[candidate.candidate_id],
             )
             self.assertTrue(materials.save(pack))
+            draft_store = GenerationDraftStore(root / "generation-drafts.json")
+            self.assertIsNotNone(
+                draft_store.save(
+                    course_id=source.course_id,
+                    draft_id="source-generation-draft",
+                    questions=[question],
+                    question_set_title="来源待审核",
+                    exam_plan=ExamGenerationPlan(question_count=3),
+                    source="course_hub_gap",
+                )
+            )
 
             result = merge_courses(
                 target.course_id,
@@ -143,6 +156,7 @@ class CourseMergeTests(unittest.TestCase):
                 past_exam_manager=past_exam_manager,
                 mastery_overrides=mastery,
                 current_event_manager=materials,
+                generation_draft_store=draft_store,
             )
 
             self.assertTrue(result.success, result.error)
@@ -179,6 +193,10 @@ class CourseMergeTests(unittest.TestCase):
             self.assertEqual(1, result.question_set_count)
             self.assertEqual(1, result.past_exam_count)
             self.assertEqual(1, result.current_event_pack_count)
+            migrated_draft = draft_store.get_by_id("source-generation-draft")
+            self.assertIsNotNone(migrated_draft)
+            self.assertEqual(target.course_id, migrated_draft.course_id)
+            self.assertEqual("course_hub_gap", migrated_draft.source)
 
     def test_merge_archives_source_course_history_before_reassigning_assets(self):
         from core.course_merge import merge_courses

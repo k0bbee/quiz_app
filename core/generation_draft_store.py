@@ -267,7 +267,12 @@ class GenerationDraftStore:
                 raise OSError("failed to persist generation draft")
             return draft
 
-    def save_draft(self, draft: GenerationDraft) -> GenerationDraft:
+    def save_draft(
+        self,
+        draft: GenerationDraft,
+        *,
+        allow_course_change: bool = False,
+    ) -> GenerationDraft:
         """Restore an already validated draft without changing its timestamp.
 
         Lifecycle rollback uses this path so a failed course removal can put
@@ -285,7 +290,11 @@ class GenerationDraftStore:
                 existing_course_id = str(
                     existing.get("course_id", "") or ""
                 ).strip()
-                if existing_course_id and existing_course_id != draft.course_id:
+                if (
+                    existing_course_id
+                    and existing_course_id != draft.course_id
+                    and not allow_course_change
+                ):
                     raise ValueError("draft_id already belongs to another course")
             payload["drafts"][draft.draft_id] = draft.to_dict()
             if not write_json(self._path, payload):

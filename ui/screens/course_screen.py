@@ -1400,6 +1400,7 @@ class CourseScreen(QWidget):
                 self.snapshot_manager,
                 self.past_exam_manager,
                 self.current_event_manager,
+                generation_draft_store=self.generation_draft_store,
             )
             for course in courses
             if course.course_id != target_id
@@ -1426,6 +1427,7 @@ class CourseScreen(QWidget):
             past_exam_manager=self.past_exam_manager,
             mastery_overrides=self.mastery_overrides,
             current_event_manager=self.current_event_manager,
+            generation_draft_store=self.generation_draft_store,
         )
         self._merge_worker.completed.connect(self._on_merge_done)
         self._merge_worker.failed.connect(self._on_merge_error)

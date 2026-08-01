@@ -41,6 +41,7 @@ def merge_courses(
     past_exam_manager=None,
     mastery_overrides=None,
     current_event_manager=None,
+    generation_draft_store=None,
     task=None,
 ) -> CourseMergeResult:
     """Merge sources into one retained course, rolling back on any failure."""
@@ -134,6 +135,11 @@ def merge_courses(
         for pack in _load_all(current_event_manager)
         if str(getattr(pack, "course_id", "") or "") in source_ids
     ]
+    source_generation_drafts = [
+        draft
+        for draft in _load_all(generation_draft_store)
+        if str(getattr(draft, "course_id", "") or "") in source_ids
+    ]
     mastery_before = {}
     if mastery_overrides is not None:
         mastery_before = {
@@ -171,6 +177,10 @@ def merge_courses(
         )
         for pack in source_packs
     ])
+    migrated_generation_drafts = [
+        replace(draft, course_id=target_id)
+        for draft in source_generation_drafts
+    ]
     overwritten_packs = {}
     if current_event_manager is not None:
         for pack in migrated_packs:
@@ -237,6 +247,18 @@ def merge_courses(
                 current_event_manager.save(pack),
                 f"move current-event pack {pack.pack_id}",
             )
+        for index, draft in enumerate(migrated_generation_drafts, start=1):
+            _report(
+                task,
+                "merging_generation_drafts",
+                index - 1,
+                len(migrated_generation_drafts),
+                draft.draft_id,
+            )
+            _require(
+                generation_draft_store.save_draft(draft, allow_course_change=True),
+                f"move generation draft {draft.draft_id}",
+            )
         for pack in source_packs:
             _check_cancelled(task)
             _require(
@@ -265,6 +287,7 @@ def merge_courses(
             mastery_before=mastery_before,
             source_packs=source_packs,
             migrated_packs=migrated_packs,
+            source_generation_drafts=source_generation_drafts,
             overwritten_packs=overwritten_packs,
             course_manager=course_manager,
             question_bank=question_bank,
@@ -272,6 +295,7 @@ def merge_courses(
             past_exam_manager=past_exam_manager,
             mastery_overrides=mastery_overrides,
             current_event_manager=current_event_manager,
+            generation_draft_store=generation_draft_store,
         )
         return CourseMergeResult(
             False,
@@ -435,7 +459,12 @@ def _metadata_course_id(item) -> str:
 def _load_all(manager) -> list:
     if manager is None:
         return []
-    return list(manager.load_all())
+    loader = getattr(manager, "load_all", None)
+    if not callable(loader):
+        loader = getattr(manager, "list_all", None)
+    if not callable(loader):
+        return []
+    return list(loader())
 
 
 def _rollback(
@@ -448,6 +477,7 @@ def _rollback(
     mastery_before,
     source_packs,
     migrated_packs,
+    source_generation_drafts,
     overwritten_packs,
     course_manager,
     question_bank,
@@ -455,6 +485,7 @@ def _rollback(
     past_exam_manager,
     mastery_overrides,
     current_event_manager,
+    generation_draft_store,
 ) -> list[str]:
     errors = []
 
@@ -509,6 +540,15 @@ def _rollback(
             restore(
                 lambda pack=pack: current_event_manager.save(deepcopy(pack)),
                 f"restore source current-event pack {pack.pack_id}",
+            )
+    if generation_draft_store is not None:
+        for draft in source_generation_drafts:
+            restore(
+                lambda draft=draft: generation_draft_store.save_draft(
+                    draft,
+                    allow_course_change=True,
+                ),
+                f"restore generation draft {draft.draft_id}",
             )
     if current_before_id:
         restore(
