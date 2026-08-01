@@ -313,6 +313,10 @@ class CourseHubNavigationTests(unittest.TestCase):
             "出题权重",
             screen.knowledge_table.horizontalHeaderItem(1).text(),
         )
+        self.assertEqual(
+            "历史表现",
+            screen.knowledge_table.horizontalHeaderItem(4).text(),
+        )
 
     def test_generation_route_initializes_selected_course_workspace(self):
         dialog = QDialog()

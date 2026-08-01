@@ -156,7 +156,7 @@ class CourseKnowledgePanel(QWidget):
             get_text("出题权重", "Generation Weight"),
             get_text("资料覆盖", "Sources"),
             get_text("题目数量", "Questions"),
-            get_text("掌握度", "Mastery"),
+            get_text("历史表现", "Historical Performance"),
             get_text("最近练习", "Last Practice"),
             get_text("状态", "Status"),
             get_text("下一步", "Next Action"),
