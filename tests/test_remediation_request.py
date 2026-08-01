@@ -13,6 +13,7 @@ class RemediationRequestTests(unittest.TestCase):
                     question_ids=("q-1",),
                     observed_wrong_answers=("B",),
                     unsure_question_ids=("q-2",),
+                    source_refs=("lecture-1",),
                 ),
             ),
             max_questions=8,
@@ -23,6 +24,7 @@ class RemediationRequestTests(unittest.TestCase):
         self.assertEqual(request, restored)
         self.assertIn("q-1", request.instruction("zh"))
         self.assertIn("B", request.instruction("zh"))
+        self.assertIn("lecture-1", request.instruction("zh"))
         self.assertIn("不要复述原题", request.instruction("zh"))
 
 

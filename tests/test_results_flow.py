@@ -222,12 +222,14 @@ class ResultsFlowTests(unittest.TestCase):
                             "question_ids": ["q-cache"],
                             "observed_wrong_answers": ["B"],
                             "unsure_question_ids": [],
+                            "source_refs": [],
                         },
                         {
                             "topic_id": "io",
                             "question_ids": ["q-io"],
                             "observed_wrong_answers": [],
                             "unsure_question_ids": ["q-io"],
+                            "source_refs": [],
                         },
                     ],
                 }], requests)

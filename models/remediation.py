@@ -35,6 +35,7 @@ class TopicSignal:
     question_ids: tuple[str, ...] = ()
     observed_wrong_answers: tuple[str, ...] = ()
     unsure_question_ids: tuple[str, ...] = ()
+    source_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "topic_id", str(self.topic_id or "").strip())
@@ -49,6 +50,7 @@ class TopicSignal:
             )),
         )
         object.__setattr__(self, "unsure_question_ids", _clean_ids(self.unsure_question_ids))
+        object.__setattr__(self, "source_refs", _clean_ids(self.source_refs)[:4])
 
     def to_dict(self) -> dict:
         return {
@@ -56,6 +58,7 @@ class TopicSignal:
             "question_ids": list(self.question_ids),
             "observed_wrong_answers": list(self.observed_wrong_answers),
             "unsure_question_ids": list(self.unsure_question_ids),
+            "source_refs": list(self.source_refs),
         }
 
     @classmethod
@@ -70,6 +73,7 @@ class TopicSignal:
             question_ids=value.get("question_ids", ()),
             observed_wrong_answers=value.get("observed_wrong_answers", ()),
             unsure_question_ids=value.get("unsure_question_ids", ()),
+            source_refs=value.get("source_refs", ()),
         )
 
 
@@ -149,6 +153,8 @@ class RemediationRequest:
                     detail += f", wrong_answers={'; '.join(signal.observed_wrong_answers)}"
                 if signal.unsure_question_ids:
                     detail += f", unsure_ids={', '.join(signal.unsure_question_ids)}"
+                if signal.source_refs:
+                    detail += f", source_refs={', '.join(signal.source_refs)}"
                 lines.append(detail)
             return "\n".join(lines)
 
@@ -164,5 +170,7 @@ class RemediationRequest:
                 detail += f"；用户错误答案：{'；'.join(signal.observed_wrong_answers)}"
             if signal.unsure_question_ids:
                 detail += f"；不确定题：{', '.join(signal.unsure_question_ids)}"
+            if signal.source_refs:
+                detail += f"；课程来源：{'、'.join(signal.source_refs)}"
             lines.append(detail)
         return "\n".join(lines)

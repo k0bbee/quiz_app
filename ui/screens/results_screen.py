@@ -27,6 +27,29 @@ from models.course_project import CourseProjectManager
 from ui.archive_status_presenter import build_archive_status_view
 
 
+def _question_source_ref_ids(question: Question) -> tuple[str, ...]:
+    """Extract bounded, human-readable source identifiers from question metadata."""
+    metadata = getattr(question, "metadata", {}) or {}
+    raw_refs = metadata.get("source_refs", []) if isinstance(metadata, dict) else []
+    values = []
+    for ref in raw_refs or ():
+        if isinstance(ref, dict):
+            value = (
+                ref.get("source_id")
+                or ref.get("id")
+                or ref.get("path")
+                or ref.get("title")
+            )
+        else:
+            value = ref
+        text = str(value or "").strip()
+        if text and text not in values:
+            values.append(text[:180])
+        if len(values) >= 4:
+            break
+    return tuple(values)
+
+
 class ResultsScreen(QWidget):
     """Shows quiz results with review and retry options."""
 
@@ -547,6 +570,7 @@ class ResultsScreen(QWidget):
                     "question_ids": [],
                     "observed_wrong_answers": [],
                     "unsure_question_ids": [],
+                    "source_refs": [],
                 })
                 signal["score"] += score
                 if answer.question_id and answer.question_id not in signal["question_ids"]:
@@ -557,6 +581,9 @@ class ResultsScreen(QWidget):
                     )
                 if getattr(answer, "confidence", "sure") == "unsure":
                     signal["unsure_question_ids"].append(answer.question_id)
+                for source_ref in _question_source_ref_ids(question):
+                    if source_ref not in signal["source_refs"]:
+                        signal["source_refs"].append(source_ref)
         self._reinforcement_topic_ids = tuple(
             topic_id
             for topic_id, _signal in sorted(
@@ -570,6 +597,7 @@ class ResultsScreen(QWidget):
                 question_ids=signals[topic_id]["question_ids"],
                 observed_wrong_answers=signals[topic_id]["observed_wrong_answers"],
                 unsure_question_ids=signals[topic_id]["unsure_question_ids"],
+                source_refs=signals[topic_id]["source_refs"],
             )
             for topic_id in self._reinforcement_topic_ids
         )
