@@ -724,6 +724,19 @@ class AIGenerationDialog(QDialog):
                     "当前考试范围没有待补齐知识点，可手动选择主题生成。",
                     "The current exam scope has no remaining gaps. You can select topics manually.",
                 ))
+        elif str(goal or "") == "mock_exam":
+            scope_keys = self._course_exam_scope_keys()
+            if scope_keys is not None:
+                self._select_topic_keys(scope_keys)
+                for key, value in self._course_generation_weights(scope_keys).items():
+                    slider = self.topic_weight_sliders.get(key)
+                    if slider is not None:
+                        slider.setValue(value)
+                self._refresh_weight_labels()
+                self.status_label.setText(self.lang_manager.get_text(
+                    "已按考试范围和课程出题权重准备模拟考试。",
+                    "Mock exam prepared with the exam scope and course generation weights.",
+                ))
         self._update_preview()
 
     def set_generation_gap_topics(self, topic_ids) -> None:
@@ -754,6 +767,39 @@ class AIGenerationDialog(QDialog):
         finally:
             self.topic_list.blockSignals(was_blocked)
         self._on_topics_changed()
+
+    def _course_exam_scope_keys(self) -> tuple[str, ...] | None:
+        """Return stable IDs from the persisted course exam scope."""
+        project = self.course_project
+        if project is None:
+            return None
+        scope = getattr(project, "exam_topics", None)
+        if not callable(scope):
+            return None
+        available = set(self._available_topic_keys())
+        return tuple(
+            key
+            for topic in scope()
+            if (key := topic_value(topic)) and key in available
+        )
+
+    def _course_generation_weights(self, topic_keys) -> dict[str, int]:
+        """Read persisted generation weights for a selected course scope."""
+        project = self.course_project
+        profile = getattr(project, "generation_profile", {}) or {}
+        if not isinstance(profile, dict):
+            return {}
+        migrated = self._migrate_course_profile_topic_keys(profile, project)
+        raw_weights = migrated.get("topic_weights", {})
+        if not isinstance(raw_weights, dict):
+            return {}
+        values: dict[str, int] = {}
+        for key in topic_keys:
+            try:
+                values[key] = max(0, min(100, int(raw_weights.get(key, 0))))
+            except (TypeError, ValueError):
+                continue
+        return values
 
     def _on_language_changed(self, lang):
         """Update all UI strings when language changes."""

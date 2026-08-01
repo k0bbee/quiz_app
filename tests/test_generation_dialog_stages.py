@@ -1,5 +1,6 @@
 import os
 import unittest
+from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -8,6 +9,7 @@ from PyQt6.QtWidgets import QApplication
 
 from core.generation_session_state import GenerationStage
 from ai.exam_plan import ExamGenerationPlan
+from models.course_project import CourseProject, CourseTopic
 from models.question import Question
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from utils.constants import Difficulty, QuestionType
@@ -111,6 +113,45 @@ class GenerationDialogStageTests(unittest.TestCase):
 
         self.assertFalse(dialog.generate_btn.isEnabled())
         self.assertIn("没有待补齐", dialog.status_label.text())
+
+    def test_mock_exam_goal_uses_exam_scope_and_saved_topic_weights(self):
+        topics = [
+            CourseTopic("cache", "Cache"),
+            CourseTopic("process", "Process"),
+            CourseTopic("io", "I/O"),
+        ]
+        course = CourseProject(
+            course_id="course-gap",
+            title="Gap course",
+            source_folder="",
+            summary_markdown="# Gap course\nCache and process",
+            summary_path="",
+            topics=topics,
+            documents=[],
+            created_at="",
+            updated_at="",
+            generation_profile={"topic_weights": {"cache": 70, "process": 30}},
+            exam_scope_mode="selected",
+            exam_scope_topic_ids=["cache", "process"],
+        )
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto"},
+            available_topics=["cache", "process", "io"],
+            course_project=course,
+        )
+        self.addCleanup(dialog.close)
+
+        dialog.mock_exam_goal_btn.click()
+
+        selected = [
+            item.data(Qt.ItemDataRole.UserRole)
+            for index in range(dialog.topic_list.count())
+            if (item := dialog.topic_list.item(index)).checkState() == Qt.CheckState.Checked
+        ]
+        self.assertEqual(["cache", "process"], selected)
+        self.assertEqual(70, dialog.topic_weight_sliders["cache"].value())
+        self.assertEqual(30, dialog.topic_weight_sliders["process"].value())
 
 
 if __name__ == "__main__":
