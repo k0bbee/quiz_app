@@ -14,6 +14,7 @@ class RemediationRequestTests(unittest.TestCase):
                     observed_wrong_answers=("B",),
                     unsure_question_ids=("q-2",),
                     source_refs=("lecture-1",),
+                    observed_question_stems=("What is cache?",),
                 ),
             ),
             max_questions=8,
@@ -25,6 +26,7 @@ class RemediationRequestTests(unittest.TestCase):
         self.assertIn("q-1", request.instruction("zh"))
         self.assertIn("B", request.instruction("zh"))
         self.assertIn("lecture-1", request.instruction("zh"))
+        self.assertIn("What is cache?", request.instruction("zh"))
         self.assertIn("不要复述原题", request.instruction("zh"))
 
 

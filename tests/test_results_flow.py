@@ -223,6 +223,7 @@ class ResultsFlowTests(unittest.TestCase):
                             "observed_wrong_answers": ["B"],
                             "unsure_question_ids": [],
                             "source_refs": [],
+                            "observed_question_stems": ["q-cache?"],
                         },
                         {
                             "topic_id": "io",
@@ -230,6 +231,7 @@ class ResultsFlowTests(unittest.TestCase):
                             "observed_wrong_answers": [],
                             "unsure_question_ids": ["q-io"],
                             "source_refs": [],
+                            "observed_question_stems": ["q-io?"],
                         },
                     ],
                 }], requests)

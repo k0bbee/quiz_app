@@ -36,6 +36,7 @@ class TopicSignal:
     observed_wrong_answers: tuple[str, ...] = ()
     unsure_question_ids: tuple[str, ...] = ()
     source_refs: tuple[str, ...] = ()
+    observed_question_stems: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "topic_id", str(self.topic_id or "").strip())
@@ -51,6 +52,15 @@ class TopicSignal:
         )
         object.__setattr__(self, "unsure_question_ids", _clean_ids(self.unsure_question_ids))
         object.__setattr__(self, "source_refs", _clean_ids(self.source_refs)[:4])
+        object.__setattr__(
+            self,
+            "observed_question_stems",
+            tuple(dict.fromkeys(
+                " ".join(str(stem or "").split())[:400]
+                for stem in (self.observed_question_stems or ())
+                if str(stem or "").strip()
+            ))[:4],
+        )
 
     def to_dict(self) -> dict:
         return {
@@ -59,6 +69,7 @@ class TopicSignal:
             "observed_wrong_answers": list(self.observed_wrong_answers),
             "unsure_question_ids": list(self.unsure_question_ids),
             "source_refs": list(self.source_refs),
+            "observed_question_stems": list(self.observed_question_stems),
         }
 
     @classmethod
@@ -74,6 +85,7 @@ class TopicSignal:
             observed_wrong_answers=value.get("observed_wrong_answers", ()),
             unsure_question_ids=value.get("unsure_question_ids", ()),
             source_refs=value.get("source_refs", ()),
+            observed_question_stems=value.get("observed_question_stems", ()),
         )
 
 
@@ -155,6 +167,8 @@ class RemediationRequest:
                     detail += f", unsure_ids={', '.join(signal.unsure_question_ids)}"
                 if signal.source_refs:
                     detail += f", source_refs={', '.join(signal.source_refs)}"
+                if signal.observed_question_stems:
+                    detail += f", stems={'; '.join(signal.observed_question_stems)}"
                 lines.append(detail)
             return "\n".join(lines)
 
@@ -172,5 +186,7 @@ class RemediationRequest:
                 detail += f"；不确定题：{', '.join(signal.unsure_question_ids)}"
             if signal.source_refs:
                 detail += f"；课程来源：{'、'.join(signal.source_refs)}"
+            if signal.observed_question_stems:
+                detail += f"；原题线索：{'；'.join(signal.observed_question_stems)}"
             lines.append(detail)
         return "\n".join(lines)

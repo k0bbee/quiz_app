@@ -50,6 +50,15 @@ def _question_source_ref_ids(question: Question) -> tuple[str, ...]:
     return tuple(values)
 
 
+def _question_stem(question: Question) -> str:
+    """Return a bounded stem hint for misconception-focused generation."""
+    try:
+        stem = question.get_stem("zh") or question.get_stem("en")
+    except AttributeError:
+        stem = ""
+    return " ".join(str(stem or "").split())[:400]
+
+
 class ResultsScreen(QWidget):
     """Shows quiz results with review and retry options."""
 
@@ -571,6 +580,7 @@ class ResultsScreen(QWidget):
                     "observed_wrong_answers": [],
                     "unsure_question_ids": [],
                     "source_refs": [],
+                    "observed_question_stems": [],
                 })
                 signal["score"] += score
                 if answer.question_id and answer.question_id not in signal["question_ids"]:
@@ -584,6 +594,9 @@ class ResultsScreen(QWidget):
                 for source_ref in _question_source_ref_ids(question):
                     if source_ref not in signal["source_refs"]:
                         signal["source_refs"].append(source_ref)
+                stem = _question_stem(question)
+                if stem and stem not in signal["observed_question_stems"]:
+                    signal["observed_question_stems"].append(stem)
         self._reinforcement_topic_ids = tuple(
             topic_id
             for topic_id, _signal in sorted(
@@ -598,6 +611,7 @@ class ResultsScreen(QWidget):
                 observed_wrong_answers=signals[topic_id]["observed_wrong_answers"],
                 unsure_question_ids=signals[topic_id]["unsure_question_ids"],
                 source_refs=signals[topic_id]["source_refs"],
+                observed_question_stems=signals[topic_id]["observed_question_stems"],
             )
             for topic_id in self._reinforcement_topic_ids
         )
