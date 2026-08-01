@@ -224,6 +224,17 @@ class ResultsFlowTests(unittest.TestCase):
                             "unsure_question_ids": [],
                             "source_refs": [],
                             "observed_question_stems": ["q-cache?"],
+                            "evidence": [{
+                                "question_id": "q-cache",
+                                "topic_id": "cache",
+                                "question_type": "multiple_choice",
+                                "stem": "q-cache?",
+                                "options": ["A. 对", "B. 错"],
+                                "user_answer": "B",
+                                "correct_answer": "A",
+                                "explanation": "解释说明",
+                                "source_refs": [],
+                            }],
                         },
                         {
                             "topic_id": "io",
@@ -232,9 +243,46 @@ class ResultsFlowTests(unittest.TestCase):
                             "unsure_question_ids": ["q-io"],
                             "source_refs": [],
                             "observed_question_stems": ["q-io?"],
+                            "evidence": [{
+                                "question_id": "q-io",
+                                "topic_id": "io",
+                                "question_type": "multiple_choice",
+                                "stem": "q-io?",
+                                "options": ["A. 对", "B. 错"],
+                                "user_answer": "A",
+                                "correct_answer": "A",
+                                "explanation": "解释说明",
+                                "source_refs": [],
+                            }],
                         },
                     ],
                 }], requests)
+
+    def test_reinforcement_request_contains_structured_answer_evidence(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+                course = self._make_course("course-a", "课程 A")
+                course.topics = [CourseTopic("cache", "高速缓存")]
+                self.assertTrue(manager.save(course))
+                screen = ResultsScreen(course_manager=manager)
+                question = self._make_question("q-cache", "cache")
+                question.metadata["course_id"] = course.course_id
+                record = ProgressRecord.create_new("set-a")
+                record.status = "completed"
+                record.answers = [AnswerRecord("q-cache", 0, "B", False)]
+                record.summary = SessionSummary.compute(record.answers, 1, 10)
+                requests = []
+                screen.generate_reinforcement_requested.connect(requests.append)
+
+                screen.set_results(record, {question.question_id: question}, "zh")
+                screen.reinforce_btn.click()
+
+                evidence = requests[0]["signals"][0]["evidence"][0]
+                self.assertEqual("q-cache", evidence["question_id"])
+                self.assertEqual("B", evidence["user_answer"])
+                self.assertEqual("A", evidence["correct_answer"])
+                self.assertEqual(["A. 对", "B. 错"], evidence["options"])
+                self.assertIn("解释说明", evidence["explanation"])
 
     def test_results_screen_recomputes_course_context_for_displayed_questions(self):
             with tempfile.TemporaryDirectory() as tmpdir:

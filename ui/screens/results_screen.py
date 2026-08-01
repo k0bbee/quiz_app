@@ -18,7 +18,12 @@ from core.study_intent import (
 )
 from models.progress import ProgressRecord, QuestionReviewSnapshot
 from models.question import Question
-from models.remediation import RemediationRequest, TopicSignal, answer_text
+from models.remediation import (
+    AnswerEvidence,
+    RemediationRequest,
+    TopicSignal,
+    answer_text,
+)
 from ui.widgets.question_review_card import QuestionReviewCard
 from ui.widgets.progress_summary_bar import ProgressSummaryBar
 from utils.constants import Difficulty, QuestionType, topic_value
@@ -581,6 +586,7 @@ class ResultsScreen(QWidget):
                     "unsure_question_ids": [],
                     "source_refs": [],
                     "observed_question_stems": [],
+                    "evidence": [],
                 })
                 signal["score"] += score
                 if answer.question_id and answer.question_id not in signal["question_ids"]:
@@ -597,6 +603,27 @@ class ResultsScreen(QWidget):
                 stem = _question_stem(question)
                 if stem and stem not in signal["observed_question_stems"]:
                     signal["observed_question_stems"].append(stem)
+                evidence = AnswerEvidence(
+                    question_id=answer.question_id,
+                    topic_id=topic_id,
+                    question_type=getattr(
+                        getattr(question, "type", None), "value", ""
+                    ),
+                    stem=stem,
+                    options=(
+                        question.get_options("zh")
+                        or question.get_options("en")
+                    ),
+                    user_answer=getattr(answer, "user_answer", None),
+                    correct_answer=getattr(question, "correct_answer", None),
+                    explanation=(
+                        question.get_explanation("zh")
+                        or question.get_explanation("en")
+                    ),
+                    source_refs=_question_source_ref_ids(question),
+                )
+                if evidence not in signal["evidence"]:
+                    signal["evidence"].append(evidence)
         self._reinforcement_topic_ids = tuple(
             topic_id
             for topic_id, _signal in sorted(
@@ -612,6 +639,7 @@ class ResultsScreen(QWidget):
                 unsure_question_ids=signals[topic_id]["unsure_question_ids"],
                 source_refs=signals[topic_id]["source_refs"],
                 observed_question_stems=signals[topic_id]["observed_question_stems"],
+                evidence=signals[topic_id]["evidence"],
             )
             for topic_id in self._reinforcement_topic_ids
         )
