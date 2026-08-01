@@ -41,6 +41,16 @@ class _Mastery:
         return set(self.mastered.get(course_id, ()))
 
 
+class _DailyPlanStore:
+    def __init__(self, plan):
+        self.plan = plan
+        self.calls = []
+
+    def get_or_create(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.plan
+
+
 class GlobalStudyAgendaTests(unittest.TestCase):
     def test_orders_exam_and_actionable_courses_without_changing_current_course(self):
         courses = [
@@ -165,6 +175,44 @@ class GlobalStudyAgendaTests(unittest.TestCase):
         item = agenda.items[0]
         self.assertIsInstance(item.category_counts, tuple)
         self.assertEqual(1, dict(item.category_counts).get(StudyQueueCategory.NEW.value))
+
+    def test_reuses_persisted_daily_plan_state_for_remaining_counts(self):
+        course = SimpleNamespace(
+            course_id="course-a",
+            title="课程 A",
+            exam_scope_mode="all",
+            topics=[],
+            generation_profile={},
+        )
+        store = _DailyPlanStore(SimpleNamespace(
+            plan_id="2026-08-01:course-a",
+            pending_ids=("q-2", "q-3"),
+            next_session=lambda: (("q-2",), ("q-3",)),
+        ))
+
+        agenda = build_global_study_agenda(
+            _CourseManager([course]),
+            question_bank=_QuestionBank({
+                "course-a": {
+                    "ids": ["q-1", "q-2", "q-3"],
+                    "scheduling": {
+                        "q-1": ("io", "输入输出", "medium"),
+                        "q-2": ("io", "输入输出", "medium"),
+                        "q-3": ("io", "输入输出", "easy"),
+                    },
+                }
+            }),
+            progress_records=[],
+            daily_plan_store=store,
+            reference_date=date(2026, 8, 1),
+        )
+
+        item = agenda.items[0]
+        self.assertEqual("2026-08-01:course-a", item.plan_id)
+        self.assertEqual(("q-2",), item.today_question_ids)
+        self.assertEqual(("q-3",), item.remaining_question_ids)
+        self.assertEqual(2, item.total_actionable_count)
+        self.assertEqual(1, len(store.calls))
 
 
 if __name__ == "__main__":

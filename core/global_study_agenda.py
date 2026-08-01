@@ -25,6 +25,9 @@ class CourseAgenda:
     total_actionable_count: int = 0
     today_question_count: int = 0
     current_question_count: int = 0
+    plan_id: str = ""
+    today_question_ids: tuple[str, ...] = ()
+    remaining_question_ids: tuple[str, ...] = ()
     due_count: int = 0
     incorrect_count: int = 0
     unsure_count: int = 0
@@ -80,14 +83,17 @@ def build_global_study_agenda(
     progress_records: Sequence[object] | None,
     mastery_overrides=None,
     exam_goal_store=None,
+    daily_plan_store=None,
     reference_date: date | None = None,
     current_course_id: str = "",
 ) -> GlobalStudyAgenda:
-    """Aggregate existing per-course scheduling rules without persisting state.
+    """Aggregate existing per-course scheduling and plan state.
 
     A malformed course or unavailable index is isolated to that course.  The
     caller can therefore keep the home page usable while another course is
-    repaired or re-imported.  No daily-plan files are read or written here.
+    repaired or re-imported.  When a daily-plan store is supplied, its
+    persisted pending IDs are authoritative so the aggregate cannot drift
+    from the single-course home plan.
     """
     if course_manager is None or question_bank is None:
         return GlobalStudyAgenda(current_course_id=str(current_course_id or "").strip())
@@ -106,6 +112,7 @@ def build_global_study_agenda(
             progress_records=records,
             mastery_overrides=mastery_overrides,
             exam_goal_store=exam_goal_store,
+            daily_plan_store=daily_plan_store,
             reference_date=today,
         )
         if item is not None:
@@ -124,6 +131,7 @@ def _build_course_agenda(
     progress_records,
     mastery_overrides,
     exam_goal_store,
+    daily_plan_store,
     reference_date: date,
 ) -> CourseAgenda | None:
     course_id = str(getattr(course, "course_id", "") or "").strip()
@@ -199,15 +207,23 @@ def _build_course_agenda(
         course_id,
         reference_date,
     )
+    plan_id, today_ids, remaining_ids, actionable_count = _daily_plan_state(
+        daily_plan_store,
+        course_id=course_id,
+        reference_date=reference_date,
+        queue=queue,
+        candidate_ids=candidate_ids,
+    )
     return CourseAgenda(
         course_id=course_id,
         title=title,
         total_question_count=len(candidate_ids),
-        total_actionable_count=max(0, int(getattr(queue, "backlog_count", 0) or 0)),
-        today_question_count=len(getattr(queue, "question_ids", ()) or ()),
-        current_question_count=len(
-            getattr(queue, "current_question_ids", ()) or ()
-        ),
+        total_actionable_count=actionable_count,
+        today_question_count=len(today_ids),
+        current_question_count=len(today_ids),
+        plan_id=plan_id,
+        today_question_ids=today_ids,
+        remaining_question_ids=remaining_ids,
         due_count=_category_count(category_counts, StudyQueueCategory.DUE.value),
         incorrect_count=incorrect_count,
         unsure_count=unsure_count,
@@ -216,6 +232,58 @@ def _build_course_agenda(
         focus_topic_id=focus_topic_id,
         focus_topic_title=focus_topic_title,
     )
+
+
+def _daily_plan_state(
+    daily_plan_store,
+    *,
+    course_id: str,
+    reference_date: date,
+    queue,
+    candidate_ids: set[str],
+) -> tuple[str, tuple[str, ...], tuple[str, ...], int]:
+    """Return pending state from storage, with a deterministic queue fallback."""
+    current_ids = tuple(getattr(queue, "current_question_ids", ()) or ())
+    remaining_ids = tuple(getattr(queue, "remaining_question_ids", ()) or ())
+    fallback = (
+        "",
+        current_ids,
+        remaining_ids,
+        max(0, int(getattr(queue, "backlog_count", 0) or 0)),
+    )
+    if daily_plan_store is None:
+        return fallback
+    plan_id = f"{reference_date.isoformat()}:{course_id}"
+    getter = getattr(daily_plan_store, "get_or_create", None)
+    if not callable(getter):
+        return fallback
+    try:
+        plan = getter(
+            plan_id=plan_id,
+            plan_date=reference_date.isoformat(),
+            course_id=course_id,
+            queue=queue,
+            valid_question_ids=set(candidate_ids),
+        )
+        if plan is None:
+            return fallback
+        next_session = getattr(plan, "next_session", None)
+        if not callable(next_session):
+            return fallback
+        plan_current, plan_remaining = next_session()
+        pending = tuple(
+            str(question_id or "").strip()
+            for question_id in (getattr(plan, "pending_ids", ()) or ())
+            if str(question_id or "").strip()
+        )
+        return (
+            str(getattr(plan, "plan_id", "") or plan_id).strip() or plan_id,
+            tuple(plan_current or ()),
+            tuple(plan_remaining or ()),
+            len(pending),
+        )
+    except (OSError, TypeError, ValueError):
+        return fallback
 
 
 def _normalized_scheduling_rows(scheduling, question_ids: set[str]):

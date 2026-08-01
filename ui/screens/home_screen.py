@@ -515,6 +515,7 @@ class HomeScreen(QWidget):
             progress_records=progress_records,
             mastery_overrides=self.mastery_overrides,
             exam_goal_store=self.exam_goal_store,
+            daily_plan_store=self.daily_plan_store,
             current_course_id=self._current_course_id,
         )
         items = self._global_agenda.items
