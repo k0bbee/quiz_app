@@ -63,11 +63,17 @@ class TaskRecoveryController:
             )
             if course is None:
                 return self._navigate(self._courses_screen_index) is not False
+            kwargs = {
+                "course_override": course,
+                "recovery_context": metadata,
+                "draft_source": str(metadata.get("draft_source", "") or "manual"),
+                "present_error": False,
+            }
+            draft_id = str(metadata.get("draft_id", "") or "").strip()
+            if draft_id:
+                kwargs["draft_id"] = draft_id
             return self._generate_questions(
-                course_override=course,
-                recovery_context=metadata,
-                draft_source=str(metadata.get("draft_source", "") or "manual"),
-                present_error=False,
+                **kwargs,
             ) is not False
         screens = {
             "courses": self._courses_screen_index,
@@ -122,11 +128,17 @@ class TaskRecoveryController:
             )
             if course is None:
                 return self._navigate(self._courses_screen_index) is not False
+            kwargs = {
+                "course_override": course,
+                "initial_plan": generation_plan_from_task_metadata(metadata),
+                "recovery_context": metadata,
+                "draft_source": str(metadata.get("draft_source", "") or "manual"),
+            }
+            draft_id = str(metadata.get("draft_id", "") or "").strip()
+            if draft_id:
+                kwargs["draft_id"] = draft_id
             return self._generate_questions(
-                course_override=course,
-                initial_plan=generation_plan_from_task_metadata(metadata),
-                recovery_context=metadata,
-                draft_source=str(metadata.get("draft_source", "") or "manual"),
+                **kwargs,
             ) is not False
         return False
 

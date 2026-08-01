@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from ai.exam_plan import ExamGenerationPlan
@@ -230,6 +231,31 @@ class GenerationDraftStoreTests(unittest.TestCase):
             self.assertEqual(
                 "reinforce-q",
                 store.get("course-a").questions[0].question_id,
+            )
+
+    def test_concurrent_stores_do_not_drop_distinct_sessions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "generation-drafts.json"
+            plan = ExamGenerationPlan(question_count=3)
+
+            def save_session(index: int):
+                GenerationDraftStore(path).save(
+                    course_id="course-a",
+                    draft_id=f"session-{index}",
+                    questions=[self._question(f"question-{index}")],
+                    question_set_title=f"任务 {index}",
+                    exam_plan=plan,
+                )
+
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                list(executor.map(save_session, range(8)))
+
+            stored_ids = {
+                draft.draft_id for draft in GenerationDraftStore(path).list_all()
+            }
+            self.assertEqual(
+                {f"session-{index}" for index in range(8)},
+                stored_ids,
             )
 
 

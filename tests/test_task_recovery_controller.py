@@ -34,7 +34,11 @@ class TaskRecoveryControllerTests(unittest.TestCase):
     def test_open_generation_task_returns_to_course_generation_workspace(self):
         snapshot = SimpleNamespace(
             kind="question_generation",
-            metadata={"course_id": "course-1", "draft_source": "manual"},
+            metadata={
+                "course_id": "course-1",
+                "draft_id": "draft-1",
+                "draft_source": "manual",
+            },
         )
         course = object()
         course_manager = SimpleNamespace(
@@ -62,6 +66,7 @@ class TaskRecoveryControllerTests(unittest.TestCase):
             course_override=course,
             recovery_context=snapshot.metadata,
             draft_source="manual",
+            draft_id="draft-1",
             present_error=False,
         )
 

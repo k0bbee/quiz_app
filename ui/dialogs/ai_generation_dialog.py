@@ -76,6 +76,7 @@ class AIGenerationDialog(QDialog):
         self.task_center = task_center
         self.material_pack = material_pack
         self._generation_task_id: str | None = None
+        self._generation_draft_id = ""
         self._session_state = GenerationSessionState()
         self._draft_source = "manual"
         self._publish_destination = "library"
@@ -1636,6 +1637,7 @@ class AIGenerationDialog(QDialog):
         topic_ids = [topic_value(topic) for topic in topics]
         metadata = {
             "course_id": str(getattr(self.course_project, "course_id", "") or ""),
+            "draft_id": str(getattr(self, "_generation_draft_id", "") or "").strip(),
             "draft_source": self._draft_source,
             "requested_count": int(count),
             "topic_ids": topic_ids,
