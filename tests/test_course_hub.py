@@ -208,7 +208,7 @@ class CourseHubPresenterTests(unittest.TestCase):
             view.sources[0].excerpt,
         )
         io_topic = view.topics[0]
-        self.assertEqual(70, io_topic.exam_weight)
+        self.assertEqual(70, io_topic.generation_weight)
         self.assertEqual("0%", io_topic.mastery)
         self.assertEqual("2026-07-29", io_topic.recent_practice)
         self.assertEqual("weak", io_topic.status)
@@ -309,6 +309,10 @@ class CourseHubNavigationTests(unittest.TestCase):
         self.assertEqual("Input / Output", screen.knowledge_table.item(0, 0).text())
         self.assertEqual("0", screen.knowledge_table.item(0, 3).text())
         self.assertEqual("尚未覆盖", screen.knowledge_table.item(0, 6).text())
+        self.assertEqual(
+            "出题权重",
+            screen.knowledge_table.horizontalHeaderItem(1).text(),
+        )
 
     def test_generation_route_initializes_selected_course_workspace(self):
         dialog = QDialog()

@@ -27,10 +27,21 @@ class CourseTopicView:
     in_exam_scope: bool
     source_count: int
     question_count: int
-    exam_weight: int = 0
+    generation_weight: int = 0
     mastery: str = "—"
     recent_practice: str = "—"
     status: str = "not_started"
+
+    @property
+    def exam_weight(self) -> int:
+        """Backward-compatible alias for the generation profile weight.
+
+        CourseHubView does not currently persist a separate exam allocation;
+        the value shown here comes from the course's question-generation
+        profile. Keep the old attribute readable for integrations while
+        exposing the accurate semantic name to new callers.
+        """
+        return self.generation_weight
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,7 +118,7 @@ def build_course_hub_view(
         question_ids_by_topic,
         progress_manager=progress_manager,
     )
-    weights = _topic_weights(project)
+    weights = _generation_weights(project)
     topics = tuple(
         CourseTopicView(
             topic_id=topic.topic_id,
@@ -119,7 +130,7 @@ def build_course_hub_view(
                 if str(path or "").strip()
             }),
             question_count=topic_counts[topic.topic_id],
-            exam_weight=weights.get(topic.topic_id, 0),
+            generation_weight=weights.get(topic.topic_id, 0),
             mastery=_topic_mastery_text(
                 project.course_id,
                 topic.topic_id,
@@ -224,7 +235,7 @@ def _document_excerpt(document: dict, pages) -> str:
     return text[:500]
 
 
-def _topic_weights(project) -> dict[str, int]:
+def _generation_weights(project) -> dict[str, int]:
     profile = getattr(project, "generation_profile", {}) or {}
     raw = profile.get("topic_weights", {}) if isinstance(profile, dict) else {}
     weights = {}

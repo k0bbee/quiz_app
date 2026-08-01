@@ -153,7 +153,7 @@ class CourseKnowledgePanel(QWidget):
         self._view = view
         self.table.setHorizontalHeaderLabels([
             get_text("知识点", "Knowledge Point"),
-            get_text("考试权重", "Exam Weight"),
+            get_text("出题权重", "Generation Weight"),
             get_text("资料覆盖", "Sources"),
             get_text("题目数量", "Questions"),
             get_text("掌握度", "Mastery"),
@@ -176,8 +176,8 @@ class CourseKnowledgePanel(QWidget):
             values = (
                 topic.title,
                 (
-                    f"{topic.exam_weight}%"
-                    if topic.exam_weight
+                    f"{topic.generation_weight}%"
+                    if topic.generation_weight
                     else (
                         get_text("范围内", "Included")
                         if topic.in_exam_scope
