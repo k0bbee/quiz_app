@@ -65,6 +65,11 @@ class GlobalStudyAgenda:
         return sum(item.total_actionable_count for item in self.items)
 
     @property
+    def total_estimated_minutes(self) -> int:
+        """Estimated time for the currently scheduled question groups."""
+        return sum(item.estimated_minutes for item in self.items)
+
+    @property
     def courses_with_work(self) -> int:
         return sum(1 for item in self.items if item.has_work)
 

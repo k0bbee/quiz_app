@@ -116,6 +116,7 @@ class GlobalStudyAgendaTests(unittest.TestCase):
         self.assertEqual(("course-b", "course-a"), agenda.course_ids)
         self.assertEqual(3, agenda.total_question_count)
         self.assertEqual(3, agenda.total_actionable_count)
+        self.assertEqual(6, agenda.total_estimated_minutes)
         self.assertEqual("course-b", agenda.items[0].course_id)
         self.assertEqual("操作系统", agenda.items[0].title)
         self.assertGreaterEqual(agenda.items[0].incorrect_count, 1)

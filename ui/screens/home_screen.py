@@ -526,9 +526,11 @@ class HomeScreen(QWidget):
         working_count = self._global_agenda.courses_with_work
         self.agenda_summary_label.setText(self.lang_manager.get_text(
             f"{len(items)} 门课程 · {working_count} 门有待学习 · "
-            f"共 {self._global_agenda.total_actionable_count} 题",
+            f"共 {self._global_agenda.total_actionable_count} 题 · "
+            f"约 {self._global_agenda.total_estimated_minutes} 分钟",
             f"{len(items)} course(s) · {working_count} with work queued · "
-            f"{self._global_agenda.total_actionable_count} question(s) total",
+            f"{self._global_agenda.total_actionable_count} question(s) · "
+            f"about {self._global_agenda.total_estimated_minutes} minute(s)",
         ))
         for index, button in enumerate(self.agenda_action_buttons):
             if index >= min(3, len(items)):
