@@ -280,6 +280,7 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
         self.assertIn("q-1", instruction)
         self.assertIn("B", instruction)
         self.assertIn("不要复述原题", instruction)
+        self.assertTrue(call.kwargs["start_after_save"])
 
     def test_main_window_reuses_one_generation_controller(self):
         window = MainWindow()

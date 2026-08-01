@@ -1052,6 +1052,7 @@ class MainWindow(QMainWindow):
                     self.lang_manager.current
                 ),
             },
+            start_after_save=request.destination == "practice_now",
         )
 
     def _start_progress_topic_quiz(self, questions: list, label: str):
