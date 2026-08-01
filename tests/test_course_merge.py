@@ -193,6 +193,7 @@ class CourseMergeTests(unittest.TestCase):
             self.assertEqual(1, result.question_set_count)
             self.assertEqual(1, result.past_exam_count)
             self.assertEqual(1, result.current_event_pack_count)
+            self.assertEqual(1, result.generation_draft_count)
             migrated_draft = draft_store.get_by_id("source-generation-draft")
             self.assertIsNotNone(migrated_draft)
             self.assertEqual(target.course_id, migrated_draft.course_id)

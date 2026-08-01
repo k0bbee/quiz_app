@@ -1474,6 +1474,13 @@ class CourseScreen(QWidget):
                 self.project_list.setCurrentRow(row)
                 break
         self.current_course_changed.emit()
+        draft_count = int(getattr(result, "generation_draft_count", 0) or 0)
+        draft_summary_zh = f"待审核草稿 {draft_count} 个。\n" if draft_count else ""
+        draft_summary_en = (
+            f"Pending generation drafts moved: {draft_count}.\n"
+            if draft_count
+            else ""
+        )
         QMessageBox.information(
             self,
             self.lang_manager.get_text("课程已合并", "Courses Merged"),
@@ -1482,12 +1489,14 @@ class CourseScreen(QWidget):
                     f"已合并 {len(result.source_course_ids)} 门课程。\n"
                     f"迁移题目 {result.question_count} 道、题集 {result.question_set_count} 个、"
                     f"历史真题 {result.past_exam_count} 份。\n"
+                    f"{draft_summary_zh}"
                     "历史真题需要重新分析；建议随后重新生成课程总结。"
                 ),
                 (
                     f"Merged {len(result.source_course_ids)} course(s).\n"
                     f"Moved {result.question_count} questions, {result.question_set_count} sets, "
                     f"and {result.past_exam_count} historical exams.\n"
+                    f"{draft_summary_en}"
                     "Historical exams require re-analysis; regenerate the course summary next."
                 ),
             ),

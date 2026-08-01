@@ -25,6 +25,7 @@ class CourseMergeResult:
     question_set_count: int = 0
     past_exam_count: int = 0
     current_event_pack_count: int = 0
+    generation_draft_count: int = 0
     cancelled: bool = False
     error: str = ""
     rollback_errors: tuple[str, ...] = ()
@@ -314,6 +315,7 @@ def merge_courses(
         question_set_count=len(question_sets),
         past_exam_count=len(past_exams),
         current_event_pack_count=len(migrated_packs),
+        generation_draft_count=len(migrated_generation_drafts),
     )
 
 
