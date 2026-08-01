@@ -22,16 +22,14 @@ class TestSuitePartitioningTests(unittest.TestCase):
         self.assertTrue(_is_qt_test_file(str(tests_dir / "test_generation_quota.py")))
         self.assertTrue(_is_qt_test_file(str(tests_dir / "test_topic_labels_ui.py")))
         self.assertTrue(
-            _is_qt_test_file(
-                str(tests_dir / "test_generation_workspace_controller.py")
-            )
+            _is_qt_test_file(str(tests_dir / "test_ui_controller_workflows.py"))
         )
 
     def test_pure_counterparts_remain_collectable_without_qt(self):
         tests_dir = Path(__file__).parent
 
         self.assertFalse(
-            _is_qt_test_file(str(tests_dir / "test_generation_core_quota.py"))
+            _is_qt_test_file(str(tests_dir / "test_generation_pipeline.py"))
         )
         self.assertFalse(_is_qt_test_file(str(tests_dir / "test_topic_labels.py")))
 
