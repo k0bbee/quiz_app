@@ -1,6 +1,7 @@
 """Question review dialog — preview, edit, accept, or reject generated questions."""
 
 import json
+from collections.abc import Mapping
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -45,6 +46,7 @@ class QuestionReviewDialog(QDialog):
         page_size: int = 50,
         course_project=None,
         allow_empty_accept: bool = False,
+        review_state: Mapping[str, str] | None = None,
     ):
         super().__init__(parent)
         self.questions = list(questions)
@@ -53,6 +55,8 @@ class QuestionReviewDialog(QDialog):
         self._current_index: int = -1
         self.lang_manager = LanguageManager.instance()
         self._accepted: set[int] = self._initial_accepted_indexes()
+        self._rejected: set[int] = set()
+        self._restore_review_state(review_state)
         self._loading_edit_fields = False
         self.course_project = course_project
         self.allow_empty_accept = bool(allow_empty_accept)
@@ -266,12 +270,13 @@ class QuestionReviewDialog(QDialog):
 
         self._current_index = index
         q = self.questions[index]
-        is_accepted = index in self._accepted
-
-        if is_accepted:
+        status_key = self._state_for_index(index)
+        if status_key == "accepted":
             status = self.lang_manager.get_text("已接受", "ACCEPTED")
-        else:
+        elif status_key == "rejected":
             status = self.lang_manager.get_text("已拒绝", "REJECTED")
+        else:
+            status = self.lang_manager.get_text("待审核", "PENDING")
         self.preview_label.setText(f"Q{index + 1} — [{status}]")
 
         # Build detail text
@@ -327,12 +332,14 @@ class QuestionReviewDialog(QDialog):
         """Accept the currently viewed question."""
         if self._current_index >= 0:
             self._accepted.add(self._current_index)
+            self._rejected.discard(self._current_index)
             self._update_list_item(self._current_index)
 
     def _reject_current(self):
         """Reject the currently viewed question."""
         if self._current_index >= 0:
             self._accepted.discard(self._current_index)
+            self._rejected.add(self._current_index)
             self._update_list_item(self._current_index)
 
     def _accept_all(self):
@@ -340,11 +347,13 @@ class QuestionReviewDialog(QDialog):
         for i in range(len(self.questions)):
             if not self._review_warnings(self.questions[i]):
                 self._accepted.add(i)
+                self._rejected.discard(i)
         self._render_current_page(preserve_selection=True)
 
     def _reject_all(self):
         """Reject all questions."""
         self._accepted.clear()
+        self._rejected = set(range(len(self.questions)))
         self._render_current_page(preserve_selection=True)
 
     def _update_list_item(self, index: int):
@@ -358,7 +367,11 @@ class QuestionReviewDialog(QDialog):
         short = stem[:80] + "..." if len(stem) > 80 else stem
         warning_tags = self._review_warning_tags(q)
         warning_prefix = f"⚠ {' '.join(warning_tags)} " if warning_tags else ""
-        prefix = "✓ " if index in self._accepted else "✗ "
+        prefix = {
+            "accepted": "✓ ",
+            "rejected": "✗ ",
+            "pending": "… ",
+        }[self._state_for_index(index)]
         item.setText(f"{warning_prefix}{prefix}Q{index + 1}: {short}")
 
     def _render_current_page(self, preserve_selection: bool = False):
@@ -471,6 +484,14 @@ class QuestionReviewDialog(QDialog):
         """Return only the accepted questions."""
         return [self.questions[i] for i in sorted(self._accepted)]
 
+    def get_review_state(self) -> dict[str, str]:
+        """Return stable question-id decisions for draft persistence."""
+        return {
+            question.question_id: self._state_for_index(index)
+            for index, question in enumerate(self.questions)
+            if question.question_id
+        }
+
     def _populate_edit_fields(self, question: Question):
         """Load the selected question into editable fields."""
         self._loading_edit_fields = True
@@ -504,6 +525,29 @@ class QuestionReviewDialog(QDialog):
             for index, question in enumerate(self.questions)
             if not self._review_warnings(question)
         }
+
+    def _restore_review_state(self, review_state: Mapping[str, str] | None) -> None:
+        """Apply persisted decisions while keeping unspecified questions reviewable."""
+        if not isinstance(review_state, Mapping):
+            return
+        for index, question in enumerate(self.questions):
+            decision = str(review_state.get(question.question_id, "") or "").strip()
+            if decision == "accepted":
+                self._accepted.add(index)
+                self._rejected.discard(index)
+            elif decision == "rejected":
+                self._accepted.discard(index)
+                self._rejected.add(index)
+            elif decision == "pending":
+                self._accepted.discard(index)
+                self._rejected.discard(index)
+
+    def _state_for_index(self, index: int) -> str:
+        if index in self._accepted:
+            return "accepted"
+        if index in self._rejected:
+            return "rejected"
+        return "pending"
 
     def _review_warnings(self, question: Question) -> list[str]:
         """Return review warnings that should require explicit user acceptance."""

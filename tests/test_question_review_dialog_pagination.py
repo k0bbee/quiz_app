@@ -142,6 +142,33 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertEqual([question.question_id for question in questions],
                          [question.question_id for question in dialog.get_accepted_questions()])
 
+    def test_review_decisions_round_trip_as_pending_accepted_or_rejected(self):
+        accepted = make_question(1)
+        rejected = make_question(2)
+        warning = make_question(3)
+        warning.metadata["source_ref_status"] = "invalid_model_ref"
+
+        dialog = QuestionReviewDialog([accepted, rejected, warning], page_size=10)
+        self.addCleanup(dialog.close)
+
+        dialog.question_list.setCurrentRow(1)
+        dialog.reject_btn.click()
+
+        state = dialog.get_review_state()
+
+        self.assertEqual("accepted", state[accepted.question_id])
+        self.assertEqual("rejected", state[rejected.question_id])
+        self.assertEqual("pending", state[warning.question_id])
+
+        restored = QuestionReviewDialog(
+            [accepted, rejected, warning],
+            page_size=10,
+            review_state=state,
+        )
+        self.addCleanup(restored.close)
+
+        self.assertEqual(state, restored.get_review_state())
+
     def test_review_dialog_displays_topic_title_not_internal_id(self):
         topic = CourseTopic(topic_id="interrupt_io", title="Interrupt-driven I/O")
         question = make_question(1)

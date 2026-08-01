@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,11 +15,24 @@ from utils.json_io import read_json, write_json
 
 _SCHEMA_VERSION = 1
 _PUBLISH_DESTINATIONS = {"library", "practice_now"}
+_REVIEW_STATES = {"accepted", "rejected", "pending"}
 
 
 def _normalize_publish_destination(value: object) -> str:
     destination = str(value or "library").strip()
     return destination if destination in _PUBLISH_DESTINATIONS else "library"
+
+
+def _normalize_review_state(value: object) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        return {}
+    state: dict[str, str] = {}
+    for question_id, decision in value.items():
+        clean_id = str(question_id or "").strip()
+        clean_decision = str(decision or "").strip()
+        if clean_id and clean_decision in _REVIEW_STATES:
+            state[clean_id] = clean_decision
+    return state
 
 
 @dataclass(frozen=True)
@@ -31,6 +45,7 @@ class GenerationDraft:
     exam_plan: ExamGenerationPlan
     review_warnings_only: bool = False
     publish_destination: str = "library"
+    review_state: dict[str, str] | None = None
     source: str = "manual"
     task_id: str = ""
     stage: str = "review_pending"
@@ -45,6 +60,7 @@ class GenerationDraft:
             "exam_plan": self.exam_plan.to_dict(),
             "review_warnings_only": self.review_warnings_only,
             "publish_destination": self.publish_destination,
+            "review_state": dict(self.review_state or {}),
             "source": self.source,
             "task_id": self.task_id,
             "updated_at": self.updated_at,
@@ -93,6 +109,7 @@ class GenerationDraft:
             publish_destination=_normalize_publish_destination(
                 data.get("publish_destination", "library")
             ),
+            review_state=_normalize_review_state(data.get("review_state", {})),
             source=str(data.get("source", "manual") or "manual").strip()
             or "manual",
             task_id=str(data.get("task_id", "") or "").strip(),
@@ -155,6 +172,7 @@ class GenerationDraftStore:
         exam_plan: ExamGenerationPlan,
         review_warnings_only: bool = False,
         publish_destination: str = "library",
+        review_state: Mapping[str, str] | None = None,
         source: str = "manual",
         task_id: str = "",
     ) -> GenerationDraft | None:
@@ -178,6 +196,7 @@ class GenerationDraftStore:
             exam_plan=exam_plan,
             review_warnings_only=bool(review_warnings_only),
             publish_destination=_normalize_publish_destination(publish_destination),
+            review_state=_normalize_review_state(review_state),
             source=str(source or "manual").strip() or "manual",
             task_id=str(task_id or "").strip(),
             updated_at=self._clock(),

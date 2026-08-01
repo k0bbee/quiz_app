@@ -79,6 +79,7 @@ class AIGenerationDialog(QDialog):
         self._session_state = GenerationSessionState()
         self._draft_source = "manual"
         self._publish_destination = "library"
+        self._review_state: dict[str, str] = {}
         self.lang_manager = LanguageManager.instance()
         self.generated_questions: list[Question] = []
         self.worker: GenerationWorker = None
@@ -1243,6 +1244,11 @@ class AIGenerationDialog(QDialog):
         value = str(destination or "library").strip()
         self._publish_destination = value if value in {"library", "practice_now"} else "library"
 
+    @property
+    def review_state(self) -> dict[str, str]:
+        """Return the current question-id review decisions for draft storage."""
+        return dict(self._review_state)
+
     def restore_generation_draft(self, draft) -> None:
         """Restore reviewable questions without starting another AI request."""
         questions = [
@@ -1270,6 +1276,13 @@ class AIGenerationDialog(QDialog):
         self.set_publish_destination(
             getattr(draft, "publish_destination", "library")
         )
+        raw_review_state = getattr(draft, "review_state", {})
+        self._review_state = {
+            str(question_id).strip(): str(decision).strip()
+            for question_id, decision in (raw_review_state or {}).items()
+            if str(question_id or "").strip()
+            and str(decision or "").strip() in {"accepted", "rejected", "pending"}
+        }
         self.generated_questions = questions
         self._session_state.restore_review()
         self._generation_failed = False
@@ -1498,6 +1511,7 @@ class AIGenerationDialog(QDialog):
         self._partial_generation_report = None
         self._retry_carryover_questions = carryover_questions
         self.generated_questions = []
+        self._review_state = {}
         self.draft_changed.emit()
         self._generation_started_at = time.monotonic()
         self._last_generation_progress = self.lang_manager.get_text(
@@ -2235,12 +2249,22 @@ class AIGenerationDialog(QDialog):
         )
         if self._review_warnings_only:
             review_kwargs["allow_empty_accept"] = bool(auto_accepted)
+        if self._review_state:
+            review_kwargs["review_state"] = self._review_state
         review_dialog = QuestionReviewDialog(
             review_questions,
             self,
             **review_kwargs,
         )
-        if review_dialog.exec() == QDialog.DialogCode.Accepted:
+        review_result = review_dialog.exec()
+        get_review_state = getattr(review_dialog, "get_review_state", None)
+        if callable(get_review_state):
+            self._review_state.update(get_review_state())
+        for question in auto_accepted:
+            if question.question_id:
+                self._review_state[question.question_id] = "accepted"
+        self.draft_changed.emit()
+        if review_result == QDialog.DialogCode.Accepted:
             accepted = review_dialog.get_accepted_questions()
             if self._review_warnings_only:
                 accepted_warning_by_id = {

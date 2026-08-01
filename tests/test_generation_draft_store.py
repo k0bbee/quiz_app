@@ -56,6 +56,7 @@ class GenerationDraftStoreTests(unittest.TestCase):
                 source="first_run",
                 task_id="task-1",
                 publish_destination="practice_now",
+                review_state={"draft-q1": "rejected"},
             )
             restored = GenerationDraftStore(path).get("course-a")
 
@@ -69,6 +70,7 @@ class GenerationDraftStoreTests(unittest.TestCase):
             self.assertEqual("first_run", restored.source)
             self.assertEqual("task-1", restored.task_id)
             self.assertEqual("practice_now", restored.publish_destination)
+            self.assertEqual({"draft-q1": "rejected"}, restored.review_state)
             self.assertEqual("2026-07-29T08:00:00+00:00", restored.updated_at)
 
     def test_legacy_draft_defaults_to_library_destination(self):
@@ -97,6 +99,7 @@ class GenerationDraftStoreTests(unittest.TestCase):
 
             self.assertIsNotNone(restored)
             self.assertEqual("library", restored.publish_destination)
+            self.assertEqual({}, restored.review_state)
 
     def test_drafts_are_isolated_by_course_and_delete_is_idempotent(self):
         with tempfile.TemporaryDirectory() as tmpdir:

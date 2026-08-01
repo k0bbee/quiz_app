@@ -474,6 +474,7 @@ class GenerationWorkspaceController:
                 publish_destination=str(
                     getattr(dialog, "publish_destination", "library") or "library"
                 ),
+                review_state=getattr(dialog, "review_state", {}),
                 source=source,
                 task_id=str(getattr(dialog, "_generation_task_id", "") or ""),
             )
