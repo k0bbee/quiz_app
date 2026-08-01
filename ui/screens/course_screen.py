@@ -54,6 +54,7 @@ class CourseScreen(QWidget):
 
     current_course_changed = pyqtSignal()
     generate_questions_requested = pyqtSignal(str)
+    course_topic_action_requested = pyqtSignal(str, str, str)
     view_course_library_requested = pyqtSignal(str)
     current_event_generation_requested = pyqtSignal(str, object)
     course_import_started = pyqtSignal()
@@ -467,6 +468,9 @@ class CourseScreen(QWidget):
         self.content_stack.addWidget(self.sources_panel)
         self.knowledge_panel = CourseKnowledgePanel()
         self.knowledge_table = self.knowledge_panel.table
+        self.knowledge_panel.topic_action_requested.connect(
+            self._on_knowledge_topic_action
+        )
         self.content_stack.addWidget(self.knowledge_panel)
         self.qa_panel = CourseQAPanel(self.qa_service_factory)
         self.content_stack.addWidget(self.qa_panel)
@@ -632,6 +636,12 @@ class CourseScreen(QWidget):
             label.clear()
         self.sources_table.setRowCount(0)
         self.knowledge_table.setRowCount(0)
+
+    def _on_knowledge_topic_action(self, topic_id: str, action: str) -> None:
+        course_id = self.selected_course_id()
+        if not course_id:
+            return
+        self.course_topic_action_requested.emit(course_id, topic_id, action)
 
     def refresh(self):
         """Reload active or archived projects from disk."""

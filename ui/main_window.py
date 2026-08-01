@@ -290,6 +290,9 @@ class MainWindow(QMainWindow):
             self._course_screen.generate_questions_requested.connect(
                 lambda _course_id: self.generation_flow.open()
             )
+            self._course_screen.course_topic_action_requested.connect(
+                self._on_course_topic_action
+            )
             self._course_screen.view_course_library_requested.connect(
                 self._open_course_library
             )
@@ -992,6 +995,32 @@ class MainWindow(QMainWindow):
             ),
             draft_source="progress_topic",
         )
+
+    def _on_course_topic_action(
+        self,
+        course_id: str,
+        topic_id: str,
+        action: str,
+    ) -> None:
+        course_id = str(course_id or "").strip()
+        topic_id = topic_value(topic_id)
+        if not course_id or not topic_id:
+            return
+        if self.course_context.current_course_id() != course_id:
+            if not self.course_manager.set_current(course_id):
+                return
+            self.course_context.course_changed()
+        if action == "generate":
+            self.generation_flow.open(
+                initial_plan=ExamGenerationPlan(
+                    question_count=10,
+                    selected_topics=(topic_id,),
+                    topic_weights={topic_id: 100},
+                ),
+                draft_source="course_hub_gap",
+            )
+        elif action == "practice":
+            self._on_practice_progress_topic(topic_id)
 
     def _on_generate_result_reinforcement(self, request) -> None:
         """Generate at most eight variants for up to three weak course topics."""

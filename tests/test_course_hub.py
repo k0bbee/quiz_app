@@ -16,6 +16,7 @@ from models.question import Question, QuestionBank
 from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.main_window import MainWindow
 from ui.navigation import Route
+from ui.widgets.course_hub_panels import CourseKnowledgePanel
 from utils.constants import Difficulty, QuestionType
 
 
@@ -213,6 +214,22 @@ class CourseHubPresenterTests(unittest.TestCase):
         self.assertEqual("weak", io_topic.status)
 
 
+class CourseHubActionTests(unittest.TestCase):
+    def test_knowledge_next_action_cell_emits_topic_action(self):
+        view = build_course_hub_view(_course())
+        panel = CourseKnowledgePanel()
+        self.addCleanup(panel.close)
+        actions = []
+        panel.topic_action_requested.connect(
+            lambda topic_id, action: actions.append((topic_id, action))
+        )
+        panel.render(view, lambda zh, _en: zh)
+
+        panel.table.cellClicked.emit(0, 7)
+
+        self.assertEqual([("input-output", "generate")], actions)
+
+
 class CourseHubNavigationTests(unittest.TestCase):
     def setUp(self):
         self.window = MainWindow()
@@ -323,6 +340,24 @@ class CourseHubNavigationTests(unittest.TestCase):
             self.project.course_id,
             self.window._get_generation_workspace().course_id,
         )
+
+    def test_uncovered_topic_action_opens_a_scoped_generation_plan(self):
+        self.assertTrue(
+            self.window.navigate_route(
+                Route.course(self.project.course_id, tab="knowledge"),
+                allow_first_run_redirect=False,
+            )
+        )
+        self.window.generation_flow.open = Mock()
+
+        self.window._course_screen.knowledge_table.cellClicked.emit(0, 7)
+
+        self.window.generation_flow.open.assert_called_once()
+        call = self.window.generation_flow.open.call_args
+        plan = call.kwargs["initial_plan"]
+        self.assertEqual(("input-output",), plan.selected_topics)
+        self.assertEqual({"input-output": 100}, plan.topic_weights)
+        self.assertEqual("course_hub_gap", call.kwargs["draft_source"])
 
     def test_browsing_another_course_does_not_change_the_active_course(self):
         other = _course()

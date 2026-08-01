@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
@@ -123,6 +123,8 @@ class CourseSourcesPanel(QWidget):
 
 
 class CourseKnowledgePanel(QWidget):
+    topic_action_requested = pyqtSignal(str, str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
@@ -143,9 +145,12 @@ class CourseKnowledgePanel(QWidget):
                 column,
                 QHeaderView.ResizeMode.ResizeToContents,
             )
+        self.table.cellClicked.connect(self._handle_cell_clicked)
         layout.addWidget(self.table, 1)
+        self._view = None
 
     def render(self, view, get_text) -> None:
+        self._view = view
         self.table.setHorizontalHeaderLabels([
             get_text("知识点", "Knowledge Point"),
             get_text("考试权重", "Exam Weight"),
@@ -186,12 +191,25 @@ class CourseKnowledgePanel(QWidget):
                 else topic.mastery,
                 topic.recent_practice,
                 _topic_status_text(topic.status, get_text),
-                _topic_action_text(topic.status, get_text),
+                _topic_action_text(
+                    topic.status,
+                    get_text,
+                    in_exam_scope=topic.in_exam_scope,
+                ),
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, topic.topic_id)
                 self.table.setItem(row, column, item)
+
+    def _handle_cell_clicked(self, row: int, column: int) -> None:
+        if column != 7 or self._view is None:
+            return
+        if not 0 <= row < len(self._view.topics):
+            return
+        topic = self._view.topics[row]
+        action = _topic_action(topic.status, in_exam_scope=topic.in_exam_scope)
+        self.topic_action_requested.emit(topic.topic_id, action)
 
 
 def _read_only_table(columns: int) -> QTableWidget:
@@ -214,11 +232,28 @@ def _topic_status_text(status: str, get_text) -> str:
     }.get(status, get_text("未开始", "Not started"))
 
 
-def _topic_action_text(status: str, get_text) -> str:
+def _topic_action(status: str, *, in_exam_scope: bool = True) -> str:
+    if not in_exam_scope:
+        return "view"
     return {
-        "weak": get_text("强化", "Practice"),
-        "uncovered": get_text("补齐题目", "Add questions"),
-        "not_started": get_text("开始学习", "Start"),
-        "learning": get_text("继续学习", "Continue"),
-        "mastered": get_text("查看", "View"),
-    }.get(status, get_text("查看", "View"))
+        "weak": "practice",
+        "uncovered": "generate",
+        "not_started": "practice",
+        "learning": "practice",
+        "mastered": "view",
+    }.get(status, "view")
+
+
+def _topic_action_text(status: str, get_text, *, in_exam_scope: bool = True) -> str:
+    action = _topic_action(status, in_exam_scope=in_exam_scope)
+    return {
+        "practice": (
+            get_text("强化", "Practice")
+            if status == "weak"
+            else get_text("开始学习", "Start")
+            if status == "not_started"
+            else get_text("继续学习", "Continue")
+        ),
+        "generate": get_text("补齐题目", "Add questions"),
+        "view": get_text("查看", "View"),
+    }[action]
