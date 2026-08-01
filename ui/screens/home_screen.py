@@ -870,11 +870,13 @@ class HomeScreen(QWidget):
             if exam.on_track:
                 zh_status = (
                     f"距考试 {exam.days_remaining} 天 · "
-                    f"预计 {exam.predicted_study_days} 天覆盖当前范围"
+                    f"一轮覆盖当前范围约 {exam.coverage_question_count} 题 · "
+                    f"预计 {exam.predicted_study_days} 天"
                 )
                 en_status = (
                     f"{exam.days_remaining} days to exam · "
-                    f"about {exam.predicted_study_days} study days to cover the scope"
+                    f"one-round coverage about {exam.coverage_question_count} questions · "
+                    f"estimated {exam.predicted_study_days} study days"
                 )
             else:
                 delay = exam.predicted_study_days - (exam.days_remaining or 0)

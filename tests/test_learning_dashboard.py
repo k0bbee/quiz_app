@@ -128,6 +128,7 @@ class LearningDashboardTests(unittest.TestCase):
         self.assertTrue(dashboard.exam_status.configured)
         self.assertEqual(18, dashboard.exam_status.days_remaining)
         self.assertEqual(7, dashboard.exam_status.predicted_study_days)
+        self.assertEqual(100, dashboard.exam_status.coverage_question_count)
         self.assertTrue(dashboard.exam_status.on_track)
 
     @staticmethod

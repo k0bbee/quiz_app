@@ -68,11 +68,12 @@ class WeeklySummary:
 
 @dataclass(frozen=True)
 class ExamStatus:
-    """Reserved presentation state until an exam goal is configured."""
+    """A transparent one-round coverage estimate for a configured exam goal."""
 
     configured: bool = False
     days_remaining: int | None = None
     predicted_study_days: int = 0
+    coverage_question_count: int = 0
     on_track: bool = True
     message: str = ""
 
@@ -314,5 +315,6 @@ def _exam_status(
         configured=True,
         days_remaining=days_remaining,
         predicted_study_days=predicted_days,
+        coverage_question_count=backlog,
         on_track=predicted_days <= days_remaining,
     )
