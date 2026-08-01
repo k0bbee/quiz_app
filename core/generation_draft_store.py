@@ -13,6 +13,12 @@ from utils.json_io import read_json, write_json
 
 
 _SCHEMA_VERSION = 1
+_PUBLISH_DESTINATIONS = {"library", "practice_now"}
+
+
+def _normalize_publish_destination(value: object) -> str:
+    destination = str(value or "library").strip()
+    return destination if destination in _PUBLISH_DESTINATIONS else "library"
 
 
 @dataclass(frozen=True)
@@ -24,6 +30,7 @@ class GenerationDraft:
     question_set_title: str
     exam_plan: ExamGenerationPlan
     review_warnings_only: bool = False
+    publish_destination: str = "library"
     source: str = "manual"
     task_id: str = ""
     stage: str = "review_pending"
@@ -37,6 +44,7 @@ class GenerationDraft:
             "question_set_title": self.question_set_title,
             "exam_plan": self.exam_plan.to_dict(),
             "review_warnings_only": self.review_warnings_only,
+            "publish_destination": self.publish_destination,
             "source": self.source,
             "task_id": self.task_id,
             "updated_at": self.updated_at,
@@ -82,6 +90,9 @@ class GenerationDraft:
             ).strip(),
             exam_plan=exam_plan,
             review_warnings_only=bool(data.get("review_warnings_only", False)),
+            publish_destination=_normalize_publish_destination(
+                data.get("publish_destination", "library")
+            ),
             source=str(data.get("source", "manual") or "manual").strip()
             or "manual",
             task_id=str(data.get("task_id", "") or "").strip(),
@@ -143,6 +154,7 @@ class GenerationDraftStore:
         question_set_title: str,
         exam_plan: ExamGenerationPlan,
         review_warnings_only: bool = False,
+        publish_destination: str = "library",
         source: str = "manual",
         task_id: str = "",
     ) -> GenerationDraft | None:
@@ -165,6 +177,7 @@ class GenerationDraftStore:
             question_set_title=str(question_set_title or "").strip(),
             exam_plan=exam_plan,
             review_warnings_only=bool(review_warnings_only),
+            publish_destination=_normalize_publish_destination(publish_destination),
             source=str(source or "manual").strip() or "manual",
             task_id=str(task_id or "").strip(),
             updated_at=self._clock(),

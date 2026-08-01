@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,6 +55,7 @@ class GenerationDraftStoreTests(unittest.TestCase):
                 review_warnings_only=True,
                 source="first_run",
                 task_id="task-1",
+                publish_destination="practice_now",
             )
             restored = GenerationDraftStore(path).get("course-a")
 
@@ -66,7 +68,35 @@ class GenerationDraftStoreTests(unittest.TestCase):
             self.assertTrue(restored.review_warnings_only)
             self.assertEqual("first_run", restored.source)
             self.assertEqual("task-1", restored.task_id)
+            self.assertEqual("practice_now", restored.publish_destination)
             self.assertEqual("2026-07-29T08:00:00+00:00", restored.updated_at)
+
+    def test_legacy_draft_defaults_to_library_destination(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "generation-drafts.json"
+            plan = ExamGenerationPlan(question_count=3)
+            path.write_text(
+                json.dumps(
+                    {
+                        "drafts": {
+                            "course-a": {
+                                "course_id": "course-a",
+                                "stage": "review_pending",
+                                "questions": [self._question().to_dict()],
+                                "question_set_title": "A",
+                                "exam_plan": plan.to_dict(),
+                            }
+                        }
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            restored = GenerationDraftStore(path).get("course-a")
+
+            self.assertIsNotNone(restored)
+            self.assertEqual("library", restored.publish_destination)
 
     def test_drafts_are_isolated_by_course_and_delete_is_idempotent(self):
         with tempfile.TemporaryDirectory() as tmpdir:

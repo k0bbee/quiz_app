@@ -110,6 +110,7 @@ class GenerationDialogUiTests(unittest.TestCase):
                     topic_weights={"cache": 100},
                 ),
                 review_warnings_only=True,
+                publish_destination="practice_now",
             )
 
             dialog.restore_generation_draft(draft)
@@ -117,6 +118,7 @@ class GenerationDialogUiTests(unittest.TestCase):
             self.assertEqual([question], dialog.generated_questions)
             self.assertEqual("缓存恢复练习", dialog.question_set_title())
             self.assertEqual("mixed", dialog.build_exam_plan().difficulty)
+            self.assertEqual("practice_now", dialog.publish_destination)
             self.assertFalse(dialog.review_partial_btn.isHidden())
             self.assertIn("1 道题", dialog.status_label.text())
 

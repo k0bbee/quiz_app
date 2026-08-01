@@ -6,7 +6,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from ai.exam_plan import ExamGenerationPlan
 from core.session_retry import SessionRetryMode
+from models.question import Question
+from utils.constants import Difficulty, QuestionType
 from ui.first_run_controller import FirstRunController
 from ui.generation_workspace_controller import (
     GenerationWorkspaceController,
@@ -281,6 +284,44 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
         self.assertIn("B", instruction)
         self.assertIn("不要复述原题", instruction)
         self.assertTrue(call.kwargs["start_after_save"])
+
+    def test_sync_draft_persists_the_explicit_publish_destination(self):
+        question = Question(
+            question_id="draft-q",
+            type=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "草稿题", "options": ["正确", "错误"]},
+                "en": {"stem": "Draft", "options": ["True", "False"]},
+            },
+            correct_answer=True,
+            topic="topic-io",
+        )
+        store = Mock()
+        host = SimpleNamespace(generation_draft_store=store)
+        dialog = SimpleNamespace(
+            generated_questions=[question],
+            question_set_title=lambda: "补强题集",
+            build_exam_plan=lambda: ExamGenerationPlan(
+                question_count=3,
+                selected_topics=("topic-io",),
+            ),
+            _review_warnings_only=False,
+            publish_destination="practice_now",
+        )
+        course = SimpleNamespace(course_id="course-1")
+
+        saved = GenerationWorkspaceController(host).sync_draft(
+            dialog,
+            course,
+            source="reinforcement",
+        )
+
+        self.assertTrue(saved)
+        self.assertEqual(
+            "practice_now",
+            store.save.call_args.kwargs["publish_destination"],
+        )
 
     def test_main_window_reuses_one_generation_controller(self):
         window = MainWindow()

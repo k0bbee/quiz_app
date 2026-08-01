@@ -78,6 +78,7 @@ class AIGenerationDialog(QDialog):
         self._generation_task_id: str | None = None
         self._session_state = GenerationSessionState()
         self._draft_source = "manual"
+        self._publish_destination = "library"
         self.lang_manager = LanguageManager.instance()
         self.generated_questions: list[Question] = []
         self.worker: GenerationWorker = None
@@ -1232,6 +1233,16 @@ class AIGenerationDialog(QDialog):
         """Keep task recovery aligned with the owning generation workflow."""
         self._draft_source = str(source or "").strip() or "manual"
 
+    @property
+    def publish_destination(self) -> str:
+        """Return the post-save destination retained with this session."""
+        return self._publish_destination
+
+    def set_publish_destination(self, destination: str) -> None:
+        """Set the explicit destination used after the review is saved."""
+        value = str(destination or "library").strip()
+        self._publish_destination = value if value in {"library", "practice_now"} else "library"
+
     def restore_generation_draft(self, draft) -> None:
         """Restore reviewable questions without starting another AI request."""
         questions = [
@@ -1255,6 +1266,9 @@ class AIGenerationDialog(QDialog):
             self.set_title_input.setText(title)
         self._review_warnings_only = bool(
             getattr(draft, "review_warnings_only", False)
+        )
+        self.set_publish_destination(
+            getattr(draft, "publish_destination", "library")
         )
         self.generated_questions = questions
         self._session_state.restore_review()
