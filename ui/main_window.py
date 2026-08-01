@@ -41,6 +41,7 @@ from ui.settings_window import SettingsWindow
 from utils.constants import Difficulty, topic_value
 from ai.exam_plan import ExamGenerationPlan
 from models.question_set import QuestionSet
+from models.remediation import RemediationRequest
 
 
 class MainWindow(QMainWindow):
@@ -1023,22 +1024,19 @@ class MainWindow(QMainWindow):
             self._on_practice_progress_topic(topic_id)
 
     def _on_generate_result_reinforcement(self, request) -> None:
-        """Generate at most eight variants for up to three weak course topics."""
-        if not isinstance(request, dict):
+        """Open a source-aware generation plan for concrete answer signals."""
+        request = RemediationRequest.from_mapping(request)
+        if request is None:
             return
-        course_id = str(request.get("course_id", "") or "").strip()
-        topics = tuple(dict.fromkeys(
-            topic_value(topic_id)
-            for topic_id in (request.get("topic_ids", ()) or ())
-            if topic_value(topic_id)
-        ))[:3]
+        course_id = request.course_id
+        topics = tuple(dict.fromkeys(request.topic_ids))[:3]
         if not course_id or not topics:
             return
         if self.course_context.current_course_id() != course_id:
             if not self.course_manager.set_current(course_id):
                 return
             self.course_context.course_changed()
-        count = min(8, max(1, int(request.get("question_count", 0) or 0)))
+        count = min(8, max(1, request.max_questions))
         base = 100 // len(topics)
         weights = {topic_id: base for topic_id in topics}
         weights[topics[-1]] += 100 - sum(weights.values())
@@ -1049,6 +1047,11 @@ class MainWindow(QMainWindow):
                 topic_weights=weights,
             ),
             draft_source="result_reinforcement",
+            recovery_context={
+                "runtime_instruction": request.instruction(
+                    self.lang_manager.current
+                ),
+            },
         )
 
     def _start_progress_topic_quiz(self, questions: list, label: str):

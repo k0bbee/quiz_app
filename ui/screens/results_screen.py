@@ -18,6 +18,7 @@ from core.study_intent import (
 )
 from models.progress import ProgressRecord, QuestionReviewSnapshot
 from models.question import Question
+from models.remediation import RemediationRequest, TopicSignal, answer_text
 from ui.widgets.question_review_card import QuestionReviewCard
 from ui.widgets.progress_summary_bar import ProgressSummaryBar
 from utils.constants import Difficulty, QuestionType, topic_value
@@ -525,7 +526,7 @@ class ResultsScreen(QWidget):
             for topic in getattr(project, "topics", ()) or ()
             if topic_value(topic.topic_id)
         }
-        signals: dict[str, int] = {}
+        signals: dict[str, dict] = {}
         for answer in getattr(record, "answers", ()) or ():
             if getattr(answer, "skipped", False):
                 continue
@@ -541,13 +542,36 @@ class ResultsScreen(QWidget):
             if getattr(answer, "confidence", "sure") == "unsure":
                 score += 1
             if score:
-                signals[topic_id] = signals.get(topic_id, 0) + score
+                signal = signals.setdefault(topic_id, {
+                    "score": 0,
+                    "question_ids": [],
+                    "observed_wrong_answers": [],
+                    "unsure_question_ids": [],
+                })
+                signal["score"] += score
+                if answer.question_id and answer.question_id not in signal["question_ids"]:
+                    signal["question_ids"].append(answer.question_id)
+                if not getattr(answer, "is_correct", False):
+                    signal["observed_wrong_answers"].append(
+                        answer_text(getattr(answer, "user_answer", None))
+                    )
+                if getattr(answer, "confidence", "sure") == "unsure":
+                    signal["unsure_question_ids"].append(answer.question_id)
         self._reinforcement_topic_ids = tuple(
             topic_id
-            for topic_id, _score in sorted(
+            for topic_id, _signal in sorted(
                 signals.items(),
-                key=lambda item: (-item[1], item[0]),
+                key=lambda item: (-item[1]["score"], item[0]),
             )[:3]
+        )
+        self._reinforcement_signals = tuple(
+            TopicSignal(
+                topic_id=topic_id,
+                question_ids=signals[topic_id]["question_ids"],
+                observed_wrong_answers=signals[topic_id]["observed_wrong_answers"],
+                unsure_question_ids=signals[topic_id]["unsure_question_ids"],
+            )
+            for topic_id in self._reinforcement_topic_ids
         )
         self.reinforce_btn.setVisible(bool(self._reinforcement_topic_ids))
 
@@ -555,11 +579,12 @@ class ResultsScreen(QWidget):
         project = self._live_course_project
         if project is None or not self._reinforcement_topic_ids:
             return
-        self.generate_reinforcement_requested.emit({
-            "course_id": project.course_id,
-            "topic_ids": self._reinforcement_topic_ids,
-            "question_count": min(8, len(self._reinforcement_topic_ids) * 3),
-        })
+        request = RemediationRequest(
+            course_id=project.course_id,
+            signals=getattr(self, "_reinforcement_signals", ()),
+            max_questions=min(8, len(self._reinforcement_topic_ids) * 3),
+        )
+        self.generate_reinforcement_requested.emit(request.to_dict())
 
     def _set_daily_primary_action(self, active: bool) -> None:
         repeat_role = "primaryButton" if active else "secondaryButton"

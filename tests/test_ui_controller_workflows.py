@@ -258,6 +258,29 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
         self.assertIs(preparation, result)
         dialog.set_generation_gap_topics.assert_called_once_with(("process",))
 
+    def test_result_reinforcement_carries_answer_evidence_into_generation(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+        window.course_context.current_course_id = Mock(return_value="course-1")
+        window.generation_flow.open = Mock()
+
+        window._on_generate_result_reinforcement({
+            "course_id": "course-1",
+            "topic_ids": ["cache"],
+            "question_count": 3,
+            "signals": [{
+                "topic_id": "cache",
+                "question_ids": ["q-1"],
+                "observed_wrong_answers": ["B"],
+            }],
+        })
+
+        call = window.generation_flow.open.call_args
+        instruction = call.kwargs["recovery_context"]["runtime_instruction"]
+        self.assertIn("q-1", instruction)
+        self.assertIn("B", instruction)
+        self.assertIn("不要复述原题", instruction)
+
     def test_main_window_reuses_one_generation_controller(self):
         window = MainWindow()
         self.addCleanup(window.close)

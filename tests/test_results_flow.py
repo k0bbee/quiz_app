@@ -212,8 +212,24 @@ class ResultsFlowTests(unittest.TestCase):
 
                 self.assertEqual([{
                     "course_id": "course-a",
-                    "topic_ids": ("cache", "io"),
+                    "topic_ids": ["cache", "io"],
                     "question_count": 6,
+                    "max_questions": 6,
+                    "destination": "practice_now",
+                    "signals": [
+                        {
+                            "topic_id": "cache",
+                            "question_ids": ["q-cache"],
+                            "observed_wrong_answers": ["B"],
+                            "unsure_question_ids": [],
+                        },
+                        {
+                            "topic_id": "io",
+                            "question_ids": ["q-io"],
+                            "observed_wrong_answers": [],
+                            "unsure_question_ids": ["q-io"],
+                        },
+                    ],
                 }], requests)
 
     def test_results_screen_recomputes_course_context_for_displayed_questions(self):
