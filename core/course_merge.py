@@ -179,7 +179,7 @@ def merge_courses(
         for pack in source_packs
     ])
     migrated_generation_drafts = [
-        replace(draft, course_id=target_id)
+        _migrate_generation_draft(draft, merged)
         for draft in source_generation_drafts
     ]
     overwritten_packs = {}
@@ -456,6 +456,28 @@ def _linked_items(manager, source_ids) -> list:
 def _metadata_course_id(item) -> str:
     metadata = getattr(item, "metadata", {}) or {}
     return str(metadata.get("course_id", "") or "") if isinstance(metadata, dict) else ""
+
+
+def _migrate_generation_draft(draft, target_project):
+    """Move a review draft and its pending questions to the retained course."""
+    migrated_questions = []
+    for question in getattr(draft, "questions", ()) or ():
+        migrated = deepcopy(question)
+        metadata = dict(getattr(migrated, "metadata", {}) or {})
+        metadata.update(
+            {
+                "course_id": target_project.course_id,
+                "course_title": target_project.title,
+                "course_updated_at": target_project.updated_at,
+            }
+        )
+        migrated.metadata = metadata
+        migrated_questions.append(migrated)
+    return replace(
+        draft,
+        course_id=target_project.course_id,
+        questions=tuple(migrated_questions),
+    )
 
 
 def _load_all(manager) -> list:

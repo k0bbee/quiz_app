@@ -198,6 +198,10 @@ class CourseMergeTests(unittest.TestCase):
             self.assertIsNotNone(migrated_draft)
             self.assertEqual(target.course_id, migrated_draft.course_id)
             self.assertEqual("course_hub_gap", migrated_draft.source)
+            self.assertEqual(
+                target.course_id,
+                migrated_draft.questions[0].metadata["course_id"],
+            )
 
     def test_merge_archives_source_course_history_before_reassigning_assets(self):
         from core.course_merge import merge_courses
