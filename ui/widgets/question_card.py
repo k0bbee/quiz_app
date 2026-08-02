@@ -1,7 +1,6 @@
 """Question card widget — displays the question stem as rich text."""
 
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QLabel
-from PyQt6.QtCore import Qt
 
 
 class QuestionCard(QFrame):
@@ -34,11 +33,6 @@ class QuestionCard(QFrame):
             self.type_label.setText(qtype_label)
         else:
             self.type_label.clear()
-
-    def set_html(self, html: str):
-        """Display stem as HTML rich text."""
-        self.stem_label.setTextFormat(Qt.TextFormat.RichText)
-        self.stem_label.setText(html)
 
     def clear(self):
         self.stem_label.clear()

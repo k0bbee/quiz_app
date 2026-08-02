@@ -201,8 +201,5 @@ class AppShell(QWidget):
     def navigation_buttons(self) -> tuple[QPushButton, ...]:
         return self._navigation_buttons
 
-    def all_context_tabs(self) -> tuple[QPushButton, ...]:
-        return self._context_tabs
-
     def context_tabs(self) -> tuple[QPushButton, ...]:
         return tuple(button for button in self._context_tabs if not button.isHidden())

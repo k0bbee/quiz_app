@@ -175,10 +175,6 @@ class StudyFlowController:
         self.pending_intent = None
         self.topic_screen.clear_study_intent()
 
-    def clear_active(self) -> None:
-        self.active_intent = None
-        self.active_questions = {}
-
     def restore_active_intent(
         self,
         intent: StudyIntent,
