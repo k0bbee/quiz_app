@@ -248,7 +248,7 @@ class AppShellUiTests(unittest.TestCase):
                 "core.application_data_migration.ApplicationDataMigrator.migrate",
                 return_value=success_report,
             ), patch("ui.main_window.QMessageBox.information"):
-                self.assertTrue(window._retry_startup_migration())
+                self.assertTrue(window.history_protection.retry())
 
             self.assertTrue(window.settings_screen.import_btn.isEnabled())
             self.assertTrue(window.settings_screen.import_app_data_btn.isEnabled())

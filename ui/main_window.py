@@ -273,9 +273,6 @@ class MainWindow(QMainWindow):
     def _history_protection_message(self) -> str:
         return self.history_protection.message()
 
-    def _retry_startup_migration(self) -> bool:
-        return self.history_protection.retry()
-
     def _confirm_history_sensitive_navigation(self, screen_index: int) -> bool:
         return self.history_protection.confirm_navigation(screen_index)
 
