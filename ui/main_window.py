@@ -484,9 +484,6 @@ class MainWindow(QMainWindow):
     def navigation_buttons(self) -> tuple[QPushButton, ...]:
         return self.app_shell.navigation_buttons()
 
-    def _all_context_tabs(self) -> tuple[QPushButton, ...]:
-        return self.app_shell.all_context_tabs()
-
     def context_tabs(self) -> tuple[QPushButton, ...]:
         return self.app_shell.context_tabs()
 
