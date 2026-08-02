@@ -329,11 +329,6 @@ class HomeScreen(QWidget):
             else set()
         )
         visible_question_ids = self._visible_question_ids()
-        total_questions = (
-            self.question_bank.count(course_id=self._current_course_id)
-            if self._current_course_id
-            else 0
-        )
         progress_records = self.progress_manager.load_all()
         self._refresh_global_agenda(progress_records)
         self.question_context_label.setText(self.lang_manager.get_text(

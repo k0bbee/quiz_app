@@ -271,7 +271,8 @@ class GenerationWorkspaceController:
         host = self._host
         gm = getattr(getattr(host, "lang_manager", None), "get_text", None)
         if not callable(gm):
-            gm = lambda zh_text, _en_text: zh_text
+            def gm(zh_text, _en_text):
+                return zh_text
         detail = gm(
             f"当前生成工作区属于课程 {existing_course_id}，不能直接切换到 {requested_course_id}。请先完成、保存或取消当前任务。",
             f"The generation workspace belongs to course {existing_course_id} and cannot switch directly to {requested_course_id}. Finish, save, or cancel the current task first.",

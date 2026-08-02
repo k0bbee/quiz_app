@@ -370,7 +370,7 @@ class MatchingWidget(QWidget):
             random.shuffle(shuffled_right)
 
             # Remove the stretch from right layout temporarily
-            stretch = self._right_layout.takeAt(self._right_layout.count() - 1)
+            self._right_layout.takeAt(self._right_layout.count() - 1)
 
             for item in options["left"]:
                 left_id = _option_id(item)
