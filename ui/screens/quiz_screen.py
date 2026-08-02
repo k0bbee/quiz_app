@@ -12,7 +12,6 @@ from PyQt6.QtGui import QKeySequence, QShortcut
 
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet
-from models.progress import ProgressRecord
 from models.quiz_snapshot import QuizSessionSnapshot
 from core.quiz_engine import QuizSession
 from core.study_intent import StudyIntent

@@ -1,7 +1,6 @@
 """Question review card widget for the results screen."""
 
 from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel
-from PyQt6.QtCore import Qt
 
 from models.question import Question
 from core.language_manager import LanguageManager

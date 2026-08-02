@@ -38,7 +38,7 @@ from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.settings_window import SettingsWindow
-from utils.constants import Difficulty, topic_value
+from utils.constants import topic_value
 from ai.exam_plan import ExamGenerationPlan
 from models.question_set import QuestionSet
 from models.remediation import RemediationRequest

@@ -1,9 +1,8 @@
 """LLM API client — OpenAI-compatible wrapper with retry logic."""
-from utils.logger import debug, warning, error
+from utils.logger import debug, warning
 
 import json
 import re
-import shutil
 import subprocess
 import threading
 import time

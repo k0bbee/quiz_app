@@ -7,7 +7,6 @@ through pypdfium2.
 
 from __future__ import annotations
 
-import os
 import re
 import hashlib
 import zipfile
@@ -619,7 +618,6 @@ def _ocr_pdf_page(page, page_number: int, warnings: list[str]) -> str:
     """Best-effort OCR for image-only PDF pages; optional dependencies only."""
     try:
         import pytesseract  # type: ignore
-        from PIL import Image  # type: ignore
     except Exception as exc:
         warnings.append(
             f"OCR fallback unavailable for page {page_number}: install pytesseract and Pillow ({exc})"

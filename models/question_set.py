@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-from models.question import Question
 from utils.constants import Difficulty, coerce_topic, topic_label, topic_value
 from utils.json_io import read_json, write_json, sanitize_filename_part
 

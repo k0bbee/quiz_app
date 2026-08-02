@@ -5,8 +5,7 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from models.progress import ProgressRecord, SessionSummary, AnswerRecord
-from models.question_set import QuestionSet
+from models.progress import ProgressRecord, SessionSummary
 from core.mastery import prioritize_review_question_ids
 from utils.json_io import read_json, write_json, list_json_files, delete_json, sanitize_filename_part
 from utils.logger import warning

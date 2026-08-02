@@ -2,9 +2,7 @@
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QListWidget, QListWidgetItem, QComboBox, QSpinBox,
-    QProgressBar, QTextEdit, QMessageBox, QGroupBox, QCheckBox,
-    QAbstractItemView, QScrollArea, QFrame, QWidget, QSlider, QFormLayout,
+    QListWidget, QListWidgetItem, QProgressBar, QTextEdit, QMessageBox, QGroupBox, QScrollArea, QFrame, QWidget, QSlider, QFormLayout,
     QSplitter, QLineEdit
 )
 import time

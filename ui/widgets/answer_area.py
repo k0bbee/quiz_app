@@ -2,12 +2,11 @@
 
 from PyQt6.QtWidgets import (
     QWidget, QStackedWidget, QVBoxLayout, QHBoxLayout,
-    QButtonGroup, QRadioButton, QCheckBox, QComboBox,
+    QButtonGroup, QRadioButton, QComboBox,
     QListWidget, QListWidgetItem, QPushButton, QLineEdit, QPlainTextEdit,
-    QLabel, QFrame
+    QLabel
 )
 from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QFont
 
 from utils.constants import QuestionType
 from core.language_manager import LanguageManager

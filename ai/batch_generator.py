@@ -7,7 +7,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from ai.llm_client import LLMClient
 from ai.generation_batch_scheduler import GenerationBatchScheduler
 from ai.generation_candidate_processor import GenerationCandidateProcessor
-from ai.generation_config import GenerationConfig, allocate_weighted_counts
+from ai.generation_config import GenerationConfig
 from ai.generation_events import (
     CompletedEvent,
     FailedEvent,

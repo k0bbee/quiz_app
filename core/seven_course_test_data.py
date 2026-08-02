@@ -5,10 +5,6 @@ from core.cross_discipline_test_data import (
     CROSS_DISCIPLINE_SOURCES,
     CrossDisciplineAuditReport,
     CrossDisciplineSeedReport,
-    _COURSES,
-    _CourseSeed,
-    _QuestionSeed,
-    _build_question,
     audit_cross_discipline_data,
     seed_cross_discipline_data,
 )

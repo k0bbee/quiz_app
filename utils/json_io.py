@@ -1,5 +1,5 @@
 """Safe JSON read/write with error handling."""
-from utils.logger import debug, warning, error
+from utils.logger import warning, error
 
 import json
 import os
