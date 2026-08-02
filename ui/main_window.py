@@ -606,12 +606,6 @@ class MainWindow(QMainWindow):
     def _screen_index_for_route(self, route) -> int:
         return self.workspace_navigation.screen_index(route)
 
-    def _default_route_for_screen_index(self, screen_index: int) -> Route:
-        return self.workspace_navigation.default_route(screen_index)
-
-    def _course_context_id(self) -> str:
-        return self.workspace_navigation.course_context_id()
-
     def navigate_route(
         self,
         route: Route,
@@ -631,10 +625,6 @@ class MainWindow(QMainWindow):
     def navigate_back(self):
         """Return to the previous screen if navigation history exists."""
         self.workspace_navigation.back()
-
-    def _confirm_current_navigation(self, target_screen: int) -> bool:
-        """Return whether navigation away from the current screen may proceed."""
-        return self.workspace_navigation.confirm_current(target_screen)
 
     def _update_navigation_actions(self):
         """Keep shell navigation buttons in sync with current location."""
