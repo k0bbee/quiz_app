@@ -558,8 +558,3 @@ class QuestionReviewDialog(QDialog):
         """Return compact warning labels for the review list."""
         language = self.lang_manager.current
         return [issue.tag(language) for issue in validate_question_quality(question)]
-
-
-def _format_source_refs(source_refs, status: str | None = None) -> str:
-    """Format stored source references for review without exposing raw JSON."""
-    return format_source_refs(source_refs, status=status)

@@ -617,11 +617,6 @@ class QuizScreen(QWidget):
             return
         self._advance_without_submitting()
 
-    def _toggle_submission_mode(self) -> None:
-        """Switch feedback timing only while the quiz is still untouched."""
-        target = "exam" if self.submission_mode == "practice" else "practice"
-        self._set_submission_mode(target)
-
     def _set_submission_mode(self, mode: str) -> None:
         """Select one inline mode without opening a separate start dialog."""
         if mode not in {"practice", "exam"}:
@@ -673,10 +668,6 @@ class QuizScreen(QWidget):
         can_switch = self._can_switch_submission_mode()
         self.practice_mode_btn.setEnabled(can_switch)
         self.exam_mode_btn.setEnabled(can_switch)
-
-    def _refresh_mark_review_state(self):
-        """Legacy compatibility hook for callers that refresh review state."""
-        self._refresh_review_state()
 
     def _refresh_unsure_state(self):
         """Keep the unsure marker aligned with the current question."""

@@ -880,10 +880,6 @@ class ResultsScreen(QWidget):
             return self.course_manager.get(intent_course_id)
         return None
 
-    def _resolve_course_project(self, record: ProgressRecord | None = None):
-        """Compatibility wrapper for the historical display context."""
-        return self._resolve_historical_course_project(record)
-
     def _clear_reviews(self):
         """Remove all review cards from the layout."""
         while self.review_layout.count() > 1:  # Keep the stretch
