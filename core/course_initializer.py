@@ -794,33 +794,6 @@ def _is_noise_content(text: str) -> bool:
     return False
 
 
-def _add_candidate(candidates: dict[str, dict], title: str, score: int, source: str, word_count: int = 0):
-    title = _clean_title(title)
-    if not title:
-        return
-    key = title[:100]
-    if key not in candidates:
-        candidates[key] = {"raw_score": 0, "score": 0, "sources": set(),
-                           "_doc_count": 0, "_total_words": 0}
-    candidates[key]["raw_score"] += score
-    if source not in candidates[key]["sources"]:
-        candidates[key]["sources"].add(source)
-        candidates[key]["_doc_count"] += 1
-        candidates[key]["_total_words"] += word_count
-
-
-def _related_keywords(title: str, candidates: dict[str, dict]) -> list[str]:
-    title_terms = set(re.findall(r"[A-Za-z][A-Za-z0-9_+-]{2,}|[\u4e00-\u9fff]{2,8}", title.lower()))
-    related = []
-    for candidate, data in sorted(candidates.items(), key=lambda item: item[1]["score"], reverse=True):
-        if candidate == title:
-            continue
-        terms = set(re.findall(r"[A-Za-z][A-Za-z0-9_+-]{2,}|[\u4e00-\u9fff]{2,8}", candidate.lower()))
-        if title_terms & terms:
-            related.append(_title_case(candidate))
-    return related
-
-
 def _topic_evidence(topic: CourseTopic, docs: list[ExtractedDocument]) -> list[str]:
     terms = [topic.title, *topic.keywords]
     evidence = []
