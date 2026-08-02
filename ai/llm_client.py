@@ -524,21 +524,6 @@ class LLMClient:
         return None
 
     @staticmethod
-    def _extract_json_text(text: str) -> str:
-        """Extract the first JSON object from a model response."""
-        for candidate in LLMClient._extract_json_candidates(text):
-            return candidate
-        # Last resort: return the whole text; caller handles parse errors
-        return text.strip()
-
-    @staticmethod
-    def _extract_balanced_json_value(text: str) -> str:
-        """Return the first balanced JSON object/array, ignoring braces in strings."""
-        for candidate in LLMClient._extract_balanced_json_values(text):
-            return candidate
-        return ""
-
-    @staticmethod
     def _extract_json_candidates(text: str) -> list[str]:
         """Return JSON-looking candidates in model-response priority order."""
         candidates = []
