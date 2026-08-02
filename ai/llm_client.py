@@ -3,6 +3,7 @@ from utils.logger import debug, warning
 
 import json
 import re
+import shutil  # noqa: F401 - retained as the injectable local-agent probe seam
 import subprocess
 import threading
 import time
