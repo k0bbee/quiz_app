@@ -273,9 +273,6 @@ class MainWindow(QMainWindow):
     def _history_protection_message(self) -> str:
         return self.history_protection.message()
 
-    def _set_history_protection_blocked(self, blocked: bool, report=None) -> None:
-        self.history_protection.set_blocked(blocked, report)
-
     def _retry_startup_migration(self) -> bool:
         return self.history_protection.retry()
 
@@ -669,15 +666,6 @@ class MainWindow(QMainWindow):
     def _first_run_ai_error(self) -> str:
         return self.first_run.ai_error()
 
-    def _first_run_practice_candidates(self):
-        return self.first_run.practice_candidates()
-
-    def _first_run_question_count(self) -> int:
-        return self.first_run.question_count()
-
-    def _first_run_has_completed_practice(self) -> bool:
-        return self.first_run.has_completed_practice()
-
     def _first_run_required(self) -> bool:
         return self.first_run.required()
 
@@ -710,30 +698,6 @@ class MainWindow(QMainWindow):
 
     def _on_first_run_generate(self) -> None:
         self.first_run.generate()
-
-    def _on_first_run_generation_accepted(
-        self,
-        dialog,
-        course_project,
-        draft_source: str,
-    ) -> None:
-        self.first_run.generation_accepted(
-            dialog,
-            course_project,
-            draft_source,
-        )
-
-    def _on_first_run_generation_rejected(
-        self,
-        dialog,
-        course_project,
-        draft_source: str,
-    ) -> None:
-        self.first_run.generation_rejected(
-            dialog,
-            course_project,
-            draft_source,
-        )
 
     def _on_first_run_start(self) -> None:
         self.first_run.start()
@@ -1127,24 +1091,6 @@ class MainWindow(QMainWindow):
 
     def _show_timer_setting(self) -> bool:
         return bool(self.settings_screen.get_setting("show_timer", False))
-
-    def _show_about(self):
-        """Show the About dialog."""
-        gm = self.lang_manager.get_text
-        QMessageBox.about(
-            self,
-            gm("关于", "About"),
-            f"<b>{APP_NAME}</b><br><br>"
-            f"{gm('一个基于PyQt的课件导入与刷题工具。', 'A PyQt-based course-material ingestion and quiz practice tool.')}<br><br>"
-            f"{gm('功能特性：', 'Features:')}<br>"
-            f"{gm('• 导入PPTX/PDF/DOCX/TXT/Markdown课件', '• Import PPTX/PDF/DOCX/TXT/Markdown course materials')}<br>"
-            f"{gm('• 导入文本或OCR历史真题', '• Import text or OCR historical exams')}<br>"
-            f"{gm('• 生成可复用的课件摘要', '• Generate reusable course summaries')}<br>"
-            f"{gm('• AI生成双语题目', '• AI-generated bilingual questions')}<br>"
-            f"{gm('• 选择题/判断题自动评分', '• Auto-grading for multiple choice / true-false')}<br>"
-            f"{gm('• 进度追踪', '• Progress tracking')}<br>"
-            f"{gm('• 可复用的本地JSON题目集', '• Reusable local JSON question sets')}"
-        )
 
     def closeEvent(self, event):
         """Confirm active quiz exit before closing, then save settings."""
