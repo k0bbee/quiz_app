@@ -263,27 +263,6 @@ class GenerationWorkspaceController:
         current = course_manager.current() if course_manager is not None else None
         return str(getattr(current, "course_id", "") or "").strip()
 
-    def _show_course_conflict(
-        self,
-        existing_course_id: str,
-        requested_course_id: str,
-    ) -> None:
-        host = self._host
-        gm = getattr(getattr(host, "lang_manager", None), "get_text", None)
-        if not callable(gm):
-            def gm(zh_text, _en_text):
-                return zh_text
-        detail = gm(
-            f"当前生成工作区属于课程 {existing_course_id}，不能直接切换到 {requested_course_id}。请先完成、保存或取消当前任务。",
-            f"The generation workspace belongs to course {existing_course_id} and cannot switch directly to {requested_course_id}. Finish, save, or cancel the current task first.",
-        )
-        host._last_generation_launch_error = detail
-        QMessageBox.warning(
-            host if isinstance(host, QWidget) else None,
-            gm("生成任务属于其他课程", "Generation Belongs to Another Course"),
-            detail,
-        )
-
     def accept(
         self,
         dialog,
