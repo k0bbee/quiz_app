@@ -1,5 +1,4 @@
 import os
-import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,11 +9,10 @@ import main as main_module
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtGui import QCloseEvent, QPalette
+from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QHBoxLayout, QLabel, QListWidget, QMessageBox, QPushButton, QSplitter, QTextEdit, QWidget
+from PyQt6.QtWidgets import QApplication, QHBoxLayout, QMessageBox, QPushButton
 
-from core.language_manager import LanguageManager
 from core.background_task_center import BackgroundTaskCenter
 from core.current_events import CurrentEventMaterialManager
 from core.progress_tracker import ProgressManager
@@ -25,21 +23,13 @@ from models.past_exam import PastExamManager
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
 from core.background_task_recovery import generation_plan_from_task_metadata
-from ui.application_style import apply_dark_palette as _apply_dark_palette, load_stylesheet
 from ui.main_window import MainWindow
 from ui.navigation import Route
-from ui.dialogs.ai_generation_dialog import AIGenerationDialog
-from ui.dialogs.question_review_dialog import QuestionReviewDialog
 from ui.screens.course_screen import CourseScreen
 from ui.screens.home_screen import HomeScreen
-from ui.screens.progress_dashboard import ProgressDashboard
-from ui.screens.question_bank_screen import QuestionBankScreen
-from ui.screens.quiz_screen import QuizScreen
-from ui.screens.results_screen import ResultsScreen
 from ui.screens.settings_screen import SettingsScreen
 from ui.screens.topic_selection_screen import TopicSelectionScreen
-from ui.widgets.answer_area import OrderingWidget
-from utils.constants import Difficulty, QuestionType, topic_label
+from utils.constants import Difficulty, QuestionType
 
 
 _APP = QApplication.instance() or QApplication([])
