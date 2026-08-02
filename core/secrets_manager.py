@@ -12,8 +12,12 @@ All code that needs the API key should call SecretsManager.get_key().
 from __future__ import annotations
 
 import os
-import sys
 import threading
+
+from config import API_KEY_STORE_FILE, SETTINGS_FILE
+from core.windows_dpapi_store import WindowsDPAPISecretStore
+from utils.json_io import read_json, write_json
+from utils.logger import warning as log_warning
 
 KEYRING_AVAILABLE = False
 try:
@@ -21,11 +25,6 @@ try:
     KEYRING_AVAILABLE = True
 except ImportError:
     keyring = None  # type: ignore
-
-from config import API_KEY_STORE_FILE, SETTINGS_FILE
-from core.windows_dpapi_store import WindowsDPAPISecretStore
-from utils.logger import warning as log_warning
-from utils.json_io import read_json, write_json
 
 _SERVICE_NAME = "course_quiz_studio"
 _ACCOUNT_NAME = "ai_api_key"
