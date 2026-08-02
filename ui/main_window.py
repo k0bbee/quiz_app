@@ -169,7 +169,7 @@ class MainWindow(QMainWindow):
         self.settings_screen = self.settings_window.screen
         self.settings_screen.set_history_protection_blocked(
             self._history_protection_blocked,
-            self._history_protection_message()
+            self.history_protection.message()
             if self._history_protection_blocked
             else "",
         )
@@ -269,12 +269,6 @@ class MainWindow(QMainWindow):
         except (OSError, TypeError, ValueError):
             # Startup remains usable even when course metadata needs repair.
             return
-
-    def _history_protection_message(self) -> str:
-        return self.history_protection.message()
-
-    def _confirm_history_sensitive_navigation(self, screen_index: int) -> bool:
-        return self.history_protection.confirm_navigation(screen_index)
 
     def _get_course_screen(self):
         """Lazy-init the course screen on first access."""

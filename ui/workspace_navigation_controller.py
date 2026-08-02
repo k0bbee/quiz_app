@@ -86,7 +86,7 @@ class WorkspaceNavigationController:
                 draft_id=route.draft_id,
             )
         screen_index = self.screen_index(route)
-        if not host._confirm_history_sensitive_navigation(screen_index):
+        if not host.history_protection.confirm_navigation(screen_index):
             self.update_actions()
             return False
         if (
