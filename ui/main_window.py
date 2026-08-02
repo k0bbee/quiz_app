@@ -249,7 +249,9 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(self.SCREEN_HOME)
         self._update_navigation_actions()
         self._task_center_timer = QTimer(self)
-        self._task_center_timer.setInterval(1000)
+        # Refresh immediately on open/language changes; avoid reading persistent
+        # task state every second just to update the global badge.
+        self._task_center_timer.setInterval(2000)
         self._task_center_timer.timeout.connect(self._refresh_task_center_action)
         self._task_center_timer.start()
         if bool(getattr(startup_migration_report, "has_failures", False)):

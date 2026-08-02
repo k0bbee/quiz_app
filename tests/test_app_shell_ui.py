@@ -116,6 +116,7 @@ class AppShellUiTests(unittest.TestCase):
                 )
                 self.assertIs(services.task_center, window.task_center)
                 self.assertIs(services.set_manager, window.progress_screen.set_manager)
+                self.assertEqual(2000, window._task_center_timer.interval())
 
     def test_main_window_lazy_loads_management_workspaces_at_stable_routes(self):
             window = MainWindow()
