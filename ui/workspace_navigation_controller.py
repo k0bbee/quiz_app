@@ -174,8 +174,6 @@ class WorkspaceNavigationController:
             library = host._get_question_bank_screen()
             if route.tab == "sets":
                 library.show_question_sets()
-            elif route.tab == "drafts":
-                library.show_generation_drafts()
             else:
                 library.show_questions()
             library.refresh()

@@ -308,7 +308,6 @@ class MainWindow(QMainWindow):
                 course_manager=self.course_manager,
                 progress_manager=self.progress_manager,
                 task_center=self.task_center,
-                generation_draft_store=self.generation_draft_store,
             )
             self.course_context.sync_question_bank()
             self._question_bank_screen.question_bank_changed.connect(
@@ -325,9 +324,6 @@ class MainWindow(QMainWindow):
             )
             self._question_bank_screen.regenerate_questions.connect(
                 self.question_set_actions.regenerate
-            )
-            self._question_bank_screen.resume_generation_draft.connect(
-                self.generation_flow.resume_draft
             )
             self._install_workspace(
                 self.SCREEN_QUESTION_BANK,

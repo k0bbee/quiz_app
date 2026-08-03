@@ -29,9 +29,7 @@ _VALID_TABS = {
     Workspace.COURSE: frozenset(
         {"overview", "sources", "knowledge", "generation"}
     ),
-    Workspace.LIBRARY: frozenset(
-        {"questions", "sets", "drafts"}
-    ),
+    Workspace.LIBRARY: frozenset({"questions", "sets"}),
     Workspace.FOCUS: frozenset({"quiz", "results"}),
 }
 
