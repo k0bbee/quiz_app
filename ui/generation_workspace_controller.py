@@ -557,24 +557,3 @@ class GenerationWorkspaceController:
                 store.delete(course_id)
         except OSError as exc:
             log_warning(f"Failed to delete generation draft: {exc}")
-
-    def resume_draft(
-        self,
-        course_id: str,
-        _source: str = "",
-        draft_id: str = "",
-    ) -> bool:
-        """Resume the authoritative stored draft in its owning course."""
-        course = self._host.course_manager.get(str(course_id or "").strip())
-        if course is None or getattr(course, "is_archived", False):
-            return False
-        draft = self.draft_by_id(draft_id) if draft_id else self.draft(course.course_id)
-        if draft is None:
-            return False
-        return bool(
-            self.open(
-                course_override=course,
-                draft_source=draft.source,
-                draft_id=draft.draft_id,
-            )
-        )

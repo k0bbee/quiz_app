@@ -206,6 +206,13 @@ class QuestionSetActionControllerTests(unittest.TestCase):
 
 
 class GenerationWorkspaceControllerTests(unittest.TestCase):
+    def test_generation_controller_does_not_keep_unreachable_resume_wrapper(self):
+        host = SimpleNamespace()
+
+        self.assertFalse(
+            hasattr(GenerationWorkspaceController(host), "resume_draft")
+        )
+
     def test_generation_gap_scan_uses_exam_scope_and_question_index(self):
         course = SimpleNamespace(
             course_id="course-1",
