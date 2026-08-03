@@ -3,6 +3,7 @@
 import threading
 
 from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6 import sip
 
 
 class LanguageManager(QObject):
@@ -22,6 +23,12 @@ class LanguageManager(QObject):
 
     @classmethod
     def instance(cls) -> "LanguageManager":
+        if cls._instance is not None:
+            try:
+                if sip.isdeleted(cls._instance):
+                    cls._instance = None
+            except (AttributeError, RuntimeError):
+                cls._instance = None
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:

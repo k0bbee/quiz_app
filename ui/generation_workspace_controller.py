@@ -134,9 +134,54 @@ class GenerationWorkspaceController:
             existing_workspace is not None
             and existing_workspace.generation_widget() is not None
         ):
-            # A generation workspace owns one live surface. Do not create a
-            # second hidden session while the current one is still reviewable;
-            # finish or cancel it first, then start another course's flow.
+            active_widget = existing_workspace.generation_widget()
+            active_course_id = str(
+                getattr(existing_workspace, "course_id", "") or ""
+            ).strip()
+            requested_course_id = str(
+                getattr(course_override, "course_id", "") or ""
+            ).strip()
+            if not requested_course_id:
+                course_manager = getattr(host, "course_manager", None)
+                current_course = (
+                    course_manager.current()
+                    if course_manager is not None
+                    else None
+                )
+                requested_course_id = str(
+                    getattr(current_course, "course_id", "") or ""
+                ).strip()
+            requested_draft_id = str(draft_id or "").strip()
+            active_draft_id = str(
+                getattr(active_widget, "_generation_draft_id", "") or ""
+            ).strip()
+            new_request = bool(
+                initial_plan is not None
+                or recovery_context
+                or str(question_set_title or "").strip()
+                or (requested_draft_id and requested_draft_id != active_draft_id)
+                or (
+                    requested_course_id
+                    and active_course_id
+                    and requested_course_id != active_course_id
+                )
+            )
+            if new_request:
+                gm = host.lang_manager.get_text
+                detail = gm(
+                    "当前已有未完成的生成任务，请先完成审核或取消当前任务，再开始新的生成。",
+                    "A generation task is already active. Finish or cancel it before starting another one.",
+                )
+                host._last_generation_launch_error = detail
+                if present_error:
+                    QMessageBox.warning(
+                        host if isinstance(host, QWidget) else None,
+                        gm("生成任务正在进行", "Generation Already Active"),
+                        detail,
+                    )
+                return False
+            # A generation workspace owns one live surface. Re-entering the
+            # same route only reveals the existing task; it never duplicates it.
             host.navigate_to(
                 host.SCREEN_GENERATION,
                 allow_first_run_redirect=False,

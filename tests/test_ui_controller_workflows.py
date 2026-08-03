@@ -355,7 +355,7 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
             allow_first_run_redirect=False,
         )
 
-    def test_open_does_not_create_a_second_generation_session(self):
+    def test_open_rejects_a_second_generation_session_with_a_clear_error(self):
         workspace = Mock()
         workspace.generation_widget.return_value = SimpleNamespace(
             _generation_draft_id="session-a",
@@ -368,6 +368,10 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
             course_manager=SimpleNamespace(
                 current=lambda: SimpleNamespace(course_id="course-a"),
             ),
+            lang_manager=SimpleNamespace(
+                get_text=lambda zh_text, _en_text: zh_text,
+            ),
+            _last_generation_launch_error="",
         )
 
         controller = GenerationWorkspaceController(host)
@@ -375,15 +379,14 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
             opened = controller.open(
                 initial_plan=ExamGenerationPlan(question_count=4),
                 draft_source="result_reinforcement",
+                present_error=False,
             )
 
-        self.assertTrue(opened)
+        self.assertFalse(opened)
         configure.assert_not_called()
         workspace.show_generation_widget.assert_not_called()
-        host.navigate_to.assert_called_once_with(
-            8,
-            allow_first_run_redirect=False,
-        )
+        host.navigate_to.assert_not_called()
+        self.assertIn("完成审核或取消", host._last_generation_launch_error)
 
     def test_configure_rejects_missing_explicit_draft(self):
         course = SimpleNamespace(course_id="course-a")
@@ -455,7 +458,7 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
         self.assertTrue(host._generation_close_pending)
         dialog.deleteLater.assert_called_once_with()
 
-    def test_open_keeps_the_active_session_when_another_course_is_requested(self):
+    def test_open_rejects_another_course_while_generation_is_active(self):
         workspace = Mock()
         workspace.generation_widget.return_value = object()
         workspace.course_id = "course-a"
@@ -464,16 +467,18 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
             SCREEN_GENERATION=8,
             navigate_to=Mock(return_value=True),
             course_manager=SimpleNamespace(current=lambda: SimpleNamespace(course_id="course-b")),
+            lang_manager=SimpleNamespace(
+                get_text=lambda zh_text, _en_text: zh_text,
+            ),
+            _last_generation_launch_error="",
         )
 
         controller = GenerationWorkspaceController(host)
         with patch.object(controller, "configure") as configure:
-            opened = controller.open()
+            opened = controller.open(present_error=False)
 
-        self.assertTrue(opened)
+        self.assertFalse(opened)
         configure.assert_not_called()
         workspace.show_generation_widget.assert_not_called()
-        host.navigate_to.assert_called_once_with(
-            8,
-            allow_first_run_redirect=False,
-        )
+        host.navigate_to.assert_not_called()
+        self.assertIn("完成审核或取消", host._last_generation_launch_error)
