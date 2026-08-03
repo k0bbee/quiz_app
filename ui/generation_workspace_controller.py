@@ -134,70 +134,14 @@ class GenerationWorkspaceController:
             existing_workspace is not None
             and existing_workspace.generation_widget() is not None
         ):
-            requested_course_id = self._requested_course_id(course_override)
-            active_widget = existing_workspace.generation_widget()
-            existing_course_id = str(
-                getattr(existing_workspace, "course_id", "") or ""
-            ).strip()
-            active_draft_id = str(
-                getattr(active_widget, "_generation_draft_id", "") or ""
-            ).strip()
-            active_source = str(
-                getattr(active_widget, "_draft_source", "") or ""
-            ).strip()
-            requested_draft_id = str(draft_id or "").strip()
-            existing_session_course = ""
-            session_course_id = getattr(
-                existing_workspace,
-                "session_course_id",
-                None,
+            # A generation workspace owns one live surface. Do not create a
+            # second hidden session while the current one is still reviewable;
+            # finish or cancel it first, then start another course's flow.
+            host.navigate_to(
+                host.SCREEN_GENERATION,
+                allow_first_run_redirect=False,
             )
-            if requested_draft_id and callable(session_course_id):
-                existing_session_course = str(
-                    session_course_id(requested_draft_id) or ""
-                ).strip()
-            select_session = getattr(existing_workspace, "select_session", None)
-            if (
-                requested_draft_id
-                and existing_session_course
-                and (
-                    not requested_course_id
-                    or requested_course_id == existing_session_course
-                )
-                and callable(select_session)
-                and select_session(requested_draft_id)
-            ):
-                host.navigate_to(
-                    host.SCREEN_GENERATION,
-                    allow_first_run_redirect=False,
-                )
-                return True
-            new_session_request = (
-                initial_plan is not None
-                or bool(recovery_context)
-                or bool(str(question_set_title or "").strip())
-            )
-            same_course = (
-                not requested_course_id
-                or not existing_course_id
-                or requested_course_id == existing_course_id
-            )
-            same_session = (
-                same_course
-                and requested_draft_id
-                and requested_draft_id == active_draft_id
-            ) or (
-                not requested_draft_id
-                and not new_session_request
-                and same_course
-                and (not active_source or active_source == draft_source)
-            )
-            if same_session:
-                host.navigate_to(
-                    host.SCREEN_GENERATION,
-                    allow_first_run_redirect=False,
-                )
-                return True
+            return True
         configured = self.configure(
             course_override=course_override,
             initial_plan=initial_plan,
@@ -235,7 +179,6 @@ class GenerationWorkspaceController:
             dialog,
             course_id=str(getattr(course_project, "course_id", "") or ""),
             course_title=str(getattr(course_project, "title", "") or ""),
-            draft_id=str(getattr(dialog, "_generation_draft_id", "") or ""),
         )
         host.navigate_to(
             host.SCREEN_GENERATION,
@@ -244,13 +187,6 @@ class GenerationWorkspaceController:
         if auto_start and not restored_draft:
             dialog.start_generation_when_shown()
         return True
-
-    def _requested_course_id(self, course_override=None) -> str:
-        if course_override is not None:
-            return str(getattr(course_override, "course_id", "") or "").strip()
-        course_manager = getattr(self._host, "course_manager", None)
-        current = course_manager.current() if course_manager is not None else None
-        return str(getattr(current, "course_id", "") or "").strip()
 
     def accept(
         self,
@@ -277,7 +213,6 @@ class GenerationWorkspaceController:
                 dialog,
                 course_id=str(getattr(course_project, "course_id", "") or ""),
                 course_title=str(getattr(course_project, "title", "") or ""),
-                draft_id=str(getattr(dialog, "_generation_draft_id", "") or ""),
             )
             return
         workspace.clear_generation_widget(dialog)

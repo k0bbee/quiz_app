@@ -117,49 +117,21 @@ class WorkspaceNavigationController:
         ):
             active_course_id = str(active_generation_workspace.course_id or "").strip()
             requested_course_id = str(route.course_id or "").strip()
-            requested_draft_id = str(route.draft_id or "").strip()
-            session_course_id = getattr(
-                active_generation_workspace, "session_course_id", None
-            )
-            requested_session_course = (
-                str(session_course_id(requested_draft_id) or "").strip()
-                if requested_draft_id and callable(session_course_id)
-                else ""
-            )
-            select_session = getattr(active_generation_workspace, "select_session", None)
-            if (
-                requested_draft_id
-                and requested_session_course
-                and callable(select_session)
-                and (
-                    not requested_course_id
-                    or requested_course_id == requested_session_course
-                )
-                and select_session(requested_draft_id)
-            ):
-                selected_course_id = str(
-                    active_generation_workspace.course_id or ""
-                ).strip()
-                route = Route.course(
-                    selected_course_id,
-                    tab="generation",
-                    draft_id=requested_draft_id,
-                )
-            elif requested_course_id and requested_course_id != active_course_id:
+            if requested_course_id and requested_course_id != active_course_id:
                 requested_course = host.course_manager.get(requested_course_id)
                 if requested_course is None:
                     return False
                 return bool(
                     host.generation_flow.open(
                         course_override=requested_course,
-                        draft_id=requested_draft_id,
+                        draft_id=route.draft_id,
                     )
                 )
             else:
                 route = Route.course(
                     active_course_id,
                     tab="generation",
-                    draft_id=requested_draft_id,
+                    draft_id=route.draft_id,
                 )
         if (
             route.workspace is Workspace.COURSE

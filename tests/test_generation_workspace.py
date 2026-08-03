@@ -12,7 +12,6 @@ from core.generation_session_state import GenerationStage
 from models.course_project import CourseProject, CourseTopic
 from ui.main_window import MainWindow
 from ui.generation_workspace_controller import GenerationWorkspaceController
-from ui.navigation import Route
 from ui.screens.generation_workspace import GenerationWorkspace
 
 
@@ -112,7 +111,7 @@ class GenerationWorkspaceTests(unittest.TestCase):
         self.assertTrue(window._generation_close_pending)
         workspace.request_shutdown.assert_called_once_with()
 
-    def test_switching_sessions_keeps_each_generation_widget_alive(self):
+    def test_showing_new_generation_surface_replaces_existing_surface(self):
         workspace = GenerationWorkspace()
         self.addCleanup(workspace.close)
         first = QLabel("first")
@@ -122,76 +121,18 @@ class GenerationWorkspaceTests(unittest.TestCase):
             first,
             course_id="course-a",
             course_title="课程 A",
-            draft_id="session-a",
         )
         workspace.show_generation_widget(
             second,
             course_id="course-b",
             course_title="课程 B",
-            draft_id="session-b",
-        )
-
-        self.assertEqual(2, workspace.session_selector.count())
-        self.assertIs(second, workspace.generation_widget())
-        workspace.session_selector.setCurrentIndex(0)
-        self.assertIs(first, workspace.generation_widget())
-        self.assertEqual("course-a", workspace.course_id)
-        self.assertIsNotNone(first.parent())
-        self.assertIsNotNone(second.parent())
-
-    def test_generation_route_selects_explicit_session_when_workspace_is_active(self):
-        window = MainWindow()
-        self.addCleanup(window.close)
-        first_course = CourseProject(
-            course_id="course-a",
-            title="课程 A",
-            source_folder="",
-            summary_markdown="# A",
-            summary_path="",
-            topics=[CourseTopic("a", "A")],
-            documents=[],
-            created_at="2026-01-01T00:00:00+00:00",
-            updated_at="2026-01-01T00:00:00+00:00",
-        )
-        second_course = CourseProject(
-            course_id="course-b",
-            title="课程 B",
-            source_folder="",
-            summary_markdown="# B",
-            summary_path="",
-            topics=[CourseTopic("b", "B")],
-            documents=[],
-            created_at="2026-01-01T00:00:00+00:00",
-            updated_at="2026-01-01T00:00:00+00:00",
-        )
-        window.course_manager.save(first_course)
-        window.course_manager.save(second_course, make_current=False)
-        workspace = window._get_generation_workspace()
-        first = QLabel("first")
-        second = QLabel("second")
-        workspace.show_generation_widget(
-            first,
-            course_id="course-a",
-            course_title="课程 A",
-            draft_id="session-a",
-        )
-        workspace.show_generation_widget(
-            second,
-            course_id="course-b",
-            course_title="课程 B",
-            draft_id="session-b",
-        )
-        workspace.select_session("session-a")
-
-        self.assertTrue(
-            window.navigate_route(
-                Route.course("course-b", tab="generation", draft_id="session-b"),
-                allow_first_run_redirect=False,
-            )
         )
 
         self.assertIs(second, workspace.generation_widget())
         self.assertEqual("course-b", workspace.course_id)
+        self.assertEqual(1, workspace.generation_host.count())
+        self.assertIsNone(first.parent())
+        self.assertIsNotNone(second.parent())
 
 
 if __name__ == "__main__":
