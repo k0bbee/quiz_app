@@ -1,0 +1,42 @@
+name: Sandbox export
+
+on:
+  push:
+    branches:
+      - sandbox-export-20260803
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Download PyQt6 wheels
+        run: |
+          python -m pip install --upgrade pip
+          mkdir -p wheelhouse
+          python -m pip download --only-binary=:all: --dest wheelhouse 'PyQt6==6.10.2'
+
+      - name: Package source
+        run: |
+          zip -qr quiz_app-source.zip . -x '.git/*' 'wheelhouse/*' 'quiz_app-source.zip'
+          ls -lh quiz_app-source.zip wheelhouse/*
+
+      - name: Upload sandbox bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-quiz-app
+          path: |
+            quiz_app-source.zip
+            wheelhouse/
+          compression-level: 0
+          retention-days: 1
