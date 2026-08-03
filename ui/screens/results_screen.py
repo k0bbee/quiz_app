@@ -152,7 +152,7 @@ class ResultsScreen(QWidget):
                 self.lang_manager.current,
                 study_intent=self.current_study_intent,
             )
-            self.set_retry_availability(retry_question_ids, can_retry_all=False)
+            self.set_retry_availability(retry_question_ids)
 
     def set_results(
         self,
@@ -304,10 +304,8 @@ class ResultsScreen(QWidget):
     def set_retry_availability(
         self,
         question_ids,
-        *,
-        can_retry_all: bool,
     ) -> None:
-        """Update retry actions without discarding the archived result display."""
+        """Update the single wrong-answer action without discarding history."""
         self._retry_question_ids = {
             str(question_id or "").strip()
             for question_id in (question_ids or ())

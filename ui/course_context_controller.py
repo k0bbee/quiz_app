@@ -41,17 +41,8 @@ class CourseContextController:
             answer_ids,
             course_id=self.current_course_id(),
         )
-        question_set = (
-            host.set_manager.get(record.set_id) if record.set_id else None
-        )
-        set_questions = (
-            host.question_bank.get_many(question_set.questions)
-            if question_set is not None
-            else []
-        )
         host.results_screen.set_retry_availability(
             [question.question_id for question in available],
-            can_retry_all=bool(question_set is not None and set_questions),
         )
 
     def generation_context(self) -> tuple[str, list, object]:

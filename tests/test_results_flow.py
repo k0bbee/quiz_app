@@ -285,7 +285,7 @@ class ResultsFlowTests(unittest.TestCase):
             screen.set_results(record, {question.question_id: question}, "zh")
             self.assertTrue(screen.retry_incorrect_btn.isEnabled())
 
-            screen.set_retry_availability([], can_retry_all=False)
+            screen.set_retry_availability([])
 
             self.assertFalse(screen.retry_incorrect_btn.isEnabled())
             self.assertIn("原题已不可用", screen.retry_incorrect_btn.toolTip())
@@ -325,7 +325,7 @@ class ResultsFlowTests(unittest.TestCase):
             screen = self._make_results_screen()
 
             screen.set_results(record, {}, "zh")
-            screen.set_retry_availability([], can_retry_all=False)
+            screen.set_retry_availability([])
 
             card = screen.review_layout.itemAt(0).widget()
             self.assertEqual("哪种方式由设备主动通知 CPU？", card.stem_label.text())
@@ -425,7 +425,7 @@ class ResultsFlowTests(unittest.TestCase):
             screen = self._make_results_screen()
 
             screen.set_results(record, {"q-missing": live_question}, "zh")
-            screen.set_retry_availability([], can_retry_all=False)
+            screen.set_retry_availability([])
 
             card = screen.review_layout.itemAt(0).widget()
             self.assertIn("题目 q-missing", card.stem_label.text())
