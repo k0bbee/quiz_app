@@ -297,7 +297,6 @@ class CourseScreen(QWidget):
         self.archived_action_layout = QHBoxLayout()
         self.archived_action_layout.setSpacing(6)
         self.archived_action_layout.addWidget(self.restore_course_btn)
-        self.archived_action_layout.addWidget(self.view_course_library_btn)
         self.archived_action_layout.addWidget(self.delete_archived_course_btn)
         self.left_layout.addLayout(self.archived_action_layout)
 
@@ -306,6 +305,7 @@ class CourseScreen(QWidget):
         self.set_current_btn.setObjectName("secondaryButton")
         self.set_current_btn.clicked.connect(self._set_current)
         self.course_action_layout.addWidget(self.set_current_btn)
+        self.course_action_layout.addWidget(self.view_course_library_btn)
         self.scope_btn = QPushButton(self.lang_manager.get_text("考试范围", "Exam Scope"))
         self.scope_btn.setObjectName("secondaryButton")
         self.scope_btn.clicked.connect(self._edit_exam_scope)
@@ -638,9 +638,7 @@ class CourseScreen(QWidget):
         # to old signal-level callers without exposing a duplicate entry.
         self.generate_questions_btn.setVisible(False)
         self.restore_course_btn.setVisible(not active_scope and not is_empty)
-        self.view_course_library_btn.setVisible(
-            not active_scope and not is_empty
-        )
+        self.view_course_library_btn.setVisible(not is_empty)
         self.delete_archived_course_btn.setVisible(
             not active_scope and not is_empty
         )
@@ -1147,7 +1145,7 @@ class CourseScreen(QWidget):
             not archived and (not active or active.course_id != course_id)
         )
         self.restore_course_btn.setEnabled(archived)
-        self.view_course_library_btn.setEnabled(archived)
+        self.view_course_library_btn.setEnabled(True)
         self.delete_archived_course_btn.setEnabled(archived)
         self.generate_questions_btn.setEnabled(not archived)
         self.scope_btn.setEnabled(not archived)
