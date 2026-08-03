@@ -197,6 +197,16 @@ class QuestionBankScreen(QWidget):
         filter_row.addWidget(self.backfill_source_refs_btn)
         layout.addLayout(filter_row)
 
+        list_actions_row = QHBoxLayout()
+        self.new_btn = QPushButton(
+            self.lang_manager.get_text("新建题目", "New Question")
+        )
+        self.new_btn.setObjectName("secondaryButton")
+        self.new_btn.clicked.connect(self._new_question)
+        list_actions_row.addWidget(self.new_btn)
+        list_actions_row.addStretch(1)
+        layout.addLayout(list_actions_row)
+
         quality_scan_row = QHBoxLayout()
         self.quality_scan_status_label = QLabel("")
         self.quality_scan_status_label.setObjectName("secondaryText")
@@ -264,7 +274,32 @@ class QuestionBankScreen(QWidget):
         self.question_table.doubleClicked.connect(
             lambda _index: self._open_responsive_inspector()
         )
-        left_layout.addWidget(self.question_table, 1)
+        self.question_list_stack = QStackedWidget()
+        self.question_list_stack.addWidget(self.question_table)
+        self.empty_state_panel = QWidget()
+        empty_state_layout = QVBoxLayout(self.empty_state_panel)
+        empty_state_layout.addStretch(1)
+        self.empty_state_label = QLabel(
+            self.lang_manager.get_text(
+                "题库中还没有题目。",
+                "There are no questions in this bank yet.",
+            )
+        )
+        self.empty_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_state_label.setWordWrap(True)
+        empty_state_layout.addWidget(self.empty_state_label)
+        self.empty_create_btn = QPushButton(
+            self.lang_manager.get_text("创建第一道题", "Create First Question")
+        )
+        self.empty_create_btn.setObjectName("primaryButton")
+        self.empty_create_btn.clicked.connect(self._new_question)
+        empty_state_layout.addWidget(
+            self.empty_create_btn,
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
+        empty_state_layout.addStretch(1)
+        self.question_list_stack.addWidget(self.empty_state_panel)
+        left_layout.addWidget(self.question_list_stack, 1)
 
         page_row = QHBoxLayout()
         self.prev_btn = QPushButton(self.lang_manager.get_text("上一页", "Prev"))
@@ -316,10 +351,6 @@ class QuestionBankScreen(QWidget):
         self._update_editor_mode_button()
 
         action_row = QHBoxLayout()
-        self.new_btn = QPushButton(self.lang_manager.get_text("新建", "New"))
-        self.new_btn.setObjectName("secondaryButton")
-        self.new_btn.clicked.connect(self._new_question)
-        action_row.addWidget(self.new_btn)
         self.save_btn = QPushButton(self.lang_manager.get_text("保存", "Save"))
         self.save_btn.setObjectName("primaryButton")
         self.save_btn.clicked.connect(self._save_question)
@@ -399,7 +430,18 @@ class QuestionBankScreen(QWidget):
         self.inspector_back_btn.setText(
             self.lang_manager.get_text("返回题目列表", "Back to Questions")
         )
-        self.new_btn.setText(self.lang_manager.get_text("新建", "New"))
+        self.new_btn.setText(
+            self.lang_manager.get_text("新建题目", "New Question")
+        )
+        self.empty_state_label.setText(
+            self.lang_manager.get_text(
+                "题库中还没有题目。",
+                "There are no questions in this bank yet.",
+            )
+        )
+        self.empty_create_btn.setText(
+            self.lang_manager.get_text("创建第一道题", "Create First Question")
+        )
         self.save_btn.setText(self.lang_manager.get_text("保存", "Save"))
         self.delete_btn.setText(self.lang_manager.get_text("删除", "Delete"))
         self.backfill_source_refs_btn.setText(
@@ -463,6 +505,11 @@ class QuestionBankScreen(QWidget):
         with QSignalBlocker(selection_model):
             self.question_table_model.set_rows(
                 [self._question_table_row(question) for question in items]
+            )
+            self.question_list_stack.setCurrentWidget(
+                self.question_table
+                if self.question_table_model.rowCount() > 0
+                else self.empty_state_panel
             )
             for question_id in selected_ids:
                 row = self.question_table_model.row_for_question_id(question_id)
@@ -634,6 +681,8 @@ class QuestionBankScreen(QWidget):
         self._update_editor_mode_button()
         self.save_btn.setEnabled(True)
         self.delete_btn.setEnabled(False)
+        if self.width() < 1100:
+            self._open_responsive_inspector()
 
     def _save_question(self):
         try:

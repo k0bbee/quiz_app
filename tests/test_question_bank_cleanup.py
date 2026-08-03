@@ -124,6 +124,25 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertFalse(screen.question_list_panel.isHidden())
             self.assertTrue(screen.inspector_panel.isHidden())
 
+    def test_narrow_empty_library_exposes_create_first_question(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
+            screen = self._screen(tmpdir, question_bank)
+            self.addCleanup(screen.close)
+            screen.setFixedWidth(900)
+            screen.resize(900, 680)
+            screen.show()
+            _APP.processEvents()
+
+            self.assertTrue(screen.new_btn.isVisible())
+            self.assertTrue(screen.empty_create_btn.isVisible())
+            screen.empty_create_btn.click()
+
+            self.assertTrue(screen._responsive_inspector_open)
+            self.assertFalse(screen.inspector_panel.isHidden())
+            self.assertTrue(screen.save_btn.isEnabled())
+            self.assertIs(screen.detail_stack.currentWidget(), screen.form_editor)
+
     def _set(self, set_id: str, question_ids: list[str]) -> QuestionSet:
         return QuestionSet(
             set_id=set_id,
