@@ -20,7 +20,6 @@ from core.quiz_snapshot_manager import QuizSnapshotManager
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
-from core.background_task_recovery import generation_plan_from_task_metadata
 from ui.main_window import MainWindow
 from ui.navigation import Route
 from ui.screens.course_screen import CourseScreen
@@ -144,6 +143,12 @@ class AppShellUiTests(unittest.TestCase):
 
         self.assertIsNotNone(window._settings_window)
         self.assertIs(window._settings_window.screen, window.settings_screen)
+
+    def test_main_window_does_not_keep_unreachable_task_recovery_controller(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+
+        self.assertFalse(hasattr(window, "task_recovery"))
 
     def test_progress_dashboard_is_created_only_when_opened(self):
         window = MainWindow()
@@ -438,71 +443,6 @@ class AppShellUiTests(unittest.TestCase):
                 "Historical Exams",
                 [button.text() for button in main_window.app_shell.context_tabs()],
             )
-
-    def test_main_window_routes_context_actions_to_existing_flows(self):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                main_window = MainWindow()
-                generate = Mock()
-                main_window.generation_flow.open = generate
-                self.addCleanup(main_window.close)
-                self.addCleanup(main_window.lang_manager.set_language, "zh")
-                import_center = BackgroundTaskCenter(Path(tmpdir) / "import-tasks.json")
-                import_task = import_center.create(
-                    kind="course_import",
-                    title="Import Physics",
-                    metadata={
-                        "source_folder": "C:/courses/physics",
-                        "course_title": "Physics",
-                    },
-                )
-                import_center.fail(import_task.task_id, "application closed")
-                main_window.task_center = import_center
-                main_window.task_recovery.task_center = import_center
-
-                reopened = main_window.task_recovery.restore(import_task.task_id)
-
-                self.assertTrue(reopened)
-                self.assertEqual(main_window.SCREEN_COURSES, main_window.stack.currentIndex())
-                self.assertEqual("C:/courses/physics", main_window._course_screen.folder_input.text())
-                self.assertEqual("Physics", main_window._course_screen.title_input.text())
-                self.assertFalse(main_window._course_screen.import_group.isHidden())
-
-                main_window._get_course_screen().generate_questions_requested.emit(
-                    "course-a"
-                )
-                generate.assert_called_once_with()
-
-    def test_generation_task_recovery_rebuilds_the_confirmed_exam_plan(self):
-            metadata = {
-                "requested_count": 12,
-                "topic_ids": ["cache"],
-                "exam_plan": {
-                    "question_count": 12,
-                    "difficulty": "mixed",
-                    "template": "final_exam",
-                    "selected_topics": ["cache"],
-                    "question_type_weights": {
-                        "multiple_choice": 50,
-                        "scenario_choice": 20,
-                        "true_false": 10,
-                        "fill_in_blank": 10,
-                        "matching": 5,
-                        "ordering": 5,
-                        "short_answer": 0,
-                    },
-                    "difficulty_weights": {"easy": 20, "medium": 50, "hard": 30},
-                    "topic_weights": {"cache": 100},
-                },
-            }
-
-            plan = generation_plan_from_task_metadata(metadata)
-
-            self.assertEqual(12, plan.question_count)
-            self.assertEqual("mixed", plan.difficulty)
-            self.assertEqual("final_exam", plan.template)
-            self.assertEqual(("cache",), plan.selected_topics)
-            self.assertEqual(50, plan.question_type_weights["multiple_choice"])
-            self.assertEqual(100, plan.topic_weights["cache"])
 
     def test_focus_mode_navigation_guards_active_quiz_and_restores_shell(self):
             main_window = MainWindow()

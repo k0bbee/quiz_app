@@ -17,7 +17,6 @@ from ui.history_protection_controller import HistoryProtectionController
 from ui.question_set_action_controller import QuestionSetActionController
 from ui.result_flow_controller import ResultFlowController
 from ui.study_flow_controller import StudyFlowController
-from ui.task_recovery_controller import TaskRecoveryController
 from ui.workspace_navigation_controller import WorkspaceNavigationController
 from ui.navigation import (
     NavigationRouter,
@@ -185,22 +184,6 @@ class MainWindow(QMainWindow):
             generate_questions=self.generation_flow.open,
             show_timer=self._show_timer_setting,
         )
-        self.task_recovery = TaskRecoveryController(
-            task_center=self.task_center,
-            course_manager=self.course_manager,
-            current_language=lambda: self.lang_manager.current,
-            navigate=lambda screen_index: self.navigate_to(
-                screen_index,
-                allow_first_run_redirect=False,
-            ),
-            open_settings=self.open_settings,
-            course_changed=self.course_context.course_changed,
-            get_course_screen=self._get_course_screen,
-            generate_questions=self.generation_flow.open,
-            courses_screen_index=self.SCREEN_COURSES,
-            question_bank_screen_index=self.SCREEN_QUESTION_BANK,
-        )
-
         # Keep the shell free of duplicate menu navigation.
         self.menuBar().setFocusPolicy(Qt.FocusPolicy.NoFocus)
 

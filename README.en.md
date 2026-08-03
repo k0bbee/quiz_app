@@ -49,7 +49,7 @@ python scripts/check_environment.py --json
 | Home | A transparent next-action recommendation based on unfinished drafts, incorrect answers, weak topics, available question sets, and imported courses |
 | Course management | Multi-file course import, safe cancellation, summaries, stable topics, course renaming, exam-scope configuration, and source navigation |
 | Question generation | Stream accepted questions one at a time, validate plan slots and source references, accept additional instructions while generation is running, and safely preserve partial results on cancellation |
-| Background tasks | Show long-running task stages and failures; Open Task Page only navigates, orphaned tasks become interrupted after restart, and Retry restores validated inputs only when recovery metadata is complete |
+| Background tasks | Show long-running task stages, cancellation state, and failures; imports, generation, and quality scans can be stopped safely from their current page without restoring stale task inputs |
 | Question types | Multiple choice, true/false, scenario choice, matching, ordering, fill-in-the-blank, and short answer |
 | Question bank | Search and filter by set, topic, difficulty, and quality; create or edit every question type; multi-select and batch-delete questions |
 | Question sets | Rename sets, select multiple topics, create random practice sets, regenerate questions, and export one or more mock exams as UTF-8 Markdown |

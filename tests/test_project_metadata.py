@@ -33,21 +33,17 @@ class ProjectMetadataTests(unittest.TestCase):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, readme)
 
-    def test_readmes_document_opt_in_network_and_safe_task_recovery(self):
+    def test_readmes_document_in_page_task_cancellation(self):
         chinese = Path("README.md").read_text(encoding="utf-8")
         english = Path("README.en.md").read_text(encoding="utf-8")
         contracts = (
+            ("task_cancellation", chinese, ("当前页面安全停止", "不自动恢复旧任务输入")),
             (
-                "task_recovery",
-                chinese,
-                ("“打开任务页面”只导航", "只有恢复字段完整时"),
-            ),
-            (
-                "task_recovery",
+                "task_cancellation",
                 english,
                 (
-                    "Open Task Page only navigates",
-                    "recovery metadata is complete",
+                    "can be stopped safely from their current page",
+                    "without restoring stale task inputs",
                 ),
             ),
         )
