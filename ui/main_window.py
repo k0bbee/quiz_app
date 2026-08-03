@@ -487,7 +487,7 @@ class MainWindow(QMainWindow):
             self._on_first_run_cancel
         )
         self.first_run_screen.restore_courses_requested.connect(
-            self._open_archived_courses
+            self.first_run.open_archived_courses
         )
         self.settings_screen.settings_saved.connect(
             self._on_first_run_settings_saved
@@ -640,12 +640,6 @@ class MainWindow(QMainWindow):
 
     def _first_run_required(self) -> bool:
         return self.first_run.required()
-
-    def _archived_course_count(self) -> int:
-        return self.first_run.archived_course_count()
-
-    def _open_archived_courses(self) -> None:
-        self.first_run.open_archived_courses()
 
     def _refresh_first_run(self) -> None:
         self.first_run.refresh()

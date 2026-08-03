@@ -101,7 +101,7 @@ class WorkspaceNavigationController:
             and route.workspace is Workspace.COURSE
             and route.tab != "generation"
             and host._course_screen is None
-            and host._archived_course_count() <= 0
+            and host.first_run.archived_course_count() <= 0
             and not self._has_active_courses()
         ):
             route = Route.study("today")
