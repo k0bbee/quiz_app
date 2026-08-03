@@ -3,31 +3,23 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
-import main as main_module
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtGui import QCloseEvent, QPalette
+from PyQt6.QtGui import QPalette
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QCheckBox, QFormLayout, QHBoxLayout, QLabel, QListWidget, QMessageBox, QPushButton, QSplitter, QTextEdit, QWidget
+from PyQt6.QtWidgets import QApplication, QCheckBox, QPushButton, QTextEdit
 
 from core.language_manager import LanguageManager
-from core.background_task_center import BackgroundTaskCenter
-from core.current_events import CurrentEventMaterialManager
 from core.progress_tracker import ProgressManager
 from core.mastery_overrides import MasteryOverrideStore
-from core.quiz_snapshot_manager import QuizSnapshotManager
-from models.course_project import CourseProject, CourseProjectManager, CourseTopic
-from models.past_exam import PastExamManager
+from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
-from models.question_set import QuestionSet, SetManager
-from core.background_task_recovery import generation_plan_from_task_metadata
+from models.question_set import SetManager
 from ui.application_style import apply_dark_palette as _apply_dark_palette, load_stylesheet
 from ui.main_window import MainWindow
-from ui.navigation import Route
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from ui.dialogs.question_review_dialog import QuestionReviewDialog
 from ui.screens.course_screen import CourseScreen
@@ -39,7 +31,7 @@ from ui.screens.results_screen import ResultsScreen
 from ui.screens.settings_screen import SettingsScreen
 from ui.screens.topic_selection_screen import TopicSelectionScreen
 from ui.widgets.answer_area import OrderingWidget
-from utils.constants import Difficulty, QuestionType, topic_label
+from utils.constants import Difficulty, QuestionType
 
 
 _APP = QApplication.instance() or QApplication([])
