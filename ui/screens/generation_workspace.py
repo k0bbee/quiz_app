@@ -273,7 +273,7 @@ class GenerationWorkspace(QWidget):
             gm("1 计划", "1 Plan"),
             gm("2 生成", "2 Generate"),
             gm("3 审核", "3 Review"),
-            gm("4 发布", "4 Publish"),
+            gm("4 保存", "4 Save"),
         )
         for label, text in zip(self.stage_labels, labels):
             label.setText(text)
