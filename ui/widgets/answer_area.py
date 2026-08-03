@@ -131,6 +131,26 @@ class AnswerArea(QWidget):
         elif qtype == QuestionType.SHORT_ANSWER:
             self.stack.setCurrentWidget(self.short_widget)
             self.short_widget.set_answer(previous_answer)
+        self.updateGeometry()
+
+    def sizeHint(self):
+        """Size the container from the visible answer control only.
+
+        ``QStackedWidget`` normally reports the largest child size, which
+        leaves short questions reserving room for hidden matching/ordering
+        controls.  The quiz layout should follow the active question type.
+        """
+        current = self.stack.currentWidget()
+        return current.sizeHint() if current is not None else super().sizeHint()
+
+    def minimumSizeHint(self):
+        """Keep minimum height aligned with the visible answer control."""
+        current = self.stack.currentWidget()
+        return (
+            current.minimumSizeHint()
+            if current is not None
+            else super().minimumSizeHint()
+        )
 
     def get_answer(self) -> object:
         """Get the current answer from the active widget."""

@@ -31,7 +31,8 @@ from ui.screens.question_bank_screen import QuestionBankScreen
 from ui.screens.quiz_screen import QuizScreen
 from ui.screens.settings_screen import SettingsScreen
 from ui.screens.topic_selection_screen import TopicSelectionScreen
-from utils.constants import topic_label
+from ui.widgets.answer_area import AnswerArea
+from utils.constants import QuestionType, topic_label
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -342,6 +343,10 @@ class WorkspaceLayoutTests(unittest.TestCase):
                 Qt.Orientation.Vertical,
                 quiz.practice_splitter.orientation(),
             )
+            self.assertEqual(
+                QSizePolicy.Policy.Maximum,
+                quiz.practice_splitter.sizePolicy().verticalPolicy(),
+            )
             self.assertEqual(0, quiz.practice_card.minimumWidth())
 
             quiz.resize(1280, 720)
@@ -349,4 +354,38 @@ class WorkspaceLayoutTests(unittest.TestCase):
             self.assertEqual(
                 Qt.Orientation.Horizontal,
                 quiz.question_answer_splitter.orientation(),
+            )
+            self.assertEqual(
+                QSizePolicy.Policy.Maximum,
+                quiz.practice_splitter.sizePolicy().verticalPolicy(),
+            )
+
+    def test_quiz_content_is_centered_when_shorter_than_viewport(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                quiz = QuizScreen(
+                    QuestionBank(str(Path(tmpdir) / "questions")),
+                    ProgressManager(str(Path(tmpdir) / "progress")),
+                )
+
+            self.assertEqual(
+                Qt.AlignmentFlag.AlignVCenter,
+                quiz.practice_content_layout.alignment(),
+            )
+            self.assertEqual(
+                0,
+                quiz.practice_layout.stretch(
+                    quiz.practice_layout.indexOf(quiz.question_answer_splitter)
+                ),
+            )
+
+    def test_answer_area_uses_current_question_type_height(self):
+            answer_area = AnswerArea()
+            answer_area.set_question_type(
+                QuestionType.MULTIPLE_CHOICE,
+                ["A. one", "B. two"],
+            )
+
+            self.assertLess(
+                answer_area.sizeHint().height(),
+                answer_area.stack.sizeHint().height(),
             )

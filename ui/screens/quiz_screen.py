@@ -5,7 +5,8 @@ from html import escape as html_escape
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QProgressBar, QFrame, QScrollArea, QMessageBox,
-    QListWidget, QListWidgetItem, QSplitter, QCheckBox, QDialog, QButtonGroup
+    QListWidget, QListWidgetItem, QSplitter, QCheckBox, QDialog, QButtonGroup,
+    QSizePolicy,
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
@@ -151,6 +152,8 @@ class QuizScreen(QWidget):
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(0, 8, 0, 8)
+        scroll_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        self.practice_content_layout = scroll_layout
 
         self.practice_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.practice_splitter.setObjectName("quizPracticeSplitter")
@@ -172,6 +175,7 @@ class QuizScreen(QWidget):
         self.practice_card.setMinimumWidth(0)
         self.practice_card.setMaximumWidth(16_777_215)
         practice_layout = QVBoxLayout(self.practice_card)
+        self.practice_layout = practice_layout
         practice_layout.setContentsMargins(16, 16, 16, 16)
         practice_layout.setSpacing(12)
 
@@ -226,7 +230,7 @@ class QuizScreen(QWidget):
         self.question_answer_splitter.setStretchFactor(0, 1)
         self.question_answer_splitter.setStretchFactor(1, 1)
         self.question_answer_splitter.setSizes([560, 520])
-        practice_layout.addWidget(self.question_answer_splitter, 1)
+        practice_layout.addWidget(self.question_answer_splitter)
 
         # === Feedback frame (shown after submit, inside the main scroll content) ===
         self.feedback_frame = QFrame()
@@ -301,7 +305,6 @@ class QuizScreen(QWidget):
         self.practice_splitter.setSizes([280, 860])
         self.preview_pane.hide()
         scroll_layout.addWidget(self.practice_splitter)
-        scroll_layout.addStretch()
 
         self.practice_scroll.setWidget(scroll_content)
         layout.addWidget(self.practice_scroll, 1)
@@ -337,6 +340,15 @@ class QuizScreen(QWidget):
             self.preview_pane.setMinimumWidth(240)
             self.preview_pane.setMaximumWidth(340)
             self.preview_pane.setMaximumHeight(16_777_215)
+
+        self.practice_splitter.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum,
+        )
+        self.question_answer_splitter.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum,
+        )
 
     def _setup_shortcuts(self):
         """Register keyboard shortcuts for fast practice."""
