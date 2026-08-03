@@ -250,7 +250,6 @@ class QuizScreen(QWidget):
         fb_layout.addWidget(self.explanation_label)
 
         self.feedback_frame.hide()
-        practice_layout.addWidget(self.feedback_frame)
 
         # === Action buttons ===
         action_layout = QHBoxLayout()
@@ -297,6 +296,9 @@ class QuizScreen(QWidget):
         self.shortcut_hint_label.setWordWrap(False)
         practice_layout.addWidget(self.shortcut_hint_label)
         self._refresh_quiz_hints()
+        # Keep feedback below the navigation controls so grading does not
+        # move the primary previous/next actions while the user is reading.
+        practice_layout.addWidget(self.feedback_frame)
 
         self.practice_splitter.addWidget(self.preview_pane)
         self.practice_splitter.addWidget(self.practice_card)

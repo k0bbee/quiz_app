@@ -377,6 +377,10 @@ class WorkspaceLayoutTests(unittest.TestCase):
                     quiz.practice_layout.indexOf(quiz.question_answer_splitter)
                 ),
             )
+            self.assertGreater(
+                quiz.practice_layout.indexOf(quiz.feedback_frame),
+                quiz.practice_layout.indexOf(quiz.shortcut_hint_label),
+            )
 
     def test_answer_area_uses_current_question_type_height(self):
             answer_area = AnswerArea()
