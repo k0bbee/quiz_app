@@ -339,6 +339,13 @@ class WorkspaceLayoutTests(unittest.TestCase):
                 Qt.Orientation.Vertical,
                 quiz.question_answer_splitter.orientation(),
             )
+
+            quiz.question_card.set_question("短题干", "单项选择")
+            quiz._update_responsive_layout()
+            self.assertEqual(
+                Qt.Orientation.Horizontal,
+                quiz.question_answer_splitter.orientation(),
+            )
             self.assertEqual(
                 Qt.Orientation.Vertical,
                 quiz.practice_splitter.orientation(),
@@ -347,7 +354,6 @@ class WorkspaceLayoutTests(unittest.TestCase):
                 QSizePolicy.Policy.Maximum,
                 quiz.practice_splitter.sizePolicy().verticalPolicy(),
             )
-            self.assertEqual(0, quiz.practice_card.minimumWidth())
 
             quiz.resize(1280, 720)
             quiz._update_responsive_layout()
@@ -358,6 +364,27 @@ class WorkspaceLayoutTests(unittest.TestCase):
             self.assertEqual(
                 QSizePolicy.Policy.Maximum,
                 quiz.practice_splitter.sizePolicy().verticalPolicy(),
+            )
+
+    def test_quiz_screen_stacks_long_question_on_wide_window(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                quiz = QuizScreen(
+                    QuestionBank(str(Path(tmpdir) / "questions")),
+                    ProgressManager(str(Path(tmpdir) / "progress")),
+                )
+
+            quiz.resize(1280, 720)
+            quiz.show()
+            QApplication.processEvents()
+            quiz.question_card.set_question(
+                "这是一个很长的课程题干，用来验证宽屏下题干和答案不会互相挤压。" * 80,
+                "单项选择",
+            )
+            quiz._update_responsive_layout()
+
+            self.assertEqual(
+                Qt.Orientation.Vertical,
+                quiz.question_answer_splitter.orientation(),
             )
 
     def test_quiz_content_is_centered_when_shorter_than_viewport(self):

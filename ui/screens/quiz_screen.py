@@ -326,13 +326,16 @@ class QuizScreen(QWidget):
     def _update_responsive_layout(self) -> None:
         """Stack answer panes when horizontal space is scarce."""
         is_narrow = self.width() < self._NARROW_LAYOUT_WIDTH
+        content_requires_vertical = self._question_requires_vertical_layout()
         desired_orientation = (
             Qt.Orientation.Vertical if is_narrow else Qt.Orientation.Horizontal
         )
+        if content_requires_vertical:
+            desired_orientation = Qt.Orientation.Vertical
         if self.question_answer_splitter.orientation() != desired_orientation:
             self.question_answer_splitter.setOrientation(desired_orientation)
             self.practice_splitter.setOrientation(desired_orientation)
-            if is_narrow:
+            if is_narrow or content_requires_vertical:
                 self.question_answer_splitter.setSizes([1, 1])
                 self.practice_splitter.setSizes([1, 1])
             else:
@@ -357,6 +360,24 @@ class QuizScreen(QWidget):
             QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Maximum,
         )
+
+    def _question_requires_vertical_layout(self) -> bool:
+        """Use stacked panes when a long stem would dominate a split pane."""
+        stem = self.question_card.stem_label.text().strip()
+        if not stem:
+            return False
+        # Estimate wrapped lines using the desktop split width rather than
+        # the current widget width, so switching orientation does not oscillate.
+        available_width = max(360, min(560, self.width() // 2 - 48))
+        metrics = self.question_card.stem_label.fontMetrics()
+        estimated_lines = 0
+        for line in stem.splitlines() or (stem,):
+            line_width = metrics.horizontalAdvance(line)
+            estimated_lines += max(
+                1,
+                (line_width + available_width - 1) // available_width,
+            )
+        return estimated_lines >= 8
 
     def _setup_shortcuts(self):
         """Register keyboard shortcuts for fast practice."""
@@ -545,6 +566,7 @@ class QuizScreen(QWidget):
 
         self.question_card.set_question(stem, type_label)
         self.answer_area.set_question_type(q.type, options, preserve_answer=preserve_answer)
+        self._update_responsive_layout()
 
         submitted_answer = self.session.answer_for_question_id(q.question_id)
         if self.submission_mode == "practice" and submitted_answer is not None:
