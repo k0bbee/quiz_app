@@ -29,6 +29,8 @@ from ui.dialogs.short_answer_assessment_dialog import ShortAnswerAssessmentDialo
 class QuizScreen(QWidget):
     """Main quiz-taking screen with question, answer area, and feedback."""
 
+    _NARROW_LAYOUT_WIDTH = 1000
+
     quiz_finished = pyqtSignal(object)  # ProgressRecord
     return_home = pyqtSignal()
 
@@ -165,8 +167,10 @@ class QuizScreen(QWidget):
 
         self.practice_card = QFrame()
         self.practice_card.setObjectName("quizPracticeCard")
-        self.practice_card.setMinimumWidth(560)
-        self.practice_card.setMaximumWidth(1180)
+        # Allow the card to shrink with the window; fixed desktop widths made
+        # the question and answer panes overflow the default 900x680 window.
+        self.practice_card.setMinimumWidth(0)
+        self.practice_card.setMaximumWidth(16_777_215)
         practice_layout = QVBoxLayout(self.practice_card)
         practice_layout.setContentsMargins(16, 16, 16, 16)
         practice_layout.setSpacing(12)
@@ -301,6 +305,38 @@ class QuizScreen(QWidget):
 
         self.practice_scroll.setWidget(scroll_content)
         layout.addWidget(self.practice_scroll, 1)
+        self._update_responsive_layout()
+
+    def resizeEvent(self, event):
+        """Keep the answer workspace usable when the window becomes narrow."""
+        super().resizeEvent(event)
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(self) -> None:
+        """Stack answer panes when horizontal space is scarce."""
+        is_narrow = self.width() < self._NARROW_LAYOUT_WIDTH
+        desired_orientation = (
+            Qt.Orientation.Vertical if is_narrow else Qt.Orientation.Horizontal
+        )
+        if self.question_answer_splitter.orientation() != desired_orientation:
+            self.question_answer_splitter.setOrientation(desired_orientation)
+            self.practice_splitter.setOrientation(desired_orientation)
+            if is_narrow:
+                self.question_answer_splitter.setSizes([1, 1])
+                self.practice_splitter.setSizes([1, 1])
+            else:
+                self.question_answer_splitter.setSizes([560, 520])
+                self.practice_splitter.setSizes([280, 860])
+
+        if is_narrow:
+            self.practice_card.setMinimumWidth(0)
+            self.preview_pane.setMinimumWidth(0)
+            self.preview_pane.setMaximumWidth(16_777_215)
+            self.preview_pane.setMaximumHeight(260)
+        else:
+            self.preview_pane.setMinimumWidth(240)
+            self.preview_pane.setMaximumWidth(340)
+            self.preview_pane.setMaximumHeight(16_777_215)
 
     def _setup_shortcuts(self):
         """Register keyboard shortcuts for fast practice."""

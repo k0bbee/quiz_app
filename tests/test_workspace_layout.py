@@ -268,12 +268,15 @@ class WorkspaceLayoutTests(unittest.TestCase):
             self.assertTrue(all("…" in label.text() for label in topic_labels))
             self.assertLessEqual(dialog.right_content.minimumSizeHint().width(), 760)
 
-    def test_quiz_screen_uses_horizontal_practice_workspace_with_review_hidden_by_default(self):
+    def test_quiz_screen_uses_desktop_practice_workspace_with_review_hidden_by_default(self):
             with tempfile.TemporaryDirectory() as tmpdir:
                 quiz = QuizScreen(
                     QuestionBank(str(Path(tmpdir) / "questions")),
                     ProgressManager(str(Path(tmpdir) / "progress")),
                 )
+
+            quiz.resize(1280, 720)
+            quiz._update_responsive_layout()
 
             self.assertIsInstance(quiz.practice_splitter, QSplitter)
             self.assertEqual(Qt.Orientation.Horizontal, quiz.practice_splitter.orientation())
@@ -295,4 +298,31 @@ class WorkspaceLayoutTests(unittest.TestCase):
             self.assertEqual(
                 Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
                 quiz.practice_scroll.alignment(),
+            )
+
+    def test_quiz_screen_uses_vertical_answer_layout_when_window_is_narrow(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                quiz = QuizScreen(
+                    QuestionBank(str(Path(tmpdir) / "questions")),
+                    ProgressManager(str(Path(tmpdir) / "progress")),
+                )
+
+            quiz.resize(900, 680)
+            quiz._update_responsive_layout()
+
+            self.assertEqual(
+                Qt.Orientation.Vertical,
+                quiz.question_answer_splitter.orientation(),
+            )
+            self.assertEqual(
+                Qt.Orientation.Vertical,
+                quiz.practice_splitter.orientation(),
+            )
+            self.assertEqual(0, quiz.practice_card.minimumWidth())
+
+            quiz.resize(1280, 720)
+            quiz._update_responsive_layout()
+            self.assertEqual(
+                Qt.Orientation.Horizontal,
+                quiz.question_answer_splitter.orientation(),
             )
