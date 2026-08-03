@@ -3,39 +3,28 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QComboBox, QMessageBox, QRadioButton
+from PyQt6.QtWidgets import QApplication
 
 from models.progress import (
     AnswerRecord,
     ProgressRecord,
-    QuestionReviewSnapshot,
     SessionSummary,
 )
 from models.question import Question
 from models.question import QuestionBank
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
-from models.quiz_snapshot import QuizSessionSnapshot
-from models.question_set import QuestionSet, SetManager
-from core.quiz_engine import QuizSession
+from models.question_set import SetManager
 from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
-from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.language_manager import LanguageManager
-from core.study_intent import StudyAction, StudyIntent
-from core.today_learning_plan import LearningPlanAction
-from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
-from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
-from ui.course_context_controller import CourseContextController
 from ui.result_flow_controller import ResultFlowController
-from ui.widgets.answer_area import AnswerArea, MatchingWidget, MultipleChoiceWidget
-from utils.constants import Difficulty, QuestionType, QuizState, topic_value
+from utils.constants import Difficulty, QuestionType, topic_value
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -859,7 +848,6 @@ class ProgressDashboardFlowTests(unittest.TestCase):
                 )
 
     def test_incorrect_review_uses_current_course_filter(self):
-            from ui.main_window import MainWindow
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
@@ -926,7 +914,6 @@ class ProgressDashboardFlowTests(unittest.TestCase):
                 self.assertEqual([course_a.question_id], [q.question_id for q in started["questions"]])
 
     def test_incorrect_review_uses_mastery_priority_order(self):
-            from ui.main_window import MainWindow
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
@@ -1122,7 +1109,6 @@ class ProgressDashboardFlowTests(unittest.TestCase):
                 self.assertEqual(2, started["screen"])
 
     def test_incorrect_review_skips_fully_mastered_topics(self):
-            from ui.main_window import MainWindow
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 root = Path(tmpdir)
