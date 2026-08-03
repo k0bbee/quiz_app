@@ -354,6 +354,7 @@ class CourseScreen(QWidget):
         )
         self.current_events_action.triggered.connect(self._review_current_events)
         self.more_actions_menu.addAction(self.current_events_action)
+        self.current_events_action.setVisible(False)
         self.merge_action = QAction(
             self.lang_manager.get_text("合并课程", "Merge Courses"),
             self,

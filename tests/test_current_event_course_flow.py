@@ -64,32 +64,12 @@ class CurrentEventCourseFlowTests(unittest.TestCase):
             material_manager=material_manager,
         )
 
-    def test_course_secondary_action_opens_review_for_selected_course(self):
+    def test_course_current_event_entry_is_hidden_from_primary_flow(self):
         project = law_project()
-        created = []
-
-        def factory(selected, parent=None):
-            dialog = AcceptedDialog(selected, parent)
-            created.append(dialog)
-            return dialog
-
         screen = CourseScreen(
             Manager(project),
-            current_event_dialog_factory=factory,
         )
-        requests = []
-        screen.current_event_generation_requested.connect(
-            lambda course_id, pack: requests.append((course_id, pack))
-        )
-
-        self.assertTrue(screen.current_events_action.isEnabled())
-        screen.current_events_action.trigger()
-
-        self.assertEqual(project, created[0].project)
-        self.assertEqual(
-            [(project.course_id, created[0].saved_pack)],
-            requests,
-        )
+        self.assertFalse(screen.current_events_action.isVisible())
 
     def test_saving_materials_without_generation_does_not_start_generation(self):
         project = law_project()
