@@ -37,21 +37,19 @@ python scripts/check_environment.py --json
 1. **Import course materials** — Open Course Management and select a folder containing PPTX, PDF, DOCX, Markdown, or text files.
 2. **Review the course summary and topics** — The application extracts document text, creates a summary, assigns stable topic IDs, and builds page- or slide-level source references.
 3. **Choose the exam scope** — Use every topic or select only the topics relevant to the current exam.
-4. **Review current-event materials** (optional) — Explicitly search a public news index, inspect source and course relevance, and select individual items; opening the dialog never starts a search.
-5. **Generate questions** — Use course defaults, adjust question type/topic/difficulty weights, and start generation.
-6. **Review generated questions** — Check bilingual content, answers, source evidence, plan matching, and quality warnings before accepting questions.
-7. **Practice or simulate an exam** — Practice mode grades one question at a time; exam mode saves drafts and submits the whole paper at the end.
-8. **Review progress** — Inspect accuracy, topic mastery, uncertain answers, marked questions, and prioritized incorrect-question review.
+4. **Generate questions** — Use course defaults, adjust question type/topic/difficulty weights, and start generation.
+5. **Review generated questions** — Check bilingual content, answers, source evidence, plan matching, and quality warnings before accepting questions.
+6. **Practice or simulate an exam** — Practice mode grades one question at a time; exam mode saves drafts and submits the whole paper at the end.
+7. **Review progress** — Inspect accuracy, topic mastery, uncertain answers, marked questions, and prioritized incorrect-question review.
 
 ## Main capabilities
 
 | Area | Capability |
 |---|---|
 | Home | A transparent next-action recommendation based on unfinished drafts, incorrect answers, weak topics, available question sets, and imported courses |
-| Course management | Multi-file course import, safe cancellation, summaries, stable topics, course renaming, exam-scope configuration, source navigation, and transactional merging of courses with their questions, sets, mastery, current-event materials, and past exams; colliding deterministic material-pack identities are consolidated without dropping candidates or provenance |
+| Course management | Multi-file course import, safe cancellation, summaries, stable topics, course renaming, exam-scope configuration, and source navigation |
 | Past exams | Import TXT/Markdown/PDF/DOCX/PPTX exams, apply OCR to scanned PDFs, assign a course, build explainable exam profiles, and delete app-managed records without touching the original external file |
 | Question generation | Stream accepted questions one at a time, validate plan slots and source references, accept additional instructions while generation is running, and safely preserve partial results on cancellation |
-| Current-event materials | Explicitly search and manually review public news candidates, including low-relevance results; only selected items enter generation, and review metadata remains attached to generated questions |
 | Background tasks | Show long-running task stages and failures; Open Task Page only navigates, orphaned tasks become interrupted after restart, and Retry restores validated inputs only when recovery metadata is complete |
 | Question types | Multiple choice, true/false, scenario choice, matching, ordering, fill-in-the-blank, and short answer |
 | Question bank | Search and filter by set, topic, difficulty, and quality; create or edit every question type; multi-select and batch-delete questions |
@@ -64,7 +62,7 @@ python scripts/check_environment.py --json
 
 Course-folder imports skip symbolic links and resolved paths outside the selected folder. One import accepts at most 2,000 supported files and 1 GiB of source data; larger collections must be split before import.
 
-Deleting a course reports its linked questions, sets, archive states, unfinished drafts, past exams, and current-event packs before confirmation. Unfinished drafts are cancelled. Past-exam records and their source copies remain but become unassigned and require analysis again; course-specific current-event packs are deleted. A failed course deletion restores the affected data. Newly completed sessions preserve course, set, and immutable per-question review snapshots; double-click a recent session on the Progress page, or select it and press Enter, to reopen it. Successfully archived stems, submitted and correct answers, explanations, and source references remain reviewable when the original questions or set no longer exist, while unavailable retry actions are disabled with an explanation.
+Deleting a course reports its linked questions, sets, archive states, unfinished drafts, and past-exam records before confirmation. Unfinished drafts are cancelled. Past-exam records and their source copies remain but become unassigned and require analysis again. A failed course deletion restores the affected data. Newly completed sessions preserve course, set, and immutable per-question review snapshots; double-click a recent session on the Progress page, or select it and press Enter, to reopen it. Successfully archived stems, submitted and correct answers, explanations, and source references remain reviewable when the original questions or set no longer exist, while unavailable retry actions are disabled with an explanation.
 
 ## Weight configuration
 
