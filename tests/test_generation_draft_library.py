@@ -78,7 +78,11 @@ class GenerationDraftLibraryTests(unittest.TestCase):
         library = self.window._question_bank_screen
 
         self.assertEqual(Route.library("drafts"), self.window.current_route)
-        self.assertTrue(self.window.drafts_tab_btn.isChecked())
+        self.assertFalse(hasattr(self.window, "drafts_tab_btn"))
+        self.assertNotIn(
+            "Generation Drafts",
+            [button.text() for button in self.window.context_tabs()],
+        )
         self.assertIs(
             library.draft_panel,
             library.workspace_tabs.currentWidget(),
@@ -148,7 +152,8 @@ class GenerationDraftLibraryTests(unittest.TestCase):
         )
 
     def test_library_uses_specific_labels_for_generation_workflows(self):
-        get_text = lambda zh, _en: zh
+        def get_text(zh, _en):
+            return zh
 
         self.assertEqual("补齐缺口", _source_label("course_hub_gap", get_text))
         self.assertEqual("弱项补强", _source_label("result_reinforcement", get_text))

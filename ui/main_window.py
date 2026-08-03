@@ -429,7 +429,6 @@ class MainWindow(QMainWindow):
                 ("course_generation_tab_btn", Route.course(tab="generation")),
                 ("bank_tab_btn", Route.library("questions")),
                 ("sets_tab_btn", Route.library("sets")),
-                ("drafts_tab_btn", Route.library("drafts")),
             ),
             navigate=self.navigate_route,
             open_settings=self.open_settings,
@@ -456,7 +455,6 @@ class MainWindow(QMainWindow):
             "course_generation_tab_btn",
             "bank_tab_btn",
             "sets_tab_btn",
-            "drafts_tab_btn",
         ):
             setattr(self, attribute, getattr(self.app_shell, attribute))
         self.setCentralWidget(self.app_shell)

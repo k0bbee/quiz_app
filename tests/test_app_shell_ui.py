@@ -347,7 +347,6 @@ class AppShellUiTests(unittest.TestCase):
                 [
                     "Questions",
                     "Question Sets",
-                    "Generation Drafts",
                 ],
                 [button.text() for button in main_window.context_tabs()],
             )
