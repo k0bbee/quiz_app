@@ -12,7 +12,6 @@ from ai.course_summary_factory import provider_requires_api_key
 from ai.settings_validation import ai_generation_settings_error
 from core.question_set_builder import build_ai_question_set
 from core.question_set_regenerator import persist_new_question_set
-from core.past_exam_prediction import prediction_prefill_status
 from core.study_intent import StudyAction, StudyIntent
 from ui.generation_launch_controller import (
     GenerationLaunchController,
@@ -121,7 +120,6 @@ class GenerationWorkspaceController:
         *,
         course_override=None,
         initial_plan=None,
-        prediction=None,
         material_pack=None,
         recovery_context=None,
         auto_start: bool = False,
@@ -179,7 +177,6 @@ class GenerationWorkspaceController:
                 return True
             new_session_request = (
                 initial_plan is not None
-                or prediction is not None
                 or material_pack is not None
                 or bool(recovery_context)
                 or bool(str(question_set_title or "").strip())
@@ -208,7 +205,6 @@ class GenerationWorkspaceController:
         configured = self.configure(
             course_override=course_override,
             initial_plan=initial_plan,
-            prediction=prediction,
             material_pack=material_pack,
             recovery_context=recovery_context,
             review_warnings_only=review_warnings_only,
@@ -335,7 +331,6 @@ class GenerationWorkspaceController:
         *,
         course_override=None,
         initial_plan=None,
-        prediction=None,
         material_pack=None,
         recovery_context=None,
         review_warnings_only: bool = False,
@@ -398,7 +393,6 @@ class GenerationWorkspaceController:
                 return None
         new_session_request = (
             initial_plan is not None
-            or prediction is not None
             or material_pack is not None
             or bool(recovery_context)
             or bool(str(question_set_title or "").strip())
@@ -454,14 +448,6 @@ class GenerationWorkspaceController:
                     str(exc),
                 )
                 return None
-            if prediction is not None and hasattr(dialog, "set_title_input"):
-                course_title = str(getattr(course_project, "title", "") or "").strip()
-                dialog.set_title_input.setText(gm(
-                    f"{course_title}预测模拟卷" if course_title else "预测模拟卷",
-                    f"{course_title} Predicted Mock Exam" if course_title else "Predicted Mock Exam",
-                ))
-            if prediction is not None and hasattr(dialog, "status_label"):
-                dialog.status_label.setText(prediction_prefill_status(prediction, gm))
         if not restored_draft and question_set_title and hasattr(dialog, "set_title_input"):
             dialog.set_title_input.setText(str(question_set_title).strip())
         if not restored_draft and isinstance(recovery_context, dict):

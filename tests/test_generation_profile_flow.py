@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication, QDialog
+from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
 from ai.generation_config import GenerationConfig
@@ -314,7 +314,6 @@ class GenerationProfileFlowTests(unittest.TestCase):
                 selected_topics=("io",),
                 topic_weights={"io": 100},
             )
-            prediction = SimpleNamespace(plan=plan, source_count=2, warnings=("short_answer",))
             workspace = Mock()
             workspace.generation_widget.return_value = None
             shell = SimpleNamespace(
@@ -335,7 +334,6 @@ class GenerationProfileFlowTests(unittest.TestCase):
                 GenerationWorkspaceController(shell).open(
                     course_override=course,
                     initial_plan=plan,
-                    prediction=prediction,
                 )
 
             dialog.configure_from_course_profile.assert_called_once_with(course)
@@ -343,9 +341,6 @@ class GenerationProfileFlowTests(unittest.TestCase):
             dialog.set_draft_source.assert_called_once_with("manual")
             dialog.exec.assert_not_called()
             workspace.show_generation_widget.assert_called_once()
-            dialog.set_title_input.setText.assert_called_once_with("Systems预测模拟卷")
-            self.assertIn("2 份历史真题画像", dialog.status_label.setText.call_args.args[0])
-            self.assertIn("不代表未来考题", dialog.status_label.setText.call_args.args[0])
 
     def test_main_generation_flow_rolls_back_questions_when_question_set_save_fails(self):
             from core.language_manager import LanguageManager
