@@ -4,26 +4,15 @@ import copy
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QScrollArea, QFrame, QMenu
+    QScrollArea, QFrame,
 )
 from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QAction
 
 from core.language_manager import LanguageManager
 from core.progress_archive import validate_review_snapshot
-from core.study_intent import (
-    StudyAction,
-    StudyIntent,
-    continue_daily_queue_intent,
-)
+from core.study_intent import StudyIntent
 from models.progress import ProgressRecord, QuestionReviewSnapshot
 from models.question import Question
-from models.remediation import (
-    AnswerEvidence,
-    RemediationRequest,
-    TopicSignal,
-    answer_text,
-)
 from ui.widgets.question_review_card import QuestionReviewCard
 from ui.widgets.progress_summary_bar import ProgressSummaryBar
 from utils.constants import Difficulty, QuestionType, topic_value
@@ -32,49 +21,11 @@ from models.course_project import CourseProjectManager
 from ui.archive_status_presenter import build_archive_status_view
 
 
-def _question_source_ref_ids(question: Question) -> tuple[str, ...]:
-    """Extract bounded, human-readable source identifiers from question metadata."""
-    metadata = getattr(question, "metadata", {}) or {}
-    raw_refs = metadata.get("source_refs", []) if isinstance(metadata, dict) else []
-    values = []
-    for ref in raw_refs or ():
-        if isinstance(ref, dict):
-            value = (
-                ref.get("source_id")
-                or ref.get("id")
-                or ref.get("path")
-                or ref.get("title")
-            )
-        else:
-            value = ref
-        text = str(value or "").strip()
-        if text and text not in values:
-            values.append(text[:180])
-        if len(values) >= 4:
-            break
-    return tuple(values)
-
-
-def _question_stem(question: Question) -> str:
-    """Return a bounded stem hint for misconception-focused generation."""
-    try:
-        stem = question.get_stem("zh") or question.get_stem("en")
-    except AttributeError:
-        stem = ""
-    return " ".join(str(stem or "").split())[:400]
-
-
 class ResultsScreen(QWidget):
     """Shows quiz results with review and retry options."""
 
     retry_incorrect = pyqtSignal()
-    retry_unsure = pyqtSignal()
-    retry_review = pyqtSignal()
-    retry_all = pyqtSignal()
-    practice_topic_requested = pyqtSignal(str)
-    review_topic_requested = pyqtSignal(str)
-    study_requested = pyqtSignal(object)
-    generate_reinforcement_requested = pyqtSignal(object)
+    return_home_requested = pyqtSignal()
 
     def __init__(self, parent=None, *, course_manager: CourseProjectManager):
         super().__init__(parent)
@@ -92,7 +43,6 @@ class ResultsScreen(QWidget):
         self._course_project = None
         self.current_study_intent: StudyIntent | None = None
         self._retry_question_ids: set[str] = set()
-        self._can_retry_all = False
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -137,39 +87,6 @@ class ResultsScreen(QWidget):
         self.topic_stats_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.topic_stats_label)
 
-        self.next_action_label = QLabel()
-        self.next_action_label.setWordWrap(True)
-        self.next_action_label.setObjectName("resultsNextActionLabel")
-        self.next_action_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.next_action_label)
-
-        self.next_action_btn = QPushButton()
-        self.next_action_btn.setObjectName("secondaryButton")
-        self.next_action_btn.setVisible(False)
-        self.next_action_btn.clicked.connect(self._emit_next_action)
-        layout.addWidget(self.next_action_btn, alignment=Qt.AlignmentFlag.AlignCenter)
-        self.reinforce_btn = QPushButton()
-        self.reinforce_btn.setObjectName("secondaryButton")
-        self.reinforce_btn.hide()
-        self.reinforce_btn.clicked.connect(self._emit_reinforcement_request)
-        layout.addWidget(
-            self.reinforce_btn,
-            alignment=Qt.AlignmentFlag.AlignCenter,
-        )
-        self.repeat_study_btn = QPushButton()
-        self.repeat_study_btn.setObjectName("secondaryButton")
-        self.repeat_study_btn.setMinimumHeight(40)
-        self.repeat_study_btn.setMinimumWidth(180)
-        self.repeat_study_btn.hide()
-        self.repeat_study_btn.clicked.connect(self._emit_repeat_study)
-        layout.addWidget(
-            self.repeat_study_btn,
-            alignment=Qt.AlignmentFlag.AlignCenter,
-        )
-        self._recommended_topic_id = ""
-        self._recommended_action = ""
-        self._reinforcement_topic_ids: tuple[str, ...] = ()
-
         # Divider
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
@@ -198,7 +115,7 @@ class ResultsScreen(QWidget):
         btn_layout.addStretch()
 
         self.retry_incorrect_btn = QPushButton(
-            self.lang_manager.get_text("重做错题", "Retry Incorrect")
+            self.lang_manager.get_text("复习错题", "Review Incorrect")
         )
         self.retry_incorrect_btn.setObjectName("primaryButton")
         self.retry_incorrect_btn.setMinimumHeight(40)
@@ -206,24 +123,12 @@ class ResultsScreen(QWidget):
         self.retry_incorrect_btn.clicked.connect(self.retry_incorrect.emit)
         btn_layout.addWidget(self.retry_incorrect_btn)
 
-        self.more_practice_btn = QPushButton()
-        self.more_practice_btn.setObjectName("secondaryButton")
-        self.more_practice_btn.setMinimumHeight(40)
-        self.more_practice_btn.setMinimumWidth(130)
-        self.more_practice_menu = QMenu(self.more_practice_btn)
-        self.more_practice_menu.setObjectName("resultsMorePracticeMenu")
-        self.retry_unsure_action = QAction(self.more_practice_menu)
-        self.retry_unsure_action.triggered.connect(lambda _checked=False: self.retry_unsure.emit())
-        self.more_practice_menu.addAction(self.retry_unsure_action)
-        self.retry_review_action = QAction(self.more_practice_menu)
-        self.retry_review_action.triggered.connect(lambda _checked=False: self.retry_review.emit())
-        self.more_practice_menu.addAction(self.retry_review_action)
-        self.more_practice_menu.addSeparator()
-        self.retry_all_action = QAction(self.more_practice_menu)
-        self.retry_all_action.triggered.connect(lambda _checked=False: self.retry_all.emit())
-        self.more_practice_menu.addAction(self.retry_all_action)
-        self.more_practice_btn.setMenu(self.more_practice_menu)
-        btn_layout.addWidget(self.more_practice_btn)
+        self.return_home_btn = QPushButton()
+        self.return_home_btn.setObjectName("secondaryButton")
+        self.return_home_btn.setMinimumHeight(40)
+        self.return_home_btn.setMinimumWidth(150)
+        self.return_home_btn.clicked.connect(self.return_home_requested.emit)
+        btn_layout.addWidget(self.return_home_btn)
 
         layout.addLayout(btn_layout)
         self._on_language_changed(self.lang_manager.current)
@@ -232,33 +137,22 @@ class ResultsScreen(QWidget):
         """Update all labels when language changes."""
         self.review_label.setText(self.lang_manager.get_text("回顾:", "Review:"))
         self.retry_incorrect_btn.setText(
-            self.lang_manager.get_text("重做错题", "Retry Incorrect")
+            self.lang_manager.get_text("复习错题", "Review Incorrect")
         )
-        self.more_practice_btn.setText(self.lang_manager.get_text("更多练习", "More Practice"))
-        self.retry_unsure_action.setText(self.lang_manager.get_text("重做不确定题", "Retry Unsure"))
-        self.retry_review_action.setText(self.lang_manager.get_text("重做复查题", "Retry Review"))
-        self.retry_all_action.setText(self.lang_manager.get_text("重新练习全部", "Retry Entire Set"))
-        self.reinforce_btn.setText(
-            self.lang_manager.get_text(
-                "生成补强练习",
-                "Generate Reinforcement Practice",
-            )
+        self.return_home_btn.setText(
+            self.lang_manager.get_text("返回首页", "Return Home")
         )
 
         # Re-render results if a record is loaded
         if self.current_record is not None:
             retry_question_ids = set(self._retry_question_ids)
-            can_retry_all = self._can_retry_all
             self.set_results(
                 self.current_record,
                 self._questions,
                 self.lang_manager.current,
                 study_intent=self.current_study_intent,
             )
-            self.set_retry_availability(
-                retry_question_ids,
-                can_retry_all=can_retry_all,
-            )
+            self.set_retry_availability(retry_question_ids, can_retry_all=False)
 
     def set_results(
         self,
@@ -296,14 +190,9 @@ class ResultsScreen(QWidget):
             self._historical_questions.update(self._live_retry_questions)
         self._review_questions = self._historical_questions
         self._retry_question_ids = set(self._live_retry_questions)
-        self._can_retry_all = bool(self._live_retry_questions)
         self._lang = lang
-        self._recommended_topic_id = ""
-        self._recommended_action = ""
-        self.next_action_btn.setVisible(False)
-        self.reinforce_btn.setVisible(False)
-        self.repeat_study_btn.setVisible(False)
-        self._set_retry_action_state(False, False, False, False)
+        self.retry_incorrect_btn.setToolTip("")
+        self._set_retry_action_state(False)
         context_parts = [
             str(value or "").strip()
             for value in (
@@ -339,16 +228,9 @@ class ResultsScreen(QWidget):
 
         # Score
         score = summary.score_percentage
-        if score >= 90:
-            emoji = "🎉"
-        elif score >= 70:
-            emoji = "👍"
-        elif score >= 50:
-            emoji = "📚"
-        else:
-            emoji = "🔎"
-
-        self.score_label.setText(f"{emoji} {score:.0f}%")
+        self.score_label.setText(
+            f"{self.lang_manager.get_text('得分', 'Score')} {score:.0f}%"
+        )
 
         # Derive outcomes from answer records so legacy summaries are corrected too.
         correct_count = sum(1 for answer in record.answers if answer.is_correct)
@@ -362,34 +244,15 @@ class ResultsScreen(QWidget):
             skipped_count = getattr(summary, "skipped", 0)
         self.summary_bar.set_values(correct_count, incorrect_count, skipped_count)
 
-        # Stats
-        unsure_correct = sum(
-            1
-            for answer in record.answers
-            if answer.is_correct and getattr(answer, "confidence", "sure") == "unsure"
-        )
-        review_count = len(getattr(record, "marked_review_question_ids", []))
+        # Keep this summary focused on correctness; detail belongs in review cards.
         self.stats_label.setText(
             self.lang_manager.get_text(
-                f"正确: {correct_count} | 错误: {incorrect_count} | 未答: {skipped_count} | "
-                f"答对但不确定: {unsure_correct} | "
-                f"复查: {review_count} | "
-                f"总计: {summary.total_questions} | "
-                f"用时: {summary.total_time_seconds:.0f}秒 | "
-                f"平均: {summary.average_time_per_question:.1f}秒/题",
-                f"Correct: {correct_count} | Incorrect: {incorrect_count} | Unanswered: {skipped_count} | "
-                f"Correct but unsure: {unsure_correct} | "
-                f"Review: {review_count} | "
-                f"Total: {summary.total_questions} | "
-                f"Time: {summary.total_time_seconds:.0f}s | "
-                f"Avg: {summary.average_time_per_question:.1f}s/question"
+                f"正确 {correct_count}/{summary.total_questions} · 错误 {incorrect_count} · 未答 {skipped_count}",
+                f"Correct {correct_count}/{summary.total_questions} · Incorrect {incorrect_count} · Unanswered {skipped_count}",
             )
         )
 
         self.topic_stats_label.setText(self._build_topic_summary(record, lang))
-        self.next_action_label.setText(self._build_next_action_text(record))
-        self._configure_next_action(record, lang)
-        self._configure_reinforcement(record)
 
         # Review cards
         self._clear_reviews()
@@ -437,7 +300,6 @@ class ResultsScreen(QWidget):
             self.review_layout.insertWidget(self.review_layout.count() - 1, card)
 
         self._refresh_retry_action_state()
-        self._update_repeat_study_action()
 
     def set_retry_availability(
         self,
@@ -451,12 +313,8 @@ class ResultsScreen(QWidget):
             for question_id in (question_ids or ())
             if str(question_id or "").strip()
         }
-        self._can_retry_all = bool(can_retry_all)
         self._refresh_retry_action_state()
-        if self.current_record is not None and not (
-            self._retry_question_ids or self._can_retry_all
-        ):
-            self.next_action_btn.hide()
+        if self.current_record is not None and not self._retry_question_ids:
             archive_view = build_archive_status_view(
                 getattr(self.current_record, "archive_status", ""),
                 missing_fields=getattr(
@@ -470,12 +328,12 @@ class ResultsScreen(QWidget):
                 ),
                 language=self.lang_manager.current,
             )
-            self.next_action_label.setText(archive_view.retry_unavailable)
+            self.retry_incorrect_btn.setToolTip(archive_view.retry_unavailable)
 
     def _refresh_retry_action_state(self) -> None:
         record = self.current_record
         if record is None:
-            self._set_retry_action_state(False, False, False, False)
+            self._set_retry_action_state(False)
             return
         available = self._retry_question_ids
         has_incorrect = any(
@@ -484,309 +342,10 @@ class ResultsScreen(QWidget):
             and not answer.is_correct
             for answer in record.answers
         )
-        has_unsure = any(
-            answer.question_id in available
-            and not answer.skipped
-            and getattr(answer, "confidence", "sure") == "unsure"
-            for answer in record.answers
-        )
-        has_review = bool(
-            available.intersection(
-                getattr(record, "marked_review_question_ids", []) or []
-            )
-        )
-        self._set_retry_action_state(
-            has_incorrect,
-            has_unsure,
-            has_review,
-            self._can_retry_all,
-        )
+        self._set_retry_action_state(has_incorrect)
 
-    def _update_repeat_study_action(self) -> None:
-        intent = self.current_study_intent
-        if intent is None:
-            self.repeat_study_btn.hide()
-            self._set_daily_primary_action(False)
-            return
-        if intent.action is StudyAction.DAILY_QUEUE:
-            remaining = len(intent.remaining_question_ids)
-            if remaining <= 0:
-                self.repeat_study_btn.hide()
-                self._set_daily_primary_action(False)
-                return
-            text = self.lang_manager.get_text(
-                f"继续今日学习 · 剩余 {remaining} 题",
-                f"Continue Today's Study · {remaining} left",
-            )
-            self._set_daily_primary_action(True)
-        elif intent.action is StudyAction.PRACTICE_TOPIC:
-            text = self.lang_manager.get_text(
-                "再练该主题",
-                "Practice This Topic Again",
-            )
-            self._set_daily_primary_action(False)
-        elif intent.source == "today_plan":
-            text = self.lang_manager.get_text(
-                "继续今日计划",
-                "Continue Today's Plan",
-            )
-            self._set_daily_primary_action(False)
-        else:
-            text = self.lang_manager.get_text(
-                "再次练习",
-                "Practice Again",
-            )
-            self._set_daily_primary_action(False)
-        self.repeat_study_btn.setText(text)
-        self.repeat_study_btn.show()
-
-    def _emit_repeat_study(self) -> None:
-        intent = self.current_study_intent
-        if intent is None:
-            return
-        if intent.action is StudyAction.DAILY_QUEUE:
-            continued = continue_daily_queue_intent(intent)
-            if continued is not None:
-                self.study_requested.emit(continued)
-            return
-        self.study_requested.emit(intent)
-
-    def _configure_reinforcement(self, record: ProgressRecord) -> None:
-        """Offer one bounded, source-backed generation action for weak topics."""
-        self._reinforcement_topic_ids = ()
-        project = self._live_course_project
-        if project is None:
-            self.reinforce_btn.hide()
-            return
-        available_topics = {
-            topic_value(topic.topic_id)
-            for topic in getattr(project, "topics", ()) or ()
-            if topic_value(topic.topic_id)
-        }
-        signals: dict[str, dict] = {}
-        for answer in getattr(record, "answers", ()) or ():
-            if getattr(answer, "skipped", False):
-                continue
-            question = self._live_retry_questions.get(answer.question_id)
-            if question is None:
-                continue
-            topic_id = topic_value(question.topic)
-            if not topic_id or topic_id not in available_topics:
-                continue
-            score = 0
-            if not getattr(answer, "is_correct", False):
-                score += 2
-            if getattr(answer, "confidence", "sure") == "unsure":
-                score += 1
-            if score:
-                signal = signals.setdefault(topic_id, {
-                    "score": 0,
-                    "question_ids": [],
-                    "observed_wrong_answers": [],
-                    "unsure_question_ids": [],
-                    "source_refs": [],
-                    "observed_question_stems": [],
-                    "evidence": [],
-                })
-                signal["score"] += score
-                if answer.question_id and answer.question_id not in signal["question_ids"]:
-                    signal["question_ids"].append(answer.question_id)
-                if not getattr(answer, "is_correct", False):
-                    signal["observed_wrong_answers"].append(
-                        answer_text(getattr(answer, "user_answer", None))
-                    )
-                if getattr(answer, "confidence", "sure") == "unsure":
-                    signal["unsure_question_ids"].append(answer.question_id)
-                for source_ref in _question_source_ref_ids(question):
-                    if source_ref not in signal["source_refs"]:
-                        signal["source_refs"].append(source_ref)
-                stem = _question_stem(question)
-                if stem and stem not in signal["observed_question_stems"]:
-                    signal["observed_question_stems"].append(stem)
-                evidence = AnswerEvidence(
-                    question_id=answer.question_id,
-                    topic_id=topic_id,
-                    question_type=getattr(
-                        getattr(question, "type", None), "value", ""
-                    ),
-                    stem=stem,
-                    options=(
-                        question.get_options("zh")
-                        or question.get_options("en")
-                    ),
-                    user_answer=getattr(answer, "user_answer", None),
-                    correct_answer=getattr(question, "correct_answer", None),
-                    explanation=(
-                        question.get_explanation("zh")
-                        or question.get_explanation("en")
-                    ),
-                    source_refs=_question_source_ref_ids(question),
-                )
-                if evidence not in signal["evidence"]:
-                    signal["evidence"].append(evidence)
-        self._reinforcement_topic_ids = tuple(
-            topic_id
-            for topic_id, _signal in sorted(
-                signals.items(),
-                key=lambda item: (-item[1]["score"], item[0]),
-            )[:3]
-        )
-        self._reinforcement_signals = tuple(
-            TopicSignal(
-                topic_id=topic_id,
-                question_ids=signals[topic_id]["question_ids"],
-                observed_wrong_answers=signals[topic_id]["observed_wrong_answers"],
-                unsure_question_ids=signals[topic_id]["unsure_question_ids"],
-                source_refs=signals[topic_id]["source_refs"],
-                observed_question_stems=signals[topic_id]["observed_question_stems"],
-                evidence=signals[topic_id]["evidence"],
-            )
-            for topic_id in self._reinforcement_topic_ids
-        )
-        self.reinforce_btn.setVisible(bool(self._reinforcement_topic_ids))
-
-    def _emit_reinforcement_request(self) -> None:
-        project = self._live_course_project
-        if project is None or not self._reinforcement_topic_ids:
-            return
-        request = RemediationRequest(
-            course_id=project.course_id,
-            signals=getattr(self, "_reinforcement_signals", ()),
-            max_questions=min(8, len(self._reinforcement_topic_ids) * 3),
-        )
-        self.generate_reinforcement_requested.emit(request.to_dict())
-
-    def _set_daily_primary_action(self, active: bool) -> None:
-        repeat_role = "primaryButton" if active else "secondaryButton"
-        retry_role = "secondaryButton" if active else "primaryButton"
-        for button, role in (
-            (self.repeat_study_btn, repeat_role),
-            (self.retry_incorrect_btn, retry_role),
-        ):
-            if button.objectName() == role:
-                continue
-            button.setObjectName(role)
-            button.style().unpolish(button)
-            button.style().polish(button)
-
-    def _set_retry_action_state(
-        self,
-        has_incorrect: bool,
-        has_unsure: bool,
-        has_review: bool,
-        has_questions: bool,
-    ) -> None:
+    def _set_retry_action_state(self, has_incorrect: bool) -> None:
         self.retry_incorrect_btn.setEnabled(has_incorrect)
-        self.retry_unsure_action.setEnabled(has_unsure)
-        self.retry_review_action.setEnabled(has_review)
-        self.retry_all_action.setEnabled(has_questions)
-        self.more_practice_btn.setEnabled(has_unsure or has_review or has_questions)
-
-    def _configure_next_action(self, record: ProgressRecord, lang: str) -> None:
-        """Expose one topic-specific action for the most useful next step."""
-        incorrect_topics: dict[str, dict] = {}
-        unsure_topics: dict[str, dict] = {}
-        for answer in record.answers:
-            if answer.skipped:
-                continue
-            question = self._review_questions.get(answer.question_id)
-            if question is None:
-                continue
-            topic_id = topic_value(question.topic)
-            bucket = {
-                "topic_id": topic_id,
-                "label": topic_display_name(
-                    question.topic,
-                    language=lang,
-                    fallback_title=question.topic_title(),
-                ),
-            }
-            if not answer.is_correct:
-                entry = incorrect_topics.setdefault(topic_id, {**bucket, "count": 0})
-                entry["count"] += 1
-            elif getattr(answer, "confidence", "sure") == "unsure":
-                entry = unsure_topics.setdefault(topic_id, {**bucket, "count": 0})
-                entry["count"] += 1
-
-        recommendation = self._highest_priority_topic(incorrect_topics)
-        action = "review" if recommendation else ""
-        if recommendation is None:
-            recommendation = self._highest_priority_topic(unsure_topics)
-            action = "practice" if recommendation else ""
-
-        self._recommended_topic_id = recommendation["topic_id"] if recommendation else ""
-        self._recommended_action = action
-        if recommendation is None:
-            self.next_action_btn.setVisible(False)
-            return
-
-        label = recommendation["label"]
-        if action == "review":
-            text = self.lang_manager.get_text(
-                f"复习 {label} 错题",
-                f"Review Incorrect: {label}",
-            )
-        else:
-            text = self.lang_manager.get_text(
-                f"练习 {label}",
-                f"Practice: {label}",
-            )
-        self.next_action_btn.setText(text)
-        self.next_action_btn.setVisible(True)
-
-    @staticmethod
-    def _highest_priority_topic(stats: dict[str, dict]):
-        if not stats:
-            return None
-        return sorted(
-            stats.values(),
-            key=lambda item: (-item["count"], item["topic_id"]),
-        )[0]
-
-    def _emit_next_action(self) -> None:
-        if not self._recommended_topic_id:
-            return
-        if self._recommended_action == "review":
-            self.review_topic_requested.emit(self._recommended_topic_id)
-        elif self._recommended_action == "practice":
-            self.practice_topic_requested.emit(self._recommended_topic_id)
-
-    def _build_next_action_text(self, record: ProgressRecord) -> str:
-        """Return a compact recommendation for the next learning action."""
-        intent = self.current_study_intent
-        if intent is not None and intent.action is StudyAction.DAILY_QUEUE:
-            remaining = len(intent.remaining_question_ids)
-            if remaining > 0:
-                return self.lang_manager.get_text(
-                    f"本组已完成，今日学习还剩 {remaining} 题。",
-                    f"This group is complete; {remaining} question(s) remain today.",
-                )
-            return self.lang_manager.get_text(
-                "今日任务完成。",
-                "Today's study is complete.",
-            )
-        incorrect_count = sum(
-            1 for answer in record.answers if not answer.skipped and not answer.is_correct
-        )
-        unsure_count = sum(
-            1
-            for answer in record.answers
-            if not answer.skipped and getattr(answer, "confidence", "sure") == "unsure"
-        )
-        if incorrect_count > 0:
-            return self.lang_manager.get_text(
-                f"下一步建议：先重做错题（{incorrect_count} 题），再处理不确定题。",
-                f"Recommended next step: retry incorrect questions first ({incorrect_count}), then review unsure ones.",
-            )
-        if unsure_count > 0:
-            return self.lang_manager.get_text(
-                f"下一步建议：重做不确定题（{unsure_count} 题），确认这些知识点不是靠猜对。",
-                f"Recommended next step: retry unsure questions ({unsure_count}) to confirm they were not guesses.",
-            )
-        return self.lang_manager.get_text(
-            "下一步建议：本次没有错题或不确定题，可以重新练习整套题或返回首页继续学习。",
-            "Recommended next step: no incorrect or unsure questions; retry the set or return home to continue learning.",
-        )
 
     def set_questions(self, questions: dict):
         """Provide question data for review rendering."""
@@ -919,7 +478,15 @@ class ResultsScreen(QWidget):
             )
 
         parts = []
-        for topic, value in sorted(stats.items(), key=lambda item: topic_value(item[0])):
+        weakest = sorted(
+            stats.items(),
+            key=lambda item: (
+                item[1]["correct"] / item[1]["total"],
+                -item[1]["total"],
+                topic_value(item[0]),
+            ),
+        )[:2]
+        for topic, value in weakest:
             question = next(
                 (
                     q
@@ -936,5 +503,5 @@ class ResultsScreen(QWidget):
             total = value["total"]
             correct = value["correct"]
             parts.append(f"{label}: {correct}/{total}")
-        prefix = self.lang_manager.get_text("主题细分: ", "Topic breakdown: ")
+        prefix = self.lang_manager.get_text("最薄弱主题: ", "Weakest topics: ")
         return prefix + " | ".join(parts)

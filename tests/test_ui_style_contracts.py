@@ -399,13 +399,12 @@ class UiStyleContractTests(unittest.TestCase):
             self.assertFalse(hasattr(topic, "regenerate_btn"))
             self.assertNotRegex(topic.start_btn.text(), r"[^\w\s]")
 
-            self.assertEqual("secondaryButton", results.next_action_btn.objectName())
             self.assertEqual("primaryButton", results.retry_incorrect_btn.objectName())
-            self.assertEqual("secondaryButton", results.more_practice_btn.objectName())
-            self.assertEqual("resultsNextActionLabel", results.next_action_label.objectName())
-            self.assertFalse(hasattr(results, "back_btn"))
+            self.assertEqual("secondaryButton", results.return_home_btn.objectName())
+            self.assertFalse(hasattr(results, "next_action_btn"))
+            self.assertFalse(hasattr(results, "more_practice_btn"))
             self.assertNotRegex(results.retry_incorrect_btn.text(), r"[^\w\s]")
-            self.assertNotRegex(results.more_practice_btn.text(), r"[^\w\s]")
+            self.assertNotRegex(results.return_home_btn.text(), r"[^\w\s]")
 
             self.assertEqual("secondaryButton", progress.refresh_btn.objectName())
             self.assertEqual("secondaryButton", progress.more_topic_actions_btn.objectName())

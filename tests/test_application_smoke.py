@@ -131,13 +131,13 @@ class ApplicationSmokeTests(unittest.TestCase):
                 self.assertEqual(1, records[0].summary.correct)
                 self.assertTrue(records[0].set_id.startswith("set-"))
                 self.assertNotEqual(question_set.set_id, records[0].set_id)
-                self.assertTrue(window.results_screen.repeat_study_btn.isHidden())
-                self.assertTrue(window.results_screen.retry_all_action.isEnabled())
+                self.assertFalse(window.results_screen.retry_incorrect_btn.isEnabled())
+                self.assertEqual("返回首页", window.results_screen.return_home_btn.text())
 
-                window.results_screen.retry_all_action.trigger()
+                window.results_screen.return_home_btn.click()
                 _APP.processEvents()
                 self.assertEqual(
-                    window.SCREEN_QUIZ,
+                    window.SCREEN_HOME,
                     window.stack.currentIndex(),
                 )
 

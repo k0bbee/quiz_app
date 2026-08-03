@@ -161,118 +161,7 @@ class ResultsFlowTests(unittest.TestCase):
             screen = self._make_results_screen()
             screen.set_results(record, {}, "zh")
 
-            self.assertIn("答对但不确定: 1", screen.stats_label.text())
-
-    def test_results_can_generate_a_bounded_course_reinforcement_plan(self):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
-                course = self._make_course("course-a", "课程 A")
-                course.topics = [
-                    CourseTopic("cache", "高速缓存", source_files=["cache.pdf"]),
-                    CourseTopic("io", "输入输出", source_files=["io.pdf"]),
-                ]
-                self.assertTrue(manager.save(course))
-                screen = ResultsScreen(course_manager=manager)
-                cache = self._make_question("q-cache", "cache")
-                io = self._make_question("q-io", "io")
-                for question in (cache, io):
-                    question.metadata["course_id"] = course.course_id
-                record = ProgressRecord.create_new("set-a")
-                record.status = "completed"
-                record.answers = [
-                    AnswerRecord("q-cache", 0, "B", False),
-                    AnswerRecord(
-                        "q-io",
-                        1,
-                        "A",
-                        True,
-                        confidence="unsure",
-                    ),
-                ]
-                record.summary = SessionSummary.compute(record.answers, 2, 20)
-                requests = []
-                screen.generate_reinforcement_requested.connect(requests.append)
-
-                screen.set_results(
-                    record,
-                    {"q-cache": cache, "q-io": io},
-                    "zh",
-                )
-                screen.reinforce_btn.click()
-
-                self.assertEqual([{
-                    "course_id": "course-a",
-                    "topic_ids": ["cache", "io"],
-                    "question_count": 6,
-                    "max_questions": 6,
-                    "destination": "practice_now",
-                    "signals": [
-                        {
-                            "topic_id": "cache",
-                            "question_ids": ["q-cache"],
-                            "observed_wrong_answers": ["B"],
-                            "unsure_question_ids": [],
-                            "source_refs": [],
-                            "observed_question_stems": ["q-cache?"],
-                            "evidence": [{
-                                "question_id": "q-cache",
-                                "topic_id": "cache",
-                                "question_type": "multiple_choice",
-                                "stem": "q-cache?",
-                                "options": ["A. 对", "B. 错"],
-                                "user_answer": "B",
-                                "correct_answer": "A",
-                                "explanation": "解释说明",
-                                "source_refs": [],
-                            }],
-                        },
-                        {
-                            "topic_id": "io",
-                            "question_ids": ["q-io"],
-                            "observed_wrong_answers": [],
-                            "unsure_question_ids": ["q-io"],
-                            "source_refs": [],
-                            "observed_question_stems": ["q-io?"],
-                            "evidence": [{
-                                "question_id": "q-io",
-                                "topic_id": "io",
-                                "question_type": "multiple_choice",
-                                "stem": "q-io?",
-                                "options": ["A. 对", "B. 错"],
-                                "user_answer": "A",
-                                "correct_answer": "A",
-                                "explanation": "解释说明",
-                                "source_refs": [],
-                            }],
-                        },
-                    ],
-                }], requests)
-
-    def test_reinforcement_request_contains_structured_answer_evidence(self):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
-                course = self._make_course("course-a", "课程 A")
-                course.topics = [CourseTopic("cache", "高速缓存")]
-                self.assertTrue(manager.save(course))
-                screen = ResultsScreen(course_manager=manager)
-                question = self._make_question("q-cache", "cache")
-                question.metadata["course_id"] = course.course_id
-                record = ProgressRecord.create_new("set-a")
-                record.status = "completed"
-                record.answers = [AnswerRecord("q-cache", 0, "B", False)]
-                record.summary = SessionSummary.compute(record.answers, 1, 10)
-                requests = []
-                screen.generate_reinforcement_requested.connect(requests.append)
-
-                screen.set_results(record, {question.question_id: question}, "zh")
-                screen.reinforce_btn.click()
-
-                evidence = requests[0]["signals"][0]["evidence"][0]
-                self.assertEqual("q-cache", evidence["question_id"])
-                self.assertEqual("B", evidence["user_answer"])
-                self.assertEqual("A", evidence["correct_answer"])
-                self.assertEqual(["A. 对", "B. 错"], evidence["options"])
-                self.assertIn("解释说明", evidence["explanation"])
+            self.assertIn("正确 1/2", screen.stats_label.text())
 
     def test_results_screen_recomputes_course_context_for_displayed_questions(self):
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -376,9 +265,8 @@ class ResultsFlowTests(unittest.TestCase):
                 screen.summary_bar._incorrect,
                 screen.summary_bar._unanswered,
             ))
-            self.assertIn("错误: 1", screen.stats_label.text())
-            self.assertIn("未答: 1", screen.stats_label.text())
-            self.assertIn("重做错题（1 题）", screen.next_action_label.text())
+            self.assertIn("错误 1", screen.stats_label.text())
+            self.assertIn("未答 1", screen.stats_label.text())
 
     def test_results_screen_disables_retry_actions_when_questions_are_deleted(self):
             question = self._make_question("q-deleted")
@@ -396,16 +284,11 @@ class ResultsFlowTests(unittest.TestCase):
             screen = self._make_results_screen()
             screen.set_results(record, {question.question_id: question}, "zh")
             self.assertTrue(screen.retry_incorrect_btn.isEnabled())
-            self.assertTrue(screen.retry_all_action.isEnabled())
 
             screen.set_retry_availability([], can_retry_all=False)
 
             self.assertFalse(screen.retry_incorrect_btn.isEnabled())
-            self.assertFalse(screen.retry_unsure_action.isEnabled())
-            self.assertFalse(screen.retry_review_action.isEnabled())
-            self.assertFalse(screen.retry_all_action.isEnabled())
-            self.assertFalse(screen.more_practice_btn.isEnabled())
-            self.assertIn("原题已不可用", screen.next_action_label.text())
+            self.assertIn("原题已不可用", screen.retry_incorrect_btn.toolTip())
 
     def test_results_screen_reviews_snapshot_when_original_question_is_deleted(self):
             record = ProgressRecord.create_new("set-deleted")
@@ -453,7 +336,6 @@ class ResultsFlowTests(unittest.TestCase):
             self.assertIn("输入输出: 0/1", screen.topic_stats_label.text())
             self.assertEqual("操作系统 · I/O 专项", screen.context_label.text())
             self.assertFalse(screen.retry_incorrect_btn.isEnabled())
-            self.assertIn("仍可复盘", screen.next_action_label.text())
 
     def test_results_screen_prefers_historical_snapshot_after_live_question_edit(self):
             live_question = self._make_question("q-edited")
@@ -490,7 +372,6 @@ class ResultsFlowTests(unittest.TestCase):
             self.assertIn("正确答案: B. 旧答案", card.answer_info.text())
             self.assertIn("作答时的解析", card.explanation_label.text())
             self.assertNotIn("编辑后的", card.stem_label.text() + card.explanation_label.text())
-            self.assertTrue(screen.retry_all_action.isEnabled())
 
     def test_results_screen_keeps_historical_course_context_after_live_reassignment(self):
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -553,8 +434,6 @@ class ResultsFlowTests(unittest.TestCase):
             self.assertIn("残缺历史", screen.archive_notice_label.text())
             self.assertIn("0/1", screen.archive_notice_label.text())
             self.assertIn("题目复盘内容", screen.archive_notice_label.text())
-            self.assertIn("只能查看已保存的部分", screen.next_action_label.text())
-            self.assertNotIn("仍可复盘", screen.next_action_label.text())
 
     def test_results_screen_marks_legacy_history_as_awaiting_protection(self):
             record = ProgressRecord.create_new("set-legacy")
@@ -646,6 +525,7 @@ class ResultsFlowTests(unittest.TestCase):
             self.assertEqual(["q-wrong"], requested)
             self.assertIn("题目不可用", warning.call_args.args[1])
 
+    @unittest.skip("结果页不再提供不确定题、复查题和整卷重练分支")
     def test_results_screen_enables_retry_unsure_action_when_needed(self):
             record = ProgressRecord.create_new("set-1")
             record.status = "completed"
@@ -680,16 +560,47 @@ class ResultsFlowTests(unittest.TestCase):
 
             self.assertEqual([True], emitted)
 
-    def test_results_screen_uses_one_primary_retry_and_compact_more_menu(self):
+    def test_results_screen_has_only_retry_incorrect_and_return_home_actions(self):
             screen = self._make_results_screen()
+            emitted = []
+            screen.return_home_requested.connect(lambda: emitted.append(True))
 
             self.assertEqual("primaryButton", screen.retry_incorrect_btn.objectName())
-            self.assertEqual("secondaryButton", screen.more_practice_btn.objectName())
-            self.assertIs(screen.more_practice_menu, screen.more_practice_btn.menu())
-            self.assertFalse(hasattr(screen, "retry_unsure_btn"))
-            self.assertFalse(hasattr(screen, "retry_review_btn"))
-            self.assertFalse(hasattr(screen, "retry_all_btn"))
+            self.assertEqual("secondaryButton", screen.return_home_btn.objectName())
+            self.assertFalse(hasattr(screen, "more_practice_btn"))
+            self.assertFalse(hasattr(screen, "next_action_btn"))
+            self.assertFalse(hasattr(screen, "reinforce_btn"))
+            self.assertFalse(hasattr(screen, "repeat_study_btn"))
 
+            screen.return_home_btn.click()
+            self.assertEqual([True], emitted)
+
+    def test_results_screen_limits_topic_summary_to_two_weakest_topics(self):
+            record = ProgressRecord.create_new("set-topics")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord("q-a-1", 0, "B", False),
+                AnswerRecord("q-a-2", 1, "B", False),
+                AnswerRecord("q-b", 2, "A", True),
+                AnswerRecord("q-c", 3, "A", True),
+            ]
+            record.summary = SessionSummary.compute(record.answers, 4, 20)
+            questions = {
+                "q-a-1": self._make_question("q-a-1", "topic-a"),
+                "q-a-2": self._make_question("q-a-2", "topic-a"),
+                "q-b": self._make_question("q-b", "topic-b"),
+                "q-c": self._make_question("q-c", "topic-c"),
+            }
+            screen = self._make_results_screen()
+
+            screen.set_results(record, questions, "zh")
+
+            summary = screen.topic_stats_label.text()
+            self.assertTrue(summary.startswith("最薄弱主题:"))
+            self.assertEqual(1, summary.count("|"))
+            self.assertIn("Topic A", summary)
+
+    @unittest.skip("结果页只保留错题复习入口")
     def test_results_screen_shows_and_retries_marked_review_questions(self):
             record = ProgressRecord.create_new("set-1")
             record.status = "completed"
@@ -714,6 +625,7 @@ class ResultsFlowTests(unittest.TestCase):
             screen.retry_review_action.trigger()
             self.assertEqual([True], emitted)
 
+    @unittest.skip("结果页不再提供额外的下一步动作按钮")
     def test_results_screen_shows_next_action_recommendation(self):
             record = ProgressRecord.create_new("set-1")
             record.status = "completed"
@@ -740,6 +652,7 @@ class ResultsFlowTests(unittest.TestCase):
             self.assertIn("下一步建议", screen.next_action_label.text())
             self.assertIn("先重做错题", screen.next_action_label.text())
 
+    @unittest.skip("结果页不再承载每日计划续接动作")
     def test_results_screen_continues_to_remaining_daily_queue_questions(self):
             question = self._make_question("q-cache", "cache")
             record = ProgressRecord.create_new("today-cache")
@@ -791,6 +704,7 @@ class ResultsFlowTests(unittest.TestCase):
             self.assertEqual((), continued.remaining_question_ids)
             self.assertEqual(intent.plan_id, continued.plan_id)
 
+    @unittest.skip("结果页不再承载每日计划续接动作")
     def test_results_screen_marks_daily_queue_complete_without_repeat(self):
             question = self._make_question("q-cache", "cache")
             record = ProgressRecord.create_new("today-cache")
@@ -825,6 +739,7 @@ class ResultsFlowTests(unittest.TestCase):
             self.assertEqual("primaryButton", screen.retry_incorrect_btn.objectName())
             self.assertIn("今日任务完成", screen.next_action_label.text())
 
+    @unittest.skip("结果页只展示薄弱主题，不提供主题跳转动作")
     def test_results_screen_recommends_action_for_topic_with_most_incorrect_answers(self):
             record = ProgressRecord.create_new("set-1")
             record.status = "completed"
@@ -850,6 +765,7 @@ class ResultsFlowTests(unittest.TestCase):
             screen.next_action_btn.click()
             self.assertEqual(["io"], emitted)
 
+    @unittest.skip("结果页只展示薄弱主题，不提供主题跳转动作")
     def test_results_screen_recommends_topic_practice_for_unsure_answers_without_errors(self):
             record = ProgressRecord.create_new("set-1")
             record.status = "completed"
@@ -884,6 +800,7 @@ class ResultsFlowTests(unittest.TestCase):
             screen.next_action_btn.click()
             self.assertEqual(["cache"], emitted)
 
+    @unittest.skip("结果页不再暴露主题动作信号")
     def test_main_window_routes_results_topic_actions_through_existing_progress_handlers(self):
             source = Path("ui/main_window.py").read_text(encoding="utf-8")
 
@@ -896,6 +813,7 @@ class ResultsFlowTests(unittest.TestCase):
                 source,
             )
 
+    @unittest.skip("结果页不再维护主题动作状态")
     def test_results_screen_clears_stale_topic_action_when_results_are_unavailable(self):
             question = self._make_question("q-cache", "cache")
             record = ProgressRecord.create_new("set-1")
@@ -924,9 +842,7 @@ class ResultsFlowTests(unittest.TestCase):
             screen = self._make_results_screen()
             screen.set_results(record, {}, "zh")
 
-            self.assertTrue(screen.score_label.text().startswith("🔎 "))
-            self.assertNotIn("💪", screen.score_label.text())
-            self.assertIn("先重做错题", screen.next_action_label.text())
+            self.assertEqual("得分 0%", screen.score_label.text())
 
     def test_results_screen_review_card_shows_source_refs(self):
             question = self._make_question("q-source")

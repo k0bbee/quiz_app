@@ -39,7 +39,6 @@ from ui.settings_window import SettingsWindow
 from utils.constants import topic_value
 from ai.exam_plan import ExamGenerationPlan
 from models.question_set import QuestionSet
-from models.remediation import RemediationRequest
 
 
 class MainWindow(QMainWindow):
@@ -453,18 +452,8 @@ class MainWindow(QMainWindow):
         self.results_screen.retry_incorrect.connect(
             self.result_flow.retry_incorrect
         )
-        self.results_screen.retry_unsure.connect(
-            self.result_flow.retry_unsure
-        )
-        self.results_screen.retry_review.connect(
-            self.result_flow.retry_review
-        )
-        self.results_screen.retry_all.connect(self.result_flow.retry_all)
-        self.results_screen.study_requested.connect(self.study_flow.handle_intent)
-        self.results_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
-        self.results_screen.review_topic_requested.connect(self._on_review_progress_topic)
-        self.results_screen.generate_reinforcement_requested.connect(
-            self._on_generate_result_reinforcement
+        self.results_screen.return_home_requested.connect(
+            lambda: self.navigate_to(self.SCREEN_HOME, confirm_current=False)
         )
         self.progress_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
         self.progress_screen.review_topic_requested.connect(self._on_review_progress_topic)
@@ -826,38 +815,6 @@ class MainWindow(QMainWindow):
                 allow_first_run_redirect=False,
             ):
                 self._get_course_screen().focus_knowledge_topic(topic_id)
-
-    def _on_generate_result_reinforcement(self, request) -> None:
-        """Open a source-aware generation plan for concrete answer signals."""
-        request = RemediationRequest.from_mapping(request)
-        if request is None:
-            return
-        course_id = request.course_id
-        topics = tuple(dict.fromkeys(request.topic_ids))[:3]
-        if not course_id or not topics:
-            return
-        if self.course_context.current_course_id() != course_id:
-            if not self.course_manager.set_current(course_id):
-                return
-            self.course_context.course_changed()
-        count = min(8, max(1, request.max_questions))
-        base = 100 // len(topics)
-        weights = {topic_id: base for topic_id in topics}
-        weights[topics[-1]] += 100 - sum(weights.values())
-        self.generation_flow.open(
-            initial_plan=ExamGenerationPlan(
-                question_count=count,
-                selected_topics=topics,
-                topic_weights=weights,
-            ),
-            draft_source="result_reinforcement",
-            recovery_context={
-                "runtime_instruction": request.instruction(
-                    self.lang_manager.current
-                ),
-            },
-            start_after_save=request.destination == "practice_now",
-        )
 
     def _start_progress_topic_quiz(self, questions: list, label: str):
         """Open QuizScreen for a progress-topic action."""
