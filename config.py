@@ -31,7 +31,6 @@ QUIZ_SNAPSHOTS_DIR = os.path.join(DATA_DIR, "quiz_snapshots")
 PAST_EXAMS_DIR = os.path.join(DATA_DIR, "past_exams")
 
 # User-reviewed current-event material packs (derived candidates, no secrets)
-CURRENT_EVENT_MATERIALS_DIR = os.path.join(DATA_DIR, "current_event_materials")
 
 # Settings
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")

@@ -17,7 +17,6 @@ from config import (
     QUIZ_SNAPSHOTS_DIR,
 )
 from core.background_task_center import BackgroundTaskCenter
-from core.current_events import CurrentEventMaterialManager
 from core.daily_study_plan_store import DailyStudyPlanStore
 from core.generation_draft_store import GenerationDraftStore
 from core.mastery_overrides import MasteryOverrideStore
@@ -40,7 +39,6 @@ class ApplicationServices:
     mastery_overrides: MasteryOverrideStore
     course_manager: CourseProjectManager
     past_exam_manager: PastExamManager
-    current_event_manager: CurrentEventMaterialManager
     task_center: BackgroundTaskCenter
     daily_plan_store: DailyStudyPlanStore | None = None
     generation_draft_store: GenerationDraftStore | None = None
@@ -56,7 +54,6 @@ class ApplicationServices:
             mastery_overrides=MasteryOverrideStore(MASTERY_OVERRIDES_FILE),
             course_manager=CourseProjectManager(COURSES_DIR),
             past_exam_manager=PastExamManager(PAST_EXAMS_DIR),
-            current_event_manager=CurrentEventMaterialManager(),
             task_center=BackgroundTaskCenter(BACKGROUND_TASKS_FILE),
             daily_plan_store=DailyStudyPlanStore(DAILY_STUDY_PLANS_FILE),
             generation_draft_store=GenerationDraftStore(

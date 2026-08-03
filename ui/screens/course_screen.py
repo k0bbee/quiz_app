@@ -67,7 +67,6 @@ class CourseScreen(QWidget):
         snapshot_manager=None,
         past_exam_manager=None,
         mastery_overrides=None,
-        current_event_manager=None,
         generation_draft_store=None,
         parent=None,
         task_center=None,
@@ -81,7 +80,6 @@ class CourseScreen(QWidget):
         self.snapshot_manager = snapshot_manager
         self.past_exam_manager = past_exam_manager
         self.mastery_overrides = mastery_overrides
-        self.current_event_manager = current_event_manager
         self.generation_draft_store = generation_draft_store
         self.task_center = task_center
         self.checkpoint_store = checkpoint_store or CourseParseCheckpointStore(
@@ -1304,7 +1302,6 @@ class CourseScreen(QWidget):
             snapshot_manager=self.snapshot_manager,
             generation_draft_store=self.generation_draft_store,
             past_exam_manager=self.past_exam_manager,
-            current_event_manager=self.current_event_manager,
         )
         if not result.success:
             QMessageBox.critical(
@@ -1373,7 +1370,6 @@ class CourseScreen(QWidget):
             self.progress_manager,
             self.snapshot_manager,
             self.past_exam_manager,
-            self.current_event_manager,
             generation_draft_store=self.generation_draft_store,
         )
         mode = self._choose_course_removal_mode(project, impact)
@@ -1389,7 +1385,6 @@ class CourseScreen(QWidget):
             snapshot_manager=self.snapshot_manager,
             generation_draft_store=self.generation_draft_store,
             past_exam_manager=self.past_exam_manager,
-            current_event_manager=self.current_event_manager,
         )
         if not result.success:
             rollback_note = ""
@@ -1503,8 +1498,7 @@ class CourseScreen(QWidget):
                 f"{impact.incomplete_archive_count}，删除前待迁移 "
                 f"{impact.legacy_archive_count}）\n"
                 f"未完成草稿：{impact.unfinished_draft_count}（删除课程时取消）\n"
-                f"历史真题：{impact.past_exam_count}（保留并解除课程归属）\n"
-                f"热点材料：{impact.current_event_pack_count}（随课程删除）"
+                f"历史真题：{impact.past_exam_count}（保留并解除课程归属）"
             ),
             (
                 f"Delete course '{project.title}'\n\n"
@@ -1517,9 +1511,7 @@ class CourseScreen(QWidget):
                 f"Unfinished drafts: {impact.unfinished_draft_count} "
                 "(cancelled when the course is deleted)\n"
                 f"Historical exams: {impact.past_exam_count} "
-                "(kept and unassigned)\n"
-                f"Current-event packs: {impact.current_event_pack_count} "
-                "(deleted with the course)"
+                "(kept and unassigned)"
             ),
         )
 

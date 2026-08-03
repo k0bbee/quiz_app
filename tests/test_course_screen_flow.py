@@ -1,4 +1,3 @@
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,18 +10,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QTextBrowser
 
-from ai.course_summarizer import CourseSummaryGenerator
 from ai.exam_plan import ExamGenerationPlan
 from core.course_asset_lifecycle import (
     CourseAssetImpact,
     CourseRemovalMode,
     CourseRemovalResult,
 )
-from core.course_initializer import CourseInitializer, build_summary_markdown, infer_topics
+from core.course_initializer import CourseInitializer
 from core.course_parse_checkpoint import CourseParseCheckpointStore
-from core.document_parser import DocumentParser, ExtractedDocument
-from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
-from core.background_task_center import BackgroundTaskCenter, TaskStatus
+from core.document_parser import ExtractedDocument
+from core.background_task import TaskProgress
 from core.language_manager import LanguageManager
 from core.topic_identity_migration import TopicIdentityRepairReport, UnmatchedTopicQuestion
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
@@ -439,7 +436,6 @@ class CourseScreenFlowTests(unittest.TestCase):
                 progress_manager = Mock(name="progress_manager")
                 snapshot_manager = Mock(name="snapshot_manager")
                 past_exam_manager = Mock(name="past_exam_manager")
-                current_event_manager = Mock(name="current_event_manager")
                 screen = CourseScreen(
                     manager,
                     question_bank=question_bank,
@@ -447,7 +443,6 @@ class CourseScreenFlowTests(unittest.TestCase):
                     progress_manager=progress_manager,
                     snapshot_manager=snapshot_manager,
                     past_exam_manager=past_exam_manager,
-                    current_event_manager=current_event_manager,
                 )
                 screen.project_list.setCurrentRow(0)
                 impact = CourseAssetImpact(
@@ -480,7 +475,6 @@ class CourseScreenFlowTests(unittest.TestCase):
                     progress_manager,
                     snapshot_manager,
                     past_exam_manager,
-                    current_event_manager,
                     generation_draft_store=None,
                 )
                 remove.assert_called_once_with(
@@ -493,7 +487,6 @@ class CourseScreenFlowTests(unittest.TestCase):
                     snapshot_manager=snapshot_manager,
                     generation_draft_store=None,
                     past_exam_manager=past_exam_manager,
-                    current_event_manager=current_event_manager,
                 )
 
     def test_course_removal_impact_text_explains_counts_and_preserved_history(self):
@@ -511,7 +504,6 @@ class CourseScreenFlowTests(unittest.TestCase):
                     draft_progress_ids=("progress-draft",),
                     snapshot_ids=("snapshot-a",),
                     past_exam_ids=("exam-a", "exam-b"),
-                    current_event_pack_ids=("pack-a",),
                 )
                 language_manager = LanguageManager.instance()
                 previous_language = language_manager.current
@@ -528,7 +520,6 @@ class CourseScreenFlowTests(unittest.TestCase):
                 )
                 self.assertIn("未完成草稿：2（删除课程时取消）", text)
                 self.assertIn("历史真题：2（保留并解除课程归属）", text)
-                self.assertIn("热点材料：1（随课程删除）", text)
 
     def test_course_removal_mode_text_distinguishes_review_from_retry(self):
             with tempfile.TemporaryDirectory() as tmpdir:

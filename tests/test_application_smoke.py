@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import QApplication
 
 from core.application_services import ApplicationServices
 from core.background_task_center import BackgroundTaskCenter
-from core.current_events import CurrentEventMaterialManager
 from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
@@ -94,7 +93,6 @@ class ApplicationSmokeTests(unittest.TestCase):
                 mastery_overrides=mastery,
                 course_manager=course_manager,
                 past_exam_manager=past_exam_manager,
-                current_event_manager=CurrentEventMaterialManager(root / "events"),
                 task_center=task_center,
             )
             with patch(

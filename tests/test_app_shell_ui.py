@@ -14,7 +14,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication, QHBoxLayout, QMessageBox, QPushButton
 
 from core.background_task_center import BackgroundTaskCenter
-from core.current_events import CurrentEventMaterialManager
 from core.progress_tracker import ProgressManager
 from core.mastery_overrides import MasteryOverrideStore
 from core.quiz_snapshot_manager import QuizSnapshotManager
@@ -100,9 +99,6 @@ class AppShellUiTests(unittest.TestCase):
                     mastery_overrides=MasteryOverrideStore(root / "mastery.json"),
                     course_manager=CourseProjectManager(str(root / "courses")),
                     past_exam_manager=PastExamManager(root / "past-exams"),
-                    current_event_manager=CurrentEventMaterialManager(
-                        root / "current-event-materials"
-                    ),
                     task_center=BackgroundTaskCenter(root / "tasks.json"),
                 )
 
@@ -110,10 +106,6 @@ class AppShellUiTests(unittest.TestCase):
 
                 self.assertIs(services.question_bank, window.question_bank)
                 self.assertIs(services.course_manager, window.course_manager)
-                self.assertIs(
-                    services.current_event_manager,
-                    window.current_event_manager,
-                )
                 self.assertIs(services.task_center, window.task_center)
                 self.assertIs(services.set_manager, window.progress_screen.set_manager)
                 self.assertFalse(hasattr(window, "_task_center_timer"))

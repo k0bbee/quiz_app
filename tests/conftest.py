@@ -125,7 +125,6 @@ def _isolate_qt_settings_and_secrets(
     from core.secrets_manager import SecretsManager
     from core.application_services import ApplicationServices
     from core.background_task_center import BackgroundTaskCenter
-    from core.current_events import CurrentEventMaterialManager
     from core.generation_draft_store import GenerationDraftStore
     from core.mastery_overrides import MasteryOverrideStore
     from core.progress_tracker import ProgressManager
@@ -147,7 +146,6 @@ def _isolate_qt_settings_and_secrets(
             mastery_overrides=MasteryOverrideStore(root / "mastery.json"),
             course_manager=CourseProjectManager(str(root / "courses")),
             past_exam_manager=PastExamManager(root / "past-exams"),
-            current_event_manager=CurrentEventMaterialManager(root / "events"),
             task_center=BackgroundTaskCenter(root / "tasks.json"),
             generation_draft_store=GenerationDraftStore(
                 root / "generation-drafts.json"

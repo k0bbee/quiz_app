@@ -26,7 +26,6 @@ class CourseAssetImpact:
     snapshot_ids: tuple[str, ...] = ()
     generation_draft_ids: tuple[str, ...] = ()
     past_exam_ids: tuple[str, ...] = ()
-    current_event_pack_ids: tuple[str, ...] = ()
 
     @property
     def question_count(self) -> int:
@@ -76,11 +75,6 @@ class CourseAssetImpact:
     def past_exam_count(self) -> int:
         return len(self.past_exam_ids)
 
-    @property
-    def current_event_pack_count(self) -> int:
-        return len(self.current_event_pack_ids)
-
-
 class CourseRemovalMode(str, Enum):
     """User-visible policies for removing a course."""
 
@@ -105,7 +99,6 @@ def analyze_course_asset_impact(
     progress_manager=None,
     snapshot_manager=None,
     past_exam_manager=None,
-    current_event_manager=None,
     generation_draft_store=None,
 ) -> CourseAssetImpact:
     """Return direct and indirect assets linked to ``course_id``."""
@@ -181,14 +174,6 @@ def analyze_course_asset_impact(
         == normalized_course_id
     }
     generation_draft_ids.discard("")
-    current_event_pack_ids = {
-        str(getattr(pack, "pack_id", "") or "").strip()
-        for pack in _load_all(current_event_manager)
-        if str(getattr(pack, "course_id", "") or "").strip()
-        == normalized_course_id
-    }
-    current_event_pack_ids.discard("")
-
     return CourseAssetImpact(
         course_id=normalized_course_id,
         question_ids=tuple(sorted(question_ids)),
@@ -202,7 +187,6 @@ def analyze_course_asset_impact(
         snapshot_ids=tuple(sorted(snapshot_ids)),
         generation_draft_ids=tuple(sorted(generation_draft_ids)),
         past_exam_ids=tuple(sorted(past_exam_ids)),
-        current_event_pack_ids=tuple(sorted(current_event_pack_ids)),
     )
 
 
@@ -216,7 +200,6 @@ def remove_course_assets(
     progress_manager=None,
     snapshot_manager=None,
     past_exam_manager=None,
-    current_event_manager=None,
     generation_draft_store=None,
 ) -> CourseRemovalResult:
     """Apply one course-removal policy with compensating rollback on failure."""
@@ -228,7 +211,6 @@ def remove_course_assets(
         progress_manager,
         snapshot_manager,
         past_exam_manager,
-        current_event_manager,
         generation_draft_store=generation_draft_store,
     )
     project = course_manager.get(impact.course_id)
@@ -263,7 +245,6 @@ def remove_course_assets(
         progress_manager,
         snapshot_manager,
         past_exam_manager,
-        current_event_manager,
         generation_draft_store=generation_draft_store,
     )
     project = course_manager.get(impact.course_id)
@@ -287,12 +268,6 @@ def remove_course_assets(
         copy_items=False,
     )
     past_exams = _load_by_ids(past_exam_manager, "get", impact.past_exam_ids)
-    current_event_packs = _load_by_ids(
-        current_event_manager,
-        "get",
-        impact.current_event_pack_ids,
-    )
-
     try:
         _delete_drafts(
             draft_progress_records,
@@ -319,10 +294,6 @@ def remove_course_assets(
                 set_manager,
             )
         _unlink_past_exams(past_exams, past_exam_manager)
-        _delete_current_event_packs(
-            current_event_packs,
-            current_event_manager,
-        )
         _require_success(
             course_manager.delete(impact.course_id),
             f"delete course {impact.course_id}",
@@ -337,7 +308,6 @@ def remove_course_assets(
             snapshots,
             generation_drafts,
             past_exams,
-            current_event_packs,
             course_manager,
             question_bank,
             set_manager,
@@ -345,7 +315,6 @@ def remove_course_assets(
             snapshot_manager,
             generation_draft_store,
             past_exam_manager,
-            current_event_manager,
         )
         return CourseRemovalResult(
             False,
@@ -507,16 +476,6 @@ def _unlink_past_exams(past_exams, past_exam_manager):
         )
 
 
-def _delete_current_event_packs(packs, current_event_manager):
-    if current_event_manager is None:
-        return
-    for pack in packs:
-        _require_success(
-            current_event_manager.delete(pack.pack_id),
-            f"delete current-event material pack {pack.pack_id}",
-        )
-
-
 def _restore_assets(
     project,
     was_current,
@@ -526,7 +485,6 @@ def _restore_assets(
     snapshots,
     generation_drafts,
     past_exams,
-    current_event_packs,
     course_manager,
     question_bank,
     set_manager,
@@ -534,7 +492,6 @@ def _restore_assets(
     snapshot_manager,
     generation_draft_store,
     past_exam_manager,
-    current_event_manager,
 ) -> list[str]:
     errors: list[str] = []
     restore_groups = (
@@ -566,15 +523,6 @@ def _restore_assets(
                 _require_success(
                     past_exam_manager.save_record(deepcopy(record)),
                     f"restore historical exam {record.exam_id}",
-                )
-            except Exception as exc:
-                errors.append(str(exc))
-    if current_event_manager is not None:
-        for pack in current_event_packs:
-            try:
-                _require_success(
-                    current_event_manager.save(deepcopy(pack)),
-                    f"restore current-event material pack {pack.pack_id}",
                 )
             except Exception as exc:
                 errors.append(str(exc))

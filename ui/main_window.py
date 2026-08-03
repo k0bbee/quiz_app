@@ -84,7 +84,6 @@ class MainWindow(QMainWindow):
         self.mastery_overrides = services.mastery_overrides
         self.course_manager = services.course_manager
         self.past_exam_manager = services.past_exam_manager
-        self.current_event_manager = services.current_event_manager
         self.task_center = services.task_center
         self.daily_plan_store = getattr(services, "daily_plan_store", None)
         self.generation_draft_store = getattr(
@@ -272,7 +271,6 @@ class MainWindow(QMainWindow):
             snapshot_manager=self.snapshot_manager,
             past_exam_manager=self.past_exam_manager,
             mastery_overrides=self.mastery_overrides,
-            current_event_manager=self.current_event_manager,
             generation_draft_store=self.generation_draft_store,
             task_center=self.task_center,
             )
