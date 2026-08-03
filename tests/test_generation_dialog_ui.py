@@ -133,7 +133,7 @@ class GenerationDialogUiTests(unittest.TestCase):
             self.assertFalse(dialog.review_partial_btn.isHidden())
             self.assertIn("1 道题", dialog.status_label.text())
 
-    def test_review_state_exposes_user_selectable_publish_destination(self):
+    def test_review_state_exposes_one_save_action_without_destination_picker(self):
             dialog = AIGenerationDialog(
                 "course content",
                 {
@@ -165,14 +165,8 @@ class GenerationDialogUiTests(unittest.TestCase):
             dialog.generated_questions = [question]
             dialog._show_review_pending_state()
 
-            practice_index = dialog.publish_combo.findData("practice_now")
-            self.assertGreaterEqual(practice_index, 0)
-            dialog.publish_combo.setCurrentIndex(practice_index)
-
-            self.assertFalse(dialog.publish_combo.isHidden())
-            self.assertEqual("practice_now", dialog.publish_destination)
-            dialog.set_publish_destination("library")
-            self.assertEqual("library", dialog.publish_combo.currentData())
+            self.assertFalse(dialog.review_partial_btn.isHidden())
+            self.assertFalse(hasattr(dialog, "publish_combo"))
 
     def test_generation_dialog_notifies_when_new_questions_become_durable(self):
             dialog = AIGenerationDialog(

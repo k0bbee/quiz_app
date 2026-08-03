@@ -545,29 +545,6 @@ class AIGenerationDialog(QDialog):
 
         self.footer_action_layout.addStretch()
 
-        self.publish_label = QLabel(
-            self.lang_manager.get_text("审核后：", "After review:")
-        )
-        self.publish_label.setObjectName("secondaryText")
-        self.publish_label.setHidden(True)
-        self.footer_action_layout.addWidget(self.publish_label)
-        self.publish_combo = WheelSafeComboBox()
-        self.publish_combo.setObjectName("generationPublishDestination")
-        self.publish_combo.setMinimumWidth(150)
-        self.publish_combo.addItem(
-            self.lang_manager.get_text("保存到题库", "Save to Library"),
-            "library",
-        )
-        self.publish_combo.addItem(
-            self.lang_manager.get_text("保存并立即练习", "Save and Practice Now"),
-            "practice_now",
-        )
-        self.publish_combo.currentIndexChanged.connect(
-            self._on_publish_destination_changed
-        )
-        self.publish_combo.setHidden(True)
-        self.footer_action_layout.addWidget(self.publish_combo)
-
         self.fill_missing_btn = QPushButton(
             self.lang_manager.get_text("补齐缺口", "Fill Missing")
         )
@@ -961,23 +938,6 @@ class AIGenerationDialog(QDialog):
         self._update_preview()
 
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
-        self.publish_label.setText(
-            self.lang_manager.get_text("审核后：", "After review:")
-        )
-        current_destination = self.publish_combo.currentData()
-        publish_labels = (
-            ("保存到题库", "Save to Library"),
-            ("保存并立即练习", "Save and Practice Now"),
-        )
-        blocked = self.publish_combo.blockSignals(True)
-        try:
-            for index, (zh, en) in enumerate(publish_labels):
-                self.publish_combo.setItemText(index, self.lang_manager.get_text(zh, en))
-            destination_index = self.publish_combo.findData(current_destination)
-            if destination_index >= 0:
-                self.publish_combo.setCurrentIndex(destination_index)
-        finally:
-            self.publish_combo.blockSignals(blocked)
         self._refresh_review_button()
         self._refresh_fill_missing_button()
         self.generate_btn.setText(self.lang_manager.get_text("生成题目", "Generate Questions"))
@@ -1285,12 +1245,6 @@ class AIGenerationDialog(QDialog):
                 finally:
                     combo.blockSignals(blocked)
 
-    def _on_publish_destination_changed(self, index: int) -> None:
-        value = str(self.publish_combo.itemData(index) or "library").strip()
-        self._publish_destination = (
-            value if value in {"library", "practice_now"} else "library"
-        )
-
     @property
     def review_state(self) -> dict[str, str]:
         """Return the current question-id review decisions for draft storage."""
@@ -1553,8 +1507,6 @@ class AIGenerationDialog(QDialog):
         self.fill_missing_btn.setHidden(True)
         self.fill_missing_btn.setEnabled(False)
         self.review_partial_btn.setHidden(True)
-        self.publish_label.setHidden(True)
-        self.publish_combo.setHidden(True)
         self._set_generate_button_role("primaryButton")
         self._reset_generation_log()
         self._append_generation_event(self._last_generation_progress)
@@ -2064,8 +2016,6 @@ class AIGenerationDialog(QDialog):
         self.fill_missing_btn.setHidden(True)
         self.fill_missing_btn.setEnabled(False)
         self.review_partial_btn.setHidden(True)
-        self.publish_label.setHidden(True)
-        self.publish_combo.setHidden(True)
         self._set_generate_button_role("primaryButton")
         self._append_generation_event(
             self.lang_manager.get_text(
@@ -2244,9 +2194,6 @@ class AIGenerationDialog(QDialog):
 
     def _refresh_review_button(self) -> None:
         count = len(self.generated_questions)
-        has_review = count > 0
-        self.publish_label.setVisible(has_review)
-        self.publish_combo.setVisible(has_review)
         if count:
             self.review_partial_btn.setText(self.lang_manager.get_text(
                 f"审核并保存 {count} 道题",
