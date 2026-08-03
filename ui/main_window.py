@@ -281,19 +281,19 @@ class MainWindow(QMainWindow):
                 self._open_course_library
             )
             self._course_screen.course_import_started.connect(
-                self._on_first_run_import_started
+                self.first_run.import_started
             )
             self._course_screen.course_import_progressed.connect(
-                self._on_first_run_import_progress
+                self.first_run.import_progress
             )
             self._course_screen.course_import_completed.connect(
-                self._on_first_run_import_completed
+                self.first_run.import_completed
             )
             self._course_screen.course_import_failed.connect(
-                self._on_first_run_import_failed
+                self.first_run.import_failed
             )
             self._course_screen.course_import_cancelled.connect(
-                self._on_first_run_import_cancelled
+                self.first_run.import_cancelled
             )
             self._install_workspace(self.SCREEN_COURSES, self._course_screen)
         return self._course_screen
@@ -425,25 +425,25 @@ class MainWindow(QMainWindow):
         # Home screen
         self.home_screen.study_requested.connect(self._handle_study_intent)
         self.first_run_screen.choose_materials_requested.connect(
-            self._on_first_run_choose_materials
+            self.first_run.choose_materials
         )
         self.first_run_screen.example_requested.connect(
-            self._on_first_run_example
+            self.first_run.load_example
         )
         self.first_run_screen.generate_requested.connect(
-            self._on_first_run_generate
+            self.first_run.generate
         )
         self.first_run_screen.start_requested.connect(
-            self._on_first_run_start
+            self.first_run.start
         )
         self.first_run_screen.cancel_requested.connect(
-            self._on_first_run_cancel
+            self.first_run.cancel
         )
         self.first_run_screen.restore_courses_requested.connect(
             self.first_run.open_archived_courses
         )
         self.settings_screen.settings_saved.connect(
-            self._on_first_run_settings_saved
+            self.first_run.settings_saved
         )
 
         # Topic selection
@@ -545,9 +545,6 @@ class MainWindow(QMainWindow):
         """Open settings as a utility window without leaving the workspace."""
         self.settings_window.show_settings(section)
 
-    def _on_first_run_settings_saved(self) -> None:
-        self.first_run.settings_saved()
-
     def _first_run_ai_error(self) -> str:
         return self.first_run.ai_error()
 
@@ -556,36 +553,6 @@ class MainWindow(QMainWindow):
 
     def _refresh_first_run(self) -> None:
         self.first_run.refresh()
-
-    def _on_first_run_choose_materials(self) -> None:
-        self.first_run.choose_materials()
-
-    def _on_first_run_example(self) -> None:
-        self.first_run.load_example()
-
-    def _on_first_run_import_started(self) -> None:
-        self.first_run.import_started()
-
-    def _on_first_run_import_progress(self, progress) -> None:
-        self.first_run.import_progress(progress)
-
-    def _on_first_run_import_completed(self, _project) -> None:
-        self.first_run.import_completed(_project)
-
-    def _on_first_run_import_failed(self, message: str) -> None:
-        self.first_run.import_failed(message)
-
-    def _on_first_run_import_cancelled(self) -> None:
-        self.first_run.import_cancelled()
-
-    def _on_first_run_generate(self) -> None:
-        self.first_run.generate()
-
-    def _on_first_run_start(self) -> None:
-        self.first_run.start()
-
-    def _on_first_run_cancel(self) -> None:
-        self.first_run.cancel()
 
     # --- Slot handlers ---
 

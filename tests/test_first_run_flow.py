@@ -808,7 +808,7 @@ class FirstRunFlowTests(unittest.TestCase):
             "configure",
             return_value=None,
         ) as configure:
-            window._on_first_run_generate()
+            window.first_run.generate()
 
         kwargs = configure.call_args.kwargs
         self.assertEqual(project.course_id, kwargs["course_override"].course_id)
@@ -851,7 +851,7 @@ class FirstRunFlowTests(unittest.TestCase):
         ), patch(
             "ui.generation_workspace_controller.QMessageBox.warning"
         ) as warning:
-            window._on_first_run_generate()
+            window.first_run.generate()
 
         warning.assert_not_called()
         self.assertEqual(
@@ -865,7 +865,7 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertIsNone(window.first_run_screen.generation_widget())
 
         window._first_run_ai_error.return_value = ""
-        window._on_first_run_settings_saved()
+        window.first_run.settings_saved()
 
         self.assertEqual(
             FirstRunStage.GENERATE,
@@ -917,7 +917,7 @@ class FirstRunFlowTests(unittest.TestCase):
             "ui.generation_workspace_controller.GenerationWorkspaceController.prepare",
             return_value=preparation,
         ):
-            window._on_first_run_generate()
+            window.first_run.generate()
 
         self.assertIs(
             dialog,
