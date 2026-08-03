@@ -21,7 +21,6 @@ from core.source_navigation import (
     format_source_location,
     resolve_source_location,
 )
-from core.public_url import canonical_public_http_url
 from ui.widgets.source_refs import format_source_refs
 
 
@@ -111,10 +110,6 @@ class SourceRefsPanel(QWidget):
         return self._formatted_text
 
     def _item_text(self, ref: dict) -> str:
-        if self._is_current_event(ref):
-            title = str(ref.get("title", "") or "").strip() or self._label
-            domain = str(ref.get("domain", "") or "").strip()
-            return " · ".join(part for part in (title, domain) if part)
         parts = [str(ref.get("source_file", "") or "").strip() or self._label]
         page = ref.get("page_or_slide")
         if page not in (None, ""):
@@ -133,29 +128,14 @@ class SourceRefsPanel(QWidget):
 
     def _update_strings(self) -> None:
         zh = self._language == "zh"
-        ref, _location = self._selected()
-        is_event = self._is_current_event(ref)
-        self.open_btn.setText(
-            ("打开链接" if zh else "Open Link")
-            if is_event else ("打开文件" if zh else "Open File")
-        )
-        self.copy_btn.setText(
-            ("复制链接" if zh else "Copy Link")
-            if is_event else ("复制位置" if zh else "Copy Location")
-        )
-        self.details_btn.setText(
-            ("查看详情" if zh else "View Details")
-            if is_event else ("查看定位" if zh else "View Location")
-        )
+        self.open_btn.setText("打开文件" if zh else "Open File")
+        self.copy_btn.setText("复制位置" if zh else "Copy Location")
+        self.details_btn.setText("查看定位" if zh else "View Location")
 
     def _update_action_state(self, *_args) -> None:
         ref, location = self._selected()
-        event_url = self._event_url(ref)
-        self.open_btn.setEnabled(
-            bool(event_url)
-            or bool(location and location.exists and location.is_openable)
-        )
-        self.copy_btn.setEnabled(bool(event_url) or location is not None)
+        self.open_btn.setEnabled(bool(location and location.exists and location.is_openable))
+        self.copy_btn.setEnabled(location is not None)
         self.details_btn.setEnabled(ref is not None)
         self._update_excerpt(ref)
         self._update_strings()
@@ -179,27 +159,13 @@ class SourceRefsPanel(QWidget):
         self.excerpt_label.show()
 
     def copy_selected_location(self) -> None:
-        ref, location = self._selected()
-        event_url = self._event_url(ref)
-        if event_url:
-            QApplication.clipboard().setText(event_url)
-            return
+        _ref, location = self._selected()
         if location is None:
             return
         QApplication.clipboard().setText(format_source_location(location, self._language))
 
     def open_selected_source(self) -> None:
-        ref, location = self._selected()
-        event_url = self._event_url(ref)
-        if event_url:
-            if not QDesktopServices.openUrl(QUrl(event_url)):
-                QMessageBox.warning(
-                    self,
-                    "打开失败" if self._language == "zh" else "Open Failed",
-                    "系统无法打开该来源链接。" if self._language == "zh"
-                    else "The system could not open this source link.",
-                )
-            return
+        _ref, location = self._selected()
         if location is None or not location.exists:
             return
         url = QUrl.fromLocalFile(str(location.path))
@@ -232,16 +198,3 @@ class SourceRefsPanel(QWidget):
             "来源定位" if self._language == "zh" else "Source Location",
             details,
         )
-
-    @staticmethod
-    def _is_current_event(ref: dict | None) -> bool:
-        return bool(
-            isinstance(ref, dict)
-            and str(ref.get("source_kind", "") or "").strip() == "current_event"
-        )
-
-    @classmethod
-    def _event_url(cls, ref: dict | None) -> str:
-        if not cls._is_current_event(ref):
-            return ""
-        return canonical_public_http_url(ref.get("url", ""))

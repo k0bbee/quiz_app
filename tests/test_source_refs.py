@@ -128,32 +128,5 @@ class SourceRefsFormattingTests(unittest.TestCase):
         self.assertNotIn("<img", text)
         self.assertNotIn("<script>", text)
 
-    def test_format_current_event_ref_includes_review_metadata(self):
-        ref = {
-            "source_kind": "current_event",
-            "candidate_id": "event-123",
-            "url": "https://law.example/rule",
-            "title": "Agency rule faces judicial review",
-            "domain": "law.example",
-            "seen_at": "2026-07-15T05:00:00+00:00",
-            "retrieved_at": "2026-07-15T06:00:00+00:00",
-            "matched_topic_ids": ["administrative_law"],
-            "matched_topics": ["Administrative Law"],
-            "excerpt": "A court reviews an agency regulation.",
-        }
-
-        text = format_source_refs([ref], label="来源", language="zh")
-
-        self.assertIn("Agency rule faces judicial review", text)
-        self.assertIn("law.example", text)
-        self.assertIn("报道时间 2026-07-15", text)
-        self.assertIn("检索时间 2026-07-15", text)
-        self.assertNotIn("T05:00:00+00:00", text)
-        self.assertNotIn("T06:00:00+00:00", text)
-        self.assertIn("命中主题 Administrative Law", text)
-        self.assertNotIn("命中主题 administrative_law", text)
-        self.assertIn("摘录: A court reviews an agency regulation.", text)
-
-
 if __name__ == "__main__":
     unittest.main()

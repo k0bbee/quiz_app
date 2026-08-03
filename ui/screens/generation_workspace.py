@@ -242,7 +242,6 @@ class GenerationWorkspace(QWidget):
                 "progress_topic": gm("按知识点生成", "By Topic"),
                 "predicted_exam": gm("真题预测", "Exam Prediction"),
                 "prediction": gm("真题预测", "Exam Prediction"),
-                "current_event": gm("热点材料", "Current Events"),
                 "manual": gm("手动生成", "Manual"),
             }.get(source, gm("生成任务", "Generation"))
             self.session_selector.addItem(

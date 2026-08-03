@@ -147,55 +147,6 @@ class SourceNavigationTests(unittest.TestCase):
             self.assertTrue(url.isLocalFile())
             self.assertEqual("page=9", url.fragment())
 
-    def test_source_panel_opens_and_copies_revalidated_public_event_url(self):
-        panel = SourceRefsPanel()
-        panel.set_source_refs([{
-            "source_kind": "current_event",
-            "candidate_id": "event-123",
-            "url": "https://law.example/rule?utm_source=test",
-            "title": "Agency rule faces review",
-            "domain": "law.example",
-            "seen_at": "2026-07-15T05:00:00+00:00",
-            "retrieved_at": "2026-07-15T06:00:00+00:00",
-            "matched_topic_ids": ["administrative_law"],
-            "excerpt": "A court reviews an agency regulation.",
-        }], language="zh")
-        panel.source_list.setCurrentRow(0)
-
-        self.assertTrue(panel.open_btn.isEnabled())
-        self.assertTrue(panel.copy_btn.isEnabled())
-        self.assertIn("Agency rule faces review", panel.source_list.currentItem().text())
-
-        panel.copy_selected_location()
-        self.assertEqual("https://law.example/rule", QApplication.clipboard().text())
-
-        with patch(
-            "ui.widgets.source_refs_panel.QDesktopServices.openUrl",
-            return_value=True,
-        ) as open_url:
-            panel.open_selected_source()
-
-        self.assertEqual("https://law.example/rule", open_url.call_args.args[0].toString())
-
-    def test_source_panel_rejects_tampered_private_event_url_before_open(self):
-        panel = SourceRefsPanel()
-        panel.set_source_refs([{
-            "source_kind": "current_event",
-            "candidate_id": "event-123",
-            "url": "http://127.0.0.1/private",
-            "title": "Tampered source",
-        }], language="zh")
-        panel.source_list.setCurrentRow(0)
-
-        self.assertFalse(panel.open_btn.isEnabled())
-        self.assertFalse(panel.copy_btn.isEnabled())
-        with patch(
-            "ui.widgets.source_refs_panel.QDesktopServices.openUrl",
-        ) as open_url:
-            panel.open_selected_source()
-        open_url.assert_not_called()
-
-
     def test_source_navigation_rejects_unsafe_extensions(self):
         """Registered files with unsafe extensions cannot be resolved or opened."""
         with tempfile.TemporaryDirectory() as tmpdir:

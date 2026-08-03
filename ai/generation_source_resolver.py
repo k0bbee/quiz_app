@@ -72,11 +72,7 @@ class GenerationSourceResolver:
             if registered is None:
                 invalid_ids.append(ref_id)
                 continue
-            if (
-                ref.get("source_kind") != "current_event"
-                and allowed_chunk_ids
-                and ref_id not in allowed_chunk_ids
-            ):
+            if allowed_chunk_ids and ref_id not in allowed_chunk_ids:
                 invalid_ids.append(ref_id)
                 continue
             if not _matches_registered(ref, registered):
@@ -89,31 +85,6 @@ class GenerationSourceResolver:
 def sanitize_source_ref(ref) -> dict:
     if not isinstance(ref, dict):
         return {}
-    source_kind = str(ref.get("source_kind", "") or "").strip()
-    candidate_id = str(ref.get("candidate_id", "") or "").strip()
-    if source_kind == "current_event":
-        if not candidate_id:
-            return {}
-        clean = {
-            "source_kind": "current_event",
-            "candidate_id": candidate_id,
-            "url": str(ref.get("url", "") or "").strip(),
-            "title": str(ref.get("title", "") or "").strip(),
-            "domain": str(ref.get("domain", "") or "").strip(),
-            "seen_at": str(ref.get("seen_at", "") or "").strip(),
-            "retrieved_at": str(ref.get("retrieved_at", "") or "").strip(),
-            "matched_topic_ids": _compact_string_list(
-                ref.get("matched_topic_ids", [])
-            ),
-            "matched_topics": _compact_string_list(
-                ref.get("matched_topics", [])
-            ),
-            "matched_terms": _compact_string_list(ref.get("matched_terms", [])),
-            "excerpt": _compact_excerpt(ref.get("excerpt", "")),
-            "content_hash": str(ref.get("content_hash", "") or "").strip(),
-            "review_status": str(ref.get("review_status", "") or "").strip(),
-        }
-        return {key: value for key, value in clean.items() if value not in ("", None)}
     chunk_id = str(ref.get("chunk_id", "") or "").strip()
     source_file = str(ref.get("source_file", "") or "").strip()
     if not chunk_id and not source_file:
@@ -153,17 +124,10 @@ def _register(registry: dict[str, dict], ref) -> None:
 
 
 def _ref_id(ref: dict) -> str:
-    if str(ref.get("source_kind", "") or "").strip() == "current_event":
-        return str(ref.get("candidate_id", "") or "").strip()
     return str(ref.get("chunk_id", "") or "").strip()
 
 
 def _matches_registered(ref: dict, registered: dict) -> bool:
-    if registered.get("source_kind") == "current_event":
-        return (
-            ref.get("source_kind") == "current_event"
-            and ref.get("candidate_id") == registered.get("candidate_id")
-        )
     expected_file = str(registered.get("source_file") or "").strip()
     actual_file = str(ref.get("source_file") or "").strip()
     if actual_file and expected_file and actual_file != expected_file:
@@ -180,16 +144,3 @@ def _matches_registered(ref: dict, registered: dict) -> bool:
 def _compact_excerpt(value, limit: int = 320) -> str:
     text = " ".join(str(value or "").split())
     return text if len(text) <= limit else text[:limit].rstrip() + "…"
-
-
-def _compact_string_list(value, limit: int = 12) -> list[str]:
-    if not isinstance(value, (list, tuple)):
-        return []
-    return [
-        text
-        for text in (
-            " ".join(str(item or "").split())[:120]
-            for item in value[:limit]
-        )
-        if text
-    ]

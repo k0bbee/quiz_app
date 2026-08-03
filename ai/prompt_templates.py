@@ -129,7 +129,7 @@ class PromptBuilder:
 
 14. **Short-Answer Self-Assessment**: Generate short_answer only when its requested weight is positive. Provide a concrete, meaningful reference answer in correct_answer. The learner will compare their response with this reference and explicitly self-assess; never imply automatic semantic grading.
 
-14. **Source References**: If the course reference includes Evidence chunks such as "Evidence source-a1b2c3d4e5", each question SHOULD include a source_refs array using only those provided chunk_id values. For a user-reviewed current-event item, use {"source_kind": "current_event", "candidate_id": "event-..."} with only the provided candidate ID. Include a short excerpt/content_hash when available, but do not invent evidence IDs, source files, or URLs.
+14. **Source References**: If the course reference includes Evidence chunks such as "Evidence source-a1b2c3d4e5", each question SHOULD include a source_refs array using only those provided chunk_id values. Include a short excerpt/content_hash when available, but do not invent evidence IDs, source files, or URLs.
 
 15. **Plan Slot Binding**: If question plan slots are provided, each returned question for a listed slot MUST include that exact plan_id value, such as "plan-001". Do not invent plan IDs.
 
