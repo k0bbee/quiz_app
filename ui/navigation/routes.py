@@ -143,7 +143,6 @@ _WORKSPACE_TABS = {
         RouteTab(Route.course(tab="sources"), "资料", "Sources"),
         RouteTab(Route.course(tab="knowledge"), "知识点", "Knowledge"),
         RouteTab(Route.course(tab="generation"), "生成与审核", "Generate and Review"),
-        RouteTab(Route.course(tab="qa"), "问答", "Q&A"),
     ),
     Workspace.LIBRARY: (
         RouteTab(Route.library("questions"), "题目", "Questions"),

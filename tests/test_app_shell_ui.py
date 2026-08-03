@@ -405,6 +405,22 @@ class AppShellUiTests(unittest.TestCase):
             self.assertEqual(main_window.SCREEN_QUIZ, main_window.stack.currentIndex())
             self.assertTrue(main_window.settings_window.isVisible())
 
+    def test_course_context_does_not_promote_qna_to_primary_navigation(self):
+            main_window = MainWindow()
+            self.addCleanup(main_window.close)
+
+            self.assertTrue(
+                main_window.navigate_route(
+                    Route.course(tab="overview"),
+                    allow_first_run_redirect=False,
+                )
+            )
+
+            self.assertNotIn(
+                "Q&A",
+                [button.text() for button in main_window.context_tabs()],
+            )
+
     def test_main_window_routes_context_actions_to_existing_flows(self):
             with tempfile.TemporaryDirectory() as tmpdir:
                 center = BackgroundTaskCenter(Path(tmpdir) / "generation-tasks.json")

@@ -252,7 +252,7 @@ class CourseHubNavigationTests(unittest.TestCase):
         self.assertIs(screen.overview_panel, screen.content_stack.currentWidget())
 
         self.assertEqual(
-            ["overview", "sources", "knowledge", "generation", "qa"],
+            ["overview", "sources", "knowledge", "generation"],
             [
                 route.tab
                 for button, route in self.window.app_shell._context_routes.items()
