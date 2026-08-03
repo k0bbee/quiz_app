@@ -483,6 +483,9 @@ class MainWindow(QMainWindow):
         self.first_run_screen.choose_materials_requested.connect(
             self._on_first_run_choose_materials
         )
+        self.first_run_screen.example_requested.connect(
+            self._on_first_run_example
+        )
         self.first_run_screen.generate_requested.connect(
             self._on_first_run_generate
         )
@@ -658,6 +661,9 @@ class MainWindow(QMainWindow):
 
     def _on_first_run_choose_materials(self) -> None:
         self.first_run.choose_materials()
+
+    def _on_first_run_example(self) -> None:
+        self.first_run.load_example()
 
     def _on_first_run_import_started(self) -> None:
         self.first_run.import_started()

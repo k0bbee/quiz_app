@@ -1,7 +1,6 @@
 import os
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -171,6 +170,49 @@ class FirstRunFlowTests(unittest.TestCase):
         workspace.alternate_btn.click()
 
         self.assertEqual(["restore", "import"], requested)
+
+    def test_first_run_workspace_offers_offline_example_without_replacing_import(self):
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+        requested = []
+        workspace.example_requested.connect(
+            lambda: requested.append("example")
+        )
+        workspace.choose_materials_requested.connect(
+            lambda: requested.append("import")
+        )
+
+        workspace.set_state(FirstRunState(FirstRunStage.MATERIALS))
+
+        self.assertFalse(workspace.example_btn.isHidden())
+        self.assertTrue(workspace.alternate_btn.isHidden())
+        self.assertEqual("体验示例课程", workspace.example_btn.text())
+        self.assertEqual("选择课程资料", workspace.primary_btn.text())
+
+        workspace.example_btn.click()
+        workspace.primary_btn.click()
+
+        self.assertEqual(["example", "import"], requested)
+
+    def test_first_run_example_installs_without_ai_and_becomes_ready(self):
+        with patch(
+            "ui.main_window.MainWindow._first_run_ai_error",
+            return_value="",
+            create=True,
+        ):
+            window = MainWindow()
+        self.addCleanup(window.close)
+        window._first_run_ai_error = Mock(return_value="")
+        window.first_run_screen.set_state(FirstRunState(FirstRunStage.MATERIALS))
+
+        window.first_run_screen.example_btn.click()
+
+        self.assertEqual("example-study-skills", window.course_context.current_course_id())
+        self.assertEqual(10, window.question_bank.count("example-study-skills"))
+        self.assertEqual(
+            FirstRunStage.READY,
+            window.first_run_screen.state.stage,
+        )
 
     def test_review_pending_draft_precedes_ai_setup_and_regeneration(self):
         state = resolve_first_run_state(
@@ -559,8 +601,6 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual("恢复后保存", saved_sets[0].get_title("zh"))
 
     def test_auto_generation_saves_and_starts_the_new_question_set(self):
-        from ui.main_window import MainWindow
-
         question = Question(
             question_id="first-generated-question",
             type=QuestionType.TRUE_FALSE,

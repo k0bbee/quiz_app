@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QFileDialog
 from ai.course_summary_factory import provider_requires_api_key
 from ai.settings_validation import ai_generation_settings_error
 from core.first_run_flow import build_first_run_exam_plan, resolve_first_run_state
+from core.example_course import install_example_course
 from core.study_intent import StudyAction, StudyIntent
 
 
@@ -161,6 +162,28 @@ class FirstRunController:
                 "The course import could not start. Check the current background task.",
             )
             self.refresh()
+
+    def load_example(self) -> None:
+        """Install the deterministic offline course for a no-setup first try."""
+        host = self._host
+        try:
+            install_example_course(
+                course_manager=host.course_manager,
+                question_bank=host.question_bank,
+                set_manager=host.set_manager,
+            )
+        except Exception:
+            host._first_run_error = host.lang_manager.get_text(
+                "示例课程加载失败，请稍后重试。",
+                "The example course could not be loaded. Please try again.",
+            )
+            self.refresh()
+            return
+
+        host._first_run_operation = ""
+        host._first_run_error = ""
+        host._first_run_progress = None
+        host.course_context.course_changed()
 
     def import_started(self) -> None:
         host = self._host

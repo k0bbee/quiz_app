@@ -63,6 +63,7 @@ class FirstRunWorkspace(QWidget):
 
     configure_ai_requested = pyqtSignal()
     choose_materials_requested = pyqtSignal()
+    example_requested = pyqtSignal()
     generate_requested = pyqtSignal()
     start_requested = pyqtSignal()
     cancel_requested = pyqtSignal()
@@ -121,6 +122,11 @@ class FirstRunWorkspace(QWidget):
 
         action_layout = QHBoxLayout()
         action_layout.addStretch(1)
+        self.example_btn = QPushButton()
+        self.example_btn.setObjectName("secondaryButton")
+        self.example_btn.clicked.connect(self.example_requested.emit)
+        self.example_btn.hide()
+        action_layout.addWidget(self.example_btn)
         self.alternate_btn = QPushButton()
         self.alternate_btn.setObjectName("secondaryButton")
         self.alternate_btn.clicked.connect(self.choose_materials_requested.emit)
@@ -300,6 +306,11 @@ class FirstRunWorkspace(QWidget):
         self.primary_btn.setText(labels[stage])
         busy = stage in {FirstRunStage.IMPORTING, FirstRunStage.GENERATING}
         self.primary_btn.setEnabled(not busy)
+        self.example_btn.setText(gm("体验示例课程", "Try Example Course"))
+        self.example_btn.setVisible(
+            stage in {FirstRunStage.AI_SETUP, FirstRunStage.MATERIALS}
+            and not busy
+        )
         self.alternate_btn.setText(gm("导入新课程", "Import New Course"))
         self.alternate_btn.setVisible(
             stage is FirstRunStage.ARCHIVED_RECOVERY
