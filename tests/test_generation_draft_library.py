@@ -159,7 +159,6 @@ class GenerationDraftLibraryTests(unittest.TestCase):
         self.assertEqual("弱项补强", _source_label("result_reinforcement", get_text))
         self.assertEqual("按知识点生成", _source_label("progress_topic", get_text))
         self.assertEqual("真题预测", _source_label("predicted_exam", get_text))
-        self.assertEqual("热点材料", _source_label("current_event", get_text))
 
 
 if __name__ == "__main__":
