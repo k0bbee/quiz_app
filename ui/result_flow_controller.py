@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QMessageBox, QWidget
 
-from core.session_retry import SessionRetryMode, session_retry_question_ids
+from core.session_retry import session_retry_question_ids
 from core.study_intent import StudyAction, StudyIntent
-from ui.session_retry_presenter import session_retry_copy
 
 
 class ResultFlowController:
@@ -74,21 +73,20 @@ class ResultFlowController:
         host.course_context.refresh_results_retry_availability()
         host.navigate_to(host.SCREEN_RESULTS)
 
-    def retry(self, mode: SessionRetryMode) -> None:
-        """Start one retry subset from the currently displayed result."""
+    def retry_incorrect(self) -> None:
+        """Start practice from incorrectly answered questions in this result."""
         host = self.host
         gm = host.lang_manager.get_text
         record = host.results_screen.current_record
         if not record:
             return
 
-        copy = session_retry_copy(mode)
-        question_ids = session_retry_question_ids(record, mode)
+        question_ids = session_retry_question_ids(record)
         if not question_ids:
             self.message_box.information(
                 self._parent(),
-                gm(copy.empty_title_zh, copy.empty_title_en),
-                gm(copy.empty_detail_zh, copy.empty_detail_en),
+                gm("全部正确！", "All Correct!"),
+                gm("你答对了所有题目！", "You answered all questions correctly!"),
             )
             return
 
@@ -117,25 +115,13 @@ class ResultFlowController:
             ),
             question_count=len(questions),
             submission_mode="practice",
-            source=f"results_{mode.value}",
+            source="results_incorrect",
         )
         host.study_flow.start_questions(
             intent,
             questions,
-            label=gm(copy.session_title_zh, copy.session_title_en),
+            label=gm("错题复习", "Incorrect Review"),
         )
-
-    def retry_incorrect(self) -> None:
-        """Qt signal adapter for retrying incorrectly answered questions."""
-        self.retry(SessionRetryMode.INCORRECT)
-
-    def retry_unsure(self) -> None:
-        """Qt signal adapter for retrying questions marked as unsure."""
-        self.retry(SessionRetryMode.UNSURE)
-
-    def retry_review(self) -> None:
-        """Qt signal adapter for retrying questions marked for review."""
-        self.retry(SessionRetryMode.REVIEW)
 
     def practice_incorrect(self, intent: StudyIntent | None = None) -> None:
         """Start a session from prioritized historical incorrect questions."""
@@ -216,79 +202,6 @@ class ResultFlowController:
             resolved_intent,
             questions,
             label=gm("历史错题复习", "Incorrect Review"),
-        )
-
-    def retry_all(self) -> None:
-        """Retry every surviving question in the original question set."""
-        host = self.host
-        record = host.results_screen.current_record
-        if not record or not record.set_id:
-            return
-
-        question_set = host.set_manager.get(record.set_id)
-        if question_set is None:
-            retryable_questions = getattr(
-                host.results_screen,
-                "retryable_questions",
-                lambda: {},
-            )()
-            if not retryable_questions:
-                self._warn_original_unavailable(
-                    "原题集已被删除。当前历史记录仍可查看，但无法重新练习。",
-                    "The original question set was deleted. The archived result "
-                    "remains viewable, but it cannot be retried.",
-                )
-                return
-            question_ids = tuple(retryable_questions)
-            intent = StudyIntent(
-                course_id=host.course_context.current_course_id(),
-                action=StudyAction.CUSTOM_PRACTICE,
-                set_id="",
-                question_ids=question_ids,
-                question_count=len(question_ids),
-                submission_mode="practice",
-                source="results_retry_all",
-            )
-            host.study_flow.start_questions(
-                intent,
-                list(retryable_questions.values()),
-                label=host.lang_manager.get_text(
-                    "重新练习当前题目",
-                    "Retry Current Questions",
-                ),
-            )
-            return
-
-        questions = host.question_bank.get_many(question_set.questions)
-        if not questions:
-            self._warn_original_unavailable(
-                "原题已被删除。当前历史记录仍可查看，但无法重新练习。",
-                "The original questions were deleted. The archived result "
-                "remains viewable, but it cannot be retried.",
-            )
-            return
-
-        intent = StudyIntent(
-            course_id=host.course_context.current_course_id(),
-            action=StudyAction.CUSTOM_PRACTICE,
-            set_id=question_set.set_id,
-            question_ids=tuple(question_set.questions),
-            question_count=len(question_set.questions),
-            submission_mode="practice",
-            source="results_retry_all",
-        )
-        host.study_flow.start_questions(
-            intent,
-            questions,
-            question_set=question_set,
-        )
-
-    def _warn_original_unavailable(self, zh: str, en: str) -> None:
-        gm = self.host.lang_manager.get_text
-        self.message_box.warning(
-            self._parent(),
-            gm("原题不可用", "Original Questions Unavailable"),
-            gm(zh, en),
         )
 
     def _parent(self):

@@ -7,7 +7,6 @@ from unittest.mock import Mock, patch
 import pytest
 
 from ai.exam_plan import ExamGenerationPlan
-from core.session_retry import SessionRetryMode
 from models.question import Question
 from utils.constants import Difficulty, QuestionType
 from ui.first_run_controller import FirstRunController
@@ -128,7 +127,7 @@ class ResultFlowControllerTests(unittest.TestCase):
             ),
         )
 
-        ResultFlowController(host).retry(SessionRetryMode.INCORRECT)
+        ResultFlowController(host).retry_incorrect()
 
         assert started["questions"] == [wrong_question]
         assert started["intent"].question_ids == ("q-wrong",)
