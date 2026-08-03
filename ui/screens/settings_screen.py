@@ -195,7 +195,6 @@ class SettingsScreen(QWidget):
         parent=None,
         connection_probe_factory=None,
         task_center=None,
-        daily_plan_store=None,
     ):
         super().__init__(parent)
         self.lang_manager = LanguageManager.instance()
@@ -203,7 +202,6 @@ class SettingsScreen(QWidget):
         self._settings = self._load_settings()
         self._connection_probe_factory = connection_probe_factory or AIConnectionProbe
         self.task_center = task_center
-        self.daily_plan_store = daily_plan_store
         self._connection_test_worker = None
         self._app_data_worker = None
         self._app_data_task_id = ""
@@ -1863,17 +1861,15 @@ class SettingsScreen(QWidget):
                     if filename.endswith(".json"):
                         os.remove(os.path.join(PROGRESS_DIR, filename))
                         deleted = True
-            if self.daily_plan_store is not None:
-                self.daily_plan_store.clear()
             QMessageBox.information(
                 self,
                 self.lang_manager.get_text("完成", "Done"),
                 self.lang_manager.get_text(
-                    "所有进度记录和今日计划已删除。"
+                    "所有进度记录已删除。"
                     if deleted
-                    else "没有进度记录；今日计划已重置。",
-                    "All progress records and today's plans were deleted."
+                    else "没有进度记录。",
+                    "All progress records were deleted."
                     if deleted
-                    else "No progress records existed; today's plans were reset.",
+                    else "No progress records existed.",
                 ),
             )

@@ -15,7 +15,6 @@ class SettingsWindow(QDialog):
         self,
         *,
         task_center=None,
-        daily_plan_store=None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -30,7 +29,6 @@ class SettingsWindow(QDialog):
         layout.setSpacing(0)
         self.screen = SettingsScreen(
             task_center=task_center,
-            daily_plan_store=daily_plan_store,
             parent=self,
         )
         layout.addWidget(self.screen)

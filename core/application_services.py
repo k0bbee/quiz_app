@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from config import (
     BACKGROUND_TASKS_FILE,
     COURSES_DIR,
-    DAILY_STUDY_PLANS_FILE,
     GENERATION_DRAFTS_FILE,
     MASTERY_OVERRIDES_FILE,
     PROGRESS_DIR,
@@ -16,7 +15,6 @@ from config import (
     QUIZ_SNAPSHOTS_DIR,
 )
 from core.background_task_center import BackgroundTaskCenter
-from core.daily_study_plan_store import DailyStudyPlanStore
 from core.generation_draft_store import GenerationDraftStore
 from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
@@ -37,7 +35,6 @@ class ApplicationServices:
     mastery_overrides: MasteryOverrideStore
     course_manager: CourseProjectManager
     task_center: BackgroundTaskCenter
-    daily_plan_store: DailyStudyPlanStore | None = None
     generation_draft_store: GenerationDraftStore | None = None
 
     @classmethod
@@ -51,7 +48,6 @@ class ApplicationServices:
             mastery_overrides=MasteryOverrideStore(MASTERY_OVERRIDES_FILE),
             course_manager=CourseProjectManager(COURSES_DIR),
             task_center=BackgroundTaskCenter(BACKGROUND_TASKS_FILE),
-            daily_plan_store=DailyStudyPlanStore(DAILY_STUDY_PLANS_FILE),
             generation_draft_store=GenerationDraftStore(
                 GENERATION_DRAFTS_FILE
             ),

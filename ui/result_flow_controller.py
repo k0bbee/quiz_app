@@ -27,33 +27,6 @@ class ResultFlowController:
         host._refresh_first_run()
 
         study_intent = host.study_flow.take_active_intent()
-        if (
-            progress_record is not None
-            and isinstance(study_intent, StudyIntent)
-            and study_intent.action is StudyAction.DAILY_QUEUE
-            and getattr(host, "daily_plan_store", None) is not None
-            and study_intent.plan_id
-        ):
-            try:
-                daily_plan = host.daily_plan_store.record_completion(
-                    study_intent.plan_id,
-                    current_question_ids=study_intent.question_ids,
-                    answers=progress_record.answers,
-                )
-                study_intent = StudyIntent(
-                    course_id=study_intent.course_id,
-                    action=study_intent.action,
-                    set_id=study_intent.set_id,
-                    topic_ids=study_intent.topic_ids,
-                    question_ids=study_intent.question_ids,
-                    remaining_question_ids=daily_plan.pending_ids,
-                    question_count=study_intent.question_count,
-                    submission_mode=study_intent.submission_mode,
-                    source=study_intent.source,
-                    plan_id=study_intent.plan_id,
-                )
-            except (KeyError, OSError, TypeError, ValueError):
-                pass
 
         host.results_screen.set_results(
             progress_record,

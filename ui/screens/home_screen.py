@@ -1,7 +1,5 @@
 """Home screen — welcome view with quick actions."""
 
-from datetime import date
-
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
 )
@@ -21,7 +19,6 @@ from core.today_learning_plan import (
     build_today_learning_plan,
 )
 from ui.components import PageHeader
-from utils.logger import warning
 
 
 class HomeScreen(QWidget):
@@ -37,14 +34,12 @@ class HomeScreen(QWidget):
         *,
         course_manager=None,
         mastery_overrides=None,
-        daily_plan_store=None,
     ):
         super().__init__(parent)
         self.progress_manager = progress_manager
         self.question_bank = question_bank
         self.course_manager = course_manager
         self.mastery_overrides = mastery_overrides
-        self.daily_plan_store = daily_plan_store
         self.lang_manager = LanguageManager.instance()
         self._current_course_id = ""
         self._current_course_title = ""
@@ -601,23 +596,8 @@ class HomeScreen(QWidget):
             if draft is None and total_questions > 0
             else None
         )
-        plan_id = (
-            f"{date.today().isoformat()}:{self._current_course_id or 'all'}"
-            if daily_queue is not None
-            else ""
-        )
+        plan_id = ""
         daily_plan = None
-        if daily_queue is not None and self.daily_plan_store is not None:
-            try:
-                daily_plan = self.daily_plan_store.get_or_create(
-                    plan_id=plan_id,
-                    plan_date=date.today().isoformat(),
-                    course_id=self._current_course_id,
-                    queue=daily_queue,
-                    valid_question_ids=visible_question_ids,
-                )
-            except (OSError, TypeError, ValueError) as exc:
-                warning(f"Failed to load today's study plan: {exc}")
         self._today_plan = build_today_learning_plan(
             total_questions=total_questions,
             incorrect_question_ids=incorrect_ids,

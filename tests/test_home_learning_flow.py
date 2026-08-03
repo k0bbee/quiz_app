@@ -21,7 +21,6 @@ from models.question_set import SetManager
 from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
 from core.study_intent import StudyAction
-from core.today_learning_plan import LearningPlanAction
 from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.results_screen import ResultsScreen
@@ -239,7 +238,7 @@ class HomeLearningFlowTests(unittest.TestCase):
                 self.assertEqual((), intent.remaining_question_ids)
                 self.assertEqual(1, intent.question_count)
                 self.assertEqual("today_plan", intent.source)
-                self.assertIn("course-a", intent.plan_id)
+                self.assertEqual("", intent.plan_id)
 
     def test_home_today_queue_distinguishes_current_group_from_today_total(self):
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -269,78 +268,6 @@ class HomeLearningFlowTests(unittest.TestCase):
                 intent = requests[0]
                 self.assertEqual(10, len(intent.question_ids))
                 self.assertEqual(2, len(intent.remaining_question_ids))
-
-    def test_home_daily_plan_separates_today_count_from_total_backlog(self):
-            from core.daily_study_plan_store import DailyStudyPlanStore
-
-            with tempfile.TemporaryDirectory() as tmpdir:
-                root = Path(tmpdir)
-                question_bank = QuestionBank(str(root / "questions"))
-                questions = [
-                    self._make_question(f"course-a-q-{index:03d}", "cache")
-                    for index in range(100)
-                ]
-                for question in questions:
-                    question.metadata["course_id"] = "course-a"
-                question_bank.save_many(questions)
-                screen = HomeScreen(
-                    ProgressManager(str(root / "progress")),
-                    question_bank,
-                    daily_plan_store=DailyStudyPlanStore(root / "daily-plans.json"),
-                )
-
-                screen.set_current_course("course-a", "Systems")
-
-                self.assertIn("今日进度 0 / 15 题", screen.today_plan_detail.text())
-                self.assertIn("第一组 10 题", screen.today_plan_detail.text())
-                self.assertIn("完成后还有 5 题", screen.today_plan_detail.text())
-                self.assertIn("明日预计 15 题", screen.next_step_label.text())
-
-    def test_home_daily_plan_uses_balanced_topic_and_difficulty_metadata(self):
-            from core.daily_study_plan_store import DailyStudyPlanStore
-
-            with tempfile.TemporaryDirectory() as tmpdir:
-                root = Path(tmpdir)
-                question_bank = QuestionBank(str(root / "questions"))
-                difficulties = (
-                    Difficulty.EASY,
-                    Difficulty.MEDIUM,
-                    Difficulty.HARD,
-                )
-                questions = []
-                for topic, count in (("memory", 9), ("process", 6)):
-                    for index in range(count):
-                        question = self._make_question(
-                            f"course-a-{topic}-{index:02d}",
-                            topic,
-                        )
-                        question.difficulty = difficulties[index % len(difficulties)]
-                        question.metadata["course_id"] = "course-a"
-                        questions.append(question)
-                question_bank.save_many(questions)
-                screen = HomeScreen(
-                    ProgressManager(str(root / "progress")),
-                    question_bank,
-                    daily_plan_store=DailyStudyPlanStore(root / "daily-plans.json"),
-                )
-
-                screen.set_current_course(
-                    "course-a",
-                    "Systems",
-                    exam_scope_weights={"memory": 60, "process": 40},
-                )
-
-                intent = screen._today_study_intent()
-                topic_index = question_bank.topic_index(course_id="course-a")
-                selected_topics = [
-                    topic_index[question_id][0]
-                    for question_id in (
-                        intent.question_ids + intent.remaining_question_ids
-                    )
-                ]
-                self.assertEqual({"memory", "process"}, set(selected_topics))
-                self.assertIn("主题轮换", screen.today_plan_detail.toolTip())
-                self.assertIn("难度", screen.today_plan_detail.toolTip())
 
     def test_main_syncs_course_topic_weights_to_home_scheduler(self):
 
@@ -387,63 +314,6 @@ class HomeLearningFlowTests(unittest.TestCase):
                 {"memory": 70, "process": 30},
                 captured["kwargs"]["exam_scope_weights"],
             )
-
-    def test_home_keeps_completed_daily_plan_complete_after_repeat_failure(self):
-            from core.daily_study_plan_store import DailyStudyPlanStore
-
-            with tempfile.TemporaryDirectory() as tmpdir:
-                root = Path(tmpdir)
-                question_bank = QuestionBank(str(root / "questions"))
-                question = self._make_question("course-a-q-1", "cache")
-                question.metadata["course_id"] = "course-a"
-                question_bank.save(question)
-                progress_manager = ProgressManager(str(root / "progress"))
-                store = DailyStudyPlanStore(root / "daily-plans.json")
-                screen = HomeScreen(
-                    progress_manager,
-                    question_bank,
-                    daily_plan_store=store,
-                )
-                screen.set_current_course("course-a", "Systems")
-                intent = screen._today_study_intent()
-                wrong = AnswerRecord(
-                    question_id=question.question_id,
-                    index_in_session=0,
-                    user_answer="B",
-                    is_correct=False,
-                )
-
-                plan = store.record_completion(
-                    intent.plan_id,
-                    current_question_ids=intent.question_ids,
-                    answers=[wrong],
-                )
-                self.assertEqual((question.question_id,), plan.pending_ids)
-
-                plan = store.record_completion(
-                    intent.plan_id,
-                    current_question_ids=plan.pending_ids,
-                    answers=[wrong],
-                )
-                self.assertTrue(plan.is_complete)
-
-                failed_record = ProgressRecord.create_new("daily")
-                failed_record.status = "completed"
-                failed_record.answers = [wrong]
-                failed_record.summary = SessionSummary.compute([wrong], 1, 10)
-                progress_manager.save(failed_record)
-                restarted = HomeScreen(
-                    ProgressManager(str(root / "progress")),
-                    QuestionBank(str(root / "questions")),
-                    daily_plan_store=DailyStudyPlanStore(root / "daily-plans.json"),
-                )
-                restarted.set_current_course("course-a", "Systems")
-
-                self.assertIs(
-                    LearningPlanAction.DAILY_COMPLETE,
-                    restarted._today_plan.action,
-                )
-                self.assertIn("今日任务完成", restarted.today_plan_title.text())
 
     def test_home_today_queue_excludes_topics_marked_fully_mastered(self):
             from core.mastery_overrides import MasteryOverrideStore

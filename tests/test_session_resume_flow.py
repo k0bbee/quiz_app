@@ -7,13 +7,11 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QComboBox, QMessageBox, QRadioButton
+from PyQt6.QtWidgets import QApplication
 
 from models.progress import (
     AnswerRecord,
     ProgressRecord,
-    QuestionReviewSnapshot,
     SessionSummary,
 )
 from models.question import Question
@@ -21,21 +19,16 @@ from models.question import QuestionBank
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from models.quiz_snapshot import QuizSessionSnapshot
 from models.question_set import QuestionSet, SetManager
-from core.quiz_engine import QuizSession
 from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.language_manager import LanguageManager
 from core.study_intent import StudyAction, StudyIntent
-from core.today_learning_plan import LearningPlanAction
-from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
-from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
-from ui.course_context_controller import CourseContextController
+from ui.main_window import MainWindow
 from ui.result_flow_controller import ResultFlowController
-from ui.widgets.answer_area import AnswerArea, MatchingWidget, MultipleChoiceWidget
-from utils.constants import Difficulty, QuestionType, QuizState, topic_value
+from utils.constants import Difficulty, QuestionType
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -149,8 +142,6 @@ class SessionResumeFlowTests(unittest.TestCase):
             )
 
     def test_resume_abandoned_practice_starts_only_remaining_questions_and_removes_draft(self):
-            from ui.main_window import MainWindow
-
             with tempfile.TemporaryDirectory() as tmpdir:
                 root = Path(tmpdir)
                 question_bank = QuestionBank(str(root / "questions"))
@@ -222,8 +213,6 @@ class SessionResumeFlowTests(unittest.TestCase):
                 self.assertIsNone(progress_manager.get("draft"))
 
     def test_resume_practice_prefers_snapshot_and_restores_full_session(self):
-            from ui.main_window import MainWindow
-
             with tempfile.TemporaryDirectory() as tmpdir:
                 root = Path(tmpdir)
                 question_bank = QuestionBank(str(root / "questions"))
@@ -364,8 +353,6 @@ class SessionResumeFlowTests(unittest.TestCase):
             self.assertEqual(2, shown["total_count"])
 
     def test_resume_daily_snapshot_rebuilds_temporary_set_and_plan_context(self):
-            from ui.main_window import MainWindow
-
             with tempfile.TemporaryDirectory() as tmpdir:
                 root = Path(tmpdir)
                 question_bank = QuestionBank(str(root / "questions"))
@@ -491,8 +478,6 @@ class SessionResumeFlowTests(unittest.TestCase):
             self.assertEqual("exam", shown["mode"])
 
     def test_main_window_opens_persisted_history_without_original_assets(self):
-            from ui.main_window import MainWindow
-
             with tempfile.TemporaryDirectory() as tmpdir:
                 progress_dir = Path(tmpdir) / "progress"
                 writer = ProgressManager(str(progress_dir))
@@ -554,8 +539,6 @@ class SessionResumeFlowTests(unittest.TestCase):
                 self.assertEqual(3, shown["navigated"])
 
     def test_quiz_finished_deletes_snapshot_for_completed_set(self):
-            from ui.main_window import MainWindow
-
             with tempfile.TemporaryDirectory() as tmpdir:
                 root = Path(tmpdir)
                 progress_manager = ProgressManager(str(root / "progress"))
@@ -618,77 +601,6 @@ class SessionResumeFlowTests(unittest.TestCase):
                 self.assertIs(study_intent, shown["study_intent"])
                 shell.study_flow.take_active_intent.assert_called_once_with()
                 shell._refresh_first_run.assert_called_once_with()
-
-    def test_quiz_finished_reconciles_daily_plan_before_showing_results(self):
-            from core.daily_study_plan_store import DailyStudyPlanStore
-            from core.study_queue import build_daily_study_queue
-            from ui.main_window import MainWindow
-
-            with tempfile.TemporaryDirectory() as tmpdir:
-                root = Path(tmpdir)
-                store = DailyStudyPlanStore(root / "daily-plans.json")
-                plan = store.get_or_create(
-                    plan_id="2026-07-28:course-a",
-                    plan_date="2026-07-28",
-                    course_id="course-a",
-                    queue=build_daily_study_queue({"q-1"}, []),
-                    valid_question_ids={"q-1"},
-                )
-                intent = StudyIntent(
-                    course_id="course-a",
-                    action=StudyAction.DAILY_QUEUE,
-                    set_id="daily-set",
-                    question_ids=("q-1",),
-                    question_count=1,
-                    submission_mode="exam",
-                    source="today_plan",
-                    plan_id=plan.plan_id,
-                )
-                record = ProgressRecord.create_new("daily")
-                record.status = "completed"
-                record.answers = [
-                    AnswerRecord(
-                        question_id="q-1",
-                        index_in_session=0,
-                        user_answer="B",
-                        is_correct=False,
-                    )
-                ]
-                record.summary = SessionSummary.compute(record.answers, 1, 10)
-                shown = {}
-
-                class FakeResultsScreen:
-                    def set_results(
-                        self,
-                        progress_record,
-                        questions,
-                        lang,
-                        *,
-                        study_intent=None,
-                    ):
-                        shown["intent"] = study_intent
-
-                shell = types.SimpleNamespace(
-                    progress_manager=ProgressManager(str(root / "progress")),
-                    snapshot_manager=None,
-                    daily_plan_store=store,
-                    results_screen=FakeResultsScreen(),
-                    study_flow=types.SimpleNamespace(
-                        active_questions={},
-                        take_active_intent=Mock(return_value=intent),
-                    ),
-                    lang_manager=LanguageManager.instance(),
-                    SCREEN_RESULTS=3,
-                    navigate_to=lambda screen: shown.setdefault("screen", screen),
-                    _refresh_first_run=Mock(),
-                )
-
-                ResultFlowController(shell).quiz_finished(record)
-
-                self.assertEqual(("q-1",), shown["intent"].remaining_question_ids)
-                self.assertEqual("daily-set", shown["intent"].set_id)
-                self.assertEqual("exam", shown["intent"].submission_mode)
-                self.assertFalse(store.get(plan.plan_id).is_complete)
 
     def test_home_resume_draft_deletes_snapshot_when_questions_are_missing(self):
             from ui.main_window import MainWindow

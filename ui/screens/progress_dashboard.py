@@ -1,7 +1,5 @@
 """Progress dashboard — aggregated stats, history, per-topic breakdown."""
 
-from datetime import date
-
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -22,11 +20,7 @@ from ui.components import PageHeader
 from ui.widgets.source_refs_panel import SourceRefsPanel
 from utils.constants import topic_value
 from core.language_manager import LanguageManager
-from core.today_learning_plan import (
-    LearningPlanAction,
-    TodayLearningPlan,
-    build_topic_learning,
-)
+from core.today_learning_plan import build_topic_learning
 from ui.archive_status_presenter import build_archive_status_view
 
 
@@ -47,7 +41,6 @@ class ProgressDashboard(QWidget):
         set_manager: SetManager,
         mastery_overrides: MasteryOverrideStore,
         course_manager: CourseProjectManager,
-        daily_plan_store=None,
     ):
         super().__init__(parent)
         self.progress_manager = progress_manager
@@ -56,7 +49,6 @@ class ProgressDashboard(QWidget):
         self.lang_manager = LanguageManager.instance()
         self.mastery_overrides = mastery_overrides
         self.course_manager = course_manager
-        self.daily_plan_store = daily_plan_store
         self._current_course_id = ""
         self._current_project = None
         self._recent_history_expanded = False
@@ -265,11 +257,9 @@ class ProgressDashboard(QWidget):
             )
             for question in questions
         }
-        daily_plan = self._today_plan_view()
         self._learning_dashboard = build_learning_dashboard(
             topic_index,
             records=records,
-            daily_plan=daily_plan,
             max_focus_topics=10,
         )
 
@@ -564,36 +554,6 @@ class ProgressDashboard(QWidget):
             "收起知识点详情" if visible else "查看知识点详情",
             "Hide Topic Details" if visible else "View Topic Details",
         ))
-
-    def _today_plan_view(self) -> TodayLearningPlan | None:
-        if self.daily_plan_store is None:
-            return None
-        plan_id = f"{date.today().isoformat()}:{self._current_course_id or 'all'}"
-        try:
-            plan = self.daily_plan_store.get(plan_id)
-        except (OSError, TypeError, ValueError):
-            return None
-        if plan is None:
-            return None
-        current_ids, remaining_ids = plan.next_session()
-        action = (
-            LearningPlanAction.DAILY_COMPLETE
-            if plan.is_complete
-            else LearningPlanAction.START_DAILY_QUEUE
-        )
-        return TodayLearningPlan(
-            action=action,
-            target_question_count=len(current_ids),
-            estimated_minutes=len(plan.pending_ids) * 2,
-            question_ids=current_ids,
-            remaining_question_ids=remaining_ids,
-            plan_id=plan.plan_id,
-            plan_total_count=len(plan.planned_ids),
-            backlog_count=plan.backlog_count,
-            completed_count=len(plan.completed_ids),
-            remediation_count=len(plan.remediation_ids),
-            deferred_count=len(plan.deferred_ids),
-        )
 
     def _set_source_refs(
         self,

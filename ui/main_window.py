@@ -84,7 +84,6 @@ class MainWindow(QMainWindow):
         self.mastery_overrides = services.mastery_overrides
         self.course_manager = services.course_manager
         self.task_center = services.task_center
-        self.daily_plan_store = getattr(services, "daily_plan_store", None)
         self.generation_draft_store = getattr(
             services,
             "generation_draft_store",
@@ -128,7 +127,6 @@ class MainWindow(QMainWindow):
             self.question_bank,
             course_manager=self.course_manager,
             mastery_overrides=self.mastery_overrides,
-            daily_plan_store=self.daily_plan_store,
         )
         self.first_run_screen = FirstRunWorkspace()
         self.home_workspace = QStackedWidget()
@@ -152,11 +150,9 @@ class MainWindow(QMainWindow):
             set_manager=self.set_manager,
             mastery_overrides=self.mastery_overrides,
             course_manager=self.course_manager,
-            daily_plan_store=self.daily_plan_store,
         )
         self.settings_window = SettingsWindow(
             task_center=self.task_center,
-            daily_plan_store=self.daily_plan_store,
             parent=self,
         )
         self.settings_screen = self.settings_window.screen
