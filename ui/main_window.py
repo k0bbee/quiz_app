@@ -468,9 +468,6 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         # Home screen
         self.home_screen.study_requested.connect(self._handle_study_intent)
-        self.home_screen.open_course_requested.connect(
-            self._on_home_course_requested
-        )
         self.first_run_screen.choose_materials_requested.connect(
             self._on_first_run_choose_materials
         )
@@ -541,13 +538,6 @@ class MainWindow(QMainWindow):
         self.app_shell.render_language(gm)
         self._refresh_task_center_action()
         self._update_navigation_actions()
-
-    def _on_home_course_requested(self, course_id: str) -> None:
-        """Switch the active course from the compact home agenda."""
-        course_id = str(course_id or "").strip()
-        if not course_id or not self.course_manager.set_current(course_id):
-            return
-        self.course_context.course_changed()
 
     def navigate_to(
         self,

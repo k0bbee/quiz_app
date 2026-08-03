@@ -73,36 +73,17 @@ class _Courses:
 
 
 class HomeGlobalAgendaUiTests(unittest.TestCase):
-    def test_multi_course_home_shows_compact_agenda_actions(self):
+    def test_home_uses_current_course_plan_without_cross_course_agenda(self):
         home = HomeScreen(
             _Progress(),
             _Questions(),
             course_manager=_Courses(),
         )
-        requested = []
-        home.open_course_requested.connect(requested.append)
 
         home.set_current_course("course-a", "课程 A")
 
-        self.assertFalse(home.agenda_frame.isHidden())
-        self.assertIn("2", home.agenda_summary_label.text())
-        visible = [button for button in home.agenda_action_buttons if not button.isHidden()]
-        self.assertEqual(2, len(visible))
-        visible[0].click()
-        self.assertEqual([visible[0].property("courseId")], requested)
-
-    def test_single_course_home_keeps_agenda_hidden(self):
-        courses = _Courses()
-        courses.load_all = lambda: [_Courses().load_all()[0]]
-        home = HomeScreen(
-            _Progress(),
-            _Questions(),
-            course_manager=courses,
-        )
-
-        home.set_current_course("course-a", "课程 A")
-
-        self.assertTrue(home.agenda_frame.isHidden())
+        self.assertFalse(hasattr(home, "agenda_frame"))
+        self.assertFalse(hasattr(home, "open_course_requested"))
 
 
 if __name__ == "__main__":
