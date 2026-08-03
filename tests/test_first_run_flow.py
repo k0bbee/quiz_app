@@ -194,6 +194,34 @@ class FirstRunFlowTests(unittest.TestCase):
 
         self.assertEqual(["example", "import"], requested)
 
+    def test_missing_ai_setup_still_starts_with_example_or_import(self):
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+        requested = []
+        workspace.example_requested.connect(
+            lambda: requested.append("example")
+        )
+        workspace.choose_materials_requested.connect(
+            lambda: requested.append("import")
+        )
+
+        workspace.set_state(
+            FirstRunState(
+                FirstRunStage.AI_SETUP,
+                ai_error="API key missing",
+            )
+        )
+
+        self.assertEqual("体验示例课程", workspace.primary_btn.text())
+        self.assertFalse(workspace.alternate_btn.isHidden())
+        self.assertTrue(workspace.example_btn.isHidden())
+        self.assertEqual("导入课程资料", workspace.alternate_btn.text())
+
+        workspace.primary_btn.click()
+        workspace.alternate_btn.click()
+
+        self.assertEqual(["example", "import"], requested)
+
     def test_first_run_example_installs_without_ai_and_becomes_ready(self):
         with patch(
             "ui.main_window.MainWindow._first_run_ai_error",

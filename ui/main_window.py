@@ -477,9 +477,6 @@ class MainWindow(QMainWindow):
         self.home_screen.open_course_requested.connect(
             self._on_home_course_requested
         )
-        self.first_run_screen.configure_ai_requested.connect(
-            lambda: self.open_settings("ai")
-        )
         self.first_run_screen.choose_materials_requested.connect(
             self._on_first_run_choose_materials
         )

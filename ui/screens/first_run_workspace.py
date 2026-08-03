@@ -61,7 +61,6 @@ class _FirstRunStep(QFrame):
 class FirstRunWorkspace(QWidget):
     """Guide an empty installation through three explicit decisions."""
 
-    configure_ai_requested = pyqtSignal()
     choose_materials_requested = pyqtSignal()
     example_requested = pyqtSignal()
     generate_requested = pyqtSignal()
@@ -291,7 +290,7 @@ class FirstRunWorkspace(QWidget):
         gm = self.lang_manager.get_text
         stage = self.state.stage
         labels = {
-            FirstRunStage.AI_SETUP: gm("配置 AI", "Configure AI"),
+            FirstRunStage.AI_SETUP: gm("体验示例课程", "Try Example Course"),
             FirstRunStage.MATERIALS: gm("选择课程资料", "Choose Course Materials"),
             FirstRunStage.ARCHIVED_RECOVERY: gm("恢复课程", "Restore Course"),
             FirstRunStage.IMPORTING: gm("正在准备课程…", "Preparing Course…"),
@@ -308,12 +307,21 @@ class FirstRunWorkspace(QWidget):
         self.primary_btn.setEnabled(not busy)
         self.example_btn.setText(gm("体验示例课程", "Try Example Course"))
         self.example_btn.setVisible(
-            stage in {FirstRunStage.AI_SETUP, FirstRunStage.MATERIALS}
+            stage is FirstRunStage.MATERIALS
             and not busy
         )
-        self.alternate_btn.setText(gm("导入新课程", "Import New Course"))
+        alternate_label = (
+            gm("导入课程资料", "Import Course Materials")
+            if stage is FirstRunStage.AI_SETUP
+            else gm("导入新课程", "Import New Course")
+        )
+        self.alternate_btn.setText(alternate_label)
         self.alternate_btn.setVisible(
-            stage is FirstRunStage.ARCHIVED_RECOVERY
+            stage in {
+                FirstRunStage.AI_SETUP,
+                FirstRunStage.ARCHIVED_RECOVERY,
+            }
+            and not busy
         )
         self.cancel_btn.setText(gm("停止", "Stop"))
         self.cancel_btn.setVisible(busy)
@@ -349,7 +357,7 @@ class FirstRunWorkspace(QWidget):
 
     def _activate_primary(self) -> None:
         signal = {
-            FirstRunStage.AI_SETUP: self.configure_ai_requested,
+            FirstRunStage.AI_SETUP: self.example_requested,
             FirstRunStage.MATERIALS: self.choose_materials_requested,
             FirstRunStage.ARCHIVED_RECOVERY: self.restore_courses_requested,
             FirstRunStage.GENERATE: self.generate_requested,
