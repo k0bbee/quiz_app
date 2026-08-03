@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - sandbox-export-20260803
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
