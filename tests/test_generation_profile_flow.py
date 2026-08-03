@@ -271,7 +271,7 @@ class GenerationProfileFlowTests(unittest.TestCase):
             workspace = Mock()
             workspace.generation_widget.return_value = None
             shell = SimpleNamespace(
-                settings_screen=SimpleNamespace(settings_snapshot=lambda: dict(settings)),
+                settings_snapshot=lambda: dict(settings),
                 lang_manager=LanguageManager.instance(),
                 course_context=SimpleNamespace(
                     generation_context=lambda: ("summary", ["cache"], course),
@@ -317,7 +317,7 @@ class GenerationProfileFlowTests(unittest.TestCase):
             workspace = Mock()
             workspace.generation_widget.return_value = None
             shell = SimpleNamespace(
-                settings_screen=SimpleNamespace(settings_snapshot=lambda: dict(settings)),
+                settings_snapshot=lambda: dict(settings),
                 lang_manager=LanguageManager.instance(),
                 course_context=SimpleNamespace(
                     generation_context=lambda: ("", [], None),
@@ -397,7 +397,7 @@ class GenerationProfileFlowTests(unittest.TestCase):
                 workspace.generation_widget.return_value = None
                 navigate_to = Mock(return_value=True)
                 shell = SimpleNamespace(
-                    settings_screen=SimpleNamespace(settings_snapshot=lambda: dict(settings)),
+                settings_snapshot=lambda: dict(settings),
                     lang_manager=LanguageManager.instance(),
                     question_bank=question_bank,
                     set_manager=set_manager,

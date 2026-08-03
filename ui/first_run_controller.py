@@ -29,7 +29,7 @@ class FirstRunController:
 
     def ai_error(self) -> str:
         host = self._host
-        settings = host.settings_screen.settings_snapshot()
+        settings = host.settings_snapshot()
         api_key = ""
         if provider_requires_api_key(settings):
             from core.secrets_manager import SecretsManager

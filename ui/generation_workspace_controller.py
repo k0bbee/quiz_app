@@ -85,7 +85,7 @@ class GenerationWorkspaceController:
         host = self._host
         gm = host.lang_manager.get_text
         controller = GenerationLaunchController(
-            settings_provider=host.settings_screen.settings_snapshot,
+            settings_provider=host.settings_snapshot,
             course_context_provider=host.course_context.generation_context,
             task_center=getattr(host, "task_center", None),
             api_key_required=provider_requires_api_key,

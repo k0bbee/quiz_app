@@ -26,7 +26,7 @@ from ui.navigation import (
     Workspace,
 )
 from ui.shell import AppShell
-from config import APP_NAME, APP_NAME_EN
+from config import APP_NAME, APP_NAME_EN, DEFAULT_SETTINGS, SETTINGS_FILE
 
 from ui.screens.home_screen import HomeScreen
 from ui.screens.first_run_workspace import FirstRunWorkspace
@@ -39,6 +39,7 @@ from ui.settings_window import SettingsWindow
 from utils.constants import topic_value
 from ai.exam_plan import ExamGenerationPlan
 from models.question_set import QuestionSet
+from utils.json_io import read_json
 
 
 class MainWindow(QMainWindow):
@@ -149,17 +150,8 @@ class MainWindow(QMainWindow):
             mastery_overrides=self.mastery_overrides,
             course_manager=self.course_manager,
         )
-        self.settings_window = SettingsWindow(
-            task_center=self.task_center,
-            parent=self,
-        )
-        self.settings_screen = self.settings_window.screen
-        self.settings_screen.set_history_protection_blocked(
-            self._history_protection_blocked,
-            self.history_protection.message()
-            if self._history_protection_blocked
-            else "",
-        )
+        self._settings_window = None
+        self._settings_screen = None
         self._course_screen = None
         self._question_bank_screen = None
 
@@ -345,6 +337,44 @@ class MainWindow(QMainWindow):
             )
         return self._generation_workspace
 
+    def _ensure_settings_window(self):
+        """Create the settings UI only when a caller actually opens it."""
+        if self._settings_window is None:
+            self._settings_window = SettingsWindow(
+                task_center=self.task_center,
+                parent=self,
+            )
+            self._settings_screen = self._settings_window.screen
+            self._settings_screen.set_history_protection_blocked(
+                self._history_protection_blocked,
+                self.history_protection.message()
+                if self._history_protection_blocked
+                else "",
+            )
+            self._settings_screen.settings_saved.connect(
+                self.first_run.settings_saved
+            )
+        return self._settings_window
+
+    @property
+    def settings_window(self):
+        return self._ensure_settings_window()
+
+    @property
+    def settings_screen(self):
+        self._ensure_settings_window()
+        return self._settings_screen
+
+    def settings_snapshot(self) -> dict:
+        """Read settings without constructing the settings window."""
+        if self._settings_screen is not None:
+            return self._settings_screen.settings_snapshot()
+        data = read_json(SETTINGS_FILE)
+        return {
+            **DEFAULT_SETTINGS,
+            **(data if isinstance(data, dict) else {}),
+        }
+
     def _install_workspace(self, index: int, screen: QWidget) -> None:
         """Replace one fixed-route placeholder without shifting other routes."""
         placeholder = self._workspace_placeholders.pop(index, None)
@@ -427,10 +457,6 @@ class MainWindow(QMainWindow):
         self.first_run_screen.restore_courses_requested.connect(
             self.first_run.open_archived_courses
         )
-        self.settings_screen.settings_saved.connect(
-            self.first_run.settings_saved
-        )
-
         # Topic selection
         self.topic_screen.study_start.connect(self.study_flow.start_prefilled)
         self.topic_screen.generate_missing.connect(self.study_flow.generate_missing)
@@ -511,7 +537,7 @@ class MainWindow(QMainWindow):
 
     def open_settings(self, section: str = "") -> None:
         """Open settings as a utility window without leaving the workspace."""
-        self.settings_window.show_settings(section)
+        self._ensure_settings_window().show_settings(section)
 
     # --- Slot handlers ---
 
@@ -820,7 +846,7 @@ class MainWindow(QMainWindow):
         )
 
     def _show_timer_setting(self) -> bool:
-        return bool(self.settings_screen.get_setting("show_timer", False))
+        return bool(self.settings_snapshot().get("show_timer", False))
 
     def closeEvent(self, event):
         """Confirm active quiz exit before closing, then save settings."""
@@ -837,5 +863,6 @@ class MainWindow(QMainWindow):
             self._generation_close_pending = True
             event.ignore()
             return
-        self.settings_screen.save_settings(silent=True)
+        if self._settings_screen is not None:
+            self._settings_screen.save_settings(silent=True)
         super().closeEvent(event)

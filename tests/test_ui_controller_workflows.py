@@ -241,7 +241,7 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
         preparation = SimpleNamespace(ok=True, dialog=dialog, course_project=course)
         host = SimpleNamespace(
             lang_manager=SimpleNamespace(get_text=lambda zh_text, _en_text: zh_text),
-            settings_screen=SimpleNamespace(settings_snapshot=lambda: {}),
+            settings_snapshot=lambda: {},
             course_context=SimpleNamespace(generation_context=lambda: ("# Course", [], course)),
             task_center=None,
             question_bank=SimpleNamespace(

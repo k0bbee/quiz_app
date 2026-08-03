@@ -133,6 +133,18 @@ class AppShellUiTests(unittest.TestCase):
             self.assertIsNotNone(window._generation_workspace)
             self.assertIsNone(window._generation_workspace.generation_widget())
 
+    def test_settings_window_is_created_only_when_opened(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+
+        self.assertIsNone(getattr(window, "_settings_window", None))
+        self.assertIsNone(getattr(window, "_settings_screen", None))
+
+        window.open_settings()
+
+        self.assertIsNotNone(window._settings_window)
+        self.assertIs(window._settings_window.screen, window.settings_screen)
+
     def test_main_reads_startup_settings_through_supported_json_api(self):
             app = Mock()
             app.exec.return_value = 0
