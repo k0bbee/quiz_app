@@ -633,7 +633,3 @@ class ResultsFlowTests(unittest.TestCase):
             screen._clear_reviews()
 
             self.assertEqual(screen.review_layout.count(), 1)
-
-
-
-
