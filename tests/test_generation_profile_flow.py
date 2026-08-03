@@ -7,26 +7,17 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
+from PyQt6.QtWidgets import QApplication, QDialog
 from PyQt6.QtCore import Qt
 
-from ai.batch_generator import GenerationWorker
 from ai.generation_config import GenerationConfig
-from ai.question_plan import QuestionPlanItem
 from ai.exam_plan import ExamGenerationPlan
-from ai.llm_client import LLMClient
-from ai.generation_report import GenerationReport
-from core.app_errors import AppError
-from core.background_task_center import BackgroundTaskCenter, TaskStatus
-from core import course_index
-from core.question_set_builder import build_ai_question_set
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from ui.generation_workspace_controller import GenerationWorkspaceController
-from ui.navigation import Route
-from models.course_project import CourseProject, CourseTopic
+from models.course_project import CourseTopic
 from models.question import Question
 from models.question_set import QuestionSet
-from utils.constants import Difficulty, QuestionType, topic_value
+from utils.constants import Difficulty, QuestionType
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -302,7 +293,6 @@ class GenerationProfileFlowTests(unittest.TestCase):
 
     def test_main_generation_flow_applies_active_course_profile_before_opening(self):
             from core.language_manager import LanguageManager
-            from ui.main_window import MainWindow
 
             class ForbiddenSecrets:
                 def get_key(self):
@@ -345,7 +335,6 @@ class GenerationProfileFlowTests(unittest.TestCase):
 
     def test_predicted_generation_prefills_reviewable_plan_after_course_defaults(self):
             from core.language_manager import LanguageManager
-            from ui.main_window import MainWindow
 
             settings = {
                 "ai_provider": "local_agent",
@@ -403,7 +392,6 @@ class GenerationProfileFlowTests(unittest.TestCase):
             from core.language_manager import LanguageManager
             from models.question import QuestionBank
             from models.question_set import SetManager
-            from ui.main_window import MainWindow
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 root = Path(tmpdir)
