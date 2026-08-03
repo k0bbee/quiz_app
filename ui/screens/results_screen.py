@@ -93,7 +93,9 @@ class ResultsScreen(QWidget):
         layout.addWidget(line)
 
         # Review label
-        self.review_label = QLabel(self.lang_manager.get_text("回顾:", "Review:"))
+        self.review_label = QLabel(
+            self.lang_manager.get_text("错题回顾:", "Review incorrect:")
+        )
         self.review_label.setObjectName("resultsReviewLabel")
         layout.addWidget(self.review_label)
 
@@ -135,7 +137,9 @@ class ResultsScreen(QWidget):
 
     def _on_language_changed(self, lang):
         """Update all labels when language changes."""
-        self.review_label.setText(self.lang_manager.get_text("回顾:", "Review:"))
+        self.review_label.setText(
+            self.lang_manager.get_text("错题回顾:", "Review incorrect:")
+        )
         self.retry_incorrect_btn.setText(
             self.lang_manager.get_text("复习错题", "Review Incorrect")
         )
@@ -256,8 +260,17 @@ class ResultsScreen(QWidget):
 
         # Review cards
         self._clear_reviews()
+        review_count = 0
         for i, answer in enumerate(record.answers):
             card = QuestionReviewCard()
+            needs_review = (
+                bool(answer.skipped)
+                or not bool(answer.is_correct)
+                or str(getattr(answer, "confidence", "sure") or "sure")
+                == "unsure"
+            )
+            if needs_review:
+                review_count += 1
             q = self._review_questions.get(answer.question_id)
             if q:
                 card.set_result(
@@ -297,7 +310,14 @@ class ResultsScreen(QWidget):
                         f"Your answer: {answer.user_answer}"
                     )
                 )
+            card.setVisible(needs_review)
             self.review_layout.insertWidget(self.review_layout.count() - 1, card)
+
+        self.review_label.setText(
+            self.lang_manager.get_text("错题回顾:", "Review incorrect:")
+            if review_count
+            else self.lang_manager.get_text("本次没有需要复习的题目。", "No questions need review.")
+        )
 
         self._refresh_retry_action_state()
 

@@ -540,6 +540,33 @@ class ResultsFlowTests(unittest.TestCase):
             screen.return_home_btn.click()
             self.assertEqual([True], emitted)
 
+    def test_results_screen_only_shows_items_needing_review(self):
+            record = ProgressRecord.create_new("set-review-filter")
+            record.status = "completed"
+            record.answers = [
+                AnswerRecord("q-right", 0, "A", True),
+                AnswerRecord("q-unsure", 1, "A", True, confidence="unsure"),
+                AnswerRecord("q-wrong", 2, "B", False),
+            ]
+            record.summary = SessionSummary.compute(record.answers, 3, 20)
+            questions = {
+                question_id: self._make_question(question_id)
+                for question_id in ("q-right", "q-unsure", "q-wrong")
+            }
+
+            screen = self._make_results_screen()
+            screen.set_results(record, questions, "zh")
+
+            cards = [
+                screen.review_layout.itemAt(index).widget()
+                for index in range(screen.review_layout.count() - 1)
+            ]
+            self.assertEqual(3, len(cards))
+            self.assertTrue(cards[0].isHidden())
+            self.assertFalse(cards[1].isHidden())
+            self.assertFalse(cards[2].isHidden())
+            self.assertEqual("错题回顾:", screen.review_label.text())
+
     def test_results_screen_limits_topic_summary_to_two_weakest_topics(self):
             record = ProgressRecord.create_new("set-topics")
             record.status = "completed"
