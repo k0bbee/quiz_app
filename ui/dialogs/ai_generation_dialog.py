@@ -216,6 +216,40 @@ class AIGenerationDialog(QDialog):
             goal_layout.addWidget(button)
         right_layout.addWidget(self.goal_group)
 
+        self.basic_group = QGroupBox(
+            self.lang_manager.get_text("练习设置", "Practice Settings")
+        )
+        basic_layout = QFormLayout(self.basic_group)
+        basic_layout.setLabelAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        basic_layout.setHorizontalSpacing(16)
+        basic_layout.setVerticalSpacing(10)
+
+        self.count_label = QLabel(self.lang_manager.get_text("数量:", "Count:"))
+        self.count_spin = WheelSafeSpinBox()
+        self.count_spin.setRange(3, 60)
+        default_count = int(self.settings.get("default_question_count", 15) or 15)
+        self.count_spin.setValue(max(self.count_spin.minimum(), min(self.count_spin.maximum(), default_count)))
+        basic_layout.addRow(self.count_label, self.count_spin)
+
+        self.diff_label = QLabel(self.lang_manager.get_text("整体难度:", "Overall difficulty:"))
+        self.diff_combo = WheelSafeComboBox()
+        difficulties = [
+            (self.lang_manager.get_text("简单", "easy"), "easy"),
+            (self.lang_manager.get_text("中等", "medium"), "medium"),
+            (self.lang_manager.get_text("困难", "hard"), "hard"),
+            (self.lang_manager.get_text("混合", "mixed"), "mixed"),
+        ]
+        for display, value in difficulties:
+            self.diff_combo.addItem(display, value)
+        for i in range(self.diff_combo.count()):
+            if self.diff_combo.itemData(i) == self.settings.get("default_difficulty", "medium"):
+                self.diff_combo.setCurrentIndex(i)
+                break
+        basic_layout.addRow(self.diff_label, self.diff_combo)
+        right_layout.addWidget(self.basic_group)
+
         self.config_group = QGroupBox(
             self.lang_manager.get_text("生成参数", "Generation Settings")
         )
@@ -232,29 +266,6 @@ class AIGenerationDialog(QDialog):
             self.lang_manager.get_text("留空则自动命名", "Leave blank to name automatically")
         )
         config_layout.addRow(self.set_title_label, self.set_title_input)
-
-        self.count_label = QLabel(self.lang_manager.get_text("数量:", "Count:"))
-        self.count_spin = WheelSafeSpinBox()
-        self.count_spin.setRange(3, 60)
-        default_count = int(self.settings.get("default_question_count", 15) or 15)
-        self.count_spin.setValue(max(self.count_spin.minimum(), min(self.count_spin.maximum(), default_count)))
-        config_layout.addRow(self.count_label, self.count_spin)
-
-        self.diff_label = QLabel(self.lang_manager.get_text("整体难度:", "Overall difficulty:"))
-        self.diff_combo = WheelSafeComboBox()
-        difficulties = [
-            (self.lang_manager.get_text("简单", "easy"), "easy"),
-            (self.lang_manager.get_text("中等", "medium"), "medium"),
-            (self.lang_manager.get_text("困难", "hard"), "hard"),
-            (self.lang_manager.get_text("混合", "mixed"), "mixed"),
-        ]
-        for display, value in difficulties:
-            self.diff_combo.addItem(display, value)
-        for i in range(self.diff_combo.count()):
-            if self.diff_combo.itemData(i) == self.settings.get("default_difficulty", "medium"):
-                self.diff_combo.setCurrentIndex(i)
-                break
-        config_layout.addRow(self.diff_label, self.diff_combo)
 
         self.template_label = QLabel(self.lang_manager.get_text("模板:", "Template:"))
         self.template_combo = WheelSafeComboBox()
@@ -863,6 +874,9 @@ class AIGenerationDialog(QDialog):
             self.lang_manager.get_text("留空则自动命名", "Leave blank to name automatically")
         )
         self.diff_label.setText(self.lang_manager.get_text("整体难度:", "Overall difficulty:"))
+        self.basic_group.setTitle(
+            self.lang_manager.get_text("练习设置", "Practice Settings")
+        )
         self.config_group.setTitle(self.lang_manager.get_text("生成参数", "Generation Settings"))
         self._refresh_advanced_toggle_text()
         self.template_label.setText(self.lang_manager.get_text("模板:", "Template:"))
