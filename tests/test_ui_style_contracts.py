@@ -424,7 +424,7 @@ class UiStyleContractTests(unittest.TestCase):
             self.assertIn("qlistwidget#sourcepanellist", qss)
             self.assertIn("qlabel#generationpartialrecoverylabel", qss)
 
-            for button in main_window.navigation_buttons():
+            for button in main_window.app_shell.navigation_buttons():
                 self.assertEqual("sidebarNavButton", button.objectName())
 
     def test_review_dialog_and_ordering_controls_use_theme_roles(self):

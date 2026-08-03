@@ -81,7 +81,7 @@ class GenerationDraftLibraryTests(unittest.TestCase):
         self.assertFalse(hasattr(self.window, "drafts_tab_btn"))
         self.assertNotIn(
             "Generation Drafts",
-            [button.text() for button in self.window.context_tabs()],
+            [button.text() for button in self.window.app_shell.context_tabs()],
         )
         self.assertIs(
             library.draft_panel,

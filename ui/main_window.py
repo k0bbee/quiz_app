@@ -2,7 +2,7 @@
 
 from PyQt6.QtWidgets import (
     QMainWindow, QStackedWidget,
-    QMessageBox, QWidget, QPushButton,
+    QMessageBox, QWidget,
 )
 from PyQt6.QtCore import QTimer, Qt
 
@@ -414,12 +414,6 @@ class MainWindow(QMainWindow):
         ):
             setattr(self, attribute, getattr(self.app_shell, attribute))
         self.setCentralWidget(self.app_shell)
-
-    def navigation_buttons(self) -> tuple[QPushButton, ...]:
-        return self.app_shell.navigation_buttons()
-
-    def context_tabs(self) -> tuple[QPushButton, ...]:
-        return self.app_shell.context_tabs()
 
     def _connect_signals(self):
         # Home screen

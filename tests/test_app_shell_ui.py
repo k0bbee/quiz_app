@@ -280,7 +280,7 @@ class AppShellUiTests(unittest.TestCase):
             ):
                 self.assertFalse(hasattr(main_window, legacy_attr), legacy_attr)
 
-            buttons = main_window.navigation_buttons()
+            buttons = main_window.app_shell.navigation_buttons()
             self.assertEqual(
                 ["Study", "Courses"],
                 [button.text() for button in buttons],
@@ -306,7 +306,7 @@ class AppShellUiTests(unittest.TestCase):
             self.assertEqual(Route.study("today"), main_window.current_route)
             self.assertEqual(
                 ["Today", "Free Practice", "Learning Analysis"],
-                [button.text() for button in main_window.context_tabs()],
+                [button.text() for button in main_window.app_shell.context_tabs()],
             )
             self.assertTrue(main_window.today_tab_btn.isChecked())
             self.assertFalse(hasattr(main_window, "incorrect_review_btn"))
@@ -318,7 +318,7 @@ class AppShellUiTests(unittest.TestCase):
             self.assertEqual(Route.study("analysis"), main_window.current_route)
             self.assertEqual(
                 ["Today", "Free Practice", "Learning Analysis"],
-                [button.text() for button in main_window.context_tabs()],
+                [button.text() for button in main_window.app_shell.context_tabs()],
             )
             self.assertTrue(main_window.progress_tab_btn.isChecked())
             self.assertFalse(main_window.context_back_btn.isVisible())
@@ -334,7 +334,7 @@ class AppShellUiTests(unittest.TestCase):
                     "Questions",
                     "Question Sets",
                 ],
-                [button.text() for button in main_window.context_tabs()],
+                [button.text() for button in main_window.app_shell.context_tabs()],
             )
             self.assertTrue(main_window.bank_tab_btn.isChecked())
             self.assertTrue(
@@ -396,7 +396,7 @@ class AppShellUiTests(unittest.TestCase):
 
             self.assertNotIn(
                 "Q&A",
-                [button.text() for button in main_window.context_tabs()],
+                [button.text() for button in main_window.app_shell.context_tabs()],
             )
 
     def test_library_context_does_not_promote_historical_exam_workspace(self):
@@ -412,7 +412,7 @@ class AppShellUiTests(unittest.TestCase):
 
             self.assertNotIn(
                 "Historical Exams",
-                [button.text() for button in main_window.context_tabs()],
+                [button.text() for button in main_window.app_shell.context_tabs()],
             )
 
     def test_main_window_routes_context_actions_to_existing_flows(self):
