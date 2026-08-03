@@ -562,11 +562,10 @@ class AppShellUiTests(unittest.TestCase):
 
                 home.refresh()
 
-                self.assertTrue(home.first_use_label.isHidden())
                 self.assertIn("导入", home.start_btn.text())
                 self.assertIn("导入课件", home.today_plan_detail.text())
-                self.assertFalse(home.stats_label.isHidden())
-                self.assertIn("尚无练习记录", home.stats_label.text())
+                self.assertIn("生成新题", home.generate_link.text())
+                self.assertIn("切换课程", home.switch_course_link.text())
 
     def test_course_workspace_prioritizes_current_course_generation(self):
             project = CourseProject(
@@ -689,18 +688,19 @@ class AppShellUiTests(unittest.TestCase):
                 self.assertEqual(7, home.hero_layout.stretch(1))
                 self.assertEqual("homeFocusPanel", home.today_plan_frame.objectName())
                 self.assertEqual("homeContextPanel", home.context_frame.objectName())
-                self.assertEqual("homeOverviewPanel", home.overview_frame.objectName())
                 self.assertTrue(home.title.alignment() & Qt.AlignmentFlag.AlignLeft)
                 self.assertTrue(home.course_context_label.alignment() & Qt.AlignmentFlag.AlignLeft)
                 self.assertTrue(home.question_context_label.text())
-                self.assertTrue(home.stats_label.text())
 
                 visible_actions = [
                     button
                     for button in home.findChildren(QPushButton)
                     if not button.isHidden()
                 ]
-                self.assertEqual([home.start_btn], visible_actions)
+                self.assertEqual(
+                    [home.start_btn, home.generate_link, home.switch_course_link],
+                    visible_actions,
+                )
                 for name in (
                     "free_practice_btn",
                     "incorrect_btn",

@@ -207,6 +207,30 @@ QPushButton[homeAction="primary"]:focus {
     border-color: #8cc8ff;
 }
 
+QPushButton#textLinkButton {
+    min-height: 24px;
+    padding: 2px 0;
+    color: #7cb9e8;
+    background-color: transparent;
+    border: none;
+    border-radius: 0;
+    text-align: left;
+}
+
+QPushButton#textLinkButton:hover {
+    color: #b7dcfa;
+    text-decoration: underline;
+}
+
+QPushButton#textLinkButton:pressed {
+    color: #ffffff;
+}
+
+QPushButton#textLinkButton:focus {
+    color: #ffffff;
+    outline: 1px solid #6aaee8;
+}
+
 QPushButton#primaryButton:disabled,
 QPushButton#homeStartBtn:disabled,
 QPushButton#dialogGenerateBtn:disabled,
@@ -977,7 +1001,6 @@ QLabel#homeSubtitle {
     font-size: 14px;
 }
 
-QLabel#homeStatsLabel,
 QLabel#dashboardOverallLabel,
 QLabel#setInfoLabel,
 QLabel#resultsTopicStats,
@@ -989,16 +1012,13 @@ QLabel#reviewExplanation {
     padding: 10px;
 }
 
-QLabel#homeStatsLabel,
 QLabel#dashboardRecentList,
 QLabel#resultsStatsLabel {
     font-size: 13px;
 }
 
 QWidget#homeFocusPanel,
-QWidget#homeContextPanel,
-QWidget#homeOverviewPanel,
-QWidget#homeAgendaPanel {
+QWidget#homeContextPanel {
     background-color: #252526;
     border: 1px solid #3c3c3c;
     border-radius: 14px;

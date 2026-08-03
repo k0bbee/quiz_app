@@ -178,8 +178,7 @@ class HomeLearningFlowTests(unittest.TestCase):
                 screen.set_current_course("course-a")
                 screen.refresh()
 
-                self.assertIn("本周学习 1 天", screen.stats_label.text())
-                self.assertIn("完成 1 题", screen.stats_label.text())
+                self.assertIn("题目：1 题", screen.question_context_label.text())
 
     def test_home_screen_refresh_uses_lightweight_question_counts(self):
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -208,8 +207,7 @@ class HomeLearningFlowTests(unittest.TestCase):
                     screen.refresh()
 
                 load_all.assert_called_once_with()
-                self.assertIn("本周学习 1 天", screen.stats_label.text())
-                self.assertIn("完成 1 题", screen.stats_label.text())
+                self.assertIn("题目：1 题", screen.question_context_label.text())
 
     def test_home_today_queue_emits_direct_course_scoped_intent(self):
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -240,6 +238,25 @@ class HomeLearningFlowTests(unittest.TestCase):
                 self.assertEqual("today_plan", intent.source)
                 self.assertEqual("", intent.plan_id)
 
+    def test_home_text_links_keep_generation_and_course_switch_secondary(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                screen = HomeScreen(
+                    ProgressManager(str(Path(tmpdir) / "progress")),
+                    QuestionBank(str(Path(tmpdir) / "questions")),
+                )
+                screen.set_current_course("course-a", "Systems")
+                requests = []
+                screen.study_requested.connect(requests.append)
+
+                screen.generate_link.click()
+                screen.switch_course_link.click()
+
+                self.assertEqual(2, len(requests))
+                self.assertIs(StudyAction.GENERATE_MISSING, requests[0].action)
+                self.assertEqual("home_generate", requests[0].source)
+                self.assertIs(StudyAction.IMPORT_COURSE, requests[1].action)
+                self.assertEqual("home_switch_course", requests[1].source)
+
     def test_home_today_queue_distinguishes_current_group_from_today_total(self):
             with tempfile.TemporaryDirectory() as tmpdir:
                 question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
@@ -258,11 +275,11 @@ class HomeLearningFlowTests(unittest.TestCase):
                 requests = []
                 screen.study_requested.connect(requests.append)
 
-                self.assertEqual("今日计划", screen.today_plan_title.text())
-                self.assertIn("今日进度 0 / 12 题", screen.today_plan_detail.text())
-                self.assertIn("第一组 10 题", screen.today_plan_detail.text())
+                self.assertEqual("当前建议", screen.today_plan_title.text())
+                self.assertIn("本次练习 12 题", screen.today_plan_detail.text())
+                self.assertIn("先完成 10 题", screen.today_plan_detail.text())
                 self.assertIn("完成后还有 2 题", screen.today_plan_detail.text())
-                self.assertIn("开始第一组", screen.start_btn.text())
+                self.assertIn("开始练习", screen.start_btn.text())
                 screen.start_btn.click()
 
                 intent = requests[0]
@@ -399,8 +416,8 @@ class HomeLearningFlowTests(unittest.TestCase):
                 review_requests = []
                 screen.study_requested.connect(review_requests.append)
 
-                self.assertIn("开始第一组", screen.start_btn.text())
-                self.assertIn("今日进度 0 / 1 题", screen.today_plan_detail.text())
+                self.assertIn("开始练习", screen.start_btn.text())
+                self.assertIn("本次练习 1 题", screen.today_plan_detail.text())
                 screen.start_btn.click()
 
                 self.assertEqual(1, len(review_requests))

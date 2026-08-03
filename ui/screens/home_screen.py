@@ -6,10 +6,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import pyqtSignal, Qt
 
 from core.language_manager import LanguageManager
-from core.learning_dashboard import (
-    LearningDashboardViewModel,
-    build_learning_dashboard,
-)
 from core.study_intent import StudyAction, StudyIntent
 from core.study_queue import build_daily_study_queue
 from core.today_learning_plan import (
@@ -51,7 +47,6 @@ class HomeScreen(QWidget):
         self._resume_total_count: int | None = None
         self._resume_mode: str | None = None
         self._today_plan = TodayLearningPlan(LearningPlanAction.IMPORT_COURSE)
-        self._learning_dashboard = LearningDashboardViewModel()
         self._setup_ui()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
@@ -63,8 +58,8 @@ class HomeScreen(QWidget):
         self.page_header = PageHeader(
             self.lang_manager.get_text("今天的学习", "Today's Learning"),
             self.lang_manager.get_text(
-                "完成今日计划，再处理最需要关注的内容",
-                "Finish today's plan, then address the highest-priority topics",
+                "回到当前课程，继续最重要的一步",
+                "Return to the current course and continue the next useful step",
             ),
         )
         self.title = self.page_header.title_label
@@ -81,7 +76,7 @@ class HomeScreen(QWidget):
         today_layout = QVBoxLayout(self.today_plan_frame)
         today_layout.setContentsMargins(22, 20, 22, 20)
         today_layout.setSpacing(10)
-        self.today_plan_title = QLabel(self.lang_manager.get_text("今日建议", "Today's Plan"))
+        self.today_plan_title = QLabel(self.lang_manager.get_text("当前建议", "Current Recommendation"))
         self.today_plan_title.setObjectName("homeTodayPlanTitle")
         today_layout.addWidget(self.today_plan_title)
         self.today_plan_detail = QLabel()
@@ -96,6 +91,23 @@ class HomeScreen(QWidget):
         self.start_btn.setMinimumHeight(44)
         self.start_btn.clicked.connect(self._activate_today_plan)
         today_layout.addWidget(self.start_btn)
+
+        self.quick_links = QHBoxLayout()
+        self.quick_links.setSpacing(14)
+        self.generate_link = self._make_text_link(
+            "生成新题",
+            "Generate questions",
+            self._request_generate_questions,
+        )
+        self.switch_course_link = self._make_text_link(
+            "切换课程",
+            "Switch course",
+            self._request_switch_course,
+        )
+        self.quick_links.addWidget(self.generate_link)
+        self.quick_links.addWidget(self.switch_course_link)
+        self.quick_links.addStretch(1)
+        today_layout.addLayout(self.quick_links)
 
         self.context_frame = QWidget()
         self.context_frame.setObjectName("homeContextPanel")
@@ -126,112 +138,44 @@ class HomeScreen(QWidget):
         self.hero_layout.addWidget(self.context_frame, 7)
         main_layout.addLayout(self.hero_layout)
 
-        self.overview_frame = QWidget()
-        self.overview_frame.setObjectName("homeOverviewPanel")
-        overview_layout = QVBoxLayout(self.overview_frame)
-        overview_layout.setContentsMargins(20, 16, 20, 16)
-        overview_layout.setSpacing(8)
-        self.overview_title = QLabel(self.lang_manager.get_text("需要关注", "Needs Attention"))
-        self.overview_title.setObjectName("homeOverviewTitle")
-        overview_layout.addWidget(self.overview_title)
-
-        self.diagnosis_title = QLabel()
-        self.diagnosis_title.setObjectName("homeDiagnosisTitle")
-        overview_layout.addWidget(self.diagnosis_title)
-        self.diagnosis_label = QLabel()
-        self.diagnosis_label.setObjectName("homeDiagnosisLabel")
-        self.diagnosis_label.setWordWrap(True)
-        overview_layout.addWidget(self.diagnosis_label)
-
-        self.focus_action_layout = QHBoxLayout()
-        self.focus_action_buttons = []
-        for index in range(2):
-            button = QPushButton()
-            button.setObjectName("secondaryButton")
-            button.clicked.connect(
-                lambda _checked=False, position=index:
-                self._request_focus_topic(position)
-            )
-            button.hide()
-            self.focus_action_layout.addWidget(button)
-            self.focus_action_buttons.append(button)
-        self.focus_action_layout.addStretch()
-        overview_layout.addLayout(self.focus_action_layout)
-
-        self.stats_label = QLabel()
-        self.stats_label.setObjectName("homeStatsLabel")
-        self.stats_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        self.stats_label.setWordWrap(True)
-        self.stats_label.setText(self.lang_manager.get_text(
-            "完成练习后，这里会显示本周摘要。",
-            "Your weekly summary will appear here after practice.",
-        ))
-        overview_layout.addWidget(self.stats_label)
-
-        self.next_step_title = QLabel(self.lang_manager.get_text("接下来", "Next"))
-        self.next_step_title.setObjectName("homeNextStepTitle")
-        overview_layout.addWidget(self.next_step_title)
-        self.next_step_label = QLabel()
-        self.next_step_label.setObjectName("homeNextStepLabel")
-        self.next_step_label.setWordWrap(True)
-        overview_layout.addWidget(self.next_step_label)
-        main_layout.addWidget(self.overview_frame)
         main_layout.addStretch(1)
-
-        self.first_use_label = QLabel()
-        self.first_use_label.setObjectName("homeFirstUseGuide")
-        self.first_use_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.first_use_label.setWordWrap(True)
-        self.first_use_label.hide()
-
-        self._render_learning_diagnosis()
         self._render_today_plan()
+
+    def _make_text_link(self, zh: str, en: str, callback) -> QPushButton:
+        button = QPushButton(self.lang_manager.get_text(zh, en))
+        button.setObjectName("textLinkButton")
+        button.setFlat(True)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.clicked.connect(callback)
+        return button
 
     def _on_language_changed(self, lang):
         """Update all UI text when language changes."""
         self.title.setText(self.lang_manager.get_text("今天的学习", "Today's Learning"))
         self.subtitle.setText(self.lang_manager.get_text(
-            "完成今日计划，再处理最需要关注的内容",
-            "Finish today's plan, then address the highest-priority topics",
+            "回到当前课程，继续最重要的一步",
+            "Return to the current course and continue the next useful step",
         ))
         self._update_course_context_label()
-        self.today_plan_title.setText(self.lang_manager.get_text("今日计划", "Today's Plan"))
+        self.today_plan_title.setText(self.lang_manager.get_text("当前建议", "Current Recommendation"))
         self.context_title.setText(self.lang_manager.get_text("当前学习范围", "Current Scope"))
-        self.overview_title.setText(self.lang_manager.get_text("需要关注", "Needs Attention"))
-        self.next_step_title.setText(self.lang_manager.get_text("接下来", "Next"))
-        self._update_first_use_text()
-        # Refresh stats text in the new language
+        self.generate_link.setText(self.lang_manager.get_text("生成新题", "Generate questions"))
+        self.switch_course_link.setText(self.lang_manager.get_text("切换课程", "Switch course"))
         self.refresh()
 
     def refresh(self):
         """Called when navigating back to home. Update stats."""
         if self.progress_manager is None or self.question_bank is None:
-            self._learning_dashboard = LearningDashboardViewModel()
-            self.stats_label.show()
-            self.stats_label.setText(self.lang_manager.get_text(
-                "暂无可用的学习数据。",
-                "No learning data is available yet.",
-            ))
             self.question_context_label.setText(self.lang_manager.get_text("题目：0 题", "Questions: 0"))
             self._refresh_today_plan()
             return
 
-        all_course_question_ids = (
-            set(self.question_bank.question_ids(course_id=self._current_course_id))
-            if self._current_course_id
-            else set()
-        )
         visible_question_ids = self._visible_question_ids()
         progress_records = self.progress_manager.load_all()
         self.question_context_label.setText(self.lang_manager.get_text(
             f"题目：{len(visible_question_ids)} 题",
             f"Questions: {len(visible_question_ids)}",
         ))
-        stats_filter = all_course_question_ids
-        stats = self.progress_manager.get_aggregated_stats(
-            stats_filter,
-            records=progress_records,
-        )
         incorrect_ids = self._incorrect_question_ids(progress_records)
         if self._current_course_id:
             incorrect_ids = [
@@ -245,34 +189,6 @@ class HomeScreen(QWidget):
             len(visible_question_ids),
             incorrect_ids,
             progress_records=progress_records,
-        )
-        if stats["total_sessions"] == 0:
-            self.first_use_label.hide()
-            self.stats_label.show()
-            self.stats_label.setText(self.lang_manager.get_text(
-                "尚无练习记录。完成第一次练习后，这里会显示正确率和错题情况。",
-                "No practice history yet. Accuracy and incorrect-question trends will appear after your first session.",
-            ))
-            return
-
-        self.first_use_label.hide()
-        self.stats_label.show()
-        weekly = self._learning_dashboard.weekly_summary
-        self.stats_label.setText(self.lang_manager.get_text(
-            f"本周学习 {weekly.study_days} 天 · 完成 "
-            f"{weekly.completed_questions} 题 · 正确率 {weekly.accuracy:.1%}",
-            f"This week: {weekly.study_days} day(s) · "
-            f"{weekly.completed_questions} answered · "
-            f"{weekly.accuracy:.1%} accuracy",
-        ))
-
-    def _update_first_use_text(self):
-        """Show a compact onboarding path when no practice data exists yet."""
-        self.first_use_label.setText(
-            self.lang_manager.get_text(
-                "欢迎！建议流程：先导入课程资料 → AI 生成题目 → 开始练习。",
-                "Welcome! Suggested flow: import course materials → generate questions with AI → start practice.",
-            )
         )
 
     def set_resume_draft(
@@ -343,58 +259,22 @@ class HomeScreen(QWidget):
         self._update_course_context_label()
         self.refresh()
 
-    def _render_learning_diagnosis(self) -> None:
-        """Render at most two actionable weaknesses beside the daily plan."""
-        focus_topics = self._learning_dashboard.focus_topics
-        if not focus_topics:
-            self.diagnosis_title.setText(
-                self.lang_manager.get_text("学习重点", "Learning Focus")
-            )
-            self.diagnosis_label.hide()
-            for button in self.focus_action_buttons:
-                button.hide()
+    def _request_generate_questions(self) -> None:
+        if not self._current_course_id:
+            self._request_switch_course()
             return
-        self.diagnosis_title.setText(
-            self.lang_manager.get_text("当前需要巩固", "Focus Next")
-        )
-        zh_lines = []
-        en_lines = []
-        for topic in focus_topics:
-            zh_signals = [f"错误 {topic.incorrect_count}"]
-            en_signals = [f"{topic.incorrect_count} incorrect"]
-            if topic.unsure_count:
-                zh_signals.append(f"不确定 {topic.unsure_count}")
-                en_signals.append(f"{topic.unsure_count} unsure")
-            zh_signals.append(f"正确率 {topic.accuracy:.0%}")
-            en_signals.append(f"{topic.accuracy:.0%} accuracy")
-            zh_lines.append(f"{topic.title}：{' · '.join(zh_signals)}")
-            en_lines.append(f"{topic.title}: {' · '.join(en_signals)}")
-        self.diagnosis_label.setText(
-            self.lang_manager.get_text("\n".join(zh_lines), "\n".join(en_lines))
-        )
-        self.diagnosis_label.show()
-        for index, button in enumerate(self.focus_action_buttons):
-            if index < len(focus_topics):
-                topic = focus_topics[index]
-                button.setText(self.lang_manager.get_text(
-                    f"强化 {topic.title}",
-                    f"Practice {topic.title}",
-                ))
-                button.show()
-            else:
-                button.hide()
-
-    def _request_focus_topic(self, index: int) -> None:
-        topics = self._learning_dashboard.focus_topics
-        if not 0 <= index < len(topics):
-            return
-        topic = topics[index]
         self.study_requested.emit(StudyIntent(
             course_id=self._current_course_id,
-            action=StudyAction.PRACTICE_TOPIC,
-            topic_ids=(topic.topic_id,),
+            action=StudyAction.GENERATE_MISSING,
             question_count=10,
-            source="home_focus",
+            source="home_generate",
+        ))
+
+    def _request_switch_course(self) -> None:
+        self.study_requested.emit(StudyIntent(
+            course_id=self._current_course_id,
+            action=StudyAction.IMPORT_COURSE,
+            source="home_switch_course",
         ))
 
     def _visible_question_ids(self) -> set[str]:
@@ -609,20 +489,13 @@ class HomeScreen(QWidget):
             daily_plan=daily_plan,
             plan_id=plan_id,
         )
-        self._learning_dashboard = build_learning_dashboard(
-            topic_index,
-            records=progress_records,
-            daily_plan=self._today_plan,
-        )
-        self._render_learning_diagnosis()
-        self._render_next_step()
         self._render_today_plan()
 
     def _render_today_plan(self):
         plan = self._today_plan
         self.today_plan_detail.setToolTip("")
         self.today_plan_title.setText(
-            self.lang_manager.get_text("今日计划", "Today's Plan")
+            self.lang_manager.get_text("当前建议", "Current Recommendation")
         )
         if plan.action is LearningPlanAction.RESUME_DRAFT:
             mode_zh = "模拟卷" if plan.draft_mode == "exam" else "练习"
@@ -641,34 +514,28 @@ class HomeScreen(QWidget):
                     "topics first · topic rotation · mixed difficulty gradient",
                 )
             )
-            progress = self._learning_dashboard.plan_progress
-            if progress.completed_count:
-                button_zh = f"继续剩余 {progress.remaining_count} 题"
-                button_en = f"Continue Remaining {progress.remaining_count}"
-                group_zh = f"本组 {progress.current_group_count} 题"
-                group_en = f"Current group {progress.current_group_count}"
-            else:
-                button_zh = "开始第一组"
-                button_en = "Start First Group"
-                group_zh = f"第一组 {progress.current_group_count} 题"
-                group_en = f"First group {progress.current_group_count}"
+            current_count = plan.target_question_count
+            remaining_count = len(plan.remaining_question_ids)
+            total_count = plan.plan_total_count or current_count + remaining_count
+            button_zh = "开始练习"
+            button_en = "Start Practice"
             self.start_btn.setText(
                 self.lang_manager.get_text(button_zh, button_en)
             )
             zh_lines = [
-                f"今日进度 {progress.completed_count} / {progress.total_count} 题",
-                f"{group_zh} · 预计剩余 {plan.estimated_minutes} 分钟",
+                f"本次练习 {total_count} 题 · 先完成 {current_count} 题",
+                f"预计 {plan.estimated_minutes} 分钟",
             ]
             en_lines = [
-                f"Today's progress {progress.completed_count} / {progress.total_count}",
-                f"{group_en} · about {plan.estimated_minutes} min remaining",
+                f"{total_count} questions · start with {current_count}",
+                f"about {plan.estimated_minutes} min",
             ]
-            if progress.remaining_after_current_group:
+            if remaining_count:
                 zh_lines.append(
-                    f"完成后还有 {progress.remaining_after_current_group} 题"
+                    f"完成后还有 {remaining_count} 题"
                 )
                 en_lines.append(
-                    f"{progress.remaining_after_current_group} remain after this group"
+                    f"{remaining_count} remain after this group"
                 )
             self.today_plan_detail.setText(
                 self.lang_manager.get_text(
@@ -679,36 +546,35 @@ class HomeScreen(QWidget):
         elif plan.action is LearningPlanAction.DAILY_COMPLETE:
             self.today_plan_title.setText(
                 self.lang_manager.get_text(
-                    "今日任务完成",
-                    "Today's Study Complete",
+                    "当前练习已完成",
+                    "Current Practice Complete",
                 )
             )
             self.start_btn.setText(
-                self.lang_manager.get_text("自由练习", "Free Practice")
+                self.lang_manager.get_text("开始练习", "Start Practice")
             )
             if plan.deferred_count:
                 detail_zh = (
-                    f"今日计划已完成；{plan.deferred_count} 道仍需巩固的题目"
-                    "已安排到明日。"
+                    f"当前练习已完成；还有 {plan.deferred_count} 道题目待巩固。"
                 )
                 detail_en = (
-                    f"Today's plan is complete; {plan.deferred_count} item(s) "
-                    "still needing work are deferred to tomorrow."
+                    f"Current practice is complete; {plan.deferred_count} item(s) "
+                    "still need review."
                 )
             else:
-                detail_zh = "当前没有待完成的今日计划题目。"
-                detail_en = "No questions remain in today's plan."
+                detail_zh = "当前没有待完成的复习题目。"
+                detail_en = "No review questions remain right now."
             self.today_plan_detail.setText(
                 self.lang_manager.get_text(detail_zh, detail_en)
             )
         elif plan.action is LearningPlanAction.REVIEW_INCORRECT:
-            self.start_btn.setText(self.lang_manager.get_text("开始今日错题复习", "Start Today's Review"))
+            self.start_btn.setText(self.lang_manager.get_text("开始错题复习", "Start Review"))
             self.today_plan_detail.setText(self.lang_manager.get_text(
-                f"共有 {plan.review_question_count} 道历史错题 · 今天先练 {plan.target_question_count} 题 · 约 {plan.estimated_minutes} 分钟",
-                f"{plan.review_question_count} historical errors · review {plan.target_question_count} today · about {plan.estimated_minutes} min",
+                f"共有 {plan.review_question_count} 道错题 · 先练 {plan.target_question_count} 题 · 约 {plan.estimated_minutes} 分钟",
+                f"{plan.review_question_count} incorrect questions · review {plan.target_question_count} first · about {plan.estimated_minutes} min",
             ))
         elif plan.action is LearningPlanAction.START_PRACTICE:
-            self.start_btn.setText(self.lang_manager.get_text("开始今日练习", "Start Today's Practice"))
+            self.start_btn.setText(self.lang_manager.get_text("开始练习", "Start Practice"))
             topic = plan.weak_topic_title
             if topic:
                 detail_zh = f"建议巩固：{topic} · {plan.target_question_count} 题 · 约 {plan.estimated_minutes} 分钟"
@@ -728,19 +594,6 @@ class HomeScreen(QWidget):
             self.today_plan_detail.setText(self.lang_manager.get_text(
                 "先导入课件，系统会生成课程总结并准备后续出题。",
                 "Import course materials first to build a summary and prepare generation.",
-            ))
-
-    def _render_next_step(self) -> None:
-        preview = self._learning_dashboard.next_day_preview
-        if preview.question_count:
-            self.next_step_label.setText(self.lang_manager.get_text(
-                f"明日预计 {preview.question_count} 题",
-                f"About {preview.question_count} questions tomorrow",
-            ))
-        else:
-            self.next_step_label.setText(self.lang_manager.get_text(
-                "完成当前计划后，系统会根据结果安排下一步。",
-                "After this plan, the next step will adapt to your results.",
             ))
 
     def _activate_today_plan(self):
