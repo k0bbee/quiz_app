@@ -4,10 +4,7 @@ from __future__ import annotations
 
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
-    QButtonGroup,
-    QHBoxLayout,
     QLabel,
-    QPushButton,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -21,7 +18,6 @@ from models.question_set import SetManager
 from ui.components import PageHeader
 from ui.screens.question_bank_screen import QuestionBankScreen
 from ui.widgets.question_set_library_panel import QuestionSetLibraryPanel
-from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 
 
 class LibraryScreen(QWidget):
@@ -46,7 +42,6 @@ class LibraryScreen(QWidget):
         super().__init__(parent)
         self.lang_manager = LanguageManager.instance()
         self.course_manager = course_manager
-        self._scope_kind = "active"
         self._scope_course_id = ""
         self.current_scope = LibraryAssetScope.empty()
         layout = QVBoxLayout(self)
@@ -57,29 +52,10 @@ class LibraryScreen(QWidget):
         )
         layout.addWidget(self.page_header)
 
-        self.scope_row = QHBoxLayout()
-        self.scope_row.setSpacing(8)
         self.scope_label = QLabel()
         self.scope_label.setObjectName("secondaryText")
-        self.scope_row.addWidget(self.scope_label)
-        self.scope_group = QButtonGroup(self)
-        self.scope_group.setExclusive(True)
-        self.active_scope_btn = self._scope_button()
-        self.archived_scope_btn = self._scope_button()
-        self.unassigned_scope_btn = self._scope_button()
-        for button in (
-            self.active_scope_btn,
-            self.archived_scope_btn,
-            self.unassigned_scope_btn,
-        ):
-            self.scope_row.addWidget(button)
-        self.course_scope_combo = WheelSafeComboBox()
-        self.course_scope_combo.setMinimumWidth(220)
-        self.course_scope_combo.currentIndexChanged.connect(
-            self._on_course_scope_changed
-        )
-        self.scope_row.addWidget(self.course_scope_combo, 1)
-        layout.addLayout(self.scope_row)
+        self.scope_label.setWordWrap(True)
+        layout.addWidget(self.scope_label)
 
         self.workspace_tabs = QTabWidget()
         self.workspace_tabs.setObjectName("libraryWorkspaceTabs")
@@ -110,27 +86,10 @@ class LibraryScreen(QWidget):
             self.regenerate_questions.emit
         )
         self.set_panel.sets_changed.connect(self.sets_changed.emit)
-        self.active_scope_btn.clicked.connect(
-            lambda: self._set_scope_kind("active")
-        )
-        self.archived_scope_btn.clicked.connect(
-            lambda: self._set_scope_kind("archived")
-        )
-        self.unassigned_scope_btn.clicked.connect(
-            lambda: self._set_scope_kind("unassigned")
-        )
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self._on_language_changed()
         current = self.course_manager.current()
         self.set_current_course(current.course_id if current else "")
-
-    def _scope_button(self) -> QPushButton:
-        button = QPushButton()
-        button.setObjectName("quizModeOption")
-        button.setCheckable(True)
-        button.setMinimumHeight(34)
-        self.scope_group.addButton(button)
-        return button
 
     def _on_language_changed(self, _lang=None) -> None:
         self.page_header.set_title(
@@ -144,41 +103,14 @@ class LibraryScreen(QWidget):
             1,
             self.lang_manager.get_text("题目集", "Question Sets"),
         )
-        self.scope_label.setText(
-            self.lang_manager.get_text("资料范围", "Asset Scope")
-        )
-        self._refresh_scope_controls()
+        self._update_scope_label()
 
     def set_current_course(self, course_id: str | None) -> None:
         course_id = str(course_id or "").strip()
         project = self.course_manager.get(course_id) if course_id else None
-        if project is not None:
-            self._scope_kind = (
-                "archived"
-                if getattr(project, "is_archived", False)
-                else "active"
-            )
-            self._scope_course_id = project.course_id
-        else:
-            active = self._courses_for_scope("active")
-            archived = self._courses_for_scope("archived")
-            if active:
-                self._scope_kind = "active"
-                current = self.course_manager.current()
-                active_ids = {course.course_id for course in active}
-                self._scope_course_id = (
-                    current.course_id
-                    if current is not None
-                    and current.course_id in active_ids
-                    else active[0].course_id
-                )
-            elif archived:
-                self._scope_kind = "archived"
-                self._scope_course_id = archived[0].course_id
-            else:
-                self._scope_kind = "unassigned"
-                self._scope_course_id = ""
-        self._refresh_scope_controls()
+        self._scope_course_id = project.course_id if project is not None else ""
+        self._update_scope_label()
+        self._apply_current_scope()
 
     def show_course_assets(
         self,
@@ -189,100 +121,36 @@ class LibraryScreen(QWidget):
         project = self.course_manager.get(str(course_id or "").strip())
         if project is None:
             return
-        self._scope_kind = (
-            "archived"
-            if getattr(project, "is_archived", False)
-            else "active"
-        )
         self._scope_course_id = project.course_id
-        self._refresh_scope_controls()
+        self._update_scope_label()
+        self._apply_current_scope()
         self.workspace_tabs.setCurrentWidget(
             self.set_panel if question_sets else self.question_screen
         )
 
-    def _set_scope_kind(self, kind: str) -> None:
-        self._scope_kind = (
-            kind if kind in {"active", "archived", "unassigned"} else "active"
+    def _update_scope_label(self) -> None:
+        project = (
+            self.course_manager.get(self._scope_course_id)
+            if self._scope_course_id
+            else None
         )
-        self._scope_course_id = ""
-        self._refresh_scope_controls()
-
-    def _all_courses(self):
-        return list(self.course_manager.load_all(include_archived=True))
-
-    def _courses_for_scope(self, kind: str):
-        archived = kind == "archived"
-        return [
-            course
-            for course in self._all_courses()
-            if bool(getattr(course, "is_archived", False)) == archived
-        ]
-
-    def _refresh_scope_controls(self) -> None:
-        if not hasattr(self, "active_scope_btn"):
-            return
-        gm = self.lang_manager.get_text
-        active_courses = self._courses_for_scope("active")
-        archived_courses = self._courses_for_scope("archived")
-        self.active_scope_btn.setText(
-            gm(f"进行中 ({len(active_courses)})", f"Active ({len(active_courses)})")
-        )
-        self.archived_scope_btn.setText(
-            gm(f"已归档 ({len(archived_courses)})", f"Archived ({len(archived_courses)})")
-        )
-        self.unassigned_scope_btn.setText(gm("未归属", "Unassigned"))
-        self.active_scope_btn.setChecked(self._scope_kind == "active")
-        self.archived_scope_btn.setChecked(self._scope_kind == "archived")
-        self.unassigned_scope_btn.setChecked(self._scope_kind == "unassigned")
-
-        courses = (
-            archived_courses
-            if self._scope_kind == "archived"
-            else active_courses
-        )
-        self.course_scope_combo.blockSignals(True)
-        self.course_scope_combo.clear()
-        if self._scope_kind == "unassigned":
-            self._scope_course_id = ""
-            self.course_scope_combo.setVisible(False)
-            self.course_scope_combo.setEnabled(False)
+        if project is None:
+            text = self.lang_manager.get_text(
+                "尚未选择课程",
+                "No course selected",
+            )
+            self.scope_label.setToolTip("")
         else:
-            self.course_scope_combo.setVisible(True)
-            for course in courses:
-                self.course_scope_combo.addItem(course.title, course.course_id)
-            available_ids = {course.course_id for course in courses}
-            if self._scope_course_id not in available_ids:
-                self._scope_course_id = courses[0].course_id if courses else ""
-            if courses:
-                index = self.course_scope_combo.findData(self._scope_course_id)
-                self.course_scope_combo.setCurrentIndex(max(0, index))
-                self.course_scope_combo.setEnabled(True)
-            else:
-                self.course_scope_combo.addItem(
-                    gm(
-                        "暂无进行中的课程"
-                        if self._scope_kind == "active"
-                        else "暂无已归档课程",
-                        "No active courses"
-                        if self._scope_kind == "active"
-                        else "No archived courses",
-                    ),
-                    "",
-                )
-                self.course_scope_combo.setEnabled(False)
-        self.course_scope_combo.blockSignals(False)
-        self._apply_current_scope()
-
-    def _on_course_scope_changed(self, _index: int) -> None:
-        self._scope_course_id = str(
-            self.course_scope_combo.currentData() or ""
-        )
-        self._apply_current_scope()
+            state = self.lang_manager.get_text(
+                "已归档课程" if getattr(project, "is_archived", False) else "当前课程",
+                "Archived course" if getattr(project, "is_archived", False) else "Current course",
+            )
+            text = f"{state}：{project.title}"
+            self.scope_label.setToolTip(str(project.title or ""))
+        self.scope_label.setText(text)
 
     def _apply_current_scope(self) -> None:
-        if self._scope_kind == "unassigned":
-            scope = LibraryAssetScope.unassigned()
-        elif self._scope_course_id:
+        if self._scope_course_id:
             scope = LibraryAssetScope.course(self._scope_course_id)
         else:
             scope = LibraryAssetScope.empty()
@@ -291,7 +159,6 @@ class LibraryScreen(QWidget):
         self.set_panel.set_asset_scope(scope)
 
     def refresh(self) -> None:
-        self._refresh_scope_controls()
         self.question_screen.refresh()
         self.set_panel.refresh()
 

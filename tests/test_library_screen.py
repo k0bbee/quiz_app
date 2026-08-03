@@ -133,7 +133,7 @@ class LibraryScreenTests(unittest.TestCase):
             ):
                 self.assertIsNotNone(button)
 
-    def test_library_uses_one_explicit_scope_for_questions_and_sets(self):
+    def test_library_uses_current_course_as_the_only_visible_scope(self):
         from ui.screens.library_screen import LibraryScreen
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -178,7 +178,11 @@ class LibraryScreenTests(unittest.TestCase):
 
             screen.set_current_course(active.course_id)
 
-            self.assertTrue(screen.active_scope_btn.isChecked())
+            self.assertFalse(hasattr(screen, "active_scope_btn"))
+            self.assertFalse(hasattr(screen, "archived_scope_btn"))
+            self.assertFalse(hasattr(screen, "unassigned_scope_btn"))
+            self.assertFalse(hasattr(screen, "course_scope_combo"))
+            self.assertEqual(active.course_id, screen.current_scope.course_id)
             self.assertEqual(
                 {"q-active"},
                 self._visible_question_ids(screen),
@@ -188,7 +192,7 @@ class LibraryScreenTests(unittest.TestCase):
                 self._visible_set_ids(screen),
             )
 
-            screen.archived_scope_btn.click()
+            screen.show_course_assets(archived.course_id)
 
             self.assertEqual(archived.course_id, screen.current_scope.course_id)
             self.assertEqual(
@@ -200,17 +204,7 @@ class LibraryScreenTests(unittest.TestCase):
                 self._visible_set_ids(screen),
             )
 
-            screen.unassigned_scope_btn.click()
-
-            self.assertEqual("unassigned", screen.current_scope.kind.value)
-            self.assertEqual(
-                {"q-unassigned"},
-                self._visible_question_ids(screen),
-            )
-            self.assertEqual(
-                {"set-unassigned"},
-                self._visible_set_ids(screen),
-            )
+            self.assertIn(archived.title, screen.scope_label.text())
 
     def test_library_can_open_one_archived_course_directly(self):
         from ui.screens.library_screen import LibraryScreen
@@ -233,12 +227,8 @@ class LibraryScreenTests(unittest.TestCase):
 
             screen.show_course_assets(archived.course_id)
 
-            self.assertTrue(screen.archived_scope_btn.isChecked())
             self.assertEqual(archived.course_id, screen.current_scope.course_id)
-            self.assertEqual(
-                archived.course_id,
-                screen.course_scope_combo.currentData(),
-            )
+            self.assertIn(archived.title, screen.scope_label.text())
 
 
 if __name__ == "__main__":
