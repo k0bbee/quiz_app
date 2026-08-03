@@ -36,6 +36,8 @@ class GenerationDialogUiTests(unittest.TestCase):
             self.assertIs(dialog.count_spin.parentWidget(), dialog.basic_group)
             self.assertIs(dialog.diff_combo.parentWidget(), dialog.basic_group)
             self.assertFalse(dialog.basic_group.isHidden())
+            self.assertIs(dialog.goal_group.parentWidget(), dialog.advanced_content)
+            self.assertTrue(dialog.advanced_content.isHidden())
             self.assertTrue(dialog.config_group.isHidden())
 
     def test_generation_dialog_keeps_review_action_after_save_error(self):

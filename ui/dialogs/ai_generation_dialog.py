@@ -214,7 +214,6 @@ class AIGenerationDialog(QDialog):
                 self._apply_generation_goal(selected)
             )
             goal_layout.addWidget(button)
-        right_layout.addWidget(self.goal_group)
 
         self.basic_group = QGroupBox(
             self.lang_manager.get_text("练习设置", "Practice Settings")
@@ -304,6 +303,7 @@ class AIGenerationDialog(QDialog):
         advanced_layout = QVBoxLayout(self.advanced_content)
         advanced_layout.setContentsMargins(0, 0, 0, 0)
         advanced_layout.setSpacing(12)
+        advanced_layout.addWidget(self.goal_group)
         advanced_layout.addWidget(self.config_group)
         self.config_group.hide()
         self.advanced_content.hide()
