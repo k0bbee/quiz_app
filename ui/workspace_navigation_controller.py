@@ -90,13 +90,13 @@ class WorkspaceNavigationController:
             return False
         if (
             allow_first_run_redirect
-            and host._first_run_required()
+            and host.first_run.required()
             and route == Route.study("practice")
         ):
             route = Route.study("today")
         elif (
             allow_first_run_redirect
-            and host._first_run_required()
+            and host.first_run.required()
             and route.workspace is Workspace.COURSE
             and route.tab != "generation"
             and host._course_screen is None

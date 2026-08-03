@@ -227,7 +227,7 @@ class MainWindow(QMainWindow):
         self.course_context.sync_home()
         self.course_context.sync_topic_screen()
         self.course_context.sync_progress()
-        self._refresh_first_run()
+        self.first_run.refresh()
 
         # Apply initial language
         self._on_language_changed()
@@ -523,15 +523,6 @@ class MainWindow(QMainWindow):
     def open_settings(self, section: str = "") -> None:
         """Open settings as a utility window without leaving the workspace."""
         self.settings_window.show_settings(section)
-
-    def _first_run_ai_error(self) -> str:
-        return self.first_run.ai_error()
-
-    def _first_run_required(self) -> bool:
-        return self.first_run.required()
-
-    def _refresh_first_run(self) -> None:
-        self.first_run.refresh()
 
     # --- Slot handlers ---
 

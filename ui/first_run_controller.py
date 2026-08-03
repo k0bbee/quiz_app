@@ -119,7 +119,7 @@ class FirstRunController:
             or not self.has_completed_practice()
         )
         state = resolve_first_run_state(
-            ai_error=host._first_run_ai_error(),
+            ai_error=self.ai_error(),
             has_course=has_course,
             question_count=question_count,
             operation=host._first_run_operation,

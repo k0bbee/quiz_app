@@ -591,7 +591,7 @@ class SessionResumeFlowTests(unittest.TestCase):
                     lang_manager=LanguageManager.instance(),
                     SCREEN_RESULTS=3,
                     navigate_to=lambda screen: shown.setdefault("screen", screen),
-                    _refresh_first_run=Mock(),
+                    first_run=types.SimpleNamespace(refresh=Mock()),
                 )
 
                 ResultFlowController(shell).quiz_finished(record)
@@ -600,7 +600,7 @@ class SessionResumeFlowTests(unittest.TestCase):
                 self.assertEqual(record.progress_id, shown["record"].progress_id)
                 self.assertIs(study_intent, shown["study_intent"])
                 shell.study_flow.take_active_intent.assert_called_once_with()
-                shell._refresh_first_run.assert_called_once_with()
+                shell.first_run.refresh.assert_called_once_with()
 
     def test_home_resume_draft_deletes_snapshot_when_questions_are_missing(self):
             from ui.main_window import MainWindow

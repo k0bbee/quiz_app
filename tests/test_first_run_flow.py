@@ -224,13 +224,13 @@ class FirstRunFlowTests(unittest.TestCase):
 
     def test_first_run_example_installs_without_ai_and_becomes_ready(self):
         with patch(
-            "ui.main_window.MainWindow._first_run_ai_error",
+            "ui.first_run_controller.FirstRunController.ai_error",
             return_value="",
             create=True,
         ):
             window = MainWindow()
         self.addCleanup(window.close)
-        window._first_run_ai_error = Mock(return_value="")
+        window.first_run.ai_error = Mock(return_value="")
         window.first_run_screen.set_state(FirstRunState(FirstRunStage.MATERIALS))
 
         window.first_run_screen.example_btn.click()
@@ -269,13 +269,13 @@ class FirstRunFlowTests(unittest.TestCase):
 
     def test_empty_application_routes_primary_workspaces_to_one_first_run_view(self):
         with patch(
-            "ui.main_window.MainWindow._first_run_ai_error",
+            "ui.first_run_controller.FirstRunController.ai_error",
             return_value="",
             create=True,
         ):
             window = MainWindow()
         self.addCleanup(window.close)
-        window._first_run_ai_error = Mock(return_value="")
+        window.first_run.ai_error = Mock(return_value="")
 
         self.assertEqual(window.SCREEN_HOME, window.stack.currentIndex())
         self.assertIs(
@@ -293,7 +293,7 @@ class FirstRunFlowTests(unittest.TestCase):
 
     def test_first_run_hands_selected_folder_to_background_course_import(self):
         with patch(
-            "ui.main_window.MainWindow._first_run_ai_error",
+            "ui.first_run_controller.FirstRunController.ai_error",
             return_value="",
             create=True,
         ):
@@ -321,7 +321,7 @@ class FirstRunFlowTests(unittest.TestCase):
 
     def test_archived_only_application_routes_to_course_recovery_workspace(self):
         with patch(
-            "ui.main_window.MainWindow._first_run_ai_error",
+            "ui.first_run_controller.FirstRunController.ai_error",
             return_value="",
             create=True,
         ):
@@ -341,7 +341,7 @@ class FirstRunFlowTests(unittest.TestCase):
         )
         self.assertTrue(window.course_manager.save(project, make_current=False))
 
-        window._refresh_first_run()
+        window.first_run.refresh()
 
         self.assertEqual(
             FirstRunStage.ARCHIVED_RECOVERY,
@@ -354,13 +354,13 @@ class FirstRunFlowTests(unittest.TestCase):
 
     def test_first_run_offers_first_practice_after_questions_exist(self):
         with patch(
-            "ui.main_window.MainWindow._first_run_ai_error",
+            "ui.first_run_controller.FirstRunController.ai_error",
             return_value="",
             create=True,
         ):
             window = MainWindow()
         self.addCleanup(window.close)
-        window._first_run_ai_error = Mock(return_value="")
+        window.first_run.ai_error = Mock(return_value="")
         project = CourseProject(
             course_id="course-first-run",
             title="First Course",
@@ -395,7 +395,7 @@ class FirstRunFlowTests(unittest.TestCase):
         )
         window.question_bank.save(question)
 
-        window._refresh_first_run()
+        window.first_run.refresh()
 
         self.assertEqual(
             FirstRunStage.GENERATE,
@@ -413,7 +413,7 @@ class FirstRunFlowTests(unittest.TestCase):
             metadata={"course_id": project.course_id},
         )
         window.set_manager.save(question_set)
-        window._refresh_first_run()
+        window.first_run.refresh()
 
         self.assertIs(
             window.first_run_screen,
@@ -430,7 +430,7 @@ class FirstRunFlowTests(unittest.TestCase):
 
     def test_first_run_restores_review_pending_generation_without_new_request(self):
         with patch(
-            "ui.main_window.MainWindow._first_run_ai_error",
+            "ui.first_run_controller.FirstRunController.ai_error",
             return_value="",
             create=True,
         ):
@@ -483,7 +483,7 @@ class FirstRunFlowTests(unittest.TestCase):
             source="first_run",
         )
 
-        window._refresh_first_run()
+        window.first_run.refresh()
 
         self.assertEqual(
             FirstRunStage.REVIEW_PENDING,
@@ -537,7 +537,7 @@ class FirstRunFlowTests(unittest.TestCase):
 
     def test_saving_restored_generation_removes_draft_and_creates_set(self):
         with patch(
-            "ui.main_window.MainWindow._first_run_ai_error",
+            "ui.first_run_controller.FirstRunController.ai_error",
             return_value="",
             create=True,
         ):
@@ -784,7 +784,7 @@ class FirstRunFlowTests(unittest.TestCase):
 
     def test_first_run_generate_uses_default_plan_without_configuration_step(self):
         with patch(
-            "ui.main_window.MainWindow._first_run_ai_error",
+            "ui.first_run_controller.FirstRunController.ai_error",
             return_value="",
             create=True,
         ):
@@ -820,7 +820,7 @@ class FirstRunFlowTests(unittest.TestCase):
 
     def test_first_run_generation_settings_error_stays_in_workspace(self):
         with patch(
-            "ui.main_window.MainWindow._first_run_ai_error",
+            "ui.first_run_controller.FirstRunController.ai_error",
             return_value="",
             create=True,
         ):
@@ -838,7 +838,7 @@ class FirstRunFlowTests(unittest.TestCase):
             updated_at="2026-07-29T00:00:00+00:00",
         )
         window.course_manager.save(project)
-        window._first_run_ai_error = Mock(return_value="API key missing")
+        window.first_run.ai_error = Mock(return_value="API key missing")
         failed = Mock(
             ok=False,
             issue=GenerationLaunchIssue.INVALID_AI_SETTINGS,
@@ -864,7 +864,7 @@ class FirstRunFlowTests(unittest.TestCase):
         )
         self.assertIsNone(window.first_run_screen.generation_widget())
 
-        window._first_run_ai_error.return_value = ""
+        window.first_run.ai_error.return_value = ""
         window.first_run.settings_saved()
 
         self.assertEqual(
@@ -875,7 +875,7 @@ class FirstRunFlowTests(unittest.TestCase):
 
     def test_first_run_generation_is_embedded_without_modal_exec(self):
         with patch(
-            "ui.main_window.MainWindow._first_run_ai_error",
+            "ui.first_run_controller.FirstRunController.ai_error",
             return_value="",
             create=True,
         ):

@@ -20,7 +20,7 @@ class CourseContextController:
         self.sync_question_bank()
         self.sync_progress()
         self.refresh_results_retry_availability()
-        host._refresh_first_run()
+        host.first_run.refresh()
         host._on_language_changed()
 
     def question_bank_changed(self) -> None:
@@ -29,7 +29,7 @@ class CourseContextController:
         host.home_screen.refresh()
         host.topic_screen.refresh()
         self.refresh_results_retry_availability()
-        host._refresh_first_run()
+        host.first_run.refresh()
 
     def refresh_results_retry_availability(self) -> None:
         host = self._host

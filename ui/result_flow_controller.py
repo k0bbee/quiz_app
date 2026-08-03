@@ -23,7 +23,7 @@ class ResultFlowController:
             snapshot_manager = getattr(host, "snapshot_manager", None)
             if snapshot_manager is not None:
                 snapshot_manager.delete_for_set(progress_record.set_id)
-        host._refresh_first_run()
+        host.first_run.refresh()
 
         study_intent = host.study_flow.take_active_intent()
 

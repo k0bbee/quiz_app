@@ -92,6 +92,15 @@ class MainWindowBoundaryTests(unittest.TestCase):
             }
         )
 
+    def test_main_window_does_not_wrap_first_run_state_queries(self):
+        assert self._main_window_method_names().isdisjoint(
+            {
+                "_first_run_ai_error",
+                "_first_run_required",
+                "_refresh_first_run",
+            }
+        )
+
     def test_main_window_does_not_wrap_generation_flow_actions(self):
         assert self._main_window_method_names().isdisjoint(
             {
