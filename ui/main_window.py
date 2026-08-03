@@ -447,7 +447,7 @@ class MainWindow(QMainWindow):
         )
 
         # Topic selection
-        self.topic_screen.study_start.connect(self._on_study_quiz_start)
+        self.topic_screen.study_start.connect(self.study_flow.start_prefilled)
         self.topic_screen.generate_missing.connect(self.study_flow.generate_missing)
         self.topic_screen.today_mode_requested.connect(
             lambda: self.navigate_to(self.SCREEN_HOME)
@@ -555,14 +555,6 @@ class MainWindow(QMainWindow):
         self.first_run.refresh()
 
     # --- Slot handlers ---
-
-    def _on_study_quiz_start(
-        self,
-        intent: StudyIntent,
-        question_ids: list[str],
-    ) -> None:
-        """Start the prefilled practice without asking for scope again."""
-        self.study_flow.start_prefilled(intent, question_ids)
 
     def _resume_abandoned_draft(self):
         """Return the latest resumable abandoned draft details, or None."""

@@ -494,7 +494,7 @@ class GenerationWorkspaceController:
         )
         host.course_context.question_bank_changed()
         if start_after_save:
-            host._on_study_quiz_start(
+            host.study_flow.start_prefilled(
                 StudyIntent(
                     course_id=course_project.course_id,
                     action=StudyAction.CUSTOM_PRACTICE,

@@ -3,7 +3,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -13,8 +13,6 @@ from PyQt6.QtWidgets import QApplication, QComboBox, QMessageBox, QRadioButton
 from models.progress import (
     AnswerRecord,
     ProgressRecord,
-    QuestionReviewSnapshot,
-    SessionSummary,
 )
 from models.question import Question
 from models.question import QuestionBank
@@ -27,15 +25,11 @@ from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.language_manager import LanguageManager
 from core.study_intent import StudyAction, StudyIntent
-from core.today_learning_plan import LearningPlanAction
-from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
-from ui.course_context_controller import CourseContextController
-from ui.result_flow_controller import ResultFlowController
 from ui.widgets.answer_area import AnswerArea, MatchingWidget, MultipleChoiceWidget
-from utils.constants import Difficulty, QuestionType, QuizState, topic_value
+from utils.constants import Difficulty, QuestionType, QuizState
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -683,34 +677,6 @@ class QuizSessionFlowTests(unittest.TestCase):
                 self.assertEqual(QuizState.SHOWING_FEEDBACK, screen.session.state)
                 self.assertEqual(1, screen.session.answered_count)
                 self.assertEqual("下一题", screen.next_question_btn.text())
-
-    def test_main_window_study_start_delegates_session_ownership_to_flow(self):
-            from ui.main_window import MainWindow
-
-            question = self._make_question("q1")
-            intent = StudyIntent(
-                course_id="course-a",
-                action=StudyAction.CUSTOM_PRACTICE,
-                question_ids=(question.question_id,),
-                question_count=1,
-            )
-            study_flow = types.SimpleNamespace(start_prefilled=Mock(return_value={
-                question.question_id: question,
-            }))
-            shell = types.SimpleNamespace(
-                study_flow=study_flow,
-            )
-
-            MainWindow._on_study_quiz_start(
-                shell,
-                intent,
-                [question.question_id],
-            )
-
-            study_flow.start_prefilled.assert_called_once_with(
-                intent,
-                [question.question_id],
-            )
 
     def test_quiz_mode_uses_inline_toggle_before_answering(self):
             with tempfile.TemporaryDirectory() as tmpdir:

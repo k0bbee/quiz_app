@@ -343,7 +343,7 @@ class FirstRunController:
             self.refresh()
             return
         question_set, question_ids = candidates[0]
-        host._on_study_quiz_start(
+        host.study_flow.start_prefilled(
             StudyIntent(
                 course_id=host.course_context.current_course_id(),
                 action=StudyAction.CUSTOM_PRACTICE,

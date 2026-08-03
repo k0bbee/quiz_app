@@ -717,9 +717,9 @@ class FirstRunFlowTests(unittest.TestCase):
         dialog.set_title_input.setText.assert_called_once_with("操作系统快速复习")
         dialog.exec.assert_not_called()
         shell.course_context.question_bank_changed.assert_called_once_with()
-        shell._on_study_quiz_start.assert_called_once()
+        shell.study_flow.start_prefilled.assert_called_once()
         started_intent, started_question_ids = (
-            shell._on_study_quiz_start.call_args.args
+            shell.study_flow.start_prefilled.call_args.args
         )
         self.assertEqual(question_set.set_id, started_intent.set_id)
         self.assertEqual("course-first-run", started_intent.course_id)
@@ -948,7 +948,7 @@ class FirstRunFlowTests(unittest.TestCase):
                 metadata={"course_id": project.course_id},
             )
         ]
-        window._on_study_quiz_start = Mock()
+        window.study_flow.start_prefilled = Mock()
 
         dialog.accept()
 
@@ -959,7 +959,7 @@ class FirstRunFlowTests(unittest.TestCase):
             if question_set.metadata.get("course_id") == project.course_id
         ]
         self.assertEqual(1, len(saved_sets))
-        window._on_study_quiz_start.assert_called_once()
+        window.study_flow.start_prefilled.assert_called_once()
 
 
 if __name__ == "__main__":
