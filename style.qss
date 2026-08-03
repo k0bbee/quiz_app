@@ -996,6 +996,12 @@ QLabel#quizTimerLabel {
     color: #9d9d9d;
 }
 
+QLabel#quizModeStatus {
+    color: #9d9d9d;
+    font-size: 12px;
+    padding: 4px 8px;
+}
+
 QLabel#screenSubtitle,
 QLabel#homeSubtitle {
     font-size: 14px;

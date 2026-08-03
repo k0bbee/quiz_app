@@ -750,6 +750,9 @@ class QuizSessionFlowTests(unittest.TestCase):
                 screen.exam_mode_btn.click()
 
                 self.assertEqual("practice", screen.submission_mode)
+                self.assertFalse(screen.mode_status_label.isHidden())
+                self.assertTrue(screen.practice_mode_btn.isHidden())
+                self.assertTrue(screen.exam_mode_btn.isHidden())
 
     def test_quiz_mode_switch_locks_after_practice_feedback_is_shown(self):
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -772,6 +775,9 @@ class QuizSessionFlowTests(unittest.TestCase):
                 self.assertEqual(1, screen.session.answered_count)
                 self.assertFalse(screen.practice_mode_btn.isEnabled())
                 self.assertFalse(screen.exam_mode_btn.isEnabled())
+                self.assertFalse(screen.mode_status_label.isHidden())
+                self.assertTrue(screen.practice_mode_btn.isHidden())
+                self.assertTrue(screen.exam_mode_btn.isHidden())
 
     def test_quiz_screen_captures_snapshot_with_current_state(self):
             qset = QuestionSet.create_new(

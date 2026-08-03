@@ -108,6 +108,12 @@ class QuizScreen(QWidget):
         mode_layout.addWidget(self.exam_mode_btn)
         info_row.addLayout(mode_layout)
 
+        self.mode_status_label = QLabel()
+        self.mode_status_label.setObjectName("quizModeStatus")
+        self.mode_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.mode_status_label.hide()
+        info_row.addWidget(self.mode_status_label)
+
         self.review_toggle_btn = QPushButton(
             self.lang_manager.get_text("整卷复查", "Review Paper")
         )
@@ -718,6 +724,15 @@ class QuizScreen(QWidget):
         can_switch = self._can_switch_submission_mode()
         self.practice_mode_btn.setEnabled(can_switch)
         self.exam_mode_btn.setEnabled(can_switch)
+        self.practice_mode_btn.setVisible(can_switch)
+        self.exam_mode_btn.setVisible(can_switch)
+        self.mode_status_label.setText(
+            self.lang_manager.get_text(
+                "模式：逐题练习" if self.submission_mode == "practice" else "模式：模拟考试",
+                "Mode: Practice" if self.submission_mode == "practice" else "Mode: Mock Exam",
+            )
+        )
+        self.mode_status_label.setVisible(not can_switch)
 
     def _refresh_unsure_state(self):
         """Keep the unsure marker aligned with the current question."""
