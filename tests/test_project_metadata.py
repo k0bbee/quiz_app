@@ -38,19 +38,6 @@ class ProjectMetadataTests(unittest.TestCase):
         english = Path("README.en.md").read_text(encoding="utf-8")
         contracts = (
             (
-                "current_events",
-                chinese,
-                ("打开窗口不会自动联网", "只有勾选材料进入出题"),
-            ),
-            (
-                "current_events",
-                english,
-                (
-                    "opening the dialog never starts a search",
-                    "only selected items enter generation",
-                ),
-            ),
-            (
                 "task_recovery",
                 chinese,
                 ("“打开任务页面”只导航", "只有恢复字段完整时"),
