@@ -8,10 +8,8 @@ from PyQt6.QtCore import QTimer, Qt
 
 from core.application_services import ApplicationServices
 from core.language_manager import LanguageManager
-from core.background_task_presenter import build_task_center_view, task_toolbar_text
 from core.topic_display import topic_display_name
 from core.study_intent import StudyAction, StudyIntent
-from ui.dialogs.background_task_dialog import BackgroundTaskDialog
 from ui.course_context_controller import CourseContextController
 from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.first_run_controller import FirstRunController
@@ -246,12 +244,6 @@ class MainWindow(QMainWindow):
         # Start on home screen
         self.stack.setCurrentIndex(self.SCREEN_HOME)
         self._update_navigation_actions()
-        self._task_center_timer = QTimer(self)
-        # Refresh immediately on open/language changes; avoid reading persistent
-        # task state every second just to update the global badge.
-        self._task_center_timer.setInterval(2000)
-        self._task_center_timer.timeout.connect(self._refresh_task_center_action)
-        self._task_center_timer.start()
         if bool(getattr(startup_migration_report, "has_failures", False)):
             QTimer.singleShot(0, self._show_startup_migration_warning)
 
@@ -427,7 +419,6 @@ class MainWindow(QMainWindow):
             navigate=self.navigate_route,
             open_settings=self.open_settings,
             navigate_back=self.navigate_back,
-            open_task_center=self._open_task_center,
         )
         for attribute in (
             "navigation_sidebar",
@@ -437,7 +428,6 @@ class MainWindow(QMainWindow):
             "context_header",
             "context_back_btn",
             "context_title",
-            "task_center_btn",
             "learning_nav_btn",
             "courses_nav_btn",
             "today_tab_btn",
@@ -530,7 +520,6 @@ class MainWindow(QMainWindow):
 
         self.sidebar_title.setText(gm(APP_NAME, APP_NAME_EN))
         self.app_shell.render_language(gm)
-        self._refresh_task_center_action()
         self._update_navigation_actions()
 
     def navigate_to(
@@ -586,38 +575,6 @@ class MainWindow(QMainWindow):
 
     def _on_first_run_settings_saved(self) -> None:
         self.first_run.settings_saved()
-
-    def _refresh_task_center_action(self) -> None:
-        """Keep the global task entry visible and surface tasks needing attention."""
-        if not hasattr(self, "task_center_btn"):
-            return
-        view = build_task_center_view(
-            self.task_center.snapshots(),
-            language=self.lang_manager.current,
-            attention_only=True,
-        )
-        self.task_center_btn.setText(
-            task_toolbar_text(view.attention_count, self.lang_manager.current)
-        )
-        self.task_center_btn.setProperty("needsAttention", bool(view.attention_count))
-        self.task_center_btn.style().unpolish(self.task_center_btn)
-        self.task_center_btn.style().polish(self.task_center_btn)
-
-    def _open_task_center(self) -> None:
-        dialog = BackgroundTaskDialog(
-            self.task_center,
-            language=self.lang_manager.current,
-            parent=self,
-        )
-        dialog.exec()
-        requested_task_id = str(getattr(dialog, "requested_task_id", "") or "")
-        if requested_task_id:
-            action = str(getattr(dialog, "requested_action", "") or "")
-            if action == "retry":
-                self.task_recovery.retry(requested_task_id)
-            else:
-                self.task_recovery.open_page(requested_task_id)
-        self._refresh_task_center_action()
 
     def _first_run_ai_error(self) -> str:
         return self.first_run.ai_error()

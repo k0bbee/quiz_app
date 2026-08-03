@@ -264,4 +264,3 @@ class WorkspaceNavigationController:
             can_go_back=host.navigation_router.can_go_back,
             get_text=host.lang_manager.get_text,
         )
-        host._refresh_task_center_action()

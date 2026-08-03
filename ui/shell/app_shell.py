@@ -38,7 +38,6 @@ class AppShell(QWidget):
         navigate: Callable[[Route], object],
         open_settings: Callable[[], object],
         navigate_back: Callable[[], object],
-        open_task_center: Callable[[], object],
         parent=None,
     ):
         super().__init__(parent)
@@ -76,13 +75,6 @@ class AppShell(QWidget):
         self.sidebar_utility_separator.setObjectName("sidebarUtilitySeparator")
         self.sidebar_utility_separator.setFrameShape(QFrame.Shape.HLine)
         sidebar_layout.addWidget(self.sidebar_utility_separator)
-
-        self.task_center_btn = QPushButton("")
-        self.task_center_btn.setObjectName("sidebarUtilityButton")
-        self.task_center_btn.setProperty("workspace", "tasks")
-        self.task_center_btn.setFocusPolicy(Qt.FocusPolicy.TabFocus)
-        self.task_center_btn.clicked.connect(open_task_center)
-        sidebar_layout.addWidget(self.task_center_btn)
 
         self.settings_nav_btn = QPushButton("")
         self.settings_nav_btn.setObjectName("sidebarUtilityButton")

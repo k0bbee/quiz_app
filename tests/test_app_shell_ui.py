@@ -116,7 +116,7 @@ class AppShellUiTests(unittest.TestCase):
                 )
                 self.assertIs(services.task_center, window.task_center)
                 self.assertIs(services.set_manager, window.progress_screen.set_manager)
-                self.assertEqual(2000, window._task_center_timer.interval())
+                self.assertFalse(hasattr(window, "_task_center_timer"))
 
     def test_main_window_lazy_loads_management_workspaces_at_stable_routes(self):
             window = MainWindow()
@@ -311,9 +311,7 @@ class AppShellUiTests(unittest.TestCase):
             self.assertEqual("Settings", main_window.settings_nav_btn.text())
             self.assertEqual("settings", main_window.settings_nav_btn.property("workspace"))
             self.assertFalse(main_window.settings_nav_btn.isCheckable())
-            self.assertEqual("sidebarUtilityButton", main_window.task_center_btn.objectName())
-            self.assertEqual("tasks", main_window.task_center_btn.property("workspace"))
-            self.assertIs(main_window.navigation_sidebar, main_window.task_center_btn.parent())
+            self.assertFalse(hasattr(main_window, "task_center_btn"))
 
             self.assertTrue(main_window.learning_nav_btn.isChecked())
             self.assertEqual("Study", main_window.context_title.text())
@@ -437,30 +435,11 @@ class AppShellUiTests(unittest.TestCase):
 
     def test_main_window_routes_context_actions_to_existing_flows(self):
             with tempfile.TemporaryDirectory() as tmpdir:
-                center = BackgroundTaskCenter(Path(tmpdir) / "generation-tasks.json")
-                task = center.create(kind="question_generation", title="Generate questions")
-                center.fail(task.task_id, "provider timeout")
                 main_window = MainWindow()
                 generate = Mock()
                 main_window.generation_flow.open = generate
                 self.addCleanup(main_window.close)
                 self.addCleanup(main_window.lang_manager.set_language, "zh")
-                main_window.task_center = center
-                main_window.lang_manager.set_language("en")
-
-                main_window._refresh_task_center_action()
-
-                self.assertFalse(main_window.task_center_btn.isHidden())
-                self.assertEqual("Tasks 1", main_window.task_center_btn.text())
-                with patch("ui.main_window.BackgroundTaskDialog") as dialog_type:
-                    main_window.task_center_btn.click()
-                dialog_type.assert_called_once_with(
-                    center,
-                    language="en",
-                    parent=main_window,
-                )
-                dialog_type.return_value.exec.assert_called_once_with()
-
                 import_center = BackgroundTaskCenter(Path(tmpdir) / "import-tasks.json")
                 import_task = import_center.create(
                     kind="course_import",
