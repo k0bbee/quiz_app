@@ -346,7 +346,6 @@ class CourseScreen(QWidget):
             self,
         )
         self.merge_action.triggered.connect(self._merge_selected_project)
-        self.more_actions_menu.addAction(self.merge_action)
         self.archive_action = QAction(
             self.lang_manager.get_text("归档课程", "Archive Course"),
             self,
