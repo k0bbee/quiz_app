@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from math import ceil
 
 from core.exam_goal_store import ExamGoal
-from core.today_learning_plan import TodayLearningPlan
+from core.today_learning_plan import TodayLearningPlan, build_topic_learning
 
 
 @dataclass(frozen=True)
@@ -116,45 +116,12 @@ def build_learning_dashboard(
     max_focus_topics: int = 2,
 ) -> LearningDashboardViewModel:
     """Build a complete presentation model without changing scheduling."""
-    topics: dict[str, dict[str, int | str]] = {}
-    normalized_index: dict[str, str] = {}
-    for question_id, row in (topic_index or {}).items():
-        if not isinstance(row, (tuple, list)) or len(row) < 2:
-            continue
-        topic_id = str(row[0] or "").strip()
-        if not topic_id:
-            continue
-        title = str(row[1] or topic_id).strip() or topic_id
-        normalized_index[str(question_id or "").strip()] = topic_id
-        values = topics.setdefault(topic_id, {
-            "title": title,
-            "question_count": 0,
-            "attempts": 0,
-            "correct_count": 0,
-            "incorrect_count": 0,
-            "unsure_count": 0,
-        })
-        values["question_count"] = int(values["question_count"]) + 1
-
-    for record in records or ():
-        if getattr(record, "status", "") != "completed":
-            continue
-        for answer in getattr(record, "answers", ()) or ():
-            if getattr(answer, "skipped", False):
-                continue
-            topic_id = normalized_index.get(
-                str(getattr(answer, "question_id", "") or "").strip()
-            )
-            if not topic_id:
-                continue
-            values = topics[topic_id]
-            values["attempts"] = int(values["attempts"]) + 1
-            if getattr(answer, "is_correct", False):
-                values["correct_count"] = int(values["correct_count"]) + 1
-            else:
-                values["incorrect_count"] = int(values["incorrect_count"]) + 1
-            if str(getattr(answer, "confidence", "sure") or "sure") == "unsure":
-                values["unsure_count"] = int(values["unsure_count"]) + 1
+    topics = build_topic_learning(topic_index, records)
+    normalized_index = {
+        str(question_id or "").strip()
+        for question_id in (topic_index or {})
+        if str(question_id or "").strip()
+    }
 
     focus_topics = tuple(
         TopicFocus(
@@ -162,16 +129,16 @@ def build_learning_dashboard(
             title=str(values["title"]),
             question_count=int(values["question_count"]),
             attempts=int(values["attempts"]),
-            correct_count=int(values["correct_count"]),
-            incorrect_count=int(values["incorrect_count"]),
-            unsure_count=int(values["unsure_count"]),
+            correct_count=int(values["correct"]),
+            incorrect_count=int(values["incorrect"]),
+            unsure_count=int(values["unsure"]),
         )
         for topic_id, values in topics.items()
         if (
             int(values["attempts"]) > 0
             and (
-                int(values["incorrect_count"]) > 0
-                or int(values["unsure_count"]) > 0
+                int(values["incorrect"]) > 0
+                or int(values["unsure"]) > 0
             )
         )
     )

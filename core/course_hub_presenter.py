@@ -7,6 +7,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.today_learning_plan import build_topic_learning
+
 
 @dataclass(frozen=True, slots=True)
 class CourseSourceView:
@@ -260,36 +262,12 @@ def _topic_learning(question_ids_by_topic, *, progress_manager) -> dict[str, dic
         return {}
     if not isinstance(records, (list, tuple)):
         return {}
-    question_to_topic = {
-        question_id: topic_id
+    topic_index = {
+        question_id: (topic_id, topic_id)
         for topic_id, question_ids in question_ids_by_topic.items()
         for question_id in question_ids
     }
-    learning: dict[str, dict] = {}
-    for record in records or ():
-        if getattr(record, "status", "") != "completed":
-            continue
-        recent = str(
-            getattr(record, "completed_at", "")
-            or getattr(record, "started_at", "")
-            or ""
-        )[:10]
-        for answer in getattr(record, "answers", ()) or ():
-            if getattr(answer, "skipped", False):
-                continue
-            topic_id = question_to_topic.get(
-                str(getattr(answer, "question_id", "") or "")
-            )
-            if not topic_id:
-                continue
-            row = learning.setdefault(
-                topic_id,
-                {"attempts": 0, "correct": 0, "recent": ""},
-            )
-            row["attempts"] += 1
-            row["correct"] += int(bool(getattr(answer, "is_correct", False)))
-            row["recent"] = max(row["recent"], recent)
-    return learning
+    return build_topic_learning(topic_index, records)
 
 
 def _is_mastered(course_id, topic_id, mastery_overrides) -> bool:

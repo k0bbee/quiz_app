@@ -180,37 +180,7 @@ def build_today_learning_plan(
 
 
 def _weak_topic(topic_index, progress_records) -> tuple[str, str]:
-    topics: dict[str, dict] = {}
-    for question_id, topic_row in (topic_index or {}).items():
-        if not isinstance(topic_row, (tuple, list)) or len(topic_row) < 2:
-            continue
-        topic_id = str(topic_row[0] or "").strip()
-        if not topic_id:
-            continue
-        title = str(topic_row[1] or topic_id).strip() or topic_id
-        row = topics.setdefault(topic_id, {
-            "title": title,
-            "questions": 0,
-            "attempts": 0,
-            "correct": 0,
-        })
-        row["questions"] += 1
-
-    for record in progress_records or []:
-        if getattr(record, "status", "") != "completed":
-            continue
-        for answer in getattr(record, "answers", []) or []:
-            if getattr(answer, "skipped", False):
-                continue
-            topic_row = topic_index.get(getattr(answer, "question_id", ""))
-            if not topic_row:
-                continue
-            topic_id = str(topic_row[0] or "").strip()
-            if topic_id not in topics:
-                continue
-            topics[topic_id]["attempts"] += 1
-            if getattr(answer, "is_correct", False):
-                topics[topic_id]["correct"] += 1
+    topics = build_topic_learning(topic_index, progress_records)
 
     attempted = [
         (topic_id, row)
@@ -233,13 +203,70 @@ def _weak_topic(topic_index, progress_records) -> tuple[str, str]:
         topic_id, row = min(
             topics.items(),
             key=lambda item: (
-                -item[1]["questions"],
+                -item[1]["question_count"],
                 item[1]["title"].casefold(),
                 item[0],
             ),
         )
         return topic_id, row["title"]
     return "", ""
+
+
+def build_topic_learning(topic_index, progress_records) -> dict[str, dict]:
+    """Aggregate question and answer performance by topic.
+
+    This is the shared read-only index used by the daily plan, home learning
+    diagnosis, and course hub.  Keeping the mapping here prevents each view
+    from applying subtly different skipped/unknown-question rules.
+    """
+    topics: dict[str, dict] = {}
+    question_to_topic: dict[str, str] = {}
+    for question_id, topic_row in (topic_index or {}).items():
+        if not isinstance(topic_row, (tuple, list)) or len(topic_row) < 2:
+            continue
+        normalized_question_id = str(question_id or "").strip()
+        topic_id = str(topic_row[0] or "").strip()
+        if not normalized_question_id or not topic_id:
+            continue
+        title = str(topic_row[1] or topic_id).strip() or topic_id
+        question_to_topic[normalized_question_id] = topic_id
+        row = topics.setdefault(topic_id, {
+            "title": title,
+            "question_count": 0,
+            "attempts": 0,
+            "correct": 0,
+            "incorrect": 0,
+            "unsure": 0,
+            "recent": "",
+        })
+        row["question_count"] += 1
+
+    for record in progress_records or ():
+        if getattr(record, "status", "") != "completed":
+            continue
+        recent = str(
+            getattr(record, "completed_at", "")
+            or getattr(record, "started_at", "")
+            or ""
+        )[:10]
+        for answer in getattr(record, "answers", ()) or ():
+            if getattr(answer, "skipped", False):
+                continue
+            topic_id = question_to_topic.get(
+                str(getattr(answer, "question_id", "") or "").strip()
+            )
+            if not topic_id:
+                continue
+            row = topics[topic_id]
+            row["attempts"] += 1
+            if getattr(answer, "is_correct", False):
+                row["correct"] += 1
+            else:
+                row["incorrect"] += 1
+            if str(getattr(answer, "confidence", "sure") or "sure") == "unsure":
+                row["unsure"] += 1
+            row["recent"] = max(row["recent"], recent)
+    return topics
 
 
 def _estimated_minutes(question_count: int) -> int:

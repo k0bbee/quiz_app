@@ -7,10 +7,44 @@ from core.learning_dashboard import (
     build_learning_dashboard,
 )
 from core.exam_goal_store import ExamGoal
-from core.today_learning_plan import LearningPlanAction, TodayLearningPlan
+from core.today_learning_plan import (
+    LearningPlanAction,
+    TodayLearningPlan,
+    build_topic_learning,
+)
 
 
 class LearningDashboardTests(unittest.TestCase):
+    def test_topic_learning_is_one_shared_performance_index(self):
+        learning = build_topic_learning(
+            {
+                "cache-1": ("cache", "高速缓存"),
+                "cache-2": ("cache", "高速缓存"),
+                "io-1": ("io", "输入输出"),
+            },
+            [
+                self._record(
+                    self._answer("cache-1", True),
+                    self._answer("cache-2", False, confidence="unsure"),
+                    self._answer("unknown", False),
+                    started_at="2026-07-30T09:00:00+08:00",
+                ),
+                self._record(
+                    self._answer("cache-1", False, skipped=True),
+                    started_at="2026-07-31T09:00:00+08:00",
+                ),
+            ],
+        )
+
+        self.assertEqual(2, learning["cache"]["question_count"])
+        self.assertEqual(2, learning["cache"]["attempts"])
+        self.assertEqual(1, learning["cache"]["correct"])
+        self.assertEqual(1, learning["cache"]["incorrect"])
+        self.assertEqual(1, learning["cache"]["unsure"])
+        self.assertEqual("2026-07-30", learning["cache"]["recent"])
+        self.assertEqual(1, learning["io"]["question_count"])
+        self.assertEqual(0, learning["io"]["attempts"])
+
     def test_focuses_the_two_topics_with_the_most_actionable_weakness(self):
         dashboard = build_learning_dashboard(
             {
