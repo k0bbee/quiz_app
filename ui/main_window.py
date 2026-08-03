@@ -298,9 +298,6 @@ class MainWindow(QMainWindow):
             self._course_screen.view_course_library_requested.connect(
                 self._open_course_library
             )
-            self._course_screen.current_event_generation_requested.connect(
-                self._on_current_event_generation
-            )
             self._course_screen.course_import_started.connect(
                 self._on_first_run_import_started
             )
@@ -1009,16 +1006,6 @@ class MainWindow(QMainWindow):
             intent,
             questions,
             label=label,
-        )
-
-    def _on_current_event_generation(self, course_id: str, material_pack) -> None:
-        """Generate against the reviewed material pack for its selected course."""
-        project = self.course_manager.get(course_id)
-        if project is None or material_pack is None:
-            return
-        self.generation_flow.open(
-            course_override=project,
-            material_pack=material_pack,
         )
 
     def _on_generate_predicted_exam(self, course_id: str, prediction):

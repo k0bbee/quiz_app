@@ -119,7 +119,6 @@ class CourseExamScopeScreenTests(unittest.TestCase):
             [
                 "重命名",
                 "重新生成总结",
-                "热点材料",
                 "归档课程",
                 "刷新",
                 "永久删除…",
