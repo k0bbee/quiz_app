@@ -39,6 +39,7 @@ class GenerationDialogUiTests(unittest.TestCase):
             self.assertIs(dialog.goal_group.parentWidget(), dialog.advanced_content)
             self.assertTrue(dialog.advanced_content.isHidden())
             self.assertTrue(dialog.config_group.isHidden())
+            self.assertEqual(2000, dialog.generation_status_timer.interval())
 
     def test_generation_dialog_keeps_review_action_after_save_error(self):
             dialog = AIGenerationDialog(

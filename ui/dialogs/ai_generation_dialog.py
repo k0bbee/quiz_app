@@ -100,7 +100,9 @@ class AIGenerationDialog(QDialog):
         # an empty tuple is a real result meaning the exam scope is complete.
         self._generation_gap_topic_ids: tuple[str, ...] | None = None
         self.generation_status_timer = QTimer(self)
-        self.generation_status_timer.setInterval(1000)
+        # Worker progress signals update the status immediately; this timer
+        # only refreshes elapsed-time text and need not wake the UI every second.
+        self.generation_status_timer.setInterval(2000)
         self.generation_status_timer.timeout.connect(self._refresh_generation_status)
 
         self.setWindowTitle(self.lang_manager.get_text("AI 出题", "AI Question Generation"))
