@@ -22,7 +22,11 @@ from ui.components import PageHeader
 from ui.widgets.source_refs_panel import SourceRefsPanel
 from utils.constants import topic_value
 from core.language_manager import LanguageManager
-from core.today_learning_plan import LearningPlanAction, TodayLearningPlan
+from core.today_learning_plan import (
+    LearningPlanAction,
+    TodayLearningPlan,
+    build_topic_learning,
+)
 from ui.archive_status_presenter import build_archive_status_view
 
 
@@ -428,8 +432,9 @@ class ProgressDashboard(QWidget):
         )
         completed = [r for r in all_records if r.status == "completed" and r.summary]
 
-        # Map question_id -> topic
+        # Map question_id -> normalized topic metadata once for all views.
         qid_to_topic = {}
+        topic_index = {}
         topic_titles = {}
         if visible_questions is None:
             questions = self.question_bank.load_all()
@@ -439,20 +444,28 @@ class ProgressDashboard(QWidget):
             questions = list(visible_questions)
         topic_mastery = build_topic_mastery(completed, questions)
         for q in questions:
-            qid_to_topic[q.question_id] = q.topic
-            topic_titles.setdefault(topic_value(q.topic), q.topic_title())
+            topic_id = topic_value(q.topic)
+            qid_to_topic[q.question_id] = topic_id
+            topic_index[q.question_id] = (topic_id, q.topic_title())
+            topic_titles.setdefault(topic_id, q.topic_title())
 
-        # Aggregate by topic
-        topic_stats = {}
+        # Reuse the same answered-question rules as home and today's plan.
+        topic_learning = build_topic_learning(topic_index, completed)
+        topic_stats = {
+            topic_id: {
+                "total": int(values["attempts"]),
+                "correct": int(values["correct"]),
+                "sessions": set(),
+            }
+            for topic_id, values in topic_learning.items()
+            if int(values["attempts"]) > 0
+        }
         for r in completed:
             for ans in r.answers:
+                if ans.skipped:
+                    continue
                 topic = qid_to_topic.get(ans.question_id)
                 if topic:
-                    if topic not in topic_stats:
-                        topic_stats[topic] = {"total": 0, "correct": 0, "sessions": set()}
-                    topic_stats[topic]["total"] += 1
-                    if ans.is_correct:
-                        topic_stats[topic]["correct"] += 1
                     topic_stats[topic]["sessions"].add(r.progress_id)
 
         # Populate table

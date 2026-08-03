@@ -228,6 +228,53 @@ class ProgressDashboardFlowTests(unittest.TestCase):
                 self.assertEqual("", screen.recommendation_label.text())
                 self.assertTrue(screen.recommendation_label.isHidden())
 
+    def test_topic_table_excludes_skipped_answers_from_accuracy(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                question_bank = QuestionBank(str(root / "questions"))
+                progress_manager = ProgressManager(str(root / "progress"))
+                skipped_question = self._make_question("q-skipped")
+                answered_question = self._make_question("q-answered")
+                for question in (skipped_question, answered_question):
+                    question.metadata["course_id"] = "course-a"
+                question_bank.save_many([skipped_question, answered_question])
+
+                record = ProgressRecord.create_new("set-any")
+                record.status = "completed"
+                record.answers = [
+                    AnswerRecord(
+                        question_id=skipped_question.question_id,
+                        index_in_session=0,
+                        user_answer="",
+                        is_correct=False,
+                        skipped=True,
+                    ),
+                    AnswerRecord(
+                        question_id=answered_question.question_id,
+                        index_in_session=1,
+                        user_answer="A",
+                        is_correct=True,
+                    ),
+                ]
+                record.summary = SessionSummary.compute(
+                    record.answers,
+                    total_questions=2,
+                    total_time=20,
+                )
+                progress_manager.save(record)
+
+                screen = self._make_progress_dashboard(
+                    tmpdir,
+                    progress_manager,
+                    question_bank,
+                )
+                screen.set_current_course("course-a")
+                screen.refresh()
+
+                self.assertEqual(1, screen.topic_table.rowCount())
+                self.assertEqual("100%", screen.topic_table.item(0, 2).text())
+                self.assertEqual("1/1", screen.topic_table.item(0, 4).text())
+
     def test_progress_dashboard_reuses_course_search_results_for_topic_table(self):
             class SearchOnlyQuestionBank:
                 def __init__(self, questions):
