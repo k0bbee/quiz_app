@@ -41,11 +41,11 @@ class HistoryProtectionController:
         suffix = f"\n\n{detail}" if detail else ""
         return host.lang_manager.get_text(
             f"{failed_count} 条旧练习记录暂未完成保护。请先检查数据目录权限，"
-            f"为避免历史答案失真，课程、题库、历史真题维护以及数据导入/重置"
+            f"为避免历史答案失真，课程、题库维护以及数据导入/重置"
             f"已暂时停用。修复后可重试。{suffix}",
             f"{failed_count} legacy practice record(s) could not be protected. "
             f"To preserve historical answers, course, question-bank and "
-            f"historical-exam maintenance plus data import/reset are temporarily "
+            f"maintenance plus data import/reset are temporarily "
             f"disabled. Fix the data-directory issue, then retry.{suffix}",
         )
 

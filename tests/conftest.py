@@ -130,7 +130,6 @@ def _isolate_qt_settings_and_secrets(
     from core.progress_tracker import ProgressManager
     from core.quiz_snapshot_manager import QuizSnapshotManager
     from models.course_project import CourseProjectManager
-    from models.past_exam import PastExamManager
     from models.question import QuestionBank
     from models.question_set import SetManager
     from ui.screens import settings_screen
@@ -145,7 +144,6 @@ def _isolate_qt_settings_and_secrets(
             snapshot_manager=QuizSnapshotManager(str(root / "snapshots")),
             mastery_overrides=MasteryOverrideStore(root / "mastery.json"),
             course_manager=CourseProjectManager(str(root / "courses")),
-            past_exam_manager=PastExamManager(root / "past-exams"),
             task_center=BackgroundTaskCenter(root / "tasks.json"),
             generation_draft_store=GenerationDraftStore(
                 root / "generation-drafts.json"

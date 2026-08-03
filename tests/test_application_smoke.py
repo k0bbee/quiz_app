@@ -16,7 +16,6 @@ from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
-from models.past_exam import PastExamManager
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
 from ui.main_window import MainWindow
@@ -36,7 +35,6 @@ class ApplicationSmokeTests(unittest.TestCase):
             progress_manager = ProgressManager(str(root / "progress"))
             snapshot_manager = QuizSnapshotManager(str(root / "snapshots"))
             course_manager = CourseProjectManager(str(root / "courses"))
-            past_exam_manager = PastExamManager(root / "past_exams")
             task_center = BackgroundTaskCenter(root / "tasks.json")
             mastery = MasteryOverrideStore(root / "mastery.json")
             course = CourseProject(
@@ -92,7 +90,6 @@ class ApplicationSmokeTests(unittest.TestCase):
                 snapshot_manager=snapshot_manager,
                 mastery_overrides=mastery,
                 course_manager=course_manager,
-                past_exam_manager=past_exam_manager,
                 task_center=task_center,
             )
             with patch(

@@ -28,7 +28,6 @@ PROGRESS_DIR = os.path.join(DATA_DIR, "progress")
 QUIZ_SNAPSHOTS_DIR = os.path.join(DATA_DIR, "quiz_snapshots")
 
 # Imported historical exams and their immutable extracted source content
-PAST_EXAMS_DIR = os.path.join(DATA_DIR, "past_exams")
 
 # User-reviewed current-event material packs (derived candidates, no secrets)
 

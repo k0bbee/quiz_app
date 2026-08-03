@@ -435,14 +435,12 @@ class CourseScreenFlowTests(unittest.TestCase):
                 set_manager = Mock(name="set_manager")
                 progress_manager = Mock(name="progress_manager")
                 snapshot_manager = Mock(name="snapshot_manager")
-                past_exam_manager = Mock(name="past_exam_manager")
                 screen = CourseScreen(
                     manager,
                     question_bank=question_bank,
                     set_manager=set_manager,
                     progress_manager=progress_manager,
                     snapshot_manager=snapshot_manager,
-                    past_exam_manager=past_exam_manager,
                 )
                 screen.project_list.setCurrentRow(0)
                 impact = CourseAssetImpact(
@@ -474,7 +472,6 @@ class CourseScreenFlowTests(unittest.TestCase):
                     set_manager,
                     progress_manager,
                     snapshot_manager,
-                    past_exam_manager,
                     generation_draft_store=None,
                 )
                 remove.assert_called_once_with(
@@ -486,7 +483,6 @@ class CourseScreenFlowTests(unittest.TestCase):
                     progress_manager=progress_manager,
                     snapshot_manager=snapshot_manager,
                     generation_draft_store=None,
-                    past_exam_manager=past_exam_manager,
                 )
 
     def test_course_removal_impact_text_explains_counts_and_preserved_history(self):
@@ -503,7 +499,6 @@ class CourseScreenFlowTests(unittest.TestCase):
                     legacy_archive_ids=("progress-c",),
                     draft_progress_ids=("progress-draft",),
                     snapshot_ids=("snapshot-a",),
-                    past_exam_ids=("exam-a", "exam-b"),
                 )
                 language_manager = LanguageManager.instance()
                 previous_language = language_manager.current
@@ -519,7 +514,6 @@ class CourseScreenFlowTests(unittest.TestCase):
                     text,
                 )
                 self.assertIn("未完成草稿：2（删除课程时取消）", text)
-                self.assertIn("历史真题：2（保留并解除课程归属）", text)
 
     def test_course_removal_mode_text_distinguishes_review_from_retry(self):
             with tempfile.TemporaryDirectory() as tmpdir:

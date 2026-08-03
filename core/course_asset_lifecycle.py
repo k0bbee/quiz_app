@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import Enum
 
 from core.progress_archive import ProgressArchiveMigrator
@@ -25,7 +25,6 @@ class CourseAssetImpact:
     draft_progress_ids: tuple[str, ...] = ()
     snapshot_ids: tuple[str, ...] = ()
     generation_draft_ids: tuple[str, ...] = ()
-    past_exam_ids: tuple[str, ...] = ()
 
     @property
     def question_count(self) -> int:
@@ -71,10 +70,6 @@ class CourseAssetImpact:
     def generation_draft_count(self) -> int:
         return len(self.generation_draft_ids)
 
-    @property
-    def past_exam_count(self) -> int:
-        return len(self.past_exam_ids)
-
 class CourseRemovalMode(str, Enum):
     """User-visible policies for removing a course."""
 
@@ -98,7 +93,6 @@ def analyze_course_asset_impact(
     set_manager=None,
     progress_manager=None,
     snapshot_manager=None,
-    past_exam_manager=None,
     generation_draft_store=None,
 ) -> CourseAssetImpact:
     """Return direct and indirect assets linked to ``course_id``."""
@@ -160,13 +154,6 @@ def analyze_course_asset_impact(
         if str(getattr(snapshot, "set_id", "") or "").strip() in affected_set_ids
     }
     snapshot_ids.discard("")
-    past_exam_ids = {
-        str(getattr(record, "exam_id", "") or "").strip()
-        for record in _load_all(past_exam_manager)
-        if str(getattr(record, "course_id", "") or "").strip()
-        == normalized_course_id
-    }
-    past_exam_ids.discard("")
     generation_draft_ids = {
         str(getattr(draft, "draft_id", "") or "").strip()
         for draft in _load_all(generation_draft_store)
@@ -186,7 +173,6 @@ def analyze_course_asset_impact(
         draft_progress_ids=tuple(sorted(draft_progress_ids)),
         snapshot_ids=tuple(sorted(snapshot_ids)),
         generation_draft_ids=tuple(sorted(generation_draft_ids)),
-        past_exam_ids=tuple(sorted(past_exam_ids)),
     )
 
 
@@ -199,7 +185,6 @@ def remove_course_assets(
     set_manager=None,
     progress_manager=None,
     snapshot_manager=None,
-    past_exam_manager=None,
     generation_draft_store=None,
 ) -> CourseRemovalResult:
     """Apply one course-removal policy with compensating rollback on failure."""
@@ -210,7 +195,6 @@ def remove_course_assets(
         set_manager,
         progress_manager,
         snapshot_manager,
-        past_exam_manager,
         generation_draft_store=generation_draft_store,
     )
     project = course_manager.get(impact.course_id)
@@ -244,7 +228,6 @@ def remove_course_assets(
         set_manager,
         progress_manager,
         snapshot_manager,
-        past_exam_manager,
         generation_draft_store=generation_draft_store,
     )
     project = course_manager.get(impact.course_id)
@@ -267,7 +250,6 @@ def remove_course_assets(
         impact.generation_draft_ids,
         copy_items=False,
     )
-    past_exams = _load_by_ids(past_exam_manager, "get", impact.past_exam_ids)
     try:
         _delete_drafts(
             draft_progress_records,
@@ -293,7 +275,6 @@ def remove_course_assets(
                 question_bank,
                 set_manager,
             )
-        _unlink_past_exams(past_exams, past_exam_manager)
         _require_success(
             course_manager.delete(impact.course_id),
             f"delete course {impact.course_id}",
@@ -307,14 +288,12 @@ def remove_course_assets(
             draft_progress_records,
             snapshots,
             generation_drafts,
-            past_exams,
             course_manager,
             question_bank,
             set_manager,
             progress_manager,
             snapshot_manager,
             generation_draft_store,
-            past_exam_manager,
         )
         return CourseRemovalResult(
             False,
@@ -460,22 +439,6 @@ def _delete_drafts(
             )
 
 
-def _unlink_past_exams(past_exams, past_exam_manager):
-    if past_exam_manager is None:
-        return
-    for record in past_exams:
-        updated = replace(
-            record,
-            course_id="",
-            assignment_mode="unassigned",
-            analysis_status="pending",
-        )
-        _require_success(
-            past_exam_manager.save_record(updated),
-            f"unlink historical exam {record.exam_id}",
-        )
-
-
 def _restore_assets(
     project,
     was_current,
@@ -484,14 +447,12 @@ def _restore_assets(
     draft_progress_records,
     snapshots,
     generation_drafts,
-    past_exams,
     course_manager,
     question_bank,
     set_manager,
     progress_manager,
     snapshot_manager,
     generation_draft_store,
-    past_exam_manager,
 ) -> list[str]:
     errors: list[str] = []
     restore_groups = (
@@ -514,15 +475,6 @@ def _restore_assets(
                 _require_success(
                     generation_draft_store.save_draft(draft),
                     f"restore generation draft {draft.draft_id}",
-                )
-            except Exception as exc:
-                errors.append(str(exc))
-    if past_exam_manager is not None:
-        for record in past_exams:
-            try:
-                _require_success(
-                    past_exam_manager.save_record(deepcopy(record)),
-                    f"restore historical exam {record.exam_id}",
                 )
             except Exception as exc:
                 errors.append(str(exc))

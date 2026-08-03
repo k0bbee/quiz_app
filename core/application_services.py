@@ -10,7 +10,6 @@ from config import (
     DAILY_STUDY_PLANS_FILE,
     GENERATION_DRAFTS_FILE,
     MASTERY_OVERRIDES_FILE,
-    PAST_EXAMS_DIR,
     PROGRESS_DIR,
     QUESTIONS_DIR,
     QUESTION_SETS_DIR,
@@ -23,7 +22,6 @@ from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
 from models.course_project import CourseProjectManager
-from models.past_exam import PastExamManager
 from models.question import QuestionBank
 from models.question_set import SetManager
 
@@ -38,7 +36,6 @@ class ApplicationServices:
     snapshot_manager: QuizSnapshotManager
     mastery_overrides: MasteryOverrideStore
     course_manager: CourseProjectManager
-    past_exam_manager: PastExamManager
     task_center: BackgroundTaskCenter
     daily_plan_store: DailyStudyPlanStore | None = None
     generation_draft_store: GenerationDraftStore | None = None
@@ -53,7 +50,6 @@ class ApplicationServices:
             snapshot_manager=QuizSnapshotManager(QUIZ_SNAPSHOTS_DIR),
             mastery_overrides=MasteryOverrideStore(MASTERY_OVERRIDES_FILE),
             course_manager=CourseProjectManager(COURSES_DIR),
-            past_exam_manager=PastExamManager(PAST_EXAMS_DIR),
             task_center=BackgroundTaskCenter(BACKGROUND_TASKS_FILE),
             daily_plan_store=DailyStudyPlanStore(DAILY_STUDY_PLANS_FILE),
             generation_draft_store=GenerationDraftStore(

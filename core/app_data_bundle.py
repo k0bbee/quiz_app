@@ -27,7 +27,6 @@ DATA_DIRECTORIES = (
     "question_sets",
     "quiz_snapshots",
     "progress",
-    "past_exams",
 )
 DATA_FILES = ("current_course.json", "settings.json", "mastery_overrides.json")
 SECRET_FILENAMES = {".api_key.dpapi"}
@@ -50,7 +49,6 @@ ALLOWED_BUNDLE_SUFFIXES: dict[str, frozenset[str]] = {
     "question_sets": frozenset({".json"}),
     "quiz_snapshots": frozenset({".json"}),
     "progress": frozenset({".json"}),
-    "past_exams": frozenset({".json", ".md", ".txt", ".pdf", ".pptx", ".docx"}),
 }
 
 

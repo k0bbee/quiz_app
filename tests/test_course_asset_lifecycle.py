@@ -11,7 +11,6 @@ from core.course_asset_lifecycle import (
 )
 from core.generation_draft_store import GenerationDraftStore
 from ai.exam_plan import ExamGenerationPlan
-from models.past_exam import PastExamRecord
 from models.progress import AnswerRecord, ProgressRecord
 from models.question import Question
 from models.question_set import QuestionSet
@@ -78,14 +77,6 @@ class _CourseManager(_StoreManager):
         if self.current_id == item_id:
             self.current_id = ""
         return True
-
-
-class _PastExamManager(_StoreManager):
-    def __init__(self, items):
-        super().__init__(items, "exam_id")
-
-    def save_record(self, item):
-        return self.save(item)
 
 
 class CourseAssetLifecycleTests(unittest.TestCase):
@@ -380,10 +371,6 @@ class CourseAssetLifecycleTests(unittest.TestCase):
         self.assertIsNotNone(
             managers["snapshot_manager"].get("snapshot-direct")
         )
-        self.assertEqual(
-            "course-a",
-            managers["past_exam_manager"].get("exam-course").course_id,
-        )
 
     def test_impact_follows_direct_course_links_and_indirect_set_references(self):
         questions = _Manager([
@@ -418,17 +405,12 @@ class CourseAssetLifecycleTests(unittest.TestCase):
             SimpleNamespace(snapshot_id="snapshot-mixed", set_id="set-mixed"),
             SimpleNamespace(snapshot_id="snapshot-other", set_id="set-other"),
         ])
-        past_exams = _Manager([
-            SimpleNamespace(exam_id="exam-course", course_id="course-a"),
-            SimpleNamespace(exam_id="exam-other", course_id="course-b"),
-        ])
         impact = analyze_course_asset_impact(
             "course-a",
             questions,
             sets,
             progress,
             snapshots,
-            past_exams,
         )
 
         self.assertEqual(("q-course-1", "q-course-2"), impact.question_ids)
@@ -436,12 +418,10 @@ class CourseAssetLifecycleTests(unittest.TestCase):
         self.assertEqual(("set-direct", "set-mixed"), impact.affected_set_ids)
         self.assertEqual(("progress-direct", "progress-mixed"), impact.progress_ids)
         self.assertEqual(("snapshot-direct", "snapshot-mixed"), impact.snapshot_ids)
-        self.assertEqual(("exam-course",), impact.past_exam_ids)
         self.assertEqual(2, impact.question_count)
         self.assertEqual(2, impact.question_set_count)
         self.assertEqual(2, impact.progress_count)
         self.assertEqual(2, impact.snapshot_count)
-        self.assertEqual(1, impact.past_exam_count)
 
     def test_impact_supports_missing_optional_managers(self):
         impact = analyze_course_asset_impact("course-a", None, None, None, None)
@@ -470,10 +450,6 @@ class CourseAssetLifecycleTests(unittest.TestCase):
         direct_set = managers["set_manager"].get("set-direct")
         self.assertEqual(["q-course", "q-other"], direct_set.questions)
         self.assertNotIn("course_id", direct_set.metadata)
-        exam = managers["past_exam_manager"].get("exam-course")
-        self.assertEqual("", exam.course_id)
-        self.assertEqual("unassigned", exam.assignment_mode)
-        self.assertEqual("pending", exam.analysis_status)
         self.assertEqual(2, len(managers["progress_manager"].items))
         self.assertEqual(0, len(managers["snapshot_manager"].items))
 
@@ -495,10 +471,6 @@ class CourseAssetLifecycleTests(unittest.TestCase):
         self.assertEqual(2, len(managers["progress_manager"].items))
         self.assertIsNone(managers["snapshot_manager"].get("snapshot-direct"))
         self.assertIsNone(managers["snapshot_manager"].get("snapshot-mixed"))
-        self.assertEqual(
-            "",
-            managers["past_exam_manager"].get("exam-course").course_id,
-        )
 
     def test_failed_cleanup_restores_every_asset(self):
         managers = self._lifecycle_managers()
@@ -538,9 +510,6 @@ class CourseAssetLifecycleTests(unittest.TestCase):
             managers["progress_manager"].get("progress-draft")
         )
         self.assertEqual(2, len(managers["snapshot_manager"].items))
-        restored_exam = managers["past_exam_manager"].get("exam-course")
-        self.assertEqual("course-a", restored_exam.course_id)
-        self.assertEqual("complete", restored_exam.analysis_status)
 
     @staticmethod
     def _lifecycle_managers():
@@ -580,39 +549,12 @@ class CourseAssetLifecycleTests(unittest.TestCase):
             SimpleNamespace(snapshot_id="snapshot-direct", set_id="set-direct"),
             SimpleNamespace(snapshot_id="snapshot-mixed", set_id="set-mixed"),
         ]
-        past_exams = [
-            PastExamRecord(
-                exam_id="exam-course",
-                title="Course Exam",
-                source_filename="course-exam.pdf",
-                source_path="source/course-exam.pdf",
-                content_path="content.json",
-                source_sha256="course-exam-hash",
-                imported_at="2026-07-26T00:00:00+00:00",
-                course_id="course-a",
-                assignment_mode="manual",
-                analysis_status="complete",
-            ),
-            PastExamRecord(
-                exam_id="exam-other",
-                title="Other Exam",
-                source_filename="other-exam.pdf",
-                source_path="source/other-exam.pdf",
-                content_path="content.json",
-                source_sha256="other-exam-hash",
-                imported_at="2026-07-26T00:00:00+00:00",
-                course_id="course-b",
-                assignment_mode="manual",
-                analysis_status="complete",
-            ),
-        ]
         return {
             "course_manager": _CourseManager([course], current_id="course-a"),
             "question_bank": _StoreManager(questions, "question_id"),
             "set_manager": _StoreManager(sets, "set_id"),
             "progress_manager": _StoreManager(progress, "progress_id"),
             "snapshot_manager": _StoreManager(snapshots, "snapshot_id"),
-            "past_exam_manager": _PastExamManager(past_exams),
         }
 
 

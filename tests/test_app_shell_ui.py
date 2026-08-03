@@ -18,7 +18,6 @@ from core.progress_tracker import ProgressManager
 from core.mastery_overrides import MasteryOverrideStore
 from core.quiz_snapshot_manager import QuizSnapshotManager
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
-from models.past_exam import PastExamManager
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
 from core.background_task_recovery import generation_plan_from_task_metadata
@@ -98,7 +97,6 @@ class AppShellUiTests(unittest.TestCase):
                     snapshot_manager=QuizSnapshotManager(str(root / "snapshots")),
                     mastery_overrides=MasteryOverrideStore(root / "mastery.json"),
                     course_manager=CourseProjectManager(str(root / "courses")),
-                    past_exam_manager=PastExamManager(root / "past-exams"),
                     task_center=BackgroundTaskCenter(root / "tasks.json"),
                 )
 
