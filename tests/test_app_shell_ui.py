@@ -116,7 +116,8 @@ class AppShellUiTests(unittest.TestCase):
             self.assertIsNone(window._question_bank_screen)
             self.assertFalse(hasattr(window, "_past_exam_screen"))
             self.assertIsNone(window._generation_workspace)
-            self.assertEqual(9, window.stack.count())
+            self.assertFalse(hasattr(window, "SCREEN_PAST_EXAMS"))
+            self.assertEqual(8, window.stack.count())
 
             self.assertTrue(window.navigate_to(window.SCREEN_QUESTION_BANK))
             self.assertEqual(window.SCREEN_QUESTION_BANK, window.stack.currentIndex())
@@ -125,7 +126,7 @@ class AppShellUiTests(unittest.TestCase):
             self.assertFalse(hasattr(window, "_past_exam_screen"))
 
             with self.assertRaises(ValueError):
-                window.navigate_to(window.SCREEN_PAST_EXAMS)
+                window.navigate_to(99)
 
             self.assertTrue(window.navigate_to(window.SCREEN_GENERATION))
             self.assertEqual(window.SCREEN_GENERATION, window.stack.currentIndex())

@@ -52,8 +52,7 @@ class MainWindow(QMainWindow):
     SCREEN_PROGRESS = 4
     SCREEN_COURSES = 5
     SCREEN_QUESTION_BANK = 6
-    SCREEN_PAST_EXAMS = 7
-    SCREEN_GENERATION = 8
+    SCREEN_GENERATION = 7
     SCREEN_INDEX_BY_KEY = {
         ScreenKey.HOME: SCREEN_HOME,
         ScreenKey.TOPIC_SELECTION: SCREEN_TOPIC_SELECTION,
@@ -174,9 +173,6 @@ class MainWindow(QMainWindow):
         for index, name in (
             (self.SCREEN_COURSES, "courses"),
             (self.SCREEN_QUESTION_BANK, "questionBank"),
-            # Keep the retired numeric slot so legacy stack indices do not
-            # shift, but do not expose a route or instantiate a screen for it.
-            (self.SCREEN_PAST_EXAMS, "retiredPastExams"),
             (self.SCREEN_GENERATION, "generation"),
         ):
             placeholder = QWidget()

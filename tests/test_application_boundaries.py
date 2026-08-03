@@ -45,15 +45,14 @@ class WorkspaceNavigationControllerTests(unittest.TestCase):
             SCREEN_PROGRESS=4,
             SCREEN_COURSES=5,
             SCREEN_QUESTION_BANK=6,
-            SCREEN_PAST_EXAMS=7,
-            SCREEN_GENERATION=8,
-            SCREEN_INDEX_BY_KEY={ScreenKey.GENERATION: 8},
+            SCREEN_GENERATION=7,
+            SCREEN_INDEX_BY_KEY={ScreenKey.GENERATION: 7},
             course_context=SimpleNamespace(
                 current_course_id=lambda: "course-current",
             ),
         )
 
-        route = WorkspaceNavigationController(host).default_route(8)
+        route = WorkspaceNavigationController(host).default_route(7)
 
         self.assertEqual(
             Route.course("course-current", tab="generation"),
