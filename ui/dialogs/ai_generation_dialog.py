@@ -282,7 +282,6 @@ class AIGenerationDialog(QDialog):
         self.exam_assistant_btn.clicked.connect(self._open_exam_assistant)
         self.assistant_action_layout.addWidget(self.exam_assistant_btn)
         config_layout.addRow("", self.assistant_action_layout)
-        right_layout.addWidget(self.config_group)
 
         self.advanced_toggle_btn = QPushButton()
         self.advanced_toggle_btn.setObjectName("secondaryButton")
@@ -294,6 +293,8 @@ class AIGenerationDialog(QDialog):
         advanced_layout = QVBoxLayout(self.advanced_content)
         advanced_layout.setContentsMargins(0, 0, 0, 0)
         advanced_layout.setSpacing(12)
+        advanced_layout.addWidget(self.config_group)
+        self.config_group.hide()
         self.advanced_content.hide()
         right_layout.addWidget(self.advanced_content)
         self._refresh_advanced_toggle_text()
@@ -708,7 +709,9 @@ class AIGenerationDialog(QDialog):
 
     def _toggle_advanced_settings(self) -> None:
         """Reveal expert generation controls without crowding the default flow."""
-        self.advanced_content.setVisible(self.advanced_content.isHidden())
+        expanded = self.advanced_content.isHidden()
+        self.advanced_content.setVisible(expanded)
+        self.config_group.setVisible(expanded)
         self._refresh_advanced_toggle_text()
 
     def _refresh_advanced_toggle_text(self) -> None:

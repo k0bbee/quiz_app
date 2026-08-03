@@ -236,6 +236,7 @@ class WorkspaceLayoutTests(unittest.TestCase):
             )
 
             self.assertTrue(dialog.advanced_content.isHidden())
+            self.assertTrue(dialog.config_group.isHidden())
             self.assertIn("展开高级设置", dialog.advanced_toggle_btn.text())
             self.assertTrue(dialog.generation_log_group.isHidden())
             self.assertTrue(dialog.advanced_content.isAncestorOf(dialog.topic_weight_group))
@@ -246,6 +247,7 @@ class WorkspaceLayoutTests(unittest.TestCase):
             dialog.advanced_toggle_btn.click()
 
             self.assertFalse(dialog.advanced_content.isHidden())
+            self.assertFalse(dialog.config_group.isHidden())
             self.assertIn("收起高级设置", dialog.advanced_toggle_btn.text())
 
             dialog._append_generation_event("Generating question 1/5")
