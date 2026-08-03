@@ -423,7 +423,7 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self):
         # Home screen
-        self.home_screen.study_requested.connect(self._handle_study_intent)
+        self.home_screen.study_requested.connect(self.study_flow.handle_intent)
         self.first_run_screen.choose_materials_requested.connect(
             self.first_run.choose_materials
         )
@@ -470,7 +470,7 @@ class MainWindow(QMainWindow):
             self.result_flow.retry_review
         )
         self.results_screen.retry_all.connect(self.result_flow.retry_all)
-        self.results_screen.study_requested.connect(self._handle_study_intent)
+        self.results_screen.study_requested.connect(self.study_flow.handle_intent)
         self.results_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
         self.results_screen.review_topic_requested.connect(self._on_review_progress_topic)
         self.results_screen.generate_reinforcement_requested.connect(
@@ -555,10 +555,6 @@ class MainWindow(QMainWindow):
         self.first_run.refresh()
 
     # --- Slot handlers ---
-
-    def _handle_study_intent(self, intent: StudyIntent) -> None:
-        """Route one typed user intent through the study controller."""
-        self.study_flow.handle_intent(intent)
 
     def _on_study_quiz_start(
         self,
