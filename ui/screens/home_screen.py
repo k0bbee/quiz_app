@@ -476,8 +476,6 @@ class HomeScreen(QWidget):
             if draft is None and total_questions > 0
             else None
         )
-        plan_id = ""
-        daily_plan = None
         self._today_plan = build_today_learning_plan(
             total_questions=total_questions,
             incorrect_question_ids=incorrect_ids,
@@ -486,8 +484,6 @@ class HomeScreen(QWidget):
             draft=draft,
             has_course=bool(self._current_course_id),
             daily_queue=daily_queue,
-            daily_plan=daily_plan,
-            plan_id=plan_id,
         )
         self._render_today_plan()
 
@@ -516,7 +512,7 @@ class HomeScreen(QWidget):
             )
             current_count = plan.target_question_count
             remaining_count = len(plan.remaining_question_ids)
-            total_count = plan.plan_total_count or current_count + remaining_count
+            total_count = current_count + remaining_count
             button_zh = "开始练习"
             button_en = "Start Practice"
             self.start_btn.setText(
@@ -553,17 +549,8 @@ class HomeScreen(QWidget):
             self.start_btn.setText(
                 self.lang_manager.get_text("开始练习", "Start Practice")
             )
-            if plan.deferred_count:
-                detail_zh = (
-                    f"当前练习已完成；还有 {plan.deferred_count} 道题目待巩固。"
-                )
-                detail_en = (
-                    f"Current practice is complete; {plan.deferred_count} item(s) "
-                    "still need review."
-                )
-            else:
-                detail_zh = "当前没有待完成的复习题目。"
-                detail_en = "No review questions remain right now."
+            detail_zh = "当前没有待完成的复习题目。"
+            detail_en = "No review questions remain right now."
             self.today_plan_detail.setText(
                 self.lang_manager.get_text(detail_zh, detail_en)
             )
@@ -636,5 +623,4 @@ class HomeScreen(QWidget):
             remaining_question_ids=self._today_plan.remaining_question_ids,
             question_count=question_count,
             source="today_plan",
-            plan_id=self._today_plan.plan_id,
         )

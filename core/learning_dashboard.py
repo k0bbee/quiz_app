@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from core.today_learning_plan import TodayLearningPlan, build_topic_learning
+
+from core.today_learning_plan import build_topic_learning
 
 
 @dataclass(frozen=True)
@@ -25,28 +26,6 @@ class TopicFocus:
 
 
 @dataclass(frozen=True)
-class PlanProgress:
-    """User-facing progress through the bounded plan for one day."""
-
-    completed_count: int = 0
-    total_count: int = 0
-    current_group_count: int = 0
-    remaining_after_current_group: int = 0
-
-    @property
-    def remaining_count(self) -> int:
-        return max(0, self.total_count - self.completed_count)
-
-    @property
-    def completion_rate(self) -> float:
-        return (
-            self.completed_count / self.total_count
-            if self.total_count
-            else 0.0
-        )
-
-
-@dataclass(frozen=True)
 class WeeklySummary:
     """A compact summary of completed work in the current calendar week."""
 
@@ -64,22 +43,11 @@ class WeeklySummary:
 
 
 @dataclass(frozen=True)
-class NextDayPreview:
-    """Conservative preview derived from backlog without changing scheduling."""
-
-    question_count: int = 0
-
-
-@dataclass(frozen=True)
 class LearningDashboardViewModel:
     """One read-only model shared by the home and learning-analysis views."""
 
-    daily_plan: TodayLearningPlan | None = None
-    plan_progress: PlanProgress = PlanProgress()
-    estimated_minutes: int = 0
     focus_topics: tuple[TopicFocus, ...] = ()
     weekly_summary: WeeklySummary = WeeklySummary()
-    next_day_preview: NextDayPreview = NextDayPreview()
 
     @property
     def focus_topic_ids(self) -> tuple[str, ...]:
@@ -94,11 +62,10 @@ def build_learning_dashboard(
     topic_index,
     *,
     records,
-    daily_plan: TodayLearningPlan | None = None,
     reference_date: date | None = None,
     max_focus_topics: int = 2,
 ) -> LearningDashboardViewModel:
-    """Build a complete presentation model without changing scheduling."""
+    """Build read-only topic and weekly metrics without owning scheduling."""
     topics = build_topic_learning(topic_index, records)
     normalized_index = {
         str(question_id or "").strip()
@@ -136,42 +103,13 @@ def build_learning_dashboard(
         ),
     )
     current_date = reference_date or date.today()
-    plan_progress = _plan_progress(daily_plan)
     return LearningDashboardViewModel(
-        daily_plan=daily_plan,
-        plan_progress=plan_progress,
-        estimated_minutes=max(
-            0,
-            int(getattr(daily_plan, "estimated_minutes", 0) or 0),
-        ),
         focus_topics=tuple(ordered[:max(0, int(max_focus_topics or 0))]),
         weekly_summary=_weekly_summary(
             records,
             visible_question_ids=set(normalized_index),
             reference_date=current_date,
         ),
-        next_day_preview=_next_day_preview(daily_plan),
-    )
-
-
-def _plan_progress(plan: TodayLearningPlan | None) -> PlanProgress:
-    if plan is None:
-        return PlanProgress()
-    total = max(0, int(getattr(plan, "plan_total_count", 0) or 0))
-    completed = min(
-        total,
-        max(0, int(getattr(plan, "completed_count", 0) or 0)),
-    )
-    remaining = max(0, total - completed)
-    current = min(
-        remaining,
-        max(0, int(getattr(plan, "target_question_count", 0) or 0)),
-    )
-    return PlanProgress(
-        completed_count=completed,
-        total_count=total,
-        current_group_count=current,
-        remaining_after_current_group=max(0, remaining - current),
     )
 
 
@@ -226,14 +164,3 @@ def _record_date(record) -> date | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).date()
     except ValueError:
         return None
-
-
-def _next_day_preview(plan: TodayLearningPlan | None) -> NextDayPreview:
-    if plan is None:
-        return NextDayPreview()
-    total = max(0, int(getattr(plan, "plan_total_count", 0) or 0))
-    backlog = max(0, int(getattr(plan, "backlog_count", 0) or 0))
-    deferred = max(0, int(getattr(plan, "deferred_count", 0) or 0))
-    future_count = max(deferred, backlog - total)
-    return NextDayPreview(question_count=min(15, future_count))
-

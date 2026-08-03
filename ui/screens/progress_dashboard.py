@@ -289,12 +289,6 @@ class ProgressDashboard(QWidget):
                 f"{weekly.completed_questions} answered · "
                 f"{weekly.accuracy:.1%} accuracy"
             )
-            progress = self._learning_dashboard.plan_progress
-            if progress.total_count:
-                zh_detail += f" · 今日计划完成率 {progress.completion_rate:.0%}"
-                en_detail += (
-                    f" · today's plan {progress.completion_rate:.0%} complete"
-                )
             self.detail_label.setText(
                 self.lang_manager.get_text(zh_detail, en_detail)
             )

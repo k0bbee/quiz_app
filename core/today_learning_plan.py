@@ -35,13 +35,6 @@ class TodayLearningPlan:
     weak_topic_title: str = ""
     question_ids: tuple[str, ...] = ()
     remaining_question_ids: tuple[str, ...] = ()
-    queue_counts: tuple[tuple[str, int], ...] = ()
-    plan_id: str = ""
-    plan_total_count: int = 0
-    backlog_count: int = 0
-    completed_count: int = 0
-    remediation_count: int = 0
-    deferred_count: int = 0
 
 
 def build_today_learning_plan(
@@ -53,10 +46,8 @@ def build_today_learning_plan(
     draft: DraftLearningState | None = None,
     has_course: bool = True,
     daily_queue=None,
-    daily_plan=None,
-    plan_id: str = "",
 ) -> TodayLearningPlan:
-    """Build a transparent plan: draft, review, practice, then generation."""
+    """Build a transparent recommendation from the current in-memory state."""
     total_questions = max(0, int(total_questions or 0))
     incorrect_ids = tuple(dict.fromkeys(
         str(question_id)
@@ -74,55 +65,12 @@ def build_today_learning_plan(
             draft_mode=draft.mode if draft.mode in {"exam", "practice"} else "practice",
         )
 
-    if daily_plan is not None and total_questions > 0:
-        current_ids, remaining_ids = daily_plan.next_session()
-        counts = tuple(getattr(daily_plan, "category_counts", ()) or ())
-        common = {
-            "queue_counts": counts,
-            "plan_id": str(getattr(daily_plan, "plan_id", "") or "").strip(),
-            "plan_total_count": len(
-                getattr(daily_plan, "planned_ids", ()) or ()
-            ),
-            "backlog_count": int(
-                getattr(daily_plan, "backlog_count", 0) or 0
-            ),
-            "completed_count": len(
-                getattr(daily_plan, "completed_ids", ()) or ()
-            ),
-            "remediation_count": len(
-                getattr(daily_plan, "remediation_ids", ()) or ()
-            ),
-            "deferred_count": len(
-                getattr(daily_plan, "deferred_ids", ()) or ()
-            ),
-        }
-        if current_ids:
-            pending_count = len(current_ids) + len(remaining_ids)
-            return TodayLearningPlan(
-                action=LearningPlanAction.START_DAILY_QUEUE,
-                target_question_count=len(current_ids),
-                estimated_minutes=_estimated_minutes(pending_count),
-                question_ids=current_ids,
-                remaining_question_ids=remaining_ids,
-                **common,
-            )
-        return TodayLearningPlan(
-            action=LearningPlanAction.DAILY_COMPLETE,
-            **common,
-        )
-
     if daily_queue is not None and total_questions > 0:
         current_ids = tuple(
             getattr(daily_queue, "current_question_ids", ()) or ()
         )
         remaining_ids = tuple(
             getattr(daily_queue, "remaining_question_ids", ()) or ()
-        )
-        counts = tuple(
-            (str(getattr(category, "value", category)), int(count or 0))
-            for category, count in (
-                getattr(daily_queue, "category_counts", {}) or {}
-            ).items()
         )
         if current_ids:
             return TodayLearningPlan(
@@ -133,20 +81,9 @@ def build_today_learning_plan(
                 ),
                 question_ids=current_ids,
                 remaining_question_ids=remaining_ids,
-                queue_counts=counts,
-                plan_id=str(plan_id or "").strip(),
-                plan_total_count=len(current_ids) + len(remaining_ids),
-                backlog_count=int(
-                    getattr(daily_queue, "backlog_count", 0) or 0
-                ),
             )
         return TodayLearningPlan(
             action=LearningPlanAction.DAILY_COMPLETE,
-            queue_counts=counts,
-            plan_id=str(plan_id or "").strip(),
-            backlog_count=int(
-                getattr(daily_queue, "backlog_count", 0) or 0
-            ),
         )
 
     if incorrect_ids:

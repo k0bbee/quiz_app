@@ -1,5 +1,7 @@
 import unittest
+from dataclasses import fields
 from datetime import date
+from inspect import signature
 from types import SimpleNamespace
 
 from core.learning_dashboard import (
@@ -7,7 +9,6 @@ from core.learning_dashboard import (
     build_learning_dashboard,
 )
 from core.today_learning_plan import (
-    LearningPlanAction,
     TodayLearningPlan,
     build_topic_learning,
 )
@@ -93,6 +94,12 @@ class LearningDashboardTests(unittest.TestCase):
 
         self.assertEqual((), dashboard.focus_topics)
 
+    def test_learning_views_do_not_retain_removed_persistent_plan_state(self):
+        self.assertNotIn("daily_plan", signature(build_learning_dashboard).parameters)
+        self.assertNotIn("daily_plan", {field.name for field in fields(LearningDashboardViewModel)})
+        self.assertNotIn("plan_id", {field.name for field in fields(TodayLearningPlan)})
+        self.assertNotIn("deferred_count", {field.name for field in fields(TodayLearningPlan)})
+
     def test_builds_one_read_only_view_model_for_home_and_analysis(self):
         records = [
             self._record(
@@ -105,39 +112,21 @@ class LearningDashboardTests(unittest.TestCase):
                 started_at="2026-07-30T09:00:00+08:00",
             ),
         ]
-        plan = TodayLearningPlan(
-            action=LearningPlanAction.START_DAILY_QUEUE,
-            target_question_count=9,
-            estimated_minutes=18,
-            plan_id="2026-07-30:course-a",
-            plan_total_count=15,
-            backlog_count=38,
-            completed_count=6,
-        )
-
         dashboard = build_learning_dashboard(
             {
                 "cache-1": ("cache", "高速缓存"),
                 "io-1": ("io", "输入输出"),
             },
             records=records,
-            daily_plan=plan,
             reference_date=date(2026, 7, 30),
             max_focus_topics=3,
         )
 
         self.assertIsInstance(dashboard, LearningDashboardViewModel)
-        self.assertIs(plan, dashboard.daily_plan)
-        self.assertEqual(6, dashboard.plan_progress.completed_count)
-        self.assertEqual(15, dashboard.plan_progress.total_count)
-        self.assertEqual(9, dashboard.plan_progress.current_group_count)
-        self.assertEqual(0, dashboard.plan_progress.remaining_after_current_group)
-        self.assertEqual(18, dashboard.estimated_minutes)
         self.assertEqual(2, dashboard.weekly_summary.study_days)
         self.assertEqual(3, dashboard.weekly_summary.completed_questions)
         self.assertEqual(2, dashboard.weekly_summary.correct_questions)
         self.assertAlmostEqual(2 / 3, dashboard.weekly_summary.accuracy)
-        self.assertEqual(15, dashboard.next_day_preview.question_count)
 
     @staticmethod
     def _record(*answers, started_at=""):
