@@ -43,11 +43,11 @@ class AppRouteTests(unittest.TestCase):
 
         library = workspace_tabs(Workspace.LIBRARY)
         self.assertEqual(
-            ["questions", "sets", "past_exams", "drafts"],
+            ["questions", "sets"],
             [tab.route.tab for tab in library],
         )
         self.assertEqual(
-            ["题目", "题目集", "历史真题", "生成草稿"],
+            ["题目", "题目集"],
             [tab.label_zh for tab in library],
         )
 
