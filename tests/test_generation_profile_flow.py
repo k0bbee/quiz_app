@@ -85,47 +85,6 @@ class GenerationProfileFlowTests(unittest.TestCase):
             }
             self.assertEqual({"process"}, checked)
 
-    def test_exam_assistant_button_uses_descriptive_label_instead_of_jargon(self):
-            from core.language_manager import LanguageManager
-
-            lang_manager = LanguageManager.instance()
-            previous_lang = lang_manager.current
-            self.addCleanup(lang_manager.set_language, previous_lang)
-
-            dialog = AIGenerationDialog(
-                "course content",
-                {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
-                available_topics=["cache"],
-            )
-
-            lang_manager.set_language("zh")
-            self.assertNotIn("试卷助手", dialog.exam_assistant_btn.text())
-
-            lang_manager.set_language("en")
-            self.assertNotIn("Exam Assistant", dialog.exam_assistant_btn.text())
-
-    def test_accepted_exam_assistant_plan_is_applied(self):
-            dialog = AIGenerationDialog(
-                "course content",
-                {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
-                available_topics=["cache"],
-            )
-            target = ExamGenerationPlan(
-                question_count=30,
-                selected_topics=("cache",),
-                topic_weights={"cache": 100},
-            )
-
-            with patch("ui.dialogs.exam_assistant_dialog.ExamAssistantDialog") as assistant_class:
-                assistant = assistant_class.return_value
-                assistant.exec.return_value = QDialog.DialogCode.Accepted
-                assistant.get_confirmed_plan.return_value = target
-
-                dialog._open_exam_assistant()
-
-            self.assertEqual(30, dialog.count_spin.value())
-            assistant_class.assert_called_once()
-
     def test_dialog_prefills_all_controls_from_course_generation_profile(self):
             dialog = AIGenerationDialog(
                 "course content",

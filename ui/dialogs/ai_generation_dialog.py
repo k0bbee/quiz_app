@@ -277,22 +277,6 @@ class AIGenerationDialog(QDialog):
             self.template_combo.setCurrentIndex(template_index)
         config_layout.addRow(self.template_label, self.template_combo)
 
-        self.assistant_action_layout = QHBoxLayout()
-        self.assistant_action_layout.addStretch()
-        self.exam_assistant_btn = QPushButton(
-            self.lang_manager.get_text("用自然语言描述…", "Describe your exam…")
-        )
-        self.exam_assistant_btn.setObjectName("secondaryButton")
-        self.exam_assistant_btn.setToolTip(
-            self.lang_manager.get_text(
-                "用自然语言描述考试需求，AI 自动配置生成参数",
-                "Describe your exam in natural language — AI configures generation settings",
-            )
-        )
-        self.exam_assistant_btn.clicked.connect(self._open_exam_assistant)
-        self.assistant_action_layout.addWidget(self.exam_assistant_btn)
-        config_layout.addRow("", self.assistant_action_layout)
-
         self.advanced_toggle_btn = QPushButton()
         self.advanced_toggle_btn.setObjectName("secondaryButton")
         self.advanced_toggle_btn.clicked.connect(self._toggle_advanced_settings)
@@ -997,16 +981,6 @@ class AIGenerationDialog(QDialog):
         self._refresh_fill_missing_button()
         self.generate_btn.setText(self.lang_manager.get_text("生成题目", "Generate Questions"))
         self.partial_recovery_label.setText(self._partial_recovery_hint(self.lang_manager.current))
-        self.exam_assistant_btn.setText(
-            self.lang_manager.get_text("用自然语言描述…", "Describe your exam…")
-        )
-        self.exam_assistant_btn.setToolTip(
-            self.lang_manager.get_text(
-                "用自然语言描述考试需求，AI 自动配置生成参数",
-                "Describe your exam in natural language — AI configures generation settings",
-            )
-        )
-
     def _toggle_all(self, selected: bool):
         """Select/deselect all topics."""
         target_state = Qt.CheckState.Checked if selected else Qt.CheckState.Unchecked
@@ -1364,23 +1338,6 @@ class AIGenerationDialog(QDialog):
         self.progress_bar.setVisible(False)
         self.generate_btn.setEnabled(True)
         self._show_review_pending_state()
-
-    def _open_exam_assistant(self):
-        """Open a reviewable dialogue and apply only its confirmed plan."""
-        from ui.dialogs.exam_assistant_dialog import ExamAssistantDialog
-
-        available = [topic_value(topic) for topic in self.available_topics]
-        assistant = ExamAssistantDialog(
-            self.build_exam_plan(),
-            available,
-            settings=self.settings,
-            parent=self,
-        )
-        if assistant.exec() != QDialog.DialogCode.Accepted:
-            return
-        plan = assistant.get_confirmed_plan()
-        if plan is not None:
-            self.apply_exam_plan(plan)
 
     def _update_preview(self):
         """Show a brief preview of relevant course content."""

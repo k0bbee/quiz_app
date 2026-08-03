@@ -38,7 +38,7 @@ python scripts/check_environment.py --json
 2. **Review the course summary and topics** — The application extracts document text, creates a summary, assigns stable topic IDs, and builds page- or slide-level source references.
 3. **Choose the exam scope** — Use every topic or select only the topics relevant to the current exam.
 4. **Review current-event materials** (optional) — Explicitly search a public news index, inspect source and course relevance, and select individual items; opening the dialog never starts a search.
-5. **Generate questions** — Use course defaults, adjust question type/topic/difficulty weights, or describe the desired paper in natural language.
+5. **Generate questions** — Use course defaults, adjust question type/topic/difficulty weights, and start generation.
 6. **Review generated questions** — Check bilingual content, answers, source evidence, plan matching, and quality warnings before accepting questions.
 7. **Practice or simulate an exam** — Practice mode grades one question at a time; exam mode saves drafts and submits the whole paper at the end.
 8. **Review progress** — Inspect accuracy, topic mastery, uncertain answers, marked questions, and prioritized incorrect-question review.
@@ -120,19 +120,6 @@ Generation advances through explicit plan slots. Each request accepts at most on
 Accepted questions appear immediately. Users can append instructions that apply to later requests, cancel safely, or keep partial accepted results. Truncated JSON output automatically retries with smaller candidate batches. Persistent truncation is reported as `GEN-AI-JSON-001`.
 
 Source references returned by the model are checked against the current retrieved-evidence registry. Forged or unrelated IDs are rejected; trusted source statuses without actual source references are reported as quality errors.
-
-### Natural-language exam assistant
-
-The exam assistant converts instructions such as the following into a reviewable configuration patch:
-
-```text
-Create a 20-question final exam focused on cache and processes, with 40% hard questions.
-Reduce true/false questions and change the total to 25.
-```
-
-Remote models may only return a restricted JSON patch. The application validates fields, limits, templates, course topics, and weights locally. Nothing changes until the user applies the patch.
-
-For a Local CLI Agent, common Chinese and English instructions are interpreted with deterministic local rules so free text is not exposed to command or file tools.
 
 ## Supported course files
 

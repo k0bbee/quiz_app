@@ -267,7 +267,6 @@ class UiStyleContractTests(unittest.TestCase):
                     dialog.cancel_btn,
                     dialog.select_all_btn,
                     dialog.deselect_btn,
-                    dialog.exam_assistant_btn,
                 ):
                     self.assertEqual("secondaryButton", button.objectName())
 
