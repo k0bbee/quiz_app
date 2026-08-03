@@ -547,7 +547,6 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
             dialog,
             course,
             draft_source="manual",
-            material_pack=object(),
         )
 
         host.navigate_to.assert_not_called()

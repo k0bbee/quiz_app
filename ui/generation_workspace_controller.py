@@ -77,7 +77,6 @@ class GenerationWorkspaceController:
         self,
         *,
         course_override=None,
-        material_pack=None,
         purpose: str = "create",
         allow_review_without_ai: bool = False,
         present_error: bool = True,
@@ -95,7 +94,6 @@ class GenerationWorkspaceController:
         preparation = controller.prepare(
             host,
             course_override=course_override,
-            material_pack=material_pack,
             allow_review_without_ai=allow_review_without_ai,
         )
         if preparation.ok:
@@ -120,7 +118,6 @@ class GenerationWorkspaceController:
         *,
         course_override=None,
         initial_plan=None,
-        material_pack=None,
         recovery_context=None,
         auto_start: bool = False,
         start_after_save: bool = False,
@@ -177,7 +174,6 @@ class GenerationWorkspaceController:
                 return True
             new_session_request = (
                 initial_plan is not None
-                or material_pack is not None
                 or bool(recovery_context)
                 or bool(str(question_set_title or "").strip())
             )
@@ -205,7 +201,6 @@ class GenerationWorkspaceController:
         configured = self.configure(
             course_override=course_override,
             initial_plan=initial_plan,
-            material_pack=material_pack,
             recovery_context=recovery_context,
             review_warnings_only=review_warnings_only,
             question_set_title=question_set_title,
@@ -225,7 +220,6 @@ class GenerationWorkspaceController:
                 dialog,
                 course_project,
                 draft_source=draft_source,
-                material_pack=material_pack,
                 start_after_save=start_after_save,
             )
         )
@@ -234,7 +228,6 @@ class GenerationWorkspaceController:
                 dialog,
                 course_project,
                 draft_source=draft_source,
-                material_pack=material_pack,
             )
         )
         workspace = self._workspace()
@@ -265,19 +258,16 @@ class GenerationWorkspaceController:
         course_project,
         *,
         draft_source: str,
-        material_pack=None,
         start_after_save: bool = False,
     ) -> None:
         """Publish reviewed questions while retaining the surface on failure."""
-        if material_pack is None:
-            self.sync_draft(dialog, course_project, source=draft_source)
+        self.sync_draft(dialog, course_project, source=draft_source)
         publish_destination = str(
             getattr(dialog, "publish_destination", "library") or "library"
         ).strip()
         saved = self.save(
             dialog,
             course_project,
-            material_pack=material_pack,
             start_after_save=(start_after_save or publish_destination == "practice_now"),
             present_error=False,
         )
@@ -299,12 +289,10 @@ class GenerationWorkspaceController:
         course_project,
         *,
         draft_source: str,
-        material_pack=None,
     ) -> None:
         """Leave generation without discarding a reviewable course draft."""
         host = self._host
-        if material_pack is None:
-            self.sync_draft(dialog, course_project, source=draft_source)
+        self.sync_draft(dialog, course_project, source=draft_source)
         workspace = self._workspace()
         workspace.clear_generation_widget(dialog)
         dialog.deleteLater()
@@ -331,7 +319,6 @@ class GenerationWorkspaceController:
         *,
         course_override=None,
         initial_plan=None,
-        material_pack=None,
         recovery_context=None,
         review_warnings_only: bool = False,
         question_set_title: str = "",
@@ -351,19 +338,6 @@ class GenerationWorkspaceController:
         course_id = str(getattr(draft_course, "course_id", "") or "").strip()
         requested_draft_id = str(draft_id or "").strip()
         if requested_draft_id:
-            if material_pack is not None:
-                detail = gm(
-                    "带材料包的任务不能恢复指定草稿，请从课程页重新开始。",
-                    "A material-pack task cannot resume a specific draft. Start it again from the course page.",
-                )
-                host._last_generation_launch_error = detail
-                if present_error:
-                    QMessageBox.warning(
-                        host if isinstance(host, QWidget) else None,
-                        gm("无法恢复生成任务", "Cannot Resume Generation"),
-                        detail,
-                    )
-                return None
             requested_draft = self.draft_by_id(requested_draft_id)
             if requested_draft is None:
                 detail = gm(
@@ -393,7 +367,6 @@ class GenerationWorkspaceController:
                 return None
         new_session_request = (
             initial_plan is not None
-            or material_pack is not None
             or bool(recovery_context)
             or bool(str(question_set_title or "").strip())
         )
@@ -406,9 +379,9 @@ class GenerationWorkspaceController:
         )
         candidate_draft = (
             self.draft_by_id(requested_draft_id)
-            if requested_draft_id and material_pack is None
+            if requested_draft_id
             else self.draft(course_id)
-            if material_pack is None and resume_latest
+            if resume_latest
             else None
         )
         generation_draft = (
@@ -423,7 +396,6 @@ class GenerationWorkspaceController:
         )
         preparation = self.prepare(
             course_override=course_override,
-            material_pack=material_pack,
             purpose="create",
             allow_review_without_ai=generation_draft is not None,
             present_error=present_error,
@@ -444,7 +416,7 @@ class GenerationWorkspaceController:
             except ValueError as exc:
                 QMessageBox.warning(
                     host,
-                    gm("预测配置不可用", "Prediction Plan Unavailable"),
+                    gm("生成配置不可用", "Generation Plan Unavailable"),
                     str(exc),
                 )
                 return None
@@ -463,14 +435,13 @@ class GenerationWorkspaceController:
         set_draft_source = getattr(dialog, "set_draft_source", None)
         if callable(set_draft_source):
             set_draft_source(draft_source)
-        if material_pack is None:
-            if not str(draft_id or "").strip():
-                store = getattr(host, "generation_draft_store", None)
-                new_id = getattr(store, "new_draft_id", None)
-                draft_id = new_id() if callable(new_id) else ""
-            setattr(dialog, "_generation_draft_id", str(draft_id or "").strip())
+        if not str(draft_id or "").strip():
+            store = getattr(host, "generation_draft_store", None)
+            new_id = getattr(store, "new_draft_id", None)
+            draft_id = new_id() if callable(new_id) else ""
+        setattr(dialog, "_generation_draft_id", str(draft_id or "").strip())
         draft_signal = getattr(dialog, "draft_changed", None)
-        if material_pack is None and draft_signal is not None and hasattr(draft_signal, "connect"):
+        if draft_signal is not None and hasattr(draft_signal, "connect"):
             draft_signal.connect(
                 lambda: self.sync_draft(dialog, course_project, source=draft_source)
             )
@@ -481,7 +452,6 @@ class GenerationWorkspaceController:
         dialog,
         course_project,
         *,
-        material_pack=None,
         start_after_save: bool = False,
         present_error: bool = True,
     ) -> bool:
@@ -498,7 +468,6 @@ class GenerationWorkspaceController:
             lang=host.lang_manager.current,
             course_project=course_project,
             custom_title=dialog.question_set_title(),
-            material_pack=material_pack,
         )
         try:
             qset, saved = persist_new_question_set(

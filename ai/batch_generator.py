@@ -24,7 +24,6 @@ from ai.generation_task_bridge import GenerationTaskBridge
 from ai.question_generation_service import QuestionGenerationService
 from ai.question_plan import QuestionPlanItem
 from core.course_index import retrieve_course_context, retrieve_course_source_refs
-from core.current_events import material_pack_prompt, material_pack_source_refs
 from utils.constants import topic_value
 
 
@@ -45,8 +44,7 @@ class GenerationWorker(QThread):
                  topics: list, count: int, difficulty: str, course_project=None,
                  generation_config: GenerationConfig | None = None,
                  question_plan_items: list[QuestionPlanItem] | None = None,
-                 task_center=None, task_id: str | None = None,
-                 material_pack=None):
+                 task_center=None, task_id: str | None = None):
         super().__init__()
         if (task_center is None) != (task_id is None):
             raise ValueError("task_center and task_id must be provided together")
@@ -58,7 +56,6 @@ class GenerationWorker(QThread):
         self.course_project = course_project
         self.generation_config = generation_config or GenerationConfig()
         self.question_plan_items = list(question_plan_items or [])
-        self.material_pack = material_pack
         self._generation_service = QuestionGenerationService(self.topics)
         self._cancelled = threading.Event()
         self._cached_context: str | None = None
@@ -225,26 +222,12 @@ class GenerationWorker(QThread):
         else:
             course_refs = []
             self._cached_source_refs_by_topic = {}
-        event_refs = (
-            material_pack_source_refs(
-                self.material_pack,
-                course_project=self.course_project,
-            )
-            if self.material_pack is not None
-            else []
-        )
-        self._cached_source_refs = [*event_refs, *course_refs]
+        self._cached_source_refs = list(course_refs)
         self._source_resolver = GenerationSourceResolver(
             self._cached_source_refs,
             self._cached_source_refs_by_topic,
         )
-        if self.material_pack is None:
-            return course_context
-        return (
-            f"{course_context}\n\n"
-            "## 用户审阅的热点材料（用于课程知识应用题）\n"
-            f"{material_pack_prompt(self.material_pack, max_chars=6000)}"
-        )
+        return course_context
 
     def _question_source_refs(
         self,
@@ -271,8 +254,6 @@ class GenerationWorker(QThread):
                 "course_title": getattr(self.course_project, "title", ""),
                 "course_updated_at": getattr(self.course_project, "updated_at", ""),
             })
-        if self.material_pack is not None:
-            metadata["material_pack_id"] = getattr(self.material_pack, "pack_id", "")
         return metadata
 
     def _topic_keywords(self) -> dict[str, list[str]]:

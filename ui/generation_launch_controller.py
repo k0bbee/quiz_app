@@ -105,7 +105,6 @@ class GenerationLaunchController:
         parent,
         *,
         course_override=None,
-        material_pack=None,
         allow_review_without_ai: bool = False,
     ) -> GenerationDialogPreparation:
         settings = self._settings_provider()
@@ -149,7 +148,6 @@ class GenerationLaunchController:
             available_topics=available_topics,
             course_project=course_project,
             task_center=self._task_center,
-            material_pack=material_pack,
         )
         dialog.configure_from_course_profile(course_project)
         return GenerationDialogPreparation(
