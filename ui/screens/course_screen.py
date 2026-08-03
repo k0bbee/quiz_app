@@ -23,7 +23,6 @@ from core.course_asset_lifecycle import (
     analyze_course_asset_impact,
     remove_course_assets,
 )
-from core.course_merge import merge_courses
 from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
 from core.background_task_bridge import BackgroundTaskBridge
 from core.ocr_runtime import OCR_REMEDIATION
@@ -32,7 +31,6 @@ from models.course_project import CourseProjectManager
 from core.language_manager import LanguageManager
 from config import COURSE_CHECKPOINTS_DIR, SETTINGS_FILE
 from ui.dialogs.course_exam_scope_dialog import CourseExamScopeDialog
-from ui.dialogs.course_merge_dialog import CourseMergeDialog
 from ui.widgets.course_hub_panels import (
     CourseKnowledgePanel,
     CourseSourcesPanel,
@@ -75,7 +73,6 @@ class CourseScreen(QWidget):
         parent=None,
         task_center=None,
         current_event_dialog_factory=None,
-        merge_dialog_factory=None,
         checkpoint_store=None,
     ):
         super().__init__(parent)
@@ -92,7 +89,6 @@ class CourseScreen(QWidget):
         self.current_event_dialog_factory = (
             current_event_dialog_factory or self._create_current_event_dialog
         )
-        self.merge_dialog_factory = merge_dialog_factory or CourseMergeDialog
         self.checkpoint_store = checkpoint_store or CourseParseCheckpointStore(
             COURSE_CHECKPOINTS_DIR
         )
@@ -103,7 +99,6 @@ class CourseScreen(QWidget):
         self.lang_manager = LanguageManager.instance()
         self._init_worker = None
         self._regen_worker = None
-        self._merge_worker = None
         self._summary_markdown = ""
         self._summary_raw_mode = False
         self._active_section = "overview"
@@ -154,7 +149,6 @@ class CourseScreen(QWidget):
         )
         self.scope_btn.setText(self.lang_manager.get_text("考试范围", "Exam Scope"))
         self.current_events_action.setText(self.lang_manager.get_text("热点材料", "Current Events"))
-        self.merge_action.setText(self.lang_manager.get_text("合并课程", "Merge Courses"))
         self.more_actions_btn.setText(self.lang_manager.get_text("更多操作", "More Actions"))
         self.rename_action.setText(self.lang_manager.get_text("重命名", "Rename"))
         self.regenerate_action.setText(self.lang_manager.get_text("重新生成总结", "Regenerate Summary"))
@@ -341,11 +335,6 @@ class CourseScreen(QWidget):
         self.current_events_action.triggered.connect(self._review_current_events)
         self.more_actions_menu.addAction(self.current_events_action)
         self.current_events_action.setVisible(False)
-        self.merge_action = QAction(
-            self.lang_manager.get_text("合并课程", "Merge Courses"),
-            self,
-        )
-        self.merge_action.triggered.connect(self._merge_selected_project)
         self.archive_action = QAction(
             self.lang_manager.get_text("归档课程", "Archive Course"),
             self,
@@ -702,7 +691,6 @@ class CourseScreen(QWidget):
         self.delete_archived_course_btn.setEnabled(False)
         self.scope_btn.setEnabled(False)
         self.current_events_action.setEnabled(False)
-        self.merge_action.setEnabled(False)
         self.generate_questions_btn.setEnabled(False)
         self.rename_action.setEnabled(False)
         self.regenerate_action.setEnabled(False)
@@ -923,7 +911,7 @@ class CourseScreen(QWidget):
         )
 
     def _cancel_course_task(self) -> None:
-        worker = self._init_worker or self._regen_worker or self._merge_worker
+        worker = self._init_worker or self._regen_worker
         if worker is None:
             return
         if self._task_bridge is not None:
@@ -948,7 +936,6 @@ class CourseScreen(QWidget):
             for worker in (
                 self._init_worker,
                 self._regen_worker,
-                self._merge_worker,
             )
             if worker
         ]
@@ -962,7 +949,6 @@ class CourseScreen(QWidget):
         if sender is not None and sender not in (
             self._init_worker,
             self._regen_worker,
-            self._merge_worker,
         ):
             return
         self._last_task_progress = progress
@@ -990,13 +976,6 @@ class CourseScreen(QWidget):
             "profile": ("生成出题配置", "Building quiz defaults"),
             "index": ("构建来源索引", "Building source index"),
             "saving": ("保存课程", "Saving course"),
-            "merging_courses": ("合并课程内容", "Merging course content"),
-            "merging_questions": ("迁移题目", "Moving questions"),
-            "merging_sets": ("迁移题集", "Moving question sets"),
-            "merging_exams": ("迁移历史真题", "Moving historical exams"),
-            "merging_mastery": ("迁移掌握状态", "Moving mastery status"),
-            "merging_materials": ("迁移热点材料", "Moving current-event materials"),
-            "deleting_merged_sources": ("注销已合并课程", "Removing merged source courses"),
             "saved": ("课程已保存", "Course saved"),
         }
         zh, en = stages.get(progress.stage, ("处理课程资料", "Processing course materials"))
@@ -1014,8 +993,6 @@ class CourseScreen(QWidget):
             self._init_worker = None
         elif sender is self._regen_worker:
             self._regen_worker = None
-        elif sender is self._merge_worker:
-            self._merge_worker = None
         elif sender is not None:
             return
         self._finish_persistent_task("cancelled")
@@ -1163,36 +1140,6 @@ class CourseScreen(QWidget):
             except Exception as exc:
                 self.error.emit(str(exc))
 
-    class _MergeWorker(QThread):
-        """Background transactional course merge."""
-
-        completed = pyqtSignal(object)
-        failed = pyqtSignal(str)
-        progress = pyqtSignal(object)
-
-        def __init__(self, target_course_id, source_course_ids, **dependencies):
-            super().__init__()
-            self._target_course_id = target_course_id
-            self._source_course_ids = list(source_course_ids)
-            self._dependencies = dependencies
-            self._task = TaskControl(self.progress.emit)
-
-        def cancel(self):
-            self._task.cancel()
-
-        def run(self):
-            try:
-                result = merge_courses(
-                    self._target_course_id,
-                    self._source_course_ids,
-                    task=self._task,
-                    **self._dependencies,
-                )
-            except Exception as exc:
-                self.failed.emit(str(exc))
-            else:
-                self.completed.emit(result)
-
     def _on_project_selected(self, current, previous):
         if current is None:
             self._clear_course_hub()
@@ -1203,7 +1150,6 @@ class CourseScreen(QWidget):
             self.delete_archived_course_btn.setEnabled(False)
             self.scope_btn.setEnabled(False)
             self.current_events_action.setEnabled(False)
-            self.merge_action.setEnabled(False)
             self.rename_action.setEnabled(False)
             self.regenerate_action.setEnabled(False)
             self.archive_action.setEnabled(False)
@@ -1224,9 +1170,6 @@ class CourseScreen(QWidget):
         self.generate_questions_btn.setEnabled(not archived)
         self.scope_btn.setEnabled(not archived)
         self.current_events_action.setEnabled(not archived)
-        self.merge_action.setEnabled(
-            not archived and len(self.manager.load_all()) > 1
-        )
         self.rename_action.setEnabled(not archived)
         self.regenerate_action.setEnabled(not archived)
         self.archive_action.setEnabled(not archived)
@@ -1324,137 +1267,6 @@ class CourseScreen(QWidget):
                 self.project_list.setCurrentRow(row)
                 break
         self.current_course_changed.emit()
-
-    def _merge_selected_project(self):
-        current = self.project_list.currentItem()
-        if current is None:
-            return
-        target_id = str(current.data(Qt.ItemDataRole.UserRole) or "")
-        target = self.manager.get(target_id)
-        courses = self.manager.load_all()
-        if target is None or len(courses) < 2:
-            return
-        impacts = {
-            course.course_id: analyze_course_asset_impact(
-                course.course_id,
-                self.question_bank,
-                self.set_manager,
-                self.progress_manager,
-                self.snapshot_manager,
-                self.past_exam_manager,
-                self.current_event_manager,
-                generation_draft_store=self.generation_draft_store,
-            )
-            for course in courses
-            if course.course_id != target_id
-        }
-        dialog = self.merge_dialog_factory(
-            target,
-            courses,
-            parent=self,
-            impacts=impacts,
-        )
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        source_ids = dialog.selected_source_ids()
-        if not source_ids:
-            return
-
-        self._merge_worker = CourseScreen._MergeWorker(
-            target_id,
-            source_ids,
-            course_manager=self.manager,
-            question_bank=self.question_bank,
-            set_manager=self.set_manager,
-            progress_manager=self.progress_manager,
-            past_exam_manager=self.past_exam_manager,
-            mastery_overrides=self.mastery_overrides,
-            current_event_manager=self.current_event_manager,
-            generation_draft_store=self.generation_draft_store,
-        )
-        self._merge_worker.completed.connect(self._on_merge_done)
-        self._merge_worker.failed.connect(self._on_merge_error)
-        self._merge_worker.progress.connect(self._on_course_task_progress)
-        self._set_course_task_active(True)
-        self._merge_worker.start()
-
-    def _on_merge_done(self, result):
-        if not self._is_current_worker("_merge_worker"):
-            return
-        self._merge_worker = None
-        self._set_course_task_active(False)
-        if result.cancelled:
-            QMessageBox.information(
-                self,
-                self.lang_manager.get_text("已停止", "Stopped"),
-                self.lang_manager.get_text(
-                    "课程合并已停止，原课程和关联数据已恢复。",
-                    "Course merge stopped; original courses and linked data were restored.",
-                ),
-            )
-            return
-        if not result.success:
-            rollback_note = ""
-            if result.rollback_errors:
-                rollback_note = self.lang_manager.get_text(
-                    "\n部分数据恢复失败，请立即从应用数据备份恢复。",
-                    "\nSome data could not be restored. Restore an app-data backup immediately.",
-                )
-            QMessageBox.critical(
-                self,
-                self.lang_manager.get_text("合并失败", "Merge Failed"),
-                self.lang_manager.get_text(
-                    f"课程合并未完成，已尝试恢复原数据。\n{result.error}{rollback_note}",
-                    f"Course merge did not complete; original data was restored.\n{result.error}{rollback_note}",
-                ),
-            )
-            return
-
-        self.refresh()
-        for row in range(self.project_list.count()):
-            item = self.project_list.item(row)
-            if item.data(Qt.ItemDataRole.UserRole) == result.target_course_id:
-                self.project_list.setCurrentRow(row)
-                break
-        self.current_course_changed.emit()
-        draft_count = int(getattr(result, "generation_draft_count", 0) or 0)
-        draft_summary_zh = f"待审核草稿 {draft_count} 个。\n" if draft_count else ""
-        draft_summary_en = (
-            f"Pending generation drafts moved: {draft_count}.\n"
-            if draft_count
-            else ""
-        )
-        QMessageBox.information(
-            self,
-            self.lang_manager.get_text("课程已合并", "Courses Merged"),
-            self.lang_manager.get_text(
-                (
-                    f"已合并 {len(result.source_course_ids)} 门课程。\n"
-                    f"迁移题目 {result.question_count} 道、题集 {result.question_set_count} 个、"
-                    f"历史真题 {result.past_exam_count} 份。\n"
-                    f"{draft_summary_zh}"
-                    "历史真题需要重新分析；建议随后重新生成课程总结。"
-                ),
-                (
-                    f"Merged {len(result.source_course_ids)} course(s).\n"
-                    f"Moved {result.question_count} questions, {result.question_set_count} sets, "
-                    f"and {result.past_exam_count} historical exams.\n"
-                    f"{draft_summary_en}"
-                    "Historical exams require re-analysis; regenerate the course summary next."
-                ),
-            ),
-        )
-
-    def _on_merge_error(self, error_message):
-        if not self._is_current_worker("_merge_worker"):
-            return
-        self._merge_worker = None
-        self._set_course_task_active(False)
-        QMessageBox.critical(
-            self,
-            self.lang_manager.get_text("合并失败", "Merge Failed"),
-            str(error_message),
-        )
 
     def _rename_selected_project(self):
         current = self.project_list.currentItem()
