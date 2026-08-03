@@ -281,13 +281,12 @@ class MainWindow(QMainWindow):
                 question_bank=self.question_bank,
                 set_manager=self.set_manager,
                 progress_manager=self.progress_manager,
-                snapshot_manager=self.snapshot_manager,
-                past_exam_manager=self.past_exam_manager,
-                mastery_overrides=self.mastery_overrides,
-                current_event_manager=self.current_event_manager,
-                generation_draft_store=self.generation_draft_store,
-                exam_goal_store=self.exam_goal_store,
-                task_center=self.task_center,
+            snapshot_manager=self.snapshot_manager,
+            past_exam_manager=self.past_exam_manager,
+            mastery_overrides=self.mastery_overrides,
+            current_event_manager=self.current_event_manager,
+            generation_draft_store=self.generation_draft_store,
+            task_center=self.task_center,
             )
             self._course_screen.current_course_changed.connect(
                 self.course_context.course_changed

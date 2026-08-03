@@ -250,7 +250,7 @@ class CourseHubNavigationTests(unittest.TestCase):
         self.assertIn("学习状态", screen.course_learning_label.text())
         self.assertIn("内容生产", screen.course_production_label.text())
         self.assertIs(screen.overview_panel, screen.content_stack.currentWidget())
-        self.assertTrue(screen.exam_goal_btn.isHidden())
+        self.assertFalse(hasattr(screen, "exam_goal_btn"))
 
         self.assertEqual(
             ["overview", "sources", "knowledge", "generation"],

@@ -33,7 +33,6 @@ from core.language_manager import LanguageManager
 from config import COURSE_CHECKPOINTS_DIR, SETTINGS_FILE
 from ui.dialogs.course_exam_scope_dialog import CourseExamScopeDialog
 from ui.dialogs.course_merge_dialog import CourseMergeDialog
-from ui.dialogs.exam_goal_dialog import ExamGoalDialog
 from ui.widgets.course_hub_panels import (
     CourseKnowledgePanel,
     CourseSourcesPanel,
@@ -73,7 +72,6 @@ class CourseScreen(QWidget):
         mastery_overrides=None,
         current_event_manager=None,
         generation_draft_store=None,
-        exam_goal_store=None,
         parent=None,
         task_center=None,
         current_event_dialog_factory=None,
@@ -90,7 +88,6 @@ class CourseScreen(QWidget):
         self.mastery_overrides = mastery_overrides
         self.current_event_manager = current_event_manager
         self.generation_draft_store = generation_draft_store
-        self.exam_goal_store = exam_goal_store
         self.task_center = task_center
         self.current_event_dialog_factory = (
             current_event_dialog_factory or self._create_current_event_dialog
@@ -151,9 +148,6 @@ class CourseScreen(QWidget):
         )
         self.view_course_library_btn.setText(
             self.lang_manager.get_text("查看题库", "View Library")
-        )
-        self.exam_goal_btn.setText(
-            self.lang_manager.get_text("考试目标", "Exam Goal")
         )
         self.delete_archived_course_btn.setText(
             self.lang_manager.get_text("永久删除", "Delete Permanently")
@@ -390,12 +384,6 @@ class CourseScreen(QWidget):
         self.summary_mode_btn.clicked.connect(self._toggle_summary_mode)
         self._update_summary_mode_button_text()
         summary_header.addWidget(self.summary_mode_btn)
-        self.exam_goal_btn = QPushButton(
-            self.lang_manager.get_text("考试目标", "Exam Goal")
-        )
-        self.exam_goal_btn.setObjectName("secondaryButton")
-        self.exam_goal_btn.clicked.connect(self._edit_exam_goal)
-        summary_header.addWidget(self.exam_goal_btn)
         right_layout.addLayout(summary_header)
         self.overview_metrics_label = QLabel()
         self.overview_metrics_label.setObjectName("secondaryText")
@@ -521,9 +509,6 @@ class CourseScreen(QWidget):
         is_overview = normalized == "overview"
         self.overview_metrics_label.setVisible(is_overview)
         self.summary_mode_btn.setVisible(is_overview)
-        # Exam goals are an advanced planning aid, not part of the core
-        # course-to-practice path; keep the data boundary for later cleanup.
-        self.exam_goal_btn.setVisible(False)
         project = self.manager.get(self.selected_course_id())
         self._update_content_header(project)
 
@@ -540,21 +525,6 @@ class CourseScreen(QWidget):
                 self.knowledge_table.selectRow(row)
                 return True
         return False
-
-    def _edit_exam_goal(self) -> None:
-        if self.exam_goal_store is None:
-            return
-        project = self.manager.get(self.selected_course_id())
-        if project is None:
-            return
-        current = self.exam_goal_store.get(project.course_id)
-        dialog = ExamGoalDialog(project.course_id, current, self)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
-            return
-        self.exam_goal_store.save(
-            dialog.goal(topic.topic_id for topic in project.exam_topics())
-        )
-        self._render_course_hub(project)
 
     def _render_course_hub(self, project) -> None:
         view = build_course_hub_view(
