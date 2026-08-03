@@ -1,30 +1,17 @@
-import json
 import tempfile
 import unittest
 from pathlib import Path
 import os
-from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QTextBrowser
+from PyQt6.QtWidgets import QApplication
 
 from ai.course_summarizer import CourseSummaryGenerator
 from ai.exam_plan import ExamGenerationPlan
-from core.course_asset_lifecycle import (
-    CourseAssetImpact,
-    CourseRemovalMode,
-    CourseRemovalResult,
-)
 from core.course_initializer import CourseInitializer, build_summary_markdown, infer_topics
-from core.course_parse_checkpoint import CourseParseCheckpointStore
-from core.document_parser import DocumentParser, ExtractedDocument
-from core.background_task import BackgroundTaskCancelled, TaskControl, TaskProgress
-from core.background_task_center import BackgroundTaskCenter, TaskStatus
-from core.language_manager import LanguageManager
-from core.topic_identity_migration import TopicIdentityRepairReport, UnmatchedTopicQuestion
+from core.document_parser import ExtractedDocument
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from ui.screens.course_screen import CourseScreen
 
