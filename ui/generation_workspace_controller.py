@@ -155,10 +155,6 @@ class GenerationWorkspaceController:
         if configured is None:
             return False
         dialog, course_project, restored_draft, draft_source = configured
-        if start_after_save:
-            set_publish_destination = getattr(dialog, "set_publish_destination", None)
-            if callable(set_publish_destination):
-                set_publish_destination("practice_now")
         dialog.accepted.connect(
             lambda: self.accept(
                 dialog,
@@ -198,13 +194,10 @@ class GenerationWorkspaceController:
     ) -> None:
         """Publish reviewed questions while retaining the surface on failure."""
         self.sync_draft(dialog, course_project, source=draft_source)
-        publish_destination = str(
-            getattr(dialog, "publish_destination", "library") or "library"
-        ).strip()
         saved = self.save(
             dialog,
             course_project,
-            start_after_save=(start_after_save or publish_destination == "practice_now"),
+            start_after_save=start_after_save,
             present_error=False,
         )
         workspace = self._workspace()
@@ -499,9 +492,6 @@ class GenerationWorkspaceController:
                 question_set_title=dialog.question_set_title(),
                 exam_plan=dialog.build_exam_plan(),
                 review_warnings_only=bool(getattr(dialog, "_review_warnings_only", False)),
-                publish_destination=str(
-                    getattr(dialog, "publish_destination", "library") or "library"
-                ),
                 review_state=getattr(dialog, "review_state", {}),
                 source=source,
                 task_id=str(getattr(dialog, "_generation_task_id", "") or ""),

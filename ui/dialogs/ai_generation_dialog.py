@@ -75,7 +75,6 @@ class AIGenerationDialog(QDialog):
         self._generation_draft_id = ""
         self._session_state = GenerationSessionState()
         self._draft_source = "manual"
-        self._publish_destination = "library"
         self._review_state: dict[str, str] = {}
         self.lang_manager = LanguageManager.instance()
         self.generated_questions: list[Question] = []
@@ -1226,26 +1225,6 @@ class AIGenerationDialog(QDialog):
         self._draft_source = str(source or "").strip() or "manual"
 
     @property
-    def publish_destination(self) -> str:
-        """Return the post-save destination retained with this session."""
-        return self._publish_destination
-
-    def set_publish_destination(self, destination: str) -> None:
-        """Set the explicit destination used after the review is saved."""
-        value = str(destination or "library").strip()
-        value = value if value in {"library", "practice_now"} else "library"
-        self._publish_destination = value
-        combo = getattr(self, "publish_combo", None)
-        if combo is not None:
-            index = combo.findData(value)
-            if index >= 0 and combo.currentIndex() != index:
-                blocked = combo.blockSignals(True)
-                try:
-                    combo.setCurrentIndex(index)
-                finally:
-                    combo.blockSignals(blocked)
-
-    @property
     def review_state(self) -> dict[str, str]:
         """Return the current question-id review decisions for draft storage."""
         return dict(self._review_state)
@@ -1273,9 +1252,6 @@ class AIGenerationDialog(QDialog):
             self.set_title_input.setText(title)
         self._review_warnings_only = bool(
             getattr(draft, "review_warnings_only", False)
-        )
-        self.set_publish_destination(
-            getattr(draft, "publish_destination", "library")
         )
         raw_review_state = getattr(draft, "review_state", {})
         self._review_state = {
@@ -1633,7 +1609,6 @@ class AIGenerationDialog(QDialog):
             "template": str(template or ""),
             "question_set_title": str(question_set_title or "").strip(),
             "runtime_instruction": str(runtime_instruction or "").strip(),
-            "publish_destination": self.publish_destination,
         }
         if generation_config is not None:
             metadata["exam_plan"] = {

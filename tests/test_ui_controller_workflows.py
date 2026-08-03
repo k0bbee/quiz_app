@@ -285,7 +285,7 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
         self.assertIn("不要复述原题", instruction)
         self.assertTrue(call.kwargs["start_after_save"])
 
-    def test_sync_draft_persists_the_explicit_publish_destination(self):
+    def test_sync_draft_persists_review_state_without_destination_metadata(self):
         question = Question(
             question_id="draft-q",
             type=QuestionType.TRUE_FALSE,
@@ -307,7 +307,6 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
                 selected_topics=("topic-io",),
             ),
             _review_warnings_only=False,
-            publish_destination="practice_now",
             review_state={"draft-q": "rejected"},
             _generation_draft_id="session-reinforcement",
         )
@@ -320,10 +319,7 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
         )
 
         self.assertTrue(saved)
-        self.assertEqual(
-            "practice_now",
-            store.save.call_args.kwargs["publish_destination"],
-        )
+        self.assertNotIn("publish_destination", store.save.call_args.kwargs)
         self.assertEqual(
             {"draft-q": "rejected"},
             store.save.call_args.kwargs["review_state"],

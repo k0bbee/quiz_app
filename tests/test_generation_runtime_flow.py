@@ -178,7 +178,6 @@ class GenerationRuntimeFlowTests(unittest.TestCase):
                 )
                 dialog.topic_list.item(0).setCheckState(Qt.CheckState.Checked)
                 dialog.set_draft_source("predicted_exam")
-                dialog.set_publish_destination("practice_now")
                 dialog._generation_draft_id = "draft-task-1"
                 dialog.set_title_input.setText("Cache recovery set")
                 dialog.runtime_instruction_input.setPlainText("Avoid storage topics")
@@ -195,7 +194,7 @@ class GenerationRuntimeFlowTests(unittest.TestCase):
                 self.assertEqual(["cache"], task.metadata["topic_ids"])
                 self.assertEqual("predicted_exam", task.metadata["draft_source"])
                 self.assertEqual("draft-task-1", task.metadata["draft_id"])
-                self.assertEqual("practice_now", task.metadata["publish_destination"])
+                self.assertNotIn("publish_destination", task.metadata)
                 self.assertEqual("Cache recovery set", task.metadata["question_set_title"])
                 self.assertEqual("Avoid storage topics", task.metadata["runtime_instruction"])
                 self.assertEqual(15, task.metadata["exam_plan"]["question_count"])

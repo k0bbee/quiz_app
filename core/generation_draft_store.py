@@ -16,7 +16,6 @@ from utils.json_io import read_json, write_json
 
 
 _SCHEMA_VERSION = 2
-_PUBLISH_DESTINATIONS = {"library", "practice_now"}
 _REVIEW_STATES = {"accepted", "rejected", "pending"}
 _STORE_LOCKS: dict[str, RLock] = {}
 _STORE_LOCKS_GUARD = Lock()
@@ -31,11 +30,6 @@ def _lock_for_path(path: str) -> RLock:
             lock = RLock()
             _STORE_LOCKS[key] = lock
         return lock
-
-
-def _normalize_publish_destination(value: object) -> str:
-    destination = str(value or "library").strip()
-    return destination if destination in _PUBLISH_DESTINATIONS else "library"
 
 
 def _normalize_review_state(value: object) -> dict[str, str]:
@@ -60,7 +54,6 @@ class GenerationDraft:
     question_set_title: str
     exam_plan: ExamGenerationPlan
     review_warnings_only: bool = False
-    publish_destination: str = "library"
     review_state: dict[str, str] | None = None
     source: str = "manual"
     task_id: str = ""
@@ -76,7 +69,6 @@ class GenerationDraft:
             "question_set_title": self.question_set_title,
             "exam_plan": self.exam_plan.to_dict(),
             "review_warnings_only": self.review_warnings_only,
-            "publish_destination": self.publish_destination,
             "review_state": dict(self.review_state or {}),
             "source": self.source,
             "task_id": self.task_id,
@@ -127,9 +119,6 @@ class GenerationDraft:
             ).strip(),
             exam_plan=exam_plan,
             review_warnings_only=bool(data.get("review_warnings_only", False)),
-            publish_destination=_normalize_publish_destination(
-                data.get("publish_destination", "library")
-            ),
             review_state=_normalize_review_state(data.get("review_state", {})),
             source=str(data.get("source", "manual") or "manual").strip()
             or "manual",
@@ -218,7 +207,6 @@ class GenerationDraftStore:
         question_set_title: str,
         exam_plan: ExamGenerationPlan,
         review_warnings_only: bool = False,
-        publish_destination: str = "library",
         review_state: Mapping[str, str] | None = None,
         source: str = "manual",
         task_id: str = "",
@@ -248,7 +236,6 @@ class GenerationDraftStore:
                 question_set_title=str(question_set_title or "").strip(),
                 exam_plan=exam_plan,
                 review_warnings_only=bool(review_warnings_only),
-                publish_destination=_normalize_publish_destination(publish_destination),
                 review_state=_normalize_review_state(review_state),
                 source=str(source or "manual").strip() or "manual",
                 task_id=str(task_id or "").strip(),
