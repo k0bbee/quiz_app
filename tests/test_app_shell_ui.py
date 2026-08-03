@@ -145,6 +145,17 @@ class AppShellUiTests(unittest.TestCase):
         self.assertIsNotNone(window._settings_window)
         self.assertIs(window._settings_window.screen, window.settings_screen)
 
+    def test_progress_dashboard_is_created_only_when_opened(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+
+        self.assertIsNone(getattr(window, "_progress_screen", None))
+
+        self.assertTrue(window.navigate_to(window.SCREEN_PROGRESS))
+
+        self.assertIsNotNone(window._progress_screen)
+        self.assertIs(window._progress_screen, window.progress_screen)
+
     def test_main_reads_startup_settings_through_supported_json_api(self):
             app = Mock()
             app.exec.return_value = 0

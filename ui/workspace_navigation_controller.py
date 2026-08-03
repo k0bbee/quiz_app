@@ -152,8 +152,9 @@ class WorkspaceNavigationController:
             host.course_context.sync_topic_screen()
             host.topic_screen.refresh()
         elif screen_index == host.SCREEN_PROGRESS:
+            host._get_progress_screen()
             host.course_context.sync_progress()
-            host.progress_screen.refresh()
+            host._progress_screen.refresh()
         elif screen_index == host.SCREEN_HOME:
             host.course_context.sync_home()
             host.home_screen.refresh()

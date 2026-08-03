@@ -121,6 +121,7 @@ class CourseContextController:
         host._update_home_resume_draft()
 
     def sync_progress(self) -> None:
-        self._host.progress_screen.set_current_course(
-            self.current_course_id()
-        )
+        host = self._host
+        if host._progress_screen is None:
+            return
+        host._progress_screen.set_current_course(self.current_course_id())

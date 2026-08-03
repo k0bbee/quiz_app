@@ -143,13 +143,7 @@ class MainWindow(QMainWindow):
             snapshot_manager=self.snapshot_manager,
         )
         self.results_screen = ResultsScreen(course_manager=self.course_manager)
-        self.progress_screen = ProgressDashboard(
-            self.progress_manager,
-            self.question_bank,
-            set_manager=self.set_manager,
-            mastery_overrides=self.mastery_overrides,
-            course_manager=self.course_manager,
-        )
+        self._progress_screen = None
         self._settings_window = None
         self._settings_screen = None
         self._course_screen = None
@@ -160,9 +154,9 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.topic_screen)       # 1
         self.stack.addWidget(self.quiz_screen)        # 2
         self.stack.addWidget(self.results_screen)     # 3
-        self.stack.addWidget(self.progress_screen)    # 4
         self._workspace_placeholders = {}
         for index, name in (
+            (self.SCREEN_PROGRESS, "progress"),
             (self.SCREEN_COURSES, "courses"),
             (self.SCREEN_QUESTION_BANK, "questionBank"),
             (self.SCREEN_GENERATION, "generation"),
@@ -337,6 +331,36 @@ class MainWindow(QMainWindow):
             )
         return self._generation_workspace
 
+    def _get_progress_screen(self):
+        """Lazy-init the progress workspace on first access."""
+        if self._progress_screen is None:
+            self._progress_screen = ProgressDashboard(
+                self.progress_manager,
+                self.question_bank,
+                set_manager=self.set_manager,
+                mastery_overrides=self.mastery_overrides,
+                course_manager=self.course_manager,
+            )
+            self._progress_screen.practice_topic_requested.connect(
+                self._on_practice_progress_topic
+            )
+            self._progress_screen.review_topic_requested.connect(
+                self._on_review_progress_topic
+            )
+            self._progress_screen.generate_topic_requested.connect(
+                self._on_generate_progress_topic
+            )
+            self._progress_screen.history_requested.connect(
+                self.result_flow.open_progress_record
+            )
+            self._install_workspace(self.SCREEN_PROGRESS, self._progress_screen)
+            self.course_context.sync_progress()
+        return self._progress_screen
+
+    @property
+    def progress_screen(self):
+        return self._get_progress_screen()
+
     def _ensure_settings_window(self):
         """Create the settings UI only when a caller actually opens it."""
         if self._settings_window is None:
@@ -476,12 +500,6 @@ class MainWindow(QMainWindow):
         )
         self.results_screen.return_home_requested.connect(
             lambda: self.navigate_to(self.SCREEN_HOME, confirm_current=False)
-        )
-        self.progress_screen.practice_topic_requested.connect(self._on_practice_progress_topic)
-        self.progress_screen.review_topic_requested.connect(self._on_review_progress_topic)
-        self.progress_screen.generate_topic_requested.connect(self._on_generate_progress_topic)
-        self.progress_screen.history_requested.connect(
-            self.result_flow.open_progress_record
         )
         # Language manager
         self.lang_manager.language_changed.connect(self._on_language_changed)
