@@ -28,7 +28,7 @@ class ScreenKey(str, Enum):
 _VALID_TABS = {
     Workspace.STUDY: frozenset({"today", "practice", "analysis"}),
     Workspace.COURSE: frozenset(
-        {"overview", "sources", "knowledge", "generation", "qa"}
+        {"overview", "sources", "knowledge", "generation"}
     ),
     Workspace.LIBRARY: frozenset(
         {"questions", "sets", "past_exams", "drafts"}
