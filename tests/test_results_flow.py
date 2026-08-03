@@ -3,12 +3,11 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QComboBox, QMessageBox, QRadioButton
+from PyQt6.QtWidgets import QApplication
 
 from models.progress import (
     AnswerRecord,
@@ -19,23 +18,14 @@ from models.progress import (
 from models.question import Question
 from models.question import QuestionBank
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
-from models.quiz_snapshot import QuizSessionSnapshot
 from models.question_set import QuestionSet, SetManager
-from core.quiz_engine import QuizSession
 from core.mastery_overrides import MasteryOverrideStore
-from core.progress_tracker import ProgressManager
-from core.quiz_snapshot_manager import QuizSnapshotManager
 from core.language_manager import LanguageManager
 from core.study_intent import StudyAction, StudyIntent
-from core.today_learning_plan import LearningPlanAction
-from ui.screens.home_screen import HomeScreen
 from ui.screens.progress_dashboard import ProgressDashboard
-from ui.screens.quiz_screen import QuizScreen
 from ui.screens.results_screen import ResultsScreen
-from ui.course_context_controller import CourseContextController
 from ui.result_flow_controller import ResultFlowController
-from ui.widgets.answer_area import AnswerArea, MatchingWidget, MultipleChoiceWidget
-from utils.constants import Difficulty, QuestionType, QuizState, topic_value
+from utils.constants import Difficulty, QuestionType
 
 
 _APP = QApplication.instance() or QApplication([])
@@ -633,7 +623,6 @@ class ResultsFlowTests(unittest.TestCase):
             self.assertNotIn("正确答案", card.answer_info.text())
 
     def test_retry_incorrect_excludes_skipped_answers(self):
-            from ui.main_window import MainWindow
 
             record = ProgressRecord.create_new("set-1")
             record.answers = [
@@ -995,7 +984,6 @@ class ResultsFlowTests(unittest.TestCase):
             self.assertEqual(screen.review_layout.count(), 1)
 
     def test_retry_unsure_starts_only_unsure_questions_for_current_course(self):
-            from ui.main_window import MainWindow
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
@@ -1086,7 +1074,6 @@ class ResultsFlowTests(unittest.TestCase):
                 self.assertIn("不确定", started["label"])
 
     def test_retry_review_starts_only_marked_review_questions_for_current_course(self):
-            from ui.main_window import MainWindow
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
@@ -1137,7 +1124,6 @@ class ResultsFlowTests(unittest.TestCase):
                 self.assertIn("复查", started["label"])
 
     def test_retry_all_starts_entire_set_in_practice_mode(self):
-            from ui.main_window import MainWindow
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 question_bank = QuestionBank(str(Path(tmpdir) / "questions"))
@@ -1182,7 +1168,6 @@ class ResultsFlowTests(unittest.TestCase):
                 self.assertEqual("practice", started["submission_mode"])
 
     def test_retry_all_explains_when_original_question_set_was_deleted(self):
-            from ui.main_window import MainWindow
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 record = ProgressRecord.create_new("set-deleted")
