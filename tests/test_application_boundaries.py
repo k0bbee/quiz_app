@@ -101,6 +101,14 @@ class MainWindowBoundaryTests(unittest.TestCase):
             }
         )
 
+    def test_main_window_does_not_wrap_navigation_queries_or_refresh(self):
+        assert self._main_window_method_names().isdisjoint(
+            {
+                "_screen_index_for_route",
+                "_update_navigation_actions",
+            }
+        )
+
     def test_main_window_does_not_wrap_generation_flow_actions(self):
         assert self._main_window_method_names().isdisjoint(
             {

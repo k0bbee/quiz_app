@@ -116,7 +116,7 @@ class MainWindow(QMainWindow):
         self.navigation_router = NavigationRouter(
             self.stack,
             skip_history_from={self.SCREEN_QUIZ},
-            resolve_destination=self._screen_index_for_route,
+            resolve_destination=self.workspace_navigation.screen_index,
             initial_destination=Route.study("today"),
         )
 
@@ -234,7 +234,7 @@ class MainWindow(QMainWindow):
 
         # Start on home screen
         self.stack.setCurrentIndex(self.SCREEN_HOME)
-        self._update_navigation_actions()
+        self.workspace_navigation.update_actions()
         if bool(getattr(startup_migration_report, "has_failures", False)):
             QTimer.singleShot(0, self._show_startup_migration_warning)
 
@@ -471,7 +471,7 @@ class MainWindow(QMainWindow):
 
         self.sidebar_title.setText(gm(APP_NAME, APP_NAME_EN))
         self.app_shell.render_language(gm)
-        self._update_navigation_actions()
+        self.workspace_navigation.update_actions()
 
     def navigate_to(
         self,
@@ -493,9 +493,6 @@ class MainWindow(QMainWindow):
     def current_route(self) -> Route:
         return self.workspace_navigation.current_route()
 
-    def _screen_index_for_route(self, route) -> int:
-        return self.workspace_navigation.screen_index(route)
-
     def navigate_route(
         self,
         route: Route,
@@ -515,10 +512,6 @@ class MainWindow(QMainWindow):
     def navigate_back(self):
         """Return to the previous screen if navigation history exists."""
         self.workspace_navigation.back()
-
-    def _update_navigation_actions(self):
-        """Keep shell navigation buttons in sync with current location."""
-        self.workspace_navigation.update_actions()
 
     def open_settings(self, section: str = "") -> None:
         """Open settings as a utility window without leaving the workspace."""
