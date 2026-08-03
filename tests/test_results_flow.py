@@ -540,6 +540,12 @@ class ResultsFlowTests(unittest.TestCase):
             screen.return_home_btn.click()
             self.assertEqual([True], emitted)
 
+    def test_results_screen_does_not_keep_legacy_question_injection_wrappers(self):
+            screen = self._make_results_screen()
+
+            self.assertFalse(hasattr(screen, "set_questions"))
+            self.assertFalse(hasattr(screen, "retryable_questions"))
+
     def test_results_screen_only_shows_items_needing_review(self):
             record = ProgressRecord.create_new("set-review-filter")
             record.status = "completed"

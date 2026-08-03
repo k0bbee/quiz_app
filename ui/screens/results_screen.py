@@ -365,18 +365,6 @@ class ResultsScreen(QWidget):
     def _set_retry_action_state(self, has_incorrect: bool) -> None:
         self.retry_incorrect_btn.setEnabled(has_incorrect)
 
-    def set_questions(self, questions: dict):
-        """Provide question data for review rendering."""
-        self._live_retry_questions = dict(questions or {})
-        self._questions = self._live_retry_questions
-        self._historical_questions = dict(self._live_retry_questions)
-        self._review_questions = self._historical_questions
-        self._snapshot_question_ids = set()
-
-    def retryable_questions(self) -> dict[str, Question]:
-        """Return live questions that can back a retry without a persisted set."""
-        return dict(self._live_retry_questions)
-
     @staticmethod
     def _question_from_snapshot(snapshot: QuestionReviewSnapshot) -> Question:
         try:
