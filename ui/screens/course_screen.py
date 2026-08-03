@@ -539,7 +539,9 @@ class CourseScreen(QWidget):
         is_overview = normalized == "overview"
         self.overview_metrics_label.setVisible(is_overview)
         self.summary_mode_btn.setVisible(is_overview)
-        self.exam_goal_btn.setVisible(is_overview)
+        # Exam goals are an advanced planning aid, not part of the core
+        # course-to-practice path; keep the data boundary for later cleanup.
+        self.exam_goal_btn.setVisible(False)
         project = self.manager.get(self.selected_course_id())
         self._update_content_header(project)
 
