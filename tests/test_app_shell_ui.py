@@ -347,7 +347,6 @@ class AppShellUiTests(unittest.TestCase):
                 [
                     "Questions",
                     "Question Sets",
-                    "Historical Exams",
                     "Generation Drafts",
                 ],
                 [button.text() for button in main_window.context_tabs()],
@@ -362,7 +361,7 @@ class AppShellUiTests(unittest.TestCase):
                 main_window._question_bank_screen.set_panel,
                 main_window._question_bank_screen.workspace_tabs.currentWidget(),
             )
-            main_window.past_exams_tab_btn.click()
+            main_window.navigate_route(Route.library("past_exams"))
             self.assertEqual(main_window.SCREEN_PAST_EXAMS, main_window.stack.currentIndex())
             self.assertEqual(Route.library("past_exams"), main_window.current_route)
             self.assertIs(main_window.past_exam_manager, main_window._past_exam_screen.manager)
@@ -418,6 +417,22 @@ class AppShellUiTests(unittest.TestCase):
 
             self.assertNotIn(
                 "Q&A",
+                [button.text() for button in main_window.context_tabs()],
+            )
+
+    def test_library_context_does_not_promote_historical_exam_workspace(self):
+            main_window = MainWindow()
+            self.addCleanup(main_window.close)
+
+            self.assertTrue(
+                main_window.navigate_route(
+                    Route.library("questions"),
+                    allow_first_run_redirect=False,
+                )
+            )
+
+            self.assertNotIn(
+                "Historical Exams",
                 [button.text() for button in main_window.context_tabs()],
             )
 
