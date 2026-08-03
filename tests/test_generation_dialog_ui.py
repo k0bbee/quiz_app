@@ -691,6 +691,25 @@ class GenerationDialogUiTests(unittest.TestCase):
             self.assertIn("6s", text)
             self.assertIn("可取消", text)
 
+    def test_generation_progress_uses_worker_counts_for_a_determinate_bar(self):
+            dialog = AIGenerationDialog(
+                "course content",
+                {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+                available_topics=["cache"],
+            )
+
+            dialog._generation_requested_count = 10
+            dialog.progress_bar.setRange(0, 10)
+            dialog._on_progress("Generating question 3/10... (attempt 1/10)")
+
+            self.assertEqual(10, dialog.progress_bar.maximum())
+            self.assertEqual(3, dialog.progress_bar.value())
+
+            dialog._on_progress(
+                "Accepted 2 question(s), rejected 1. Total accepted: 2/10"
+            )
+            self.assertEqual(2, dialog.progress_bar.value())
+
     def test_generation_progress_log_keeps_recent_events(self):
             dialog = AIGenerationDialog(
                 "course content",

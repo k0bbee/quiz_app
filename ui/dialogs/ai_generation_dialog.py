@@ -92,6 +92,7 @@ class AIGenerationDialog(QDialog):
         self.topic_weight_labels: dict[str, QLabel] = {}
         self.topic_weight_rows: dict[str, QWidget] = {}
         self._generation_started_at: float | None = None
+        self._generation_requested_count = 0
         self._last_generation_progress = ""
         self._generation_events: list[str] = []
         # ``None`` means the caller did not provide course coverage data;
@@ -1561,7 +1562,12 @@ class AIGenerationDialog(QDialog):
         self.generation_status_timer.start()
         self.generate_btn.setEnabled(False)
         self.progress_bar.setVisible(True)
-        self.progress_bar.setRange(0, 0)  # Indeterminate
+        self._generation_requested_count = max(1, int(count or 1))
+        self.progress_bar.setRange(0, self._generation_requested_count)
+        self.progress_bar.setValue(min(
+            self._generation_requested_count,
+            len(carryover_questions),
+        ))
 
         task_id = None
         try:
@@ -1889,10 +1895,27 @@ class AIGenerationDialog(QDialog):
     def _on_progress(self, message: str):
         if self._generation_cancelled:
             return
+        self._update_generation_progress(message)
         display_message = self._display_progress_message(message)
         self._last_generation_progress = display_message
         self._append_generation_event(display_message)
         self._refresh_generation_status()
+
+    def _update_generation_progress(self, message: str) -> None:
+        """Translate worker counts into a determinate progress indicator."""
+        raw = " ".join(str(message or "").split())
+        matches = (
+            re.search(r"Total accepted: (\d+)/(\d+)", raw)
+            or re.search(r"Generating question (\d+)/(\d+)", raw)
+            or re.search(r"(\d+)/(\d+) accepted", raw)
+        )
+        if not matches:
+            return
+        current, total = (int(value) for value in matches.groups())
+        maximum = max(1, total, self._generation_requested_count)
+        if self.progress_bar.maximum() != maximum:
+            self.progress_bar.setRange(0, maximum)
+        self.progress_bar.setValue(min(maximum, max(0, current)))
 
     def _display_progress_message(self, message: str) -> str:
         raw = " ".join(str(message or "").split())
@@ -1970,6 +1993,11 @@ class AIGenerationDialog(QDialog):
         if not new_questions:
             return
         self.generated_questions.extend(new_questions)
+        if self.progress_bar.isVisible():
+            self.progress_bar.setValue(min(
+                self.progress_bar.maximum(),
+                len(self.generated_questions),
+            ))
         self.draft_changed.emit()
         self._append_generation_event(
             self.lang_manager.get_text(
