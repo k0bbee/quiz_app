@@ -7,7 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QPoint, QPointF, Qt
 from PyQt6.QtGui import QWheelEvent
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QComboBox
 
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from ui.screens.question_bank_screen import QuestionBankScreen
@@ -64,6 +64,16 @@ class WheelSafeControlTests(unittest.TestCase):
         self.assertEqual(1, combo.currentIndex())
         self.assertTrue(combo.property("wheelSafe"))
         self.assertNotEqual(Qt.FocusPolicy.WheelFocus, combo.focusPolicy())
+
+    def test_combobox_width_does_not_follow_longest_item_text(self):
+        combo = WheelSafeComboBox()
+        combo.addItem("a" * 240)
+
+        self.assertEqual(12, combo.minimumContentsLength())
+        self.assertEqual(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon,
+            combo.sizeAdjustPolicy(),
+        )
 
     def test_slider_ignores_wheel_until_it_has_focus(self):
         slider = WheelSafeSlider(Qt.Orientation.Horizontal)

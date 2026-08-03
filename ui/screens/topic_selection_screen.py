@@ -12,6 +12,8 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -59,7 +61,21 @@ class TopicSelectionScreen(QWidget):
         self.refresh()
 
     def _setup_ui(self) -> None:
-        layout = QVBoxLayout(self)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea(self)
+        scroll.setObjectName("studySetupScroll")
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        content = QWidget()
+        content.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Minimum,
+        )
+        layout = QVBoxLayout(content)
         layout.setContentsMargins(24, 20, 24, 20)
         layout.setSpacing(14)
 
@@ -203,6 +219,13 @@ class TopicSelectionScreen(QWidget):
         self.practice_workspace_layout.addWidget(self.practice_preview_card, 1)
         layout.addLayout(self.practice_workspace_layout, 1)
         layout.addStretch(1)
+
+        scroll.setWidget(content)
+        outer_layout.addWidget(scroll)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Ignored,
+        )
 
         self._on_language_changed()
         self._update_workspace_direction()

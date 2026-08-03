@@ -7,7 +7,16 @@ from pathlib import Path
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QFormLayout, QLabel, QListWidget, QSplitter, QWidget
+from PyQt6.QtWidgets import (
+    QApplication,
+    QFormLayout,
+    QLabel,
+    QListWidget,
+    QScrollArea,
+    QSplitter,
+    QSizePolicy,
+    QWidget,
+)
 
 from core.language_manager import LanguageManager
 from core.progress_tracker import ProgressManager
@@ -21,12 +30,27 @@ from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.question_bank_screen import QuestionBankScreen
 from ui.screens.quiz_screen import QuizScreen
 from ui.screens.settings_screen import SettingsScreen
+from ui.screens.topic_selection_screen import TopicSelectionScreen
 from utils.constants import topic_label
 
 
 _APP = QApplication.instance() or QApplication([])
 
 class WorkspaceLayoutTests(unittest.TestCase):
+    def test_study_setup_scrolls_and_does_not_impose_large_font_height(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = TopicSelectionScreen(
+                SetManager(str(Path(tmpdir) / "sets")),
+                question_bank=QuestionBank(str(Path(tmpdir) / "questions")),
+            )
+
+        scroll = screen.findChild(QScrollArea, "studySetupScroll")
+        self.assertIsNotNone(scroll)
+        self.assertEqual(
+            QSizePolicy.Policy.Ignored,
+            screen.sizePolicy().verticalPolicy(),
+        )
+
     def test_workspace_pages_share_page_header_contract(self):
             with tempfile.TemporaryDirectory() as tmpdir:
                 root = Path(tmpdir)
