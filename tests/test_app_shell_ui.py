@@ -571,18 +571,6 @@ class AppShellUiTests(unittest.TestCase):
             course_screen.request_shutdown.assert_called_once_with()
             main_window.settings_screen.save_settings.assert_not_called()
 
-    def test_home_incorrect_action_stays_clickable_when_no_incorrect_questions_exist(self):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                home = HomeScreen(
-                    ProgressManager(str(Path(tmpdir) / "progress")),
-                    QuestionBank(str(Path(tmpdir) / "questions")),
-                )
-
-                home.refresh()
-
-                self.assertTrue(home.incorrect_btn.isEnabled())
-                self.assertEqual("true", home.incorrect_btn.property("emptyState"))
-
     def test_home_screen_uses_today_plan_as_first_use_guidance(self):
             with tempfile.TemporaryDirectory() as tmpdir:
                 home = HomeScreen(
@@ -731,15 +719,15 @@ class AppShellUiTests(unittest.TestCase):
                     if not button.isHidden()
                 ]
                 self.assertEqual([home.start_btn], visible_actions)
-                for button in (
-                    home.free_practice_btn,
-                    home.incorrect_btn,
-                    home.ai_btn,
-                    home.progress_btn,
-                    home.resume_btn,
-                    home.settings_btn,
+                for name in (
+                    "free_practice_btn",
+                    "incorrect_btn",
+                    "ai_btn",
+                    "progress_btn",
+                    "resume_btn",
+                    "settings_btn",
                 ):
-                    self.assertTrue(button.isHidden())
+                    self.assertFalse(hasattr(home, name))
 
     def test_home_screen_shows_current_course_context(self):
             with tempfile.TemporaryDirectory() as tmpdir:

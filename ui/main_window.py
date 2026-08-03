@@ -473,16 +473,7 @@ class MainWindow(QMainWindow):
 
     def _connect_signals(self):
         # Home screen
-        self.home_screen.start_practice.connect(self._on_start_practice)
         self.home_screen.study_requested.connect(self._handle_study_intent)
-        self.home_screen.resume_practice.connect(self._on_resume_abandoned)
-        self.home_screen.practice_incorrect.connect(
-            self.result_flow.practice_incorrect
-        )
-        self.home_screen.ai_generate.connect(self.generation_flow.open)
-        self.home_screen.view_progress.connect(lambda: self.navigate_to(self.SCREEN_PROGRESS))
-        self.home_screen.open_settings.connect(self.open_settings)
-        self.home_screen.manage_courses.connect(lambda: self.navigate_to(self.SCREEN_COURSES))
         self.home_screen.open_course_requested.connect(
             self._on_home_course_requested
         )
@@ -697,10 +688,6 @@ class MainWindow(QMainWindow):
     def _handle_study_intent(self, intent: StudyIntent) -> None:
         """Route one typed user intent through the study controller."""
         self.study_flow.handle_intent(intent)
-
-    def _on_start_practice(self):
-        self.study_flow.clear_setup()
-        self.navigate_to(self.SCREEN_TOPIC_SELECTION)
 
     def _on_study_quiz_start(
         self,

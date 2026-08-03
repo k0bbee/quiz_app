@@ -190,15 +190,15 @@ class UiStyleContractTests(unittest.TestCase):
                 )
 
                 self.assertEqual("primary", home.start_btn.property("homeAction"))
-                for button in (
-                    home.free_practice_btn,
-                    home.resume_btn,
-                    home.incorrect_btn,
-                    home.ai_btn,
-                    home.progress_btn,
-                    home.settings_btn,
+                for name in (
+                    "free_practice_btn",
+                    "resume_btn",
+                    "incorrect_btn",
+                    "ai_btn",
+                    "progress_btn",
+                    "settings_btn",
                 ):
-                    self.assertEqual("secondary", button.property("homeAction"))
+                    self.assertFalse(hasattr(home, name))
 
     def test_fallback_palette_matches_vscode_dark_base(self):
             _apply_dark_palette(_APP)
@@ -218,15 +218,15 @@ class UiStyleContractTests(unittest.TestCase):
                 settings = SettingsScreen()
 
                 self.assertEqual("primaryButton", home.start_btn.objectName())
-                for button in (
-                    home.free_practice_btn,
-                    home.resume_btn,
-                    home.incorrect_btn,
-                    home.ai_btn,
-                    home.progress_btn,
-                    home.settings_btn,
+                for name in (
+                    "free_practice_btn",
+                    "resume_btn",
+                    "incorrect_btn",
+                    "ai_btn",
+                    "progress_btn",
+                    "settings_btn",
                 ):
-                    self.assertEqual("secondaryButton", button.objectName())
+                    self.assertFalse(hasattr(home, name))
                 self.assertEqual("primaryButton", settings.save_btn.objectName())
                 for button in (
                     settings.test_ai_btn,

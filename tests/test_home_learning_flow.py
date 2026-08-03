@@ -486,11 +486,10 @@ class HomeLearningFlowTests(unittest.TestCase):
                     QuestionBank(str(Path(tmpdir) / "questions")),
                 )
 
-                self.assertTrue(screen.resume_btn.isHidden())
+                self.assertFalse(hasattr(screen, "resume_btn"))
 
                 screen.set_resume_draft("系统结构练习", 3)
 
-                self.assertTrue(screen.resume_btn.isHidden())
                 self.assertIn("继续练习", screen.start_btn.text())
                 self.assertIn("系统结构练习", screen.today_plan_detail.text())
                 self.assertIn("3", screen.today_plan_detail.text())
@@ -515,7 +514,7 @@ class HomeLearningFlowTests(unittest.TestCase):
 
                 screen.clear_resume_draft()
 
-                self.assertTrue(screen.resume_btn.isHidden())
+                self.assertFalse(hasattr(screen, "resume_btn"))
                 self.assertNotIn("继续练习", screen.start_btn.text())
 
     def test_home_primary_action_routes_to_course_scoped_incorrect_review(self):

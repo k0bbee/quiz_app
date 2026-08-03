@@ -28,13 +28,6 @@ from utils.logger import warning
 class HomeScreen(QWidget):
     """Welcome screen with navigation to main features."""
 
-    start_practice = pyqtSignal()
-    resume_practice = pyqtSignal()
-    practice_incorrect = pyqtSignal()
-    ai_generate = pyqtSignal()
-    view_progress = pyqtSignal()
-    open_settings = pyqtSignal()
-    manage_courses = pyqtSignal()
     study_requested = pyqtSignal(object)
     open_course_requested = pyqtSignal(str)
 
@@ -228,51 +221,6 @@ class HomeScreen(QWidget):
         main_layout.addWidget(self.overview_frame)
         main_layout.addStretch(1)
 
-        # Compatibility signal targets remain hidden; navigation now lives in
-        # the application shell and the recommendation is the sole home action.
-        self.resume_btn = QPushButton(self)
-        self.resume_btn.setObjectName("secondaryButton")
-        self.resume_btn.setProperty("homeAction", "secondary")
-        self.resume_btn.hide()
-
-        self.free_practice_btn = QPushButton(
-            self.lang_manager.get_text("自由练习", "Free Practice"),
-            self,
-        )
-        self.free_practice_btn.setObjectName("secondaryButton")
-        self.free_practice_btn.setProperty("homeAction", "secondary")
-        self.free_practice_btn.setMinimumHeight(40)
-        self.free_practice_btn.clicked.connect(self.start_practice.emit)
-        self.free_practice_btn.hide()
-
-        self.incorrect_btn = QPushButton(self.lang_manager.get_text("练习历史错题", "Practice Incorrect"), self)
-        self.incorrect_btn.setObjectName("secondaryButton")
-        self.incorrect_btn.setProperty("homeAction", "secondary")
-        self.incorrect_btn.setMinimumHeight(40)
-        self.incorrect_btn.clicked.connect(self.practice_incorrect.emit)
-        self.incorrect_btn.hide()
-
-        self.ai_btn = QPushButton(self.lang_manager.get_text("AI 生成题目", "Generate Questions"), self)
-        self.ai_btn.setObjectName("secondaryButton")
-        self.ai_btn.setProperty("homeAction", "secondary")
-        self.ai_btn.setMinimumHeight(40)
-        self.ai_btn.clicked.connect(self.ai_generate.emit)
-        self.ai_btn.hide()
-
-        self.progress_btn = QPushButton(self.lang_manager.get_text("查看进度", "View Progress"), self)
-        self.progress_btn.setObjectName("secondaryButton")
-        self.progress_btn.setProperty("homeAction", "secondary")
-        self.progress_btn.setMinimumHeight(40)
-        self.progress_btn.clicked.connect(self.view_progress.emit)
-        self.progress_btn.hide()
-
-        # Settings already has a persistent top-level navigation entry.
-        self.settings_btn = QPushButton(self.lang_manager.get_text("设置", "Settings"), self)
-        self.settings_btn.setObjectName("secondaryButton")
-        self.settings_btn.setProperty("homeAction", "secondary")
-        self.settings_btn.clicked.connect(self.open_settings.emit)
-        self.settings_btn.hide()
-
         self.first_use_label = QLabel()
         self.first_use_label.setObjectName("homeFirstUseGuide")
         self.first_use_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -297,12 +245,6 @@ class HomeScreen(QWidget):
         self.agenda_heading_label.setText(
             self.lang_manager.get_text("全部课程", "All Courses")
         )
-        self._update_resume_text()
-        self.free_practice_btn.setText(self.lang_manager.get_text("自由练习", "Free Practice"))
-        self.incorrect_btn.setText(self.lang_manager.get_text("练习历史错题", "Practice Incorrect"))
-        self.ai_btn.setText(self.lang_manager.get_text("AI 生成题目", "Generate Questions"))
-        self.progress_btn.setText(self.lang_manager.get_text("查看进度", "View Progress"))
-        self.settings_btn.setText(self.lang_manager.get_text("设置", "Settings"))
         self._update_first_use_text()
         # Refresh stats text in the new language
         self.refresh()
@@ -317,8 +259,6 @@ class HomeScreen(QWidget):
                 "No learning data is available yet.",
             ))
             self.question_context_label.setText(self.lang_manager.get_text("题目：0 题", "Questions: 0"))
-            self.incorrect_btn.setEnabled(False)
-            self._set_incorrect_empty_state(True)
             self._refresh_today_plan()
             self._refresh_global_agenda([])
             return
@@ -349,15 +289,11 @@ class HomeScreen(QWidget):
             ]
         else:
             incorrect_ids = []
-        incorrect_count = len(incorrect_ids)
         self._refresh_today_plan(
             len(visible_question_ids),
             incorrect_ids,
             progress_records=progress_records,
         )
-        self.incorrect_btn.setEnabled(True)
-        self._set_incorrect_empty_state(incorrect_count <= 0)
-
         if stats["total_sessions"] == 0:
             self.first_use_label.hide()
             self.stats_label.show()
@@ -401,7 +337,6 @@ class HomeScreen(QWidget):
         self._resume_current_index = current_index
         self._resume_total_count = total_count
         self._resume_mode = mode if mode in ("exam", "practice") else None
-        self._update_resume_text()
         self._refresh_today_plan()
 
     def clear_resume_draft(self):
@@ -411,7 +346,6 @@ class HomeScreen(QWidget):
         self._resume_current_index = None
         self._resume_total_count = None
         self._resume_mode = None
-        self.resume_btn.hide()
         self._refresh_today_plan()
 
     def set_current_course(
@@ -688,19 +622,6 @@ class HomeScreen(QWidget):
                     f"Exam scope: {count} topics",
                 ))
 
-    def _set_incorrect_empty_state(self, empty: bool):
-        self.incorrect_btn.setProperty("emptyState", "true" if empty else "false")
-        self.incorrect_btn.setToolTip(
-            self.lang_manager.get_text(
-                "当前没有错题；点击可查看提示。",
-                "No incorrect questions yet; click for details.",
-            )
-            if empty
-            else ""
-        )
-        self.incorrect_btn.style().unpolish(self.incorrect_btn)
-        self.incorrect_btn.style().polish(self.incorrect_btn)
-
     @staticmethod
     def _incorrect_question_ids(progress_records) -> list[str]:
         return sorted({
@@ -714,29 +635,6 @@ class HomeScreen(QWidget):
                 and getattr(answer, "question_id", "")
             )
         })
-
-    def _update_resume_text(self):
-        prefix_zh = "继续草稿"
-        prefix_en = "Resume Draft"
-        if self._resume_mode == "exam":
-            prefix_zh = "继续模拟卷草稿"
-            prefix_en = "Resume Mock Exam Draft"
-        elif self._resume_mode == "practice":
-            prefix_zh = "继续练习草稿"
-            prefix_en = "Resume Practice Draft"
-
-        if self._resume_current_index is not None and self._resume_total_count:
-            current = min(max(0, self._resume_current_index), self._resume_total_count - 1) + 1
-            label = self.lang_manager.get_text(
-                f"{prefix_zh}：{self._resume_title}（第 {current}/{self._resume_total_count} 题）",
-                f"{prefix_en}: {self._resume_title} (Question {current}/{self._resume_total_count})",
-            )
-        else:
-            label = self.lang_manager.get_text(
-                f"{prefix_zh}：{self._resume_title}（剩余 {self._resume_remaining_count} 题）",
-                f"{prefix_en}: {self._resume_title} ({self._resume_remaining_count} left)",
-            )
-        self.resume_btn.setText(label)
 
     def _refresh_today_plan(
         self,
