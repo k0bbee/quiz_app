@@ -8,18 +8,10 @@ from unittest.mock import Mock, patch
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-import core.past_exam_prediction as past_exam_prediction
 from core.course_initializer import CourseInitializer
 from core.document_parser import ExtractedDocument
-from core.past_exam_prediction import PastExamPredictionPlanner
 from core.today_learning_plan import LearningPlanAction
 from models.course_project import CourseProject, CourseTopic
-from models.past_exam import (
-    PastExamAnalysis,
-    PastExamQuestionTypeProfile,
-    PastExamTopicProfile,
-)
-from ui.main_window import MainWindow
 from ui.course_context_controller import CourseContextController
 from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.screens.home_screen import HomeScreen
@@ -214,53 +206,6 @@ class CourseExamScopeConsumerTests(unittest.TestCase):
 
         warning.assert_called_once()
         self.assertEqual("考试范围为空", warning.call_args.args[1])
-
-    def test_prediction_excludes_known_topic_evidence_outside_exam_scope(self):
-        project = _project()
-        project.set_exam_scope("selected", ["io"])
-        record = SimpleNamespace(
-            exam_id="exam-a",
-            course_id=project.course_id,
-            analysis_status="complete",
-        )
-        analysis = PastExamAnalysis(
-            source_sha256="hash-a",
-            analyzed_at="2026-07-14T00:00:00+00:00",
-            detected_question_count=10,
-            question_types=(
-                PastExamQuestionTypeProfile("multiple_choice", 10, 0.9, ("section",)),
-            ),
-            topic_profile=(
-                PastExamTopicProfile("io", "I/O", 60, 0.9, ("interrupt",)),
-                PastExamTopicProfile("memory", "Memory", 40, 0.9, ("cache",)),
-            ),
-        )
-        manager = SimpleNamespace(
-            load_all=lambda: [record],
-            get_analysis=lambda _exam_id: analysis,
-        )
-
-        prediction = PastExamPredictionPlanner(manager).build(project)
-
-        self.assertEqual(("io",), prediction.plan.selected_topics)
-        self.assertEqual({"io": 100}, dict(prediction.plan.topic_weights))
-        self.assertTrue(any("outside the current exam scope" in warning for warning in prediction.warnings))
-
-    def test_prediction_status_distinguishes_scope_filter_from_unsupported_types(self):
-        prediction = SimpleNamespace(
-            source_count=2,
-            warnings=(
-                "Historical topic evidence outside the current exam scope was excluded: memory",
-            ),
-        )
-
-        text = past_exam_prediction.prediction_prefill_status(
-            prediction,
-            lambda zh, _en: zh,
-        )
-
-        self.assertIn("考试范围外", text)
-        self.assertNotIn("不支持的历史题型", text)
 
     def test_home_plan_uses_only_questions_in_selected_exam_scope(self):
         class QuestionBank:

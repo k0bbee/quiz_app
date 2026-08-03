@@ -42,7 +42,7 @@ class BackgroundTaskBridgeTests(unittest.TestCase):
     def test_bridge_ignores_late_worker_events_after_terminal_state(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             center = self._center(tmpdir)
-            snapshot = center.create(kind="past_exam_ocr", title="Import Final")
+            snapshot = center.create(kind="document_ocr", title="Import Final")
             bridge = BackgroundTaskBridge(center, snapshot.task_id)
             bridge.start(lambda: None)
             bridge.complete(result_summary="Imported", result_count=1)

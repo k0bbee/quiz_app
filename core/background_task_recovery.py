@@ -11,8 +11,6 @@ _TASK_DESTINATIONS = {
     "question_generation": "generation",
     "course_import": "courses",
     "course_summary": "courses",
-    "past_exam_ocr": "past_exams",
-    "past_exam_analysis": "past_exams",
     "app_data_import": "settings_data",
     "app_data_export": "settings_data",
     "question_bank_validation": "question_bank",
@@ -21,8 +19,6 @@ _TASK_DESTINATIONS = {
 _RETRY_METADATA_KEYS = {
     "course_import": ("source_folder",),
     "course_summary": ("course_id",),
-    "past_exam_ocr": ("source_path",),
-    "past_exam_analysis": ("exam_id", "course_id"),
 }
 
 
@@ -151,7 +147,6 @@ def _recovery_field_label(key: str, language: str) -> str:
         "exam_plan": ("出题方案", "generation plan"),
         "source_folder": ("课件文件夹", "course folder"),
         "source_path": ("源文件", "source file"),
-        "exam_id": ("历史真题", "past exam"),
     }
     zh, en = labels.get(key, (key, key))
     return zh if language == "zh" else en

@@ -30,7 +30,7 @@ MAX_ZIP_COMPRESSION_RATIO = 200  # advisory warning only — not a blocking gate
 MAX_PROGRESS_IMPORT_BYTES = 64 * 1024 * 1024
 MAX_PROGRESS_IMPORT_RECORDS = 100_000
 
-# ── Document budgets (used by document_parser & past_exam_importer) ─
+# ── Document budgets (used by document_parser and course import) ─
 
 MAX_DOCUMENT_BYTES = 256 * 1024 * 1024           # 256 MiB
 MAX_COURSE_SOURCE_FILES = 2_000

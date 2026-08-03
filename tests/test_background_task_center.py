@@ -19,7 +19,7 @@ class BackgroundTaskCenterTests(unittest.TestCase):
             )
 
             created = center.create(
-                kind="past_exam_ocr",
+                kind="document_ocr",
                 title="马克思主义基本原理真题",
                 metadata={"course_id": "course-marx"},
             )
@@ -142,7 +142,7 @@ class BackgroundTaskCenterTests(unittest.TestCase):
                 monotonic=lambda: next(ticks),
                 progress_persist_interval=1.0,
             )
-            task = center.create(kind="past_exam_ocr", title="大型扫描件")
+            task = center.create(kind="document_ocr", title="大型扫描件")
             center.start(task.task_id)
 
             with patch(
