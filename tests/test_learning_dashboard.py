@@ -6,7 +6,6 @@ from core.learning_dashboard import (
     LearningDashboardViewModel,
     build_learning_dashboard,
 )
-from core.exam_goal_store import ExamGoal
 from core.today_learning_plan import (
     LearningPlanAction,
     TodayLearningPlan,
@@ -139,31 +138,6 @@ class LearningDashboardTests(unittest.TestCase):
         self.assertEqual(2, dashboard.weekly_summary.correct_questions)
         self.assertAlmostEqual(2 / 3, dashboard.weekly_summary.accuracy)
         self.assertEqual(15, dashboard.next_day_preview.question_count)
-        self.assertFalse(dashboard.exam_status.configured)
-
-    def test_exam_status_forecasts_whether_the_backlog_fits_before_exam(self):
-        dashboard = build_learning_dashboard(
-            {"q-1": ("cache", "高速缓存")},
-            records=[],
-            daily_plan=TodayLearningPlan(
-                action=LearningPlanAction.START_DAILY_QUEUE,
-                plan_total_count=15,
-                backlog_count=100,
-            ),
-            exam_goal=ExamGoal(
-                "course-a",
-                "2026-08-17",
-                30,
-                0.8,
-            ),
-            reference_date=date(2026, 7, 30),
-        )
-
-        self.assertTrue(dashboard.exam_status.configured)
-        self.assertEqual(18, dashboard.exam_status.days_remaining)
-        self.assertEqual(7, dashboard.exam_status.predicted_study_days)
-        self.assertEqual(100, dashboard.exam_status.coverage_question_count)
-        self.assertTrue(dashboard.exam_status.on_track)
 
     @staticmethod
     def _record(*answers, started_at=""):

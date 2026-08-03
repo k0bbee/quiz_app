@@ -8,7 +8,6 @@ from config import (
     BACKGROUND_TASKS_FILE,
     COURSES_DIR,
     DAILY_STUDY_PLANS_FILE,
-    EXAM_GOALS_FILE,
     GENERATION_DRAFTS_FILE,
     MASTERY_OVERRIDES_FILE,
     PAST_EXAMS_DIR,
@@ -21,7 +20,6 @@ from core.background_task_center import BackgroundTaskCenter
 from core.current_events import CurrentEventMaterialManager
 from core.daily_study_plan_store import DailyStudyPlanStore
 from core.generation_draft_store import GenerationDraftStore
-from core.exam_goal_store import ExamGoalStore
 from core.mastery_overrides import MasteryOverrideStore
 from core.progress_tracker import ProgressManager
 from core.quiz_snapshot_manager import QuizSnapshotManager
@@ -46,7 +44,6 @@ class ApplicationServices:
     task_center: BackgroundTaskCenter
     daily_plan_store: DailyStudyPlanStore | None = None
     generation_draft_store: GenerationDraftStore | None = None
-    exam_goal_store: ExamGoalStore | None = None
 
     @classmethod
     def default(cls) -> "ApplicationServices":
@@ -65,5 +62,4 @@ class ApplicationServices:
             generation_draft_store=GenerationDraftStore(
                 GENERATION_DRAFTS_FILE
             ),
-            exam_goal_store=ExamGoalStore(EXAM_GOALS_FILE),
         )
