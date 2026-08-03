@@ -240,8 +240,6 @@ class GenerationWorkspace(QWidget):
                 "course_hub_gap": gm("补齐缺口", "Fill Gaps"),
                 "result_reinforcement": gm("弱项补强", "Reinforcement"),
                 "progress_topic": gm("按知识点生成", "By Topic"),
-                "predicted_exam": gm("真题预测", "Exam Prediction"),
-                "prediction": gm("真题预测", "Exam Prediction"),
                 "manual": gm("手动生成", "Manual"),
             }.get(source, gm("生成任务", "Generation"))
             self.session_selector.addItem(

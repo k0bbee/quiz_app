@@ -110,8 +110,8 @@ class CourseExamScopeDialog(QDialog):
             f"{self.project.title} · Exam Scope",
         ))
         self.help_label.setText(gm(
-            "范围会影响新题生成、真题预测和今日学习建议，不会删除已有题目或学习记录。",
-            "Scope affects new generation, historical-exam prediction, and today's plan. Existing questions and progress are not deleted.",
+            "范围会影响新题生成和当前学习建议，不会删除已有题目或学习记录。",
+            "Scope affects new generation and the current study recommendation. Existing questions and progress are not deleted.",
         ))
         self.all_radio.setText(gm("全部知识点", "All topics"))
         self.selected_radio.setText(gm("指定知识点", "Selected topics"))

@@ -214,7 +214,5 @@ def _source_label(source: str, get_text) -> str:
         "course_hub_gap": get_text("补齐缺口", "Fill Gaps"),
         "result_reinforcement": get_text("弱项补强", "Reinforcement"),
         "progress_topic": get_text("按知识点生成", "By Topic"),
-        "predicted_exam": get_text("真题预测", "Exam Prediction"),
-        "prediction": get_text("真题预测", "Exam Prediction"),
         "manual": get_text("手动生成", "Manual"),
     }.get(str(source or "").strip(), get_text("其他", "Other"))
