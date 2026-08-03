@@ -230,7 +230,7 @@ class FirstRunFlowTests(unittest.TestCase):
         ):
             window = MainWindow()
         self.addCleanup(window.close)
-        window.first_run.ai_error = Mock(return_value="")
+        window.first_run.ai_error = Mock(return_value="API key missing")
         window.first_run_screen.set_state(FirstRunState(FirstRunStage.MATERIALS))
 
         window.first_run_screen.example_btn.click()
@@ -275,7 +275,7 @@ class FirstRunFlowTests(unittest.TestCase):
         ):
             window = MainWindow()
         self.addCleanup(window.close)
-        window.first_run.ai_error = Mock(return_value="")
+        window.first_run.ai_error = Mock(return_value="API key missing")
 
         self.assertEqual(window.SCREEN_HOME, window.stack.currentIndex())
         self.assertIs(
@@ -288,8 +288,8 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual(window.SCREEN_HOME, window.stack.currentIndex())
         self.assertIsNone(window._course_screen)
         self.assertTrue(window.navigate_to(window.SCREEN_COURSES))
-        self.assertEqual(window.SCREEN_HOME, window.stack.currentIndex())
-        self.assertIsNone(window._course_screen)
+        self.assertEqual(window.SCREEN_COURSES, window.stack.currentIndex())
+        self.assertIsNotNone(window._course_screen)
 
     def test_first_run_hands_selected_folder_to_background_course_import(self):
         with patch(
