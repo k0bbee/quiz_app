@@ -294,13 +294,14 @@ class AppShellUiTests(unittest.TestCase):
 
             buttons = main_window.navigation_buttons()
             self.assertEqual(
-                ["Study", "Courses", "Library"],
+                ["Study", "Courses"],
                 [button.text() for button in buttons],
             )
             self.assertEqual(
-                ["learning", "courses", "library"],
+                ["learning", "courses"],
                 [button.property("workspace") for button in buttons],
             )
+            self.assertFalse(hasattr(main_window, "library_nav_btn"))
             self.assertFalse(hasattr(main_window, "home_nav_btn"))
             for button in buttons:
                 self.assertNotRegex(button.text(), r"[^\w\s]")
@@ -339,7 +340,7 @@ class AppShellUiTests(unittest.TestCase):
             main_window.learning_nav_btn.click()
             self.assertEqual(main_window.SCREEN_HOME, main_window.stack.currentIndex())
 
-            main_window.library_nav_btn.click()
+            main_window.navigate_route(Route.library("questions"))
             self.assertEqual(main_window.SCREEN_QUESTION_BANK, main_window.stack.currentIndex())
             self.assertEqual(Route.library("questions"), main_window.current_route)
             self.assertEqual(

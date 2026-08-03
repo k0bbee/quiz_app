@@ -418,11 +418,6 @@ class MainWindow(QMainWindow):
                     Workspace.COURSE,
                     Route.course(),
                 ),
-                (
-                    "library_nav_btn",
-                    Workspace.LIBRARY,
-                    Route.library("questions"),
-                ),
             ),
             context_routes=(
                 ("today_tab_btn", Route.study("today")),
@@ -454,7 +449,6 @@ class MainWindow(QMainWindow):
             "task_center_btn",
             "learning_nav_btn",
             "courses_nav_btn",
-            "library_nav_btn",
             "today_tab_btn",
             "topics_tab_btn",
             "progress_tab_btn",
