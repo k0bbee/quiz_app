@@ -93,7 +93,6 @@ class HistoryProtectionController:
         if not host._history_protection_blocked or screen_index not in {
             host.SCREEN_COURSES,
             host.SCREEN_QUESTION_BANK,
-            host.SCREEN_PAST_EXAMS,
         }:
             return True
         reply = QMessageBox.warning(

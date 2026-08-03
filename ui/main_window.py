@@ -63,7 +63,6 @@ class MainWindow(QMainWindow):
         ScreenKey.PROGRESS: SCREEN_PROGRESS,
         ScreenKey.COURSES: SCREEN_COURSES,
         ScreenKey.QUESTION_BANK: SCREEN_QUESTION_BANK,
-        ScreenKey.PAST_EXAMS: SCREEN_PAST_EXAMS,
         ScreenKey.GENERATION: SCREEN_GENERATION,
     }
 
@@ -171,7 +170,6 @@ class MainWindow(QMainWindow):
         )
         self._course_screen = None
         self._question_bank_screen = None
-        self._past_exam_screen = None
 
         # Secondary workspaces are lazily created on first access.
         self.stack.addWidget(self.home_workspace)    # 0
@@ -183,7 +181,9 @@ class MainWindow(QMainWindow):
         for index, name in (
             (self.SCREEN_COURSES, "courses"),
             (self.SCREEN_QUESTION_BANK, "questionBank"),
-            (self.SCREEN_PAST_EXAMS, "pastExams"),
+            # Keep the retired numeric slot so legacy stack indices do not
+            # shift, but do not expose a route or instantiate a screen for it.
+            (self.SCREEN_PAST_EXAMS, "retiredPastExams"),
             (self.SCREEN_GENERATION, "generation"),
         ):
             placeholder = QWidget()
@@ -221,10 +221,8 @@ class MainWindow(QMainWindow):
             open_settings=self.open_settings,
             course_changed=self.course_context.course_changed,
             get_course_screen=self._get_course_screen,
-            get_past_exam_screen=self._get_past_exam_screen,
             generate_questions=self.generation_flow.open,
             courses_screen_index=self.SCREEN_COURSES,
-            past_exams_screen_index=self.SCREEN_PAST_EXAMS,
             question_bank_screen_index=self.SCREEN_QUESTION_BANK,
         )
 
@@ -353,24 +351,6 @@ class MainWindow(QMainWindow):
         ):
             return
         self._get_question_bank_screen().show_course_assets(course_id)
-
-    def _get_past_exam_screen(self):
-        """Lazy-init the historical exam workbench on first access."""
-        if self._past_exam_screen is None:
-            from ui.screens.past_exam_screen import PastExamScreen
-            self._past_exam_screen = PastExamScreen(
-                self.past_exam_manager,
-                self.course_manager,
-                task_center=self.task_center,
-            )
-            self._past_exam_screen.prediction_requested.connect(
-                self._on_generate_predicted_exam
-            )
-            self._install_workspace(
-                self.SCREEN_PAST_EXAMS,
-                self._past_exam_screen,
-            )
-        return self._past_exam_screen
 
     def _get_generation_workspace(self):
         """Lazy-init the persistent course-owned generation workspace."""
@@ -965,26 +945,6 @@ class MainWindow(QMainWindow):
             label=label,
         )
 
-    def _on_generate_predicted_exam(self, course_id: str, prediction):
-        """Open the normal generation review flow with a historical profile plan."""
-        course = self.course_manager.get(course_id)
-        if course is None:
-            QMessageBox.warning(
-                self,
-                self.lang_manager.get_text("课程不存在", "Course Not Found"),
-                self.lang_manager.get_text(
-                    "该真题关联的课程已不存在，请重新选择课程。",
-                    "The course linked to this exam no longer exists. Choose another course.",
-                ),
-            )
-            return
-        self.generation_flow.open(
-            course_override=course,
-            initial_plan=prediction.plan,
-            prediction=prediction,
-            draft_source="predicted_exam",
-        )
-
     def _show_timer_setting(self) -> bool:
         return bool(self.settings_screen.get_setting("show_timer", False))
 
@@ -994,9 +954,6 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         if self._course_screen is not None and not self._course_screen.request_shutdown():
-            event.ignore()
-            return
-        if self._past_exam_screen is not None and not self._past_exam_screen.request_shutdown():
             event.ignore()
             return
         if (

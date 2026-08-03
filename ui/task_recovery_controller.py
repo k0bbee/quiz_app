@@ -24,10 +24,8 @@ class TaskRecoveryController:
         open_settings: Callable[[str], object],
         course_changed: Callable[[], object],
         get_course_screen: Callable[[], object],
-        get_past_exam_screen: Callable[[], object],
         generate_questions: Callable[..., object],
         courses_screen_index: int,
-        past_exams_screen_index: int,
         question_bank_screen_index: int,
     ) -> None:
         self.task_center = task_center
@@ -37,10 +35,8 @@ class TaskRecoveryController:
         self._open_settings = open_settings
         self._course_changed = course_changed
         self._get_course_screen = get_course_screen
-        self._get_past_exam_screen = get_past_exam_screen
         self._generate_questions = generate_questions
         self._courses_screen_index = courses_screen_index
-        self._past_exams_screen_index = past_exams_screen_index
         self._question_bank_screen_index = question_bank_screen_index
 
     def open_page(self, task_id: str) -> bool:
@@ -77,7 +73,6 @@ class TaskRecoveryController:
             ) is not False
         screens = {
             "courses": self._courses_screen_index,
-            "past_exams": self._past_exams_screen_index,
             "question_bank": self._question_bank_screen_index,
         }
         screen = screens.get(destination)
@@ -109,11 +104,6 @@ class TaskRecoveryController:
             if self._navigate(self._courses_screen_index) is False:
                 return False
             self._get_course_screen().restore_task_context(snapshot)
-            return True
-        if destination == "past_exams":
-            if self._navigate(self._past_exams_screen_index) is False:
-                return False
-            self._get_past_exam_screen().restore_task_context(snapshot)
             return True
         if destination == "question_bank":
             return self._navigate(self._question_bank_screen_index) is not False

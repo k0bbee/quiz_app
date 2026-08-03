@@ -124,7 +124,7 @@ class AppShellUiTests(unittest.TestCase):
 
             self.assertIsNone(window._course_screen)
             self.assertIsNone(window._question_bank_screen)
-            self.assertIsNone(window._past_exam_screen)
+            self.assertFalse(hasattr(window, "_past_exam_screen"))
             self.assertIsNone(window._generation_workspace)
             self.assertEqual(9, window.stack.count())
 
@@ -132,12 +132,10 @@ class AppShellUiTests(unittest.TestCase):
             self.assertEqual(window.SCREEN_QUESTION_BANK, window.stack.currentIndex())
             self.assertIsNone(window._course_screen)
             self.assertIsNotNone(window._question_bank_screen)
-            self.assertIsNone(window._past_exam_screen)
+            self.assertFalse(hasattr(window, "_past_exam_screen"))
 
-            self.assertTrue(window.navigate_to(window.SCREEN_PAST_EXAMS))
-            self.assertEqual(window.SCREEN_PAST_EXAMS, window.stack.currentIndex())
-            self.assertIsNone(window._course_screen)
-            self.assertIsNotNone(window._past_exam_screen)
+            with self.assertRaises(ValueError):
+                window.navigate_to(window.SCREEN_PAST_EXAMS)
 
             self.assertTrue(window.navigate_to(window.SCREEN_GENERATION))
             self.assertEqual(window.SCREEN_GENERATION, window.stack.currentIndex())
@@ -358,12 +356,6 @@ class AppShellUiTests(unittest.TestCase):
                 main_window._question_bank_screen.set_panel,
                 main_window._question_bank_screen.workspace_tabs.currentWidget(),
             )
-            main_window.navigate_route(Route.library("past_exams"))
-            self.assertEqual(main_window.SCREEN_PAST_EXAMS, main_window.stack.currentIndex())
-            self.assertEqual(Route.library("past_exams"), main_window.current_route)
-            self.assertIs(main_window.past_exam_manager, main_window._past_exam_screen.manager)
-            self.assertIs(main_window.course_manager, main_window._past_exam_screen.course_manager)
-
             main_window.navigate_route(Route.study("practice"))
             self.assertTrue(main_window.topic_screen.today_mode_btn.isHidden())
             self.assertEqual(
@@ -460,15 +452,6 @@ class AppShellUiTests(unittest.TestCase):
                 self.assertEqual("C:/courses/physics", main_window._course_screen.folder_input.text())
                 self.assertEqual("Physics", main_window._course_screen.title_input.text())
                 self.assertFalse(main_window._course_screen.import_group.isHidden())
-
-                prediction_handler = Mock()
-                main_window._on_generate_predicted_exam = prediction_handler
-                prediction = object()
-                main_window._get_past_exam_screen().prediction_requested.emit(
-                    "course-a",
-                    prediction,
-                )
-                prediction_handler.assert_called_once_with("course-a", prediction)
 
                 main_window._get_course_screen().generate_questions_requested.emit(
                     "course-a"

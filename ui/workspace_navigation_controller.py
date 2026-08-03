@@ -48,7 +48,6 @@ class WorkspaceNavigationController:
             host.SCREEN_PROGRESS: Route.study("analysis"),
             host.SCREEN_COURSES: Route.course(),
             host.SCREEN_QUESTION_BANK: Route.library("questions"),
-            host.SCREEN_PAST_EXAMS: Route.library("past_exams"),
             host.SCREEN_GENERATION: Route.course(
                 host.course_context.current_course_id(),
                 tab="generation",
@@ -175,8 +174,6 @@ class WorkspaceNavigationController:
             host._get_course_screen()
         elif screen_index == host.SCREEN_QUESTION_BANK:
             host._get_question_bank_screen()
-        elif screen_index == host.SCREEN_PAST_EXAMS:
-            host._get_past_exam_screen()
         elif screen_index == host.SCREEN_GENERATION:
             generation_workspace = host._get_generation_workspace()
             if route.course_id and generation_workspace.generation_widget() is None:
@@ -210,8 +207,6 @@ class WorkspaceNavigationController:
             else:
                 library.show_questions()
             library.refresh()
-        elif screen_index == host.SCREEN_PAST_EXAMS:
-            host._get_past_exam_screen().refresh()
         self.update_actions()
         return True
 

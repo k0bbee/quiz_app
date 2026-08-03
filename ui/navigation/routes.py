@@ -21,7 +21,6 @@ class ScreenKey(str, Enum):
     PROGRESS = "progress"
     COURSES = "courses"
     QUESTION_BANK = "question_bank"
-    PAST_EXAMS = "past_exams"
     GENERATION = "generation"
 
 
@@ -31,7 +30,7 @@ _VALID_TABS = {
         {"overview", "sources", "knowledge", "generation"}
     ),
     Workspace.LIBRARY: frozenset(
-        {"questions", "sets", "past_exams", "drafts"}
+        {"questions", "sets", "drafts"}
     ),
     Workspace.FOCUS: frozenset({"quiz", "results"}),
 }
@@ -106,11 +105,7 @@ class Route:
                 else ScreenKey.COURSES
             )
         if self.workspace is Workspace.LIBRARY:
-            return (
-                ScreenKey.PAST_EXAMS
-                if self.tab == "past_exams"
-                else ScreenKey.QUESTION_BANK
-            )
+            return ScreenKey.QUESTION_BANK
         return {
             "quiz": ScreenKey.QUIZ,
             "results": ScreenKey.RESULTS,

@@ -22,10 +22,8 @@ class TaskRecoveryControllerTests(unittest.TestCase):
             "open_settings": Mock(),
             "course_changed": Mock(),
             "get_course_screen": Mock(),
-            "get_past_exam_screen": Mock(),
             "generate_questions": Mock(),
             "courses_screen_index": 1,
-            "past_exams_screen_index": 2,
             "question_bank_screen_index": 3,
         }
         dependencies.update(overrides)

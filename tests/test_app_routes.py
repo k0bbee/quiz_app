@@ -21,7 +21,8 @@ class AppRouteTests(unittest.TestCase):
             Route.course("course-1", tab="generation").screen,
         )
         self.assertEqual(ScreenKey.QUESTION_BANK, Route.library("sets").screen)
-        self.assertEqual(ScreenKey.PAST_EXAMS, Route.library("past_exams").screen)
+        with self.assertRaises(ValueError):
+            Route.library("past_exams")
         self.assertEqual(ScreenKey.QUIZ, Route.focus("quiz").screen)
 
     def test_route_metadata_owns_titles_focus_and_internal_navigation(self):

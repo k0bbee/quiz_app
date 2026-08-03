@@ -106,7 +106,6 @@ class ApplicationSmokeTests(unittest.TestCase):
                 for destination in (
                     window.SCREEN_COURSES,
                     window.SCREEN_QUESTION_BANK,
-                    window.SCREEN_PAST_EXAMS,
                     window.SCREEN_HOME,
                 ):
                     self.assertTrue(window.navigate_to(destination))
