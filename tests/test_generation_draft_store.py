@@ -193,7 +193,7 @@ class GenerationDraftStoreTests(unittest.TestCase):
             )
             self.assertEqual("prediction", drafts[0].source)
 
-    def test_explicit_draft_ids_keep_multiple_sessions_for_one_course(self):
+    def test_explicit_draft_ids_replace_the_previous_course_draft(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store = GenerationDraftStore(Path(tmpdir) / "generation-drafts.json")
             plan = ExamGenerationPlan(
@@ -221,19 +221,16 @@ class GenerationDraftStoreTests(unittest.TestCase):
             self.assertEqual("session-gap", first.draft_id)
             self.assertEqual("session-reinforcement", second.draft_id)
             self.assertEqual(
-                {"session-gap", "session-reinforcement"},
-                {draft.draft_id for draft in store.list_for_course("course-a")},
+                ["session-reinforcement"],
+                [draft.draft_id for draft in store.list_for_course("course-a")],
             )
-            self.assertEqual(
-                "gap-q",
-                store.get_by_id("session-gap").questions[0].question_id,
-            )
+            self.assertIsNone(store.get_by_id("session-gap"))
             self.assertEqual(
                 "reinforce-q",
                 store.get("course-a").questions[0].question_id,
             )
 
-    def test_concurrent_stores_do_not_drop_distinct_sessions(self):
+    def test_concurrent_stores_keep_one_draft_for_one_course(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "generation-drafts.json"
             plan = ExamGenerationPlan(question_count=3)
@@ -253,10 +250,10 @@ class GenerationDraftStoreTests(unittest.TestCase):
             stored_ids = {
                 draft.draft_id for draft in GenerationDraftStore(path).list_all()
             }
-            self.assertEqual(
-                {f"session-{index}" for index in range(8)},
-                stored_ids,
-            )
+            self.assertEqual(1, len(stored_ids))
+            self.assertTrue(stored_ids <= {
+                f"session-{index}" for index in range(8)
+            })
 
 
 if __name__ == "__main__":

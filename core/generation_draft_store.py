@@ -142,9 +142,9 @@ class GenerationDraft:
 class GenerationDraftStore:
     """Persist review-pending generation drafts by stable draft ID.
 
-    ``get(course_id)`` remains a compatibility API and returns the newest
-    draft. New callers can keep multiple sessions for the same course by
-    supplying ``draft_id`` to :meth:`save`.
+    A course owns at most one review-pending draft. ``draft_id`` remains
+    stable while a draft is edited, but saving a different draft for the same
+    course replaces the previous one instead of creating another session.
     """
 
     def __init__(
@@ -239,7 +239,7 @@ class GenerationDraftStore:
                 existing = self.get(course_id)
                 draft_id = existing.draft_id if existing is not None else self.new_draft_id()
             if not questions:
-                self.delete(course_id, draft_id=draft_id)
+                self.delete(course_id)
                 return None
             draft = GenerationDraft(
                 draft_id=draft_id,
@@ -262,6 +262,11 @@ class GenerationDraftStore:
                 ).strip()
                 if existing_course_id and existing_course_id != course_id:
                     raise ValueError("draft_id already belongs to another course")
+            self._remove_other_course_drafts(
+                payload,
+                course_id=course_id,
+                keep_draft_id=draft_id,
+            )
             payload["drafts"][draft_id] = draft.to_dict()
             if not write_json(self._path, payload):
                 raise OSError("failed to persist generation draft")
@@ -296,6 +301,11 @@ class GenerationDraftStore:
                     and not allow_course_change
                 ):
                     raise ValueError("draft_id already belongs to another course")
+            self._remove_other_course_drafts(
+                payload,
+                course_id=draft.course_id,
+                keep_draft_id=draft.draft_id,
+            )
             payload["drafts"][draft.draft_id] = draft.to_dict()
             if not write_json(self._path, payload):
                 raise OSError("failed to persist generation draft")
@@ -335,6 +345,26 @@ class GenerationDraftStore:
     def new_draft_id() -> str:
         return f"draft-{uuid4().hex}"
 
+    @staticmethod
+    def _remove_other_course_drafts(
+        payload: dict,
+        *,
+        course_id: str,
+        keep_draft_id: str,
+    ) -> None:
+        drafts = payload.get("drafts", {})
+        if not isinstance(drafts, dict):
+            return
+        for stored_id, data in list(drafts.items()):
+            if str(stored_id or "").strip() == keep_draft_id:
+                continue
+            if (
+                isinstance(data, dict)
+                and str(data.get("course_id", "") or "").strip()
+                == course_id
+            ):
+                drafts.pop(stored_id, None)
+
     def _load_payload(self) -> dict:
         payload = read_json(self._path) or {}
         if not isinstance(payload, dict):
@@ -357,10 +387,31 @@ class GenerationDraftStore:
                 continue
             data["draft_id"] = draft_id
             drafts[draft_id] = data
+        drafts = _newest_draft_per_course(drafts)
         return {
             "schema_version": _SCHEMA_VERSION,
             "drafts": drafts,
         }
+
+
+def _newest_draft_per_course(
+    drafts: dict[str, dict],
+) -> dict[str, dict]:
+    """Expose only one draft per course, including for pre-policy files."""
+    newest: dict[str, tuple[str, dict]] = {}
+    for draft_id, data in drafts.items():
+        course_id = str(data.get("course_id", "") or "").strip()
+        if not course_id:
+            newest[draft_id] = (draft_id, data)
+            continue
+        updated_at = str(data.get("updated_at", "") or "").strip()
+        previous = newest.get(course_id)
+        if previous is None or (updated_at, draft_id) > (
+            str(previous[1].get("updated_at", "") or "").strip(),
+            previous[0],
+        ):
+            newest[course_id] = (draft_id, data)
+    return {draft_id: data for draft_id, data in newest.values()}
 
 
 def _utc_now() -> str:
