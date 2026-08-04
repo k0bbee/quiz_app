@@ -275,13 +275,20 @@ class QuizScreen(QWidget):
         self.uncertain_checkbox.setObjectName("quizUncertainCheck")
         self.uncertain_checkbox.clicked.connect(self._set_current_unsure_from_checkbox)
         self.uncertain_checkbox.setEnabled(False)
-        action_layout.addWidget(self.uncertain_checkbox, 0, Qt.AlignmentFlag.AlignCenter)
 
         self.review_checkbox = QCheckBox(self.lang_manager.get_text("复查", "Review"))
         self.review_checkbox.setObjectName("quizReviewCheck")
         self.review_checkbox.clicked.connect(self._set_current_review_from_checkbox)
         self.review_checkbox.setEnabled(False)
-        action_layout.addWidget(self.review_checkbox, 0, Qt.AlignmentFlag.AlignCenter)
+
+        self.marker_group = QFrame()
+        self.marker_group.setObjectName("quizMarkerGroup")
+        marker_layout = QHBoxLayout(self.marker_group)
+        marker_layout.setContentsMargins(3, 2, 3, 2)
+        marker_layout.setSpacing(6)
+        marker_layout.addWidget(self.uncertain_checkbox)
+        marker_layout.addWidget(self.review_checkbox)
+        action_layout.addWidget(self.marker_group, 0, Qt.AlignmentFlag.AlignCenter)
 
         action_layout.addStretch(1)
 

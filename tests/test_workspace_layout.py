@@ -318,6 +318,9 @@ class WorkspaceLayoutTests(unittest.TestCase):
             self.assertTrue(quiz.practice_card.isAncestorOf(quiz.prev_question_btn))
             self.assertTrue(quiz.practice_card.isAncestorOf(quiz.uncertain_checkbox))
             self.assertTrue(quiz.practice_card.isAncestorOf(quiz.review_checkbox))
+            self.assertEqual("quizMarkerGroup", quiz.marker_group.objectName())
+            self.assertIs(quiz.uncertain_checkbox.parentWidget(), quiz.marker_group)
+            self.assertIs(quiz.review_checkbox.parentWidget(), quiz.marker_group)
             self.assertTrue(quiz.practice_card.isAncestorOf(quiz.next_question_btn))
             self.assertTrue(quiz.practice_card.isAncestorOf(quiz.feedback_frame))
             self.assertEqual(
@@ -343,7 +346,7 @@ class WorkspaceLayoutTests(unittest.TestCase):
             quiz.question_card.set_question("短题干", "单项选择")
             quiz._update_responsive_layout()
             self.assertEqual(
-                Qt.Orientation.Horizontal,
+                Qt.Orientation.Vertical,
                 quiz.question_answer_splitter.orientation(),
             )
             self.assertEqual(
