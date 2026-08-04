@@ -1025,29 +1025,19 @@ class QuestionBankScreen(QWidget):
             return
         task_id = ""
         if self.task_center is not None:
-            unassigned_only = False
             snapshot = self.task_center.create(
                 kind="question_bank_validation",
                 title=self.lang_manager.get_text("题库质量检查", "Question Bank Quality Check"),
                 metadata={
                     "course_id": self._current_course_id,
-                    "scope": (
-                        "unassigned"
-                        if unassigned_only
-                        else "course"
-                        if self._current_course_id
-                        else "all"
-                    ),
+                    "scope": "course" if self._current_course_id else "all",
                 },
             )
             task_id = snapshot.task_id
-        else:
-            unassigned_only = False
         self._quality_scan_task_id = task_id
         worker = QuestionQualityScanWorker(
             self.question_bank,
             course_id=self._current_course_id,
-            unassigned_only=unassigned_only,
             task_center=self.task_center,
             task_id=task_id,
             parent=self,
