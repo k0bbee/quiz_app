@@ -1654,7 +1654,7 @@ class CourseScreen(QWidget):
         self._set_course_task_active(False)
         QMessageBox.critical(
             self,
-            self.lang_manager.get_text("Regeneration Failed", "Regeneration Failed"),
+            self.lang_manager.get_text("重新生成总结失败", "Regeneration Failed"),
             error_msg,
         )
 

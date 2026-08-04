@@ -259,6 +259,19 @@ class CourseScreenFlowTests(unittest.TestCase):
                 self.assertIn("API request failed", message)
                 self.assertIn("OCR unavailable", message)
 
+    def test_course_screen_localizes_regeneration_error_title(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+                screen = CourseScreen(manager)
+                screen._regen_worker = object()
+
+                with patch.object(screen, "_is_current_worker", return_value=True), patch.object(
+                    screen, "_set_course_task_active"
+                ), patch("ui.screens.course_screen.QMessageBox.critical") as critical:
+                    screen._on_regen_error("连接失败")
+
+                self.assertEqual("重新生成总结失败", critical.call_args.args[1])
+
     def test_course_screen_ignores_stale_regen_worker_result(self):
             with tempfile.TemporaryDirectory() as tmpdir:
                 manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
