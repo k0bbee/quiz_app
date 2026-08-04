@@ -358,6 +358,8 @@ class AppShellUiTests(unittest.TestCase):
             main_window.navigate_route(Route.library("questions"))
             self.assertEqual(main_window.SCREEN_QUESTION_BANK, main_window.stack.currentIndex())
             self.assertEqual(Route.library("questions"), main_window.current_route)
+            self.assertTrue(main_window.navigation_sidebar.isHidden())
+            self.assertFalse(main_window.context_back_btn.isHidden())
             self.assertEqual(
                 [
                     "Questions",

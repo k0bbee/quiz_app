@@ -172,11 +172,12 @@ class AppShell(QWidget):
 
     def apply_route(self, route: Route, *, can_go_back: bool, get_text) -> None:
         spec = route_spec(route)
+        is_library_context = route.workspace is Workspace.LIBRARY
         for button, workspace in self._workspace_routes.items():
             button.setChecked(workspace is spec.workspace)
         for button, destination in self._context_routes.items():
             visible = (
-                not spec.focus
+                (not spec.focus or is_library_context)
                 and destination.workspace is spec.workspace
             )
             button.setVisible(visible)
@@ -186,8 +187,10 @@ class AppShell(QWidget):
         self.context_title.setText(
             get_text(spec.title_zh, spec.title_en)
         )
-        self.navigation_sidebar.setVisible(not spec.focus)
-        self.context_back_btn.setVisible(spec.focus and can_go_back)
+        self.navigation_sidebar.setVisible(not spec.focus and not is_library_context)
+        self.context_back_btn.setVisible(
+            (spec.focus or is_library_context) and can_go_back
+        )
         self.context_back_btn.setEnabled(can_go_back)
 
     def navigation_buttons(self) -> tuple[QPushButton, ...]:
