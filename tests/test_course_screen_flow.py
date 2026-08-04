@@ -586,6 +586,20 @@ class CourseScreenFlowTests(unittest.TestCase):
                 self.assertEqual(1, screen.project_list.count())
                 self.assertIn("Systems", screen.project_list.item(0).text())
 
+    def test_course_screen_hides_archive_scope_when_none_exist(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                source = Path(tmpdir) / "source"
+                source.mkdir()
+                manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+                initializer = CourseInitializer(manager=manager)
+                initializer.parser = FakeParser(self._docs())
+                initializer.initialize(str(source), title="Systems", make_current=True)
+
+                screen = CourseScreen(manager)
+
+                self.assertTrue(screen.active_scope_btn.isHidden())
+                self.assertTrue(screen.archived_scope_btn.isHidden())
+
     def test_course_screen_restores_archived_course_as_current(self):
             with tempfile.TemporaryDirectory() as tmpdir:
                 current_file = str(Path(tmpdir) / "current.json")

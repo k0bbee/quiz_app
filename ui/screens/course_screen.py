@@ -596,6 +596,11 @@ class CourseScreen(QWidget):
             for project in all_projects
             if getattr(project, "is_archived", False)
         ]
+        has_archived_projects = bool(archived_projects)
+        self.active_scope_btn.setVisible(has_archived_projects)
+        self.archived_scope_btn.setVisible(has_archived_projects)
+        if self._course_scope == "archived" and not has_archived_projects:
+            self._course_scope = "active"
         if self._course_scope == "active" and not active_projects and archived_projects:
             self._course_scope = "archived"
         self.active_scope_btn.setChecked(self._course_scope == "active")
