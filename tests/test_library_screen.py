@@ -18,6 +18,12 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class LibraryScreenTests(unittest.TestCase):
+    def test_library_scope_has_no_unassigned_ui_scope(self):
+        from core.library_scope import LibraryAssetScope, LibraryScopeKind
+
+        self.assertFalse(hasattr(LibraryAssetScope, "unassigned"))
+        self.assertFalse(hasattr(LibraryScopeKind, "UNASSIGNED"))
+
     @staticmethod
     def _project(course_id: str, title: str, *, status: str = "active"):
         return CourseProject(

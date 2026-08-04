@@ -8,7 +8,6 @@ from enum import Enum
 
 class LibraryScopeKind(str, Enum):
     COURSE = "course"
-    UNASSIGNED = "unassigned"
     EMPTY = "empty"
 
 
@@ -32,10 +31,6 @@ class LibraryAssetScope:
         return cls(LibraryScopeKind.COURSE, course_id)
 
     @classmethod
-    def unassigned(cls) -> "LibraryAssetScope":
-        return cls(LibraryScopeKind.UNASSIGNED)
-
-    @classmethod
     def empty(cls) -> "LibraryAssetScope":
         return cls(LibraryScopeKind.EMPTY)
 
@@ -48,6 +43,4 @@ class LibraryAssetScope:
         )
         if self.kind is LibraryScopeKind.COURSE:
             return source_course_id == self.course_id
-        if self.kind is LibraryScopeKind.UNASSIGNED:
-            return not source_course_id
         return False

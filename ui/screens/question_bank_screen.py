@@ -490,10 +490,7 @@ class QuestionBankScreen(QWidget):
                 query=query,
                 difficulty=difficulty,
                 course_id=self._current_course_id,
-                unassigned_only=(
-                    self._asset_scope is not None
-                    and self._asset_scope.kind is LibraryScopeKind.UNASSIGNED
-                ),
+                unassigned_only=False,
                 metadata_filter=metadata_filter,
                 offset=self.page * self.page_size,
                 limit=self.page_size,
@@ -979,11 +976,7 @@ class QuestionBankScreen(QWidget):
     def _metadata_filter_predicate(self, filter_key: str | None):
         quality_predicate = self._quality_filter_predicate(filter_key)
         scope = self._asset_scope
-        if (
-            scope is None
-            or scope.kind
-            in {LibraryScopeKind.COURSE, LibraryScopeKind.UNASSIGNED}
-        ):
+        if scope is None or scope.kind is LibraryScopeKind.COURSE:
             return quality_predicate
 
         def matches(question: Question) -> bool:
@@ -1032,10 +1025,7 @@ class QuestionBankScreen(QWidget):
             return
         task_id = ""
         if self.task_center is not None:
-            unassigned_only = (
-                self._asset_scope is not None
-                and self._asset_scope.kind is LibraryScopeKind.UNASSIGNED
-            )
+            unassigned_only = False
             snapshot = self.task_center.create(
                 kind="question_bank_validation",
                 title=self.lang_manager.get_text("题库质量检查", "Question Bank Quality Check"),
@@ -1052,10 +1042,7 @@ class QuestionBankScreen(QWidget):
             )
             task_id = snapshot.task_id
         else:
-            unassigned_only = (
-                self._asset_scope is not None
-                and self._asset_scope.kind is LibraryScopeKind.UNASSIGNED
-            )
+            unassigned_only = False
         self._quality_scan_task_id = task_id
         worker = QuestionQualityScanWorker(
             self.question_bank,
