@@ -165,7 +165,13 @@ class CourseScreenFlowTests(unittest.TestCase):
 
                 self.assertEqual(0, screen.project_list.currentRow())
                 self.assertTrue(screen.regenerate_action.isEnabled())
-                self.assertTrue(screen.generate_questions_btn.isEnabled())
+
+    def test_course_screen_does_not_expose_hidden_legacy_generation_button(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = CourseScreen(CourseProjectManager(str(Path(tmpdir) / "projects")))
+
+        self.assertFalse(hasattr(screen, "generate_questions_btn"))
+        self.assertFalse(hasattr(screen, "generate_questions_requested"))
 
     def test_course_screen_reports_llm_fallback_after_initialization(self):
             with tempfile.TemporaryDirectory() as tmpdir:

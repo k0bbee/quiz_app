@@ -558,60 +558,10 @@ class AppShellUiTests(unittest.TestCase):
 
             self.assertTrue(screen.import_group.isHidden())
             self.assertEqual("导入课程", screen.import_toggle_btn.text())
-            self.assertEqual("primaryButton", screen.generate_questions_btn.objectName())
+            self.assertFalse(hasattr(screen, "generate_questions_btn"))
             self.assertEqual("secondaryButton", screen.init_btn.objectName())
             self.assertEqual(project.course_id, screen.project_list.currentItem().data(Qt.ItemDataRole.UserRole))
             self.assertIn("Newton", screen.summary_preview.toPlainText())
-            self.assertLess(screen.left_layout.indexOf(screen.project_list), screen.left_layout.indexOf(screen.generate_questions_btn))
-
-    def test_course_generation_activates_selected_course_before_routing(self):
-            projects = [
-                CourseProject(
-                    course_id=course_id,
-                    title=title,
-                    source_folder="",
-                    summary_markdown=f"# {title}",
-                    summary_path="",
-                    topics=[CourseTopic(topic_id="topic", title="Topic")],
-                    documents=[],
-                    created_at="2026-07-16T00:00:00+00:00",
-                    updated_at=f"2026-07-16T00:00:0{index}+00:00",
-                )
-                for index, (course_id, title) in enumerate((("course-a", "Physics"), ("course-b", "Law")))
-            ]
-
-            class Manager:
-                def __init__(self):
-                    self.current_id = "course-a"
-
-                def current(self):
-                    return next(project for project in projects if project.course_id == self.current_id)
-
-                def load_all(self):
-                    return list(reversed(projects))
-
-                def get(self, course_id):
-                    return next((project for project in projects if project.course_id == course_id), None)
-
-                def set_current(self, course_id):
-                    self.current_id = course_id
-                    return True
-
-            manager = Manager()
-            screen = CourseScreen(manager)
-            requested = []
-            screen.generate_questions_requested.connect(requested.append)
-            law_row = next(
-                row
-                for row in range(screen.project_list.count())
-                if screen.project_list.item(row).data(Qt.ItemDataRole.UserRole) == "course-b"
-            )
-            screen.project_list.setCurrentRow(law_row)
-
-            screen.generate_questions_btn.click()
-
-            self.assertEqual("course-b", manager.current_id)
-            self.assertEqual(["course-b"], requested)
 
     def test_empty_course_workspace_explains_the_next_action(self):
             class Manager:
@@ -626,7 +576,6 @@ class AppShellUiTests(unittest.TestCase):
             self.assertFalse(screen.import_group.isHidden())
             self.assertFalse(screen.empty_state_label.isHidden())
             self.assertIn("导入", screen.empty_state_label.text())
-            self.assertTrue(screen.generate_questions_btn.isHidden())
             self.assertEqual("primaryButton", screen.init_btn.objectName())
             self.assertTrue(screen.summary_preview.toPlainText().strip())
 

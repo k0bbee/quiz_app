@@ -49,7 +49,6 @@ class CourseScreen(QWidget):
     """Import folders of course files and choose the active course project."""
 
     current_course_changed = pyqtSignal()
-    generate_questions_requested = pyqtSignal(str)
     course_topic_action_requested = pyqtSignal(str, str, str)
     view_course_library_requested = pyqtSignal(str)
     course_import_started = pyqtSignal()
@@ -119,7 +118,6 @@ class CourseScreen(QWidget):
             self.lang_manager.get_text("课程名称（可选）", "Course title (optional)")
         )
         self.init_btn.setText(self.lang_manager.get_text("解析并生成总结", "Parse and generate summary"))
-        self.generate_questions_btn.setText(self.lang_manager.get_text("生成题目", "Generate Questions"))
         self._update_import_toggle_text()
         self.list_label.setText(self.lang_manager.get_text("课程", "Courses"))
         self.active_scope_btn.setText(
@@ -262,13 +260,6 @@ class CourseScreen(QWidget):
         self.project_list.currentItemChanged.connect(self._on_project_selected)
         self.left_layout.addWidget(self.project_list, 1)
 
-        self.generate_questions_btn = QPushButton(
-            self.lang_manager.get_text("生成题目", "Generate Questions")
-        )
-        self.generate_questions_btn.setObjectName("primaryButton")
-        self.generate_questions_btn.setEnabled(False)
-        self.generate_questions_btn.clicked.connect(self._generate_for_selected_course)
-        self.left_layout.addWidget(self.generate_questions_btn)
         self.restore_course_btn = QPushButton(
             self.lang_manager.get_text("恢复课程", "Restore Course")
         )
@@ -634,9 +625,6 @@ class CourseScreen(QWidget):
             self._import_expanded = True
         self.import_group.setVisible(self._import_expanded)
         active_scope = self._course_scope == "active"
-        # Generation is a Course Hub route. Keep the legacy button available
-        # to old signal-level callers without exposing a duplicate entry.
-        self.generate_questions_btn.setVisible(False)
         self.restore_course_btn.setVisible(not active_scope and not is_empty)
         self.view_course_library_btn.setVisible(not is_empty)
         self.delete_archived_course_btn.setVisible(
@@ -672,7 +660,6 @@ class CourseScreen(QWidget):
         self.view_course_library_btn.setEnabled(False)
         self.delete_archived_course_btn.setEnabled(False)
         self.scope_btn.setEnabled(False)
-        self.generate_questions_btn.setEnabled(False)
         self.rename_action.setEnabled(False)
         self.regenerate_action.setEnabled(False)
         self.archive_action.setEnabled(False)
@@ -866,7 +853,6 @@ class CourseScreen(QWidget):
             self.progress_bar.setRange(0, 0)
             self.task_status_label.setText(self.lang_manager.get_text("正在准备…", "Preparing…"))
             for button in (
-                self.generate_questions_btn,
                 self.set_current_btn,
                 self.scope_btn,
                 self.more_actions_btn,
@@ -1124,7 +1110,6 @@ class CourseScreen(QWidget):
     def _on_project_selected(self, current, previous):
         if current is None:
             self._clear_course_hub()
-            self.generate_questions_btn.setEnabled(False)
             self.set_current_btn.setEnabled(False)
             self.restore_course_btn.setEnabled(False)
             self.view_course_library_btn.setEnabled(False)
@@ -1147,7 +1132,6 @@ class CourseScreen(QWidget):
         self.restore_course_btn.setEnabled(archived)
         self.view_course_library_btn.setEnabled(True)
         self.delete_archived_course_btn.setEnabled(archived)
-        self.generate_questions_btn.setEnabled(not archived)
         self.scope_btn.setEnabled(not archived)
         self.rename_action.setEnabled(not archived)
         self.regenerate_action.setEnabled(not archived)
@@ -1156,30 +1140,6 @@ class CourseScreen(QWidget):
         self._render_course_hub(project)
         self._show_summary(project.summary_markdown)
         self.show_section(self._active_section)
-
-    def _generate_for_selected_course(self):
-        current_item = self.project_list.currentItem()
-        if current_item is None:
-            return
-        course_id = str(current_item.data(Qt.ItemDataRole.UserRole) or "")
-        project = self.manager.get(course_id)
-        if project is None:
-            return
-        active = self.manager.current()
-        if active is None or active.course_id != course_id:
-            if not self.manager.set_current(course_id):
-                QMessageBox.warning(
-                    self,
-                    self.lang_manager.get_text("切换失败", "Course Switch Failed"),
-                    self.lang_manager.get_text(
-                        "无法将所选课程设为当前课程，请检查数据目录后重试。",
-                        "Could not activate the selected course. Check the data directory and try again.",
-                    ),
-                )
-                return
-            self.current_course_changed.emit()
-            self.refresh()
-        self.generate_questions_requested.emit(course_id)
 
     def _edit_exam_scope(self):
         current = self.project_list.currentItem()

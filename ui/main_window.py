@@ -235,9 +235,6 @@ class MainWindow(QMainWindow):
             self._course_screen.current_course_changed.connect(
                 self.course_context.course_changed
             )
-            self._course_screen.generate_questions_requested.connect(
-                lambda _course_id: self.generation_flow.open()
-            )
             self._course_screen.course_topic_action_requested.connect(
                 self._on_course_topic_action
             )

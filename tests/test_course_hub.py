@@ -262,9 +262,7 @@ class CourseHubNavigationTests(unittest.TestCase):
         )
         self.assertTrue(self.window.course_overview_tab_btn.isChecked())
         self.assertFalse(hasattr(self.window._course_screen, "qa_panel"))
-        self.assertTrue(
-            self.window._course_screen.generate_questions_btn.isHidden()
-        )
+        self.assertFalse(hasattr(self.window._course_screen, "generate_questions_btn"))
 
         self.window.course_sources_tab_btn.click()
 
