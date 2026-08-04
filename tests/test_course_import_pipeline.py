@@ -316,7 +316,7 @@ class CourseImportPipelineTests(unittest.TestCase):
                 source = root / "source"
                 source.mkdir()
                 manager = CourseProjectManager(str(root / "projects"))
-                task_center = BackgroundTaskCenter(root / "tasks.json")
+                task_center = BackgroundTaskCenter()
                 screen = CourseScreen(manager, task_center=task_center)
                 screen.folder_input.setText(str(source))
                 screen.title_input.setText("Systems")
@@ -356,7 +356,7 @@ class CourseImportPipelineTests(unittest.TestCase):
                 root = Path(tmpdir)
                 source = root / "source"
                 source.mkdir()
-                task_center = BackgroundTaskCenter(root / "tasks.json")
+                task_center = BackgroundTaskCenter()
                 screen = CourseScreen(
                     CourseProjectManager(str(root / "projects")),
                     task_center=task_center,

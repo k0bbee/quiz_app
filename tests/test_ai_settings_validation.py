@@ -565,8 +565,8 @@ class AISettingsValidationTests(unittest.TestCase):
         self.assertTrue("Skipped" in info.call_args.args[2] or "跳过" in info.call_args.args[2])
 
     def test_app_data_transfer_registers_progress_and_cancel_with_task_center(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            center = BackgroundTaskCenter(Path(tmpdir) / "tasks.json")
+        with tempfile.TemporaryDirectory():
+            center = BackgroundTaskCenter()
             screen = SettingsScreen(task_center=center)
             worker = ManualAppDataWorker()
 
@@ -613,7 +613,7 @@ class AISettingsValidationTests(unittest.TestCase):
                 encoding="utf-8",
             )
             output = root / "backup.quizdata"
-            center = BackgroundTaskCenter(root / "tasks.json")
+            center = BackgroundTaskCenter()
             snapshot = center.create(
                 kind="app_data_export",
                 title="Export app data",

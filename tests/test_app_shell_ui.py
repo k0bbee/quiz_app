@@ -96,7 +96,7 @@ class AppShellUiTests(unittest.TestCase):
                     snapshot_manager=QuizSnapshotManager(str(root / "snapshots")),
                     mastery_overrides=MasteryOverrideStore(root / "mastery.json"),
                     course_manager=CourseProjectManager(str(root / "courses")),
-                    task_center=BackgroundTaskCenter(root / "tasks.json"),
+                    task_center=BackgroundTaskCenter(),
                 )
 
                 window = MainWindow(services=services)

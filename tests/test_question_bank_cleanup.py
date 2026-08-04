@@ -639,7 +639,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             root = Path(tmpdir)
             bank = QuestionBank(str(root / "questions"))
             bank.save_many([self._question("q1"), self._question("q2")])
-            center = BackgroundTaskCenter(root / "tasks.json")
+            center = BackgroundTaskCenter()
             screen = self._screen(tmpdir, bank, task_center=center)
             worker = ManualQualityScanWorker()
 
@@ -694,12 +694,12 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertEqual({"broken"}, visible_ids)
             self.assertIn("1/2", screen.quality_scan_status_label.text())
 
-    def test_question_quality_worker_completes_persistent_task(self):
+    def test_question_quality_worker_completes_session_task(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             bank = QuestionBank(str(root / "questions"))
             bank.save_many([self._question("q1"), self._question("q2")])
-            center = BackgroundTaskCenter(root / "tasks.json")
+            center = BackgroundTaskCenter()
             snapshot = center.create(
                 kind="question_bank_validation",
                 title="Validate question bank",

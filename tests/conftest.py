@@ -144,7 +144,7 @@ def _isolate_qt_settings_and_secrets(
             snapshot_manager=QuizSnapshotManager(str(root / "snapshots")),
             mastery_overrides=MasteryOverrideStore(root / "mastery.json"),
             course_manager=CourseProjectManager(str(root / "courses")),
-            task_center=BackgroundTaskCenter(root / "tasks.json"),
+            task_center=BackgroundTaskCenter(),
             generation_draft_store=GenerationDraftStore(
                 root / "generation-drafts.json"
             ),

@@ -1,7 +1,6 @@
 import os
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -140,7 +139,7 @@ class GenerationRuntimeFlowTests(unittest.TestCase):
             self.assertIsInstance(dialog.worker, FakeWorker)
             self.assertTrue(dialog.worker.started)
 
-    def test_generation_dialog_registers_worker_with_persistent_task_center(self):
+    def test_generation_dialog_registers_worker_with_session_task_center(self):
             class FakeSignal:
                 def connect(self, _callback):
                     pass
@@ -161,9 +160,8 @@ class GenerationRuntimeFlowTests(unittest.TestCase):
                 def set_runtime_instruction(self, _instruction):
                     pass
 
-            with tempfile.TemporaryDirectory() as tmpdir:
+            with tempfile.TemporaryDirectory():
                 center = BackgroundTaskCenter(
-                    Path(tmpdir) / "background_tasks.json",
                     id_factory=lambda: "task-1",
                 )
                 dialog = AIGenerationDialog(
@@ -283,10 +281,9 @@ class GenerationRuntimeFlowTests(unittest.TestCase):
             worker_type.assert_not_called()
 
     def test_generation_retry_task_links_back_to_partial_attempt(self):
-            with tempfile.TemporaryDirectory() as tmpdir:
+            with tempfile.TemporaryDirectory():
                 ids = iter(["task-1", "task-2"])
                 center = BackgroundTaskCenter(
-                    Path(tmpdir) / "background_tasks.json",
                     id_factory=lambda: next(ids),
                 )
                 dialog = AIGenerationDialog(
@@ -943,9 +940,8 @@ class GenerationRuntimeFlowTests(unittest.TestCase):
                 def start(self):
                     raise RuntimeError("worker start failed")
 
-            with tempfile.TemporaryDirectory() as tmpdir:
+            with tempfile.TemporaryDirectory():
                 center = BackgroundTaskCenter(
-                    Path(tmpdir) / "background_tasks.json",
                     id_factory=lambda: "task-1",
                 )
                 dialog = AIGenerationDialog(

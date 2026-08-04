@@ -35,7 +35,7 @@ class ApplicationSmokeTests(unittest.TestCase):
             progress_manager = ProgressManager(str(root / "progress"))
             snapshot_manager = QuizSnapshotManager(str(root / "snapshots"))
             course_manager = CourseProjectManager(str(root / "courses"))
-            task_center = BackgroundTaskCenter(root / "tasks.json")
+            task_center = BackgroundTaskCenter()
             mastery = MasteryOverrideStore(root / "mastery.json")
             course = CourseProject(
                 course_id="smoke-course",

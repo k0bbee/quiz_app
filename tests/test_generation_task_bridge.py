@@ -1,6 +1,5 @@
 import tempfile
 import unittest
-from pathlib import Path
 
 from ai.generation_events import (
     CompletedEvent,
@@ -18,12 +17,10 @@ class GenerationTaskBridgeTests(unittest.TestCase):
     def _center(self, tmpdir):
         ids = iter(["task-1", "task-2"])
         return BackgroundTaskCenter(
-            Path(tmpdir) / "background_tasks.json",
             id_factory=lambda: next(ids),
-            progress_persist_interval=0,
         )
 
-    def test_maps_generation_progress_and_completion_to_persistent_task(self):
+    def test_maps_generation_progress_and_completion_to_session_task(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             center = self._center(tmpdir)
             task = center.create(kind="question_generation", title="生成模拟卷")

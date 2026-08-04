@@ -1,7 +1,6 @@
 import unittest
 import re
 import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -286,12 +285,10 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual([[accepted_sentinel]], ready)
         self.assertEqual([[accepted_sentinel]], completed)
 
-    def test_worker_maps_runner_events_to_persistent_task_state(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+    def test_worker_maps_runner_events_to_session_task_state(self):
+        with tempfile.TemporaryDirectory():
             center = BackgroundTaskCenter(
-                Path(tmpdir) / "background_tasks.json",
                 id_factory=lambda: "task-1",
-                progress_persist_interval=0,
             )
             task = center.create(kind="question_generation", title="生成题目")
             worker = GenerationWorker(
@@ -319,10 +316,9 @@ class GenerationQuotaTests(unittest.TestCase):
             self.assertEqual(TaskStatus.COMPLETED, snapshot.status)
             self.assertEqual(1, snapshot.result_count)
 
-    def test_worker_cancel_updates_persistent_task_before_signalling_runner(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
+    def test_worker_cancel_updates_session_task_before_signalling_runner(self):
+        with tempfile.TemporaryDirectory():
             center = BackgroundTaskCenter(
-                Path(tmpdir) / "background_tasks.json",
                 id_factory=lambda: "task-1",
             )
             task = center.create(kind="question_generation", title="生成题目")

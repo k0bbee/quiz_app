@@ -1,6 +1,5 @@
 import tempfile
 import unittest
-from pathlib import Path
 
 from core.background_task import TaskProgress
 from core.background_task_center import BackgroundTaskCenter, TaskStatus
@@ -10,12 +9,10 @@ from core.background_task_bridge import BackgroundTaskBridge
 class BackgroundTaskBridgeTests(unittest.TestCase):
     def _center(self, root):
         return BackgroundTaskCenter(
-            Path(root) / "tasks.json",
             id_factory=lambda: "task-1",
-            progress_persist_interval=0,
         )
 
-    def test_bridge_maps_worker_lifecycle_to_persistent_task_state(self):
+    def test_bridge_maps_worker_lifecycle_to_session_task_state(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             center = self._center(tmpdir)
             snapshot = center.create(kind="course_import", title="Import Systems")
