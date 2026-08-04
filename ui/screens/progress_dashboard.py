@@ -29,7 +29,6 @@ class ProgressDashboard(QWidget):
 
     practice_topic_requested = pyqtSignal(str)
     review_topic_requested = pyqtSignal(str)
-    generate_topic_requested = pyqtSignal(str)
     history_requested = pyqtSignal(str)
 
     def __init__(
@@ -139,9 +138,6 @@ class ProgressDashboard(QWidget):
         self.topic_action_layout.addWidget(self.review_topic_btn)
 
         self.more_topic_actions_menu = QMenu(self)
-        self.generate_topic_action = QAction(self)
-        self.generate_topic_action.triggered.connect(self._request_selected_topic_generation)
-        self.more_topic_actions_menu.addAction(self.generate_topic_action)
         self.view_topic_source_action = QAction(self)
         self.view_topic_source_action.triggered.connect(self._show_selected_topic_sources)
         self.more_topic_actions_menu.addAction(self.view_topic_source_action)
@@ -208,7 +204,6 @@ class ProgressDashboard(QWidget):
         self.practice_topic_btn.setText(self.lang_manager.get_text("练 10 题", "Practice 10"))
         self.review_topic_btn.setText(self.lang_manager.get_text("复习错题", "Review Incorrect"))
         self.more_topic_actions_btn.setText(self.lang_manager.get_text("更多操作", "More Actions"))
-        self.generate_topic_action.setText(self.lang_manager.get_text("生成新题", "Generate Questions"))
         self.view_topic_source_action.setText(self.lang_manager.get_text("查看来源", "View Sources"))
         self._update_mastery_action_state()
         self.topic_table.setHorizontalHeaderLabels([
@@ -610,7 +605,6 @@ class ProgressDashboard(QWidget):
             self.practice_topic_btn.setEnabled(has_topic)
         if hasattr(self, "review_topic_btn"):
             self.review_topic_btn.setEnabled(has_topic)
-        self.generate_topic_action.setEnabled(has_topic)
         self.view_topic_source_action.setEnabled(has_topic)
         self.mark_mastered_action.setEnabled(has_topic)
         if topic_key and self.mastery_overrides.is_topic_mastered(self._current_course_id, topic_key):
@@ -634,11 +628,6 @@ class ProgressDashboard(QWidget):
         topic_key = self._selected_topic_key()
         if topic_key:
             self.review_topic_requested.emit(topic_key)
-
-    def _request_selected_topic_generation(self):
-        topic_key = self._selected_topic_key()
-        if topic_key:
-            self.generate_topic_requested.emit(topic_key)
 
     def _show_selected_topic_sources(self):
         topic_key = self._selected_topic_key()

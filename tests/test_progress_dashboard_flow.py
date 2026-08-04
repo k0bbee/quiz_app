@@ -761,20 +761,17 @@ class ProgressDashboardFlowTests(unittest.TestCase):
                 emitted: list[tuple[str, str]] = []
                 screen.practice_topic_requested.connect(lambda topic: emitted.append(("practice", topic)))
                 screen.review_topic_requested.connect(lambda topic: emitted.append(("review", topic)))
-                screen.generate_topic_requested.connect(lambda topic: emitted.append(("generate", topic)))
 
                 screen.topic_table.selectRow(0)
                 self.assertTrue(screen.practice_topic_btn.isEnabled())
                 self.assertTrue(screen.review_topic_btn.isEnabled())
-                self.assertTrue(screen.generate_topic_action.isEnabled())
 
                 screen.practice_topic_btn.click()
                 screen.review_topic_btn.click()
-                screen.generate_topic_action.trigger()
                 screen.view_topic_source_action.trigger()
 
                 self.assertEqual(
-                    [("practice", "cache"), ("review", "cache"), ("generate", "cache")],
+                    [("practice", "cache"), ("review", "cache")],
                     emitted,
                 )
                 self.assertFalse(screen.source_refs_panel.isHidden())
@@ -805,26 +802,9 @@ class ProgressDashboardFlowTests(unittest.TestCase):
                 )
                 self.assertTrue(screen.more_topic_actions_btn.icon().isNull())
                 self.assertEqual(
-                    ["生成新题", "查看来源", "标记已掌握"],
+                    ["查看来源", "标记已掌握"],
                     [action.text() for action in screen.more_topic_actions_menu.actions()],
                 )
-
-    def test_progress_topic_generation_builds_single_topic_reviewable_plan(self):
-            from ui.main_window import MainWindow
-
-            calls = []
-            host = types.SimpleNamespace(
-                generation_flow=types.SimpleNamespace(
-                    open=lambda **kwargs: calls.append(kwargs)
-                )
-            )
-
-            MainWindow._on_generate_progress_topic(host, "cache")
-
-            plan = calls[0]["initial_plan"]
-            self.assertEqual(10, plan.question_count)
-            self.assertEqual(("cache",), plan.selected_topics)
-            self.assertEqual({"cache": 100}, dict(plan.topic_weights))
 
     def test_learning_analysis_leaves_destructive_reset_in_settings(self):
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -846,6 +826,17 @@ class ProgressDashboardFlowTests(unittest.TestCase):
                 self.assertTrue(
                     mastery_overrides.is_topic_mastered("course-a", "cache")
                 )
+
+    def test_progress_dashboard_does_not_expose_topic_generation_action(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            screen = self._make_progress_dashboard(
+                tmpdir,
+                ProgressManager(str(Path(tmpdir) / "progress")),
+                QuestionBank(str(Path(tmpdir) / "questions")),
+            )
+
+        self.assertFalse(hasattr(screen, "generate_topic_requested"))
+        self.assertFalse(hasattr(screen, "generate_topic_action"))
 
     def test_incorrect_review_uses_current_course_filter(self):
 

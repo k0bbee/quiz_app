@@ -327,9 +327,6 @@ class MainWindow(QMainWindow):
             self._progress_screen.review_topic_requested.connect(
                 self._on_review_progress_topic
             )
-            self._progress_screen.generate_topic_requested.connect(
-                self._on_generate_progress_topic
-            )
             self._progress_screen.history_requested.connect(
                 self.result_flow.open_progress_record
             )
@@ -773,20 +770,6 @@ class MainWindow(QMainWindow):
         fallback_title = questions[0].topic_title() if questions else ""
         topic = questions[0].topic if questions else topic_key
         return topic_display_name(topic, course_project, lang, fallback_title)
-
-    def _on_generate_progress_topic(self, topic_key: str):
-        """Open generation review prefilled for exactly one progress topic."""
-        topic_key = topic_value(topic_key)
-        if not topic_key:
-            return
-        self.generation_flow.open(
-            initial_plan=ExamGenerationPlan(
-                question_count=10,
-                selected_topics=(topic_key,),
-                topic_weights={topic_key: 100},
-            ),
-            draft_source="progress_topic",
-        )
 
     def _on_course_topic_action(
         self,
