@@ -679,6 +679,46 @@ class CourseScreenFlowTests(unittest.TestCase):
                 self.assertFalse(screen.view_course_library_btn.isEnabled())
                 self.assertEqual([], requested)
 
+    def test_selecting_active_course_makes_it_current(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
+                first = CourseProject(
+                    course_id="course-first",
+                    title="First",
+                    source_folder="",
+                    summary_markdown="# First",
+                    summary_path="",
+                    topics=[],
+                    documents=[],
+                    created_at="2026-07-29T00:00:00+00:00",
+                    updated_at="2026-07-29T00:00:00+00:00",
+                )
+                second = CourseProject(
+                    course_id="course-second",
+                    title="Second",
+                    source_folder="",
+                    summary_markdown="# Second",
+                    summary_path="",
+                    topics=[],
+                    documents=[],
+                    created_at="2026-07-29T00:00:00+00:00",
+                    updated_at="2026-07-29T01:00:00+00:00",
+                )
+                self.assertTrue(manager.save(first, make_current=True))
+                self.assertTrue(manager.save(second, make_current=False))
+                screen = CourseScreen(manager)
+                changed = []
+                screen.current_course_changed.connect(lambda: changed.append(True))
+
+                for row in range(screen.project_list.count()):
+                    item = screen.project_list.item(row)
+                    if item.data(Qt.ItemDataRole.UserRole) == second.course_id:
+                        screen.project_list.setCurrentRow(row)
+                        break
+
+                self.assertEqual(second.course_id, manager.current().course_id)
+                self.assertEqual([True], changed)
+
     def test_course_screen_uses_archive_as_reversible_default_action(self):
             with tempfile.TemporaryDirectory() as tmpdir:
                 source = Path(tmpdir) / "source"
@@ -755,7 +795,7 @@ class CourseScreenFlowTests(unittest.TestCase):
                 self.assertFalse(screen.empty_state_label.isHidden())
                 self.assertIn("还没有课程", screen.empty_state_label.text())
                 self.assertIn("导入", screen.empty_state_label.text())
-                self.assertFalse(screen.set_current_btn.isEnabled())
+                self.assertFalse(screen.scope_btn.isEnabled())
                 self.assertFalse(screen.delete_action.isEnabled())
 
     def test_course_screen_can_rename_selected_project(self):

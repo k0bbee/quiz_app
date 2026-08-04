@@ -382,7 +382,7 @@ class CourseHubNavigationTests(unittest.TestCase):
         )
         self.assertEqual(1, self.window._course_screen.knowledge_table.currentRow())
 
-    def test_browsing_another_course_does_not_change_the_active_course(self):
+    def test_selecting_another_course_changes_the_active_course(self):
         other = _course()
         other.course_id = "course-other"
         other.title = "Other Course"
@@ -406,7 +406,7 @@ class CourseHubNavigationTests(unittest.TestCase):
         self.window.course_sources_tab_btn.click()
 
         self.assertEqual(
-            self.project.course_id,
+            other.course_id,
             self.window.course_manager.current().course_id,
         )
         self.assertEqual(
@@ -435,7 +435,7 @@ class CourseHubNavigationTests(unittest.TestCase):
         self.assertEqual(other.course_id, screen.selected_course_id())
         self.assertEqual("Other Source", screen.sources_table.item(0, 0).text())
         self.assertEqual(
-            self.project.course_id,
+            other.course_id,
             self.window.course_manager.current().course_id,
         )
 

@@ -251,7 +251,6 @@ class UiStyleContractTests(unittest.TestCase):
                 self.assertEqual("dangerAction", course.delete_action.objectName())
                 for button in (
                     course.browse_btn,
-                    course.set_current_btn,
                     course.scope_btn,
                     course.more_actions_btn,
                 ):

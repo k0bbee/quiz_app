@@ -112,7 +112,6 @@ class CourseExamScopeScreenTests(unittest.TestCase):
 
         self.assertEqual(
             [
-                screen.set_current_btn,
                 screen.scope_btn,
                 screen.more_actions_btn,
             ],

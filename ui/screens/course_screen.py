@@ -126,7 +126,6 @@ class CourseScreen(QWidget):
         self.archived_scope_btn.setText(
             self.lang_manager.get_text("已归档", "Archived")
         )
-        self.set_current_btn.setText(self.lang_manager.get_text("设为当前", "Set Current"))
         self.restore_course_btn.setText(
             self.lang_manager.get_text("恢复课程", "Restore Course")
         )
@@ -292,10 +291,6 @@ class CourseScreen(QWidget):
         self.left_layout.addLayout(self.archived_action_layout)
 
         self.course_action_layout = QHBoxLayout()
-        self.set_current_btn = QPushButton(self.lang_manager.get_text("设为当前", "Set Current"))
-        self.set_current_btn.setObjectName("secondaryButton")
-        self.set_current_btn.clicked.connect(self._set_current)
-        self.course_action_layout.addWidget(self.set_current_btn)
         self.scope_btn = QPushButton(self.lang_manager.get_text("考试范围", "Exam Scope"))
         self.scope_btn.setObjectName("secondaryButton")
         self.scope_btn.clicked.connect(self._edit_exam_scope)
@@ -665,7 +660,6 @@ class CourseScreen(QWidget):
         self.empty_state_label.setText(empty_text)
         self.empty_state_label.setVisible(is_empty)
         self.project_list.setVisible(not is_empty)
-        self.set_current_btn.setEnabled(False)
         self.restore_course_btn.setEnabled(False)
         self.view_course_library_btn.setEnabled(False)
         self.delete_archived_course_btn.setEnabled(False)
@@ -862,11 +856,7 @@ class CourseScreen(QWidget):
         if active:
             self.progress_bar.setRange(0, 0)
             self.task_status_label.setText(self.lang_manager.get_text("正在准备…", "Preparing…"))
-            for button in (
-                self.set_current_btn,
-                self.scope_btn,
-                self.more_actions_btn,
-            ):
+            for button in (self.scope_btn, self.more_actions_btn):
                 button.setEnabled(False)
             for action in self.more_actions_menu.actions():
                 action.setEnabled(False)
@@ -1120,7 +1110,6 @@ class CourseScreen(QWidget):
     def _on_project_selected(self, current, previous):
         if current is None:
             self._clear_course_hub()
-            self.set_current_btn.setEnabled(False)
             self.restore_course_btn.setEnabled(False)
             self.view_course_library_btn.setEnabled(False)
             self.delete_archived_course_btn.setEnabled(False)
@@ -1134,11 +1123,16 @@ class CourseScreen(QWidget):
         project = self.manager.get(course_id)
         if not project:
             return
-        active = self.manager.current()
         archived = bool(getattr(project, "is_archived", False))
-        self.set_current_btn.setEnabled(
-            not archived and (not active or active.course_id != course_id)
-        )
+        if not archived:
+            active = self.manager.current()
+            set_current = getattr(self.manager, "set_current", None)
+            if (
+                callable(set_current)
+                and (not active or active.course_id != course_id)
+                and set_current(course_id)
+            ):
+                self.current_course_changed.emit()
         self.restore_course_btn.setEnabled(archived)
         self.view_course_library_btn.setEnabled(archived)
         self.delete_archived_course_btn.setEnabled(archived)
@@ -1663,15 +1657,6 @@ class CourseScreen(QWidget):
             self.lang_manager.get_text("Regeneration Failed", "Regeneration Failed"),
             error_msg,
         )
-
-    def _set_current(self):
-        current = self.project_list.currentItem()
-        if not current:
-            return
-        course_id = current.data(Qt.ItemDataRole.UserRole)
-        if self.manager.set_current(course_id):
-            self.refresh()
-            self.current_course_changed.emit()
 
     def _toggle_summary_mode(self):
         """Switch between rendered summary and raw Markdown for the current course."""
