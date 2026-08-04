@@ -88,9 +88,9 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual(("io",), plan.selected_topics)
         self.assertEqual({"io": 100}, dict(plan.topic_weights))
 
-    def test_state_prioritizes_ai_course_generation_and_ready_steps(self):
+    def test_state_keeps_materials_primary_when_ai_is_not_needed_yet(self):
         self.assertEqual(
-            FirstRunStage.AI_SETUP,
+            FirstRunStage.MATERIALS,
             resolve_first_run_state(
                 ai_error="API key missing",
                 has_course=False,
@@ -117,7 +117,7 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual(
             FirstRunStage.GENERATE,
             resolve_first_run_state(
-                ai_error="",
+                ai_error="API key missing",
                 has_course=True,
                 question_count=0,
             ).stage,
@@ -194,7 +194,7 @@ class FirstRunFlowTests(unittest.TestCase):
 
         self.assertEqual(["example", "import"], requested)
 
-    def test_missing_ai_setup_still_starts_with_example_or_import(self):
+    def test_stale_ai_error_is_hidden_until_generation_is_requested(self):
         workspace = FirstRunWorkspace()
         self.addCleanup(workspace.close)
         requested = []
@@ -207,18 +207,18 @@ class FirstRunFlowTests(unittest.TestCase):
 
         workspace.set_state(
             FirstRunState(
-                FirstRunStage.AI_SETUP,
+                FirstRunStage.MATERIALS,
                 ai_error="API key missing",
             )
         )
 
-        self.assertEqual("体验示例课程", workspace.primary_btn.text())
-        self.assertFalse(workspace.alternate_btn.isHidden())
-        self.assertTrue(workspace.example_btn.isHidden())
-        self.assertEqual("导入课程资料", workspace.alternate_btn.text())
+        self.assertEqual("选择课程资料", workspace.primary_btn.text())
+        self.assertTrue(workspace.alternate_btn.isHidden())
+        self.assertFalse(workspace.example_btn.isHidden())
+        self.assertFalse(workspace.status_label.isVisible())
 
+        workspace.example_btn.click()
         workspace.primary_btn.click()
-        workspace.alternate_btn.click()
 
         self.assertEqual(["example", "import"], requested)
 
@@ -855,7 +855,7 @@ class FirstRunFlowTests(unittest.TestCase):
 
         warning.assert_not_called()
         self.assertEqual(
-            FirstRunStage.AI_SETUP,
+            FirstRunStage.GENERATE,
             window.first_run_screen.state.stage,
         )
         self.assertEqual(

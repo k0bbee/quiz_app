@@ -80,8 +80,6 @@ def resolve_first_run_state(
         stage = FirstRunStage.REVIEW_PENDING
     elif not has_course and int(archived_course_count or 0) > 0:
         stage = FirstRunStage.ARCHIVED_RECOVERY
-    elif str(ai_error or "").strip():
-        stage = FirstRunStage.AI_SETUP
     elif not has_course:
         stage = FirstRunStage.MATERIALS
     elif int(question_count or 0) <= 0:

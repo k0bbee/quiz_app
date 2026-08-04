@@ -338,18 +338,19 @@ class FirstRunWorkspace(QWidget):
             self.progress_bar.setValue(self.state.progress_current)
         elif busy:
             self.progress_bar.setRange(0, 0)
-        if self.state.stage is FirstRunStage.ARCHIVED_RECOVERY:
-            message = self.state.error
-        else:
-            message = (
-                self.state.error
-                or self.state.ai_error
-                or self.state.progress_text
-            )
+        show_ai_error = self.state.stage in {
+            FirstRunStage.AI_SETUP,
+            FirstRunStage.GENERATE,
+            FirstRunStage.GENERATING,
+            FirstRunStage.REVIEW_PENDING,
+        }
+        message = self.state.error or self.state.progress_text
+        if not message and show_ai_error:
+            message = self.state.ai_error
         self.status_label.setText(message)
         self.status_label.setProperty(
             "statusRole",
-            "error" if self.state.error or self.state.ai_error else "info",
+            "error" if self.state.error or (show_ai_error and self.state.ai_error) else "info",
         )
         self.status_label.setVisible(bool(message))
         self.status_label.style().unpolish(self.status_label)
