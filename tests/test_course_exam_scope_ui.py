@@ -101,7 +101,7 @@ class CourseExamScopeScreenTests(unittest.TestCase):
         self.assertIn("1/3", screen.project_list.item(0).text())
         self.assertTrue(screen.scope_btn.isEnabled())
 
-    def test_course_actions_use_three_text_only_top_level_entries(self):
+    def test_course_actions_use_text_only_top_level_entries(self):
         screen = CourseScreen(self.Manager(_project()))
 
         top_level_widgets = [
@@ -111,7 +111,12 @@ class CourseExamScopeScreenTests(unittest.TestCase):
         ]
 
         self.assertEqual(
-            [screen.set_current_btn, screen.scope_btn, screen.more_actions_btn],
+            [
+                screen.set_current_btn,
+                screen.view_course_library_btn,
+                screen.scope_btn,
+                screen.more_actions_btn,
+            ],
             top_level_widgets,
         )
         self.assertTrue(screen.more_actions_btn.icon().isNull())
