@@ -31,6 +31,12 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class FirstRunFlowTests(unittest.TestCase):
+    def test_first_run_has_no_standalone_ai_setup_gate(self):
+        self.assertFalse(hasattr(FirstRunStage, "AI_SETUP"))
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+        self.assertFalse(hasattr(workspace, "ai_step"))
+
     def test_first_run_workspace_hosts_generation_surface_in_place(self):
         workspace = FirstRunWorkspace()
         self.addCleanup(workspace.close)
@@ -162,7 +168,7 @@ class FirstRunFlowTests(unittest.TestCase):
 
         self.assertEqual("暂无进行中的课程", workspace.title_label.text())
         self.assertIn("2 门已归档课程", workspace.subtitle_label.text())
-        self.assertTrue(workspace.ai_step.isHidden())
+        self.assertFalse(hasattr(workspace, "ai_step"))
         self.assertEqual("恢复课程", workspace.primary_btn.text())
         self.assertEqual("导入新课程", workspace.alternate_btn.text())
 
@@ -242,7 +248,7 @@ class FirstRunFlowTests(unittest.TestCase):
             window.first_run_screen.state.stage,
         )
 
-    def test_review_pending_draft_precedes_ai_setup_and_regeneration(self):
+    def test_review_pending_draft_precedes_regeneration(self):
         state = resolve_first_run_state(
             ai_error="API key missing",
             has_course=True,

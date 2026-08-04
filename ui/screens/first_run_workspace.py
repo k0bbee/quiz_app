@@ -72,7 +72,7 @@ class FirstRunWorkspace(QWidget):
         super().__init__(parent)
         self.setObjectName("firstRunWorkspace")
         self.lang_manager = LanguageManager.instance()
-        self.state = FirstRunState(FirstRunStage.AI_SETUP)
+        self.state = FirstRunState(FirstRunStage.MATERIALS)
         self._generation_widget = None
 
         outer = QVBoxLayout(self)
@@ -102,10 +102,9 @@ class FirstRunWorkspace(QWidget):
         card_layout.addWidget(self.subtitle_label)
         card_layout.addSpacing(6)
 
-        self.ai_step = _FirstRunStep(1)
-        self.materials_step = _FirstRunStep(2)
-        self.generation_step = _FirstRunStep(3)
-        for step in (self.ai_step, self.materials_step, self.generation_step):
+        self.materials_step = _FirstRunStep(1)
+        self.generation_step = _FirstRunStep(2)
+        for step in (self.materials_step, self.generation_step):
             card_layout.addWidget(step)
 
         self.progress_bar = QProgressBar()
@@ -225,11 +224,11 @@ class FirstRunWorkspace(QWidget):
         else:
             self.title_label.setText(gm("创建第一门课程", "Create Your First Course"))
             self.subtitle_label.setText(gm(
-                "完成下面三步即可直接开始第一次练习，无需先理解题库和题目集。",
-                "Complete these three steps to start your first practice without "
+                "完成下面两步即可直接开始第一次练习，无需先理解题库和题目集。",
+                "Complete these two steps to start your first practice without "
                 "learning the library structure first.",
             ))
-        for step in (self.ai_step, self.materials_step, self.generation_step):
+        for step in (self.materials_step, self.generation_step):
             step.setVisible(not recovery)
         self.generation_title_label.setText(
             gm("准备第一次练习", "Prepare Your First Practice")
@@ -240,44 +239,36 @@ class FirstRunWorkspace(QWidget):
             "available for review after restarting the app.",
         ))
         statuses = self._step_statuses()
-        self.ai_step.render(
-            gm("AI 设置", "AI setup"),
-            gm("确认提供商、模型和密钥可以用于出题", "Verify provider, model, and credentials"),
-            statuses[0],
-            self._status_text(statuses[0]),
-        )
         self.materials_step.render(
             gm("导入资料", "Import materials"),
             gm("选择包含 PDF、PPTX、DOCX、TXT 或 Markdown 的文件夹", "Choose a folder containing PDF, PPTX, DOCX, TXT, or Markdown"),
-            statuses[1],
-            self._status_text(statuses[1]),
+            statuses[0],
+            self._status_text(statuses[0]),
         )
         self.generation_step.render(
             gm("生成练习", "Generate practice"),
             gm("根据课程知识点准备 10 道快速复习题", "Prepare 10 quick-review questions from course topics"),
-            statuses[2],
-            self._status_text(statuses[2]),
+            statuses[1],
+            self._status_text(statuses[1]),
         )
         self._render_action()
         self._render_progress()
 
-    def _step_statuses(self) -> tuple[str, str, str]:
+    def _step_statuses(self) -> tuple[str, str]:
         stage = self.state.stage
         if stage is FirstRunStage.ARCHIVED_RECOVERY:
-            return "pending", "pending", "pending"
-        if stage is FirstRunStage.AI_SETUP:
-            return "active", "pending", "pending"
+            return "pending", "pending"
         if stage is FirstRunStage.MATERIALS:
-            return "done", "active", "pending"
+            return "active", "pending"
         if stage is FirstRunStage.IMPORTING:
-            return "done", "active", "pending"
+            return "active", "pending"
         if stage is FirstRunStage.GENERATE:
-            return "done", "done", "active"
+            return "done", "active"
         if stage is FirstRunStage.GENERATING:
-            return "done", "done", "active"
+            return "done", "active"
         if stage is FirstRunStage.REVIEW_PENDING:
-            return "done", "done", "active"
-        return "done", "done", "done"
+            return "done", "active"
+        return "done", "done"
 
     def _status_text(self, status: str) -> str:
         return {
@@ -290,7 +281,6 @@ class FirstRunWorkspace(QWidget):
         gm = self.lang_manager.get_text
         stage = self.state.stage
         labels = {
-            FirstRunStage.AI_SETUP: gm("体验示例课程", "Try Example Course"),
             FirstRunStage.MATERIALS: gm("选择课程资料", "Choose Course Materials"),
             FirstRunStage.ARCHIVED_RECOVERY: gm("恢复课程", "Restore Course"),
             FirstRunStage.IMPORTING: gm("正在准备课程…", "Preparing Course…"),
@@ -311,14 +301,11 @@ class FirstRunWorkspace(QWidget):
             and not busy
         )
         alternate_label = (
-            gm("导入课程资料", "Import Course Materials")
-            if stage is FirstRunStage.AI_SETUP
-            else gm("导入新课程", "Import New Course")
+            gm("导入新课程", "Import New Course")
         )
         self.alternate_btn.setText(alternate_label)
         self.alternate_btn.setVisible(
             stage in {
-                FirstRunStage.AI_SETUP,
                 FirstRunStage.ARCHIVED_RECOVERY,
             }
             and not busy
@@ -339,7 +326,6 @@ class FirstRunWorkspace(QWidget):
         elif busy:
             self.progress_bar.setRange(0, 0)
         show_ai_error = self.state.stage in {
-            FirstRunStage.AI_SETUP,
             FirstRunStage.GENERATE,
             FirstRunStage.GENERATING,
             FirstRunStage.REVIEW_PENDING,
@@ -358,7 +344,6 @@ class FirstRunWorkspace(QWidget):
 
     def _activate_primary(self) -> None:
         signal = {
-            FirstRunStage.AI_SETUP: self.example_requested,
             FirstRunStage.MATERIALS: self.choose_materials_requested,
             FirstRunStage.ARCHIVED_RECOVERY: self.restore_courses_requested,
             FirstRunStage.GENERATE: self.generate_requested,

@@ -9,7 +9,6 @@ from ai.exam_plan import ExamGenerationPlan
 
 
 class FirstRunStage(str, Enum):
-    AI_SETUP = "ai_setup"
     MATERIALS = "materials"
     ARCHIVED_RECOVERY = "archived_recovery"
     IMPORTING = "importing"
