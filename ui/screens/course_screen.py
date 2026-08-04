@@ -631,7 +631,12 @@ class CourseScreen(QWidget):
         self.import_group.setVisible(self._import_expanded)
         active_scope = self._course_scope == "active"
         self.restore_course_btn.setVisible(not active_scope and not is_empty)
-        self.view_course_library_btn.setVisible(not is_empty)
+        # Active courses already scope the global Library route to the current
+        # course. Keep this contextual shortcut only for archived courses,
+        # whose assets must be opened without restoring them as current.
+        self.view_course_library_btn.setVisible(
+            not is_empty and self._course_scope == "archived"
+        )
         self.delete_archived_course_btn.setVisible(
             not active_scope and not is_empty
         )
@@ -1135,7 +1140,7 @@ class CourseScreen(QWidget):
             not archived and (not active or active.course_id != course_id)
         )
         self.restore_course_btn.setEnabled(archived)
-        self.view_course_library_btn.setEnabled(True)
+        self.view_course_library_btn.setEnabled(archived)
         self.delete_archived_course_btn.setEnabled(archived)
         self.scope_btn.setEnabled(not archived)
         self.rename_action.setEnabled(not archived)

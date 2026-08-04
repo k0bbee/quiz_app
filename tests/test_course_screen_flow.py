@@ -659,14 +659,14 @@ class CourseScreenFlowTests(unittest.TestCase):
                 self.assertEqual([project.course_id], requested)
                 self.assertTrue(manager.get(project.course_id).is_archived)
 
-    def test_active_course_can_open_its_library_from_course_actions(self):
+    def test_active_course_does_not_duplicate_global_library_entry(self):
             with tempfile.TemporaryDirectory() as tmpdir:
                 source = Path(tmpdir) / "source"
                 source.mkdir()
                 manager = CourseProjectManager(str(Path(tmpdir) / "projects"))
                 initializer = CourseInitializer(manager=manager)
                 initializer.parser = FakeParser(self._docs())
-                project = initializer.initialize(
+                initializer.initialize(
                     str(source),
                     title="Systems",
                     make_current=True,
@@ -675,10 +675,9 @@ class CourseScreenFlowTests(unittest.TestCase):
                 requested = []
                 screen.view_course_library_requested.connect(requested.append)
 
-                self.assertTrue(screen.view_course_library_btn.isEnabled())
-                screen.view_course_library_btn.click()
-
-                self.assertEqual([project.course_id], requested)
+                self.assertTrue(screen.view_course_library_btn.isHidden())
+                self.assertFalse(screen.view_course_library_btn.isEnabled())
+                self.assertEqual([], requested)
 
     def test_course_screen_uses_archive_as_reversible_default_action(self):
             with tempfile.TemporaryDirectory() as tmpdir:
