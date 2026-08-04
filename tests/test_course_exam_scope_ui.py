@@ -113,12 +113,17 @@ class CourseExamScopeScreenTests(unittest.TestCase):
         self.assertEqual(
             [
                 screen.set_current_btn,
-                screen.view_course_library_btn,
                 screen.scope_btn,
                 screen.more_actions_btn,
             ],
             top_level_widgets,
         )
+        summary_widgets = [
+            screen.summary_header.itemAt(index).widget()
+            for index in range(screen.summary_header.count())
+            if screen.summary_header.itemAt(index).widget() is not None
+        ]
+        self.assertIn(screen.view_course_library_btn, summary_widgets)
         self.assertTrue(screen.more_actions_btn.icon().isNull())
         self.assertEqual(
             [
