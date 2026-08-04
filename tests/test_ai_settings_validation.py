@@ -61,6 +61,19 @@ class ManualAppDataWorker:
 
 
 class AISettingsValidationTests(unittest.TestCase):
+    def test_settings_hides_local_agent_status_for_remote_provider(self):
+        screen = SettingsScreen()
+
+        screen.provider_combo.setCurrentIndex(screen.provider_combo.findData("openai"))
+
+        self.assertTrue(screen.local_agent_label.isHidden())
+        self.assertTrue(screen.local_agent_status.isHidden())
+
+        screen.provider_combo.setCurrentIndex(screen.provider_combo.findData("local_agent"))
+
+        self.assertFalse(screen.local_agent_label.isHidden())
+        self.assertFalse(screen.local_agent_status.isHidden())
+
     def test_settings_snapshot_is_public_and_cannot_mutate_screen_state(self):
         screen = SettingsScreen()
         screen._settings["default_question_type_weights"] = {"multiple_choice": 70}

@@ -338,6 +338,8 @@ class SettingsScreen(QWidget):
         self.local_agent_status.setObjectName("settingsLocalAgentStatus")
         self.local_agent_label = QLabel(self.lang_manager.get_text("本地代理:", "Local agent:"))
         self.ai_form_layout.addRow(self.local_agent_label, self.local_agent_status)
+        self.local_agent_label.setVisible(False)
+        self.local_agent_status.setVisible(False)
 
         self.ai_connection_status = QLabel(
             self.lang_manager.get_text(
@@ -1298,6 +1300,13 @@ class SettingsScreen(QWidget):
     def _refresh_local_agent_status(self):
         if not hasattr(self, "local_agent_status"):
             return
+        provider = str(self.provider_combo.currentData() or "").strip()
+        base_url = self.api_base_url.text().strip()
+        is_local_agent = provider == "local_agent" or base_url.startswith("local-agent://")
+        self.local_agent_label.setVisible(is_local_agent)
+        self.local_agent_status.setVisible(is_local_agent)
+        if not is_local_agent:
+            return
         found = detect_local_agents()
         if found:
             agents_str = ", ".join(found)
@@ -1328,7 +1337,16 @@ class SettingsScreen(QWidget):
             api_key = self.api_key_input.text() or SecretsManager.instance().get_key()
         else:
             api_key = ""
-        result = validate_ai_settings(settings, api_key=api_key, detected_agents=detect_local_agents())
+        detected_agents = (
+            detect_local_agents()
+            if settings["ai_provider"] == "local_agent"
+            else []
+        )
+        result = validate_ai_settings(
+            settings,
+            api_key=api_key,
+            detected_agents=detected_agents,
+        )
         if not result.ok:
             self.ai_connection_status.setObjectName("settingsConnectionStatusError")
             self.ai_connection_status.setText(result.message)
