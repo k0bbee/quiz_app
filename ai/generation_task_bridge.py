@@ -1,4 +1,4 @@
-"""Map transport-neutral generation events to persistent task lifecycle state."""
+"""Map transport-neutral generation events to current-session task state."""
 
 from __future__ import annotations
 

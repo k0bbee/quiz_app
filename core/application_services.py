@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from config import (
-    BACKGROUND_TASKS_FILE,
     COURSES_DIR,
     GENERATION_DRAFTS_FILE,
     MASTERY_OVERRIDES_FILE,
@@ -47,7 +46,7 @@ class ApplicationServices:
             snapshot_manager=QuizSnapshotManager(QUIZ_SNAPSHOTS_DIR),
             mastery_overrides=MasteryOverrideStore(MASTERY_OVERRIDES_FILE),
             course_manager=CourseProjectManager(COURSES_DIR),
-            task_center=BackgroundTaskCenter(BACKGROUND_TASKS_FILE),
+            task_center=BackgroundTaskCenter(),
             generation_draft_store=GenerationDraftStore(
                 GENERATION_DRAFTS_FILE
             ),

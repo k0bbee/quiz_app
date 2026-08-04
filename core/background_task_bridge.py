@@ -1,4 +1,4 @@
-"""Bind one runtime worker to the persistent background-task lifecycle."""
+"""Bind one runtime worker to the current-session task lifecycle."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from core.background_task_center import BackgroundTaskCenter, TaskStatus
 
 
 class BackgroundTaskBridge:
-    """Translate worker callbacks into one durable task snapshot."""
+    """Translate worker callbacks into one session task snapshot."""
 
     def __init__(self, task_center: BackgroundTaskCenter, task_id: str):
         self.task_center = task_center

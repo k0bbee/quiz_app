@@ -799,7 +799,7 @@ class CourseScreen(QWidget):
         self._init_worker.error.connect(self._on_init_error)
         self._init_worker.cancelled.connect(self._on_course_task_cancelled)
         self._init_worker.progress.connect(self._on_course_task_progress)
-        self._begin_persistent_task(
+        self._begin_task(
             kind="course_import",
             title=self.lang_manager.get_text(
                 f"导入课程：{title or Path(folder).name}",
@@ -816,7 +816,7 @@ class CourseScreen(QWidget):
         self._init_worker.start()
         return True
 
-    def _begin_persistent_task(self, *, kind, title, metadata, worker) -> None:
+    def _begin_task(self, *, kind, title, metadata, worker) -> None:
         if self.task_center is None:
             self._task_bridge = None
             return
@@ -829,7 +829,7 @@ class CourseScreen(QWidget):
         bridge.start(worker.cancel)
         self._task_bridge = bridge
 
-    def _finish_persistent_task(self, outcome, **kwargs) -> None:
+    def _finish_task(self, outcome, **kwargs) -> None:
         bridge = self._task_bridge
         if bridge is None:
             return
@@ -962,7 +962,7 @@ class CourseScreen(QWidget):
             self._regen_worker = None
         elif sender is not None:
             return
-        self._finish_persistent_task("cancelled")
+        self._finish_task("cancelled")
         self._set_course_task_active(False)
         if import_cancelled:
             self.course_import_cancelled.emit()
@@ -1003,7 +1003,7 @@ class CourseScreen(QWidget):
         self._init_worker = None
         present_result = self._init_present_result
         self._init_present_result = True
-        self._finish_persistent_task(
+        self._finish_task(
             "complete",
             result_summary=f"Imported course {project.title}",
             result_count=len(project.documents),
@@ -1036,7 +1036,7 @@ class CourseScreen(QWidget):
         self._init_worker = None
         present_result = self._init_present_result
         self._init_present_result = True
-        self._finish_persistent_task("fail", error=error_msg)
+        self._finish_task("fail", error=error_msg)
         self._set_course_task_active(False)
         self.course_import_failed.emit(str(error_msg))
         if present_result:
@@ -1228,7 +1228,7 @@ class CourseScreen(QWidget):
         self._regen_worker.error.connect(self._on_regen_error)
         self._regen_worker.cancelled.connect(self._on_course_task_cancelled)
         self._regen_worker.progress.connect(self._on_course_task_progress)
-        self._begin_persistent_task(
+        self._begin_task(
             kind="course_summary",
             title=self.lang_manager.get_text(
                 f"重新生成课程总结：{project.title}",
@@ -1531,7 +1531,7 @@ class CourseScreen(QWidget):
         else:
             project = result
             repair_report = None
-        self._finish_persistent_task(
+        self._finish_task(
             "complete",
             result_summary=f"Regenerated summary for {project.title}",
             result_count=len(project.documents),
@@ -1646,7 +1646,7 @@ class CourseScreen(QWidget):
         if not self._is_current_worker("_regen_worker"):
             return
         self._regen_worker = None
-        self._finish_persistent_task("fail", error=error_msg)
+        self._finish_task("fail", error=error_msg)
         self._set_course_task_active(False)
         QMessageBox.critical(
             self,
