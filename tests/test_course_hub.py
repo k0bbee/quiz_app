@@ -215,7 +215,7 @@ class CourseHubPresenterTests(unittest.TestCase):
 
 
 class CourseHubActionTests(unittest.TestCase):
-    def test_knowledge_next_action_cell_emits_topic_action(self):
+    def test_knowledge_detail_action_emits_topic_action(self):
         view = build_course_hub_view(_course())
         panel = CourseKnowledgePanel()
         self.addCleanup(panel.close)
@@ -225,7 +225,8 @@ class CourseHubActionTests(unittest.TestCase):
         )
         panel.render(view, lambda zh, _en: zh)
 
-        panel.table.cellClicked.emit(0, 7)
+        panel.table.selectRow(0)
+        panel.detail_action_btn.click()
 
         self.assertEqual([("input-output", "generate")], actions)
 
@@ -303,19 +304,26 @@ class CourseHubNavigationTests(unittest.TestCase):
         )
 
         self.assertIs(screen.knowledge_panel, screen.content_stack.currentWidget())
-        self.assertEqual(2, screen.knowledge_table.rowCount())
-        self.assertEqual(8, screen.knowledge_table.columnCount())
-        self.assertEqual("Input / Output", screen.knowledge_table.item(0, 0).text())
-        self.assertEqual("0", screen.knowledge_table.item(0, 3).text())
-        self.assertEqual("尚未覆盖", screen.knowledge_table.item(0, 6).text())
         self.assertEqual(
-            "出题权重",
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
+            screen.project_list.horizontalScrollBarPolicy(),
+        )
+        self.assertEqual(2, screen.knowledge_table.rowCount())
+        self.assertEqual(4, screen.knowledge_table.columnCount())
+        self.assertEqual("Input / Output", screen.knowledge_table.item(0, 0).text())
+        self.assertEqual("1", screen.knowledge_table.item(0, 1).text())
+        self.assertEqual("0", screen.knowledge_table.item(0, 2).text())
+        self.assertIn("尚未覆盖", screen.knowledge_table.item(0, 3).text())
+        self.assertEqual(
+            "资料覆盖",
             screen.knowledge_table.horizontalHeaderItem(1).text(),
         )
         self.assertEqual(
-            "历史表现",
-            screen.knowledge_table.horizontalHeaderItem(4).text(),
+            "题目数量",
+            screen.knowledge_table.horizontalHeaderItem(2).text(),
         )
+        self.assertIn("历史表现", screen.knowledge_panel.detail_summary.text())
+        self.assertEqual("补齐题目", screen.knowledge_panel.detail_action_btn.text())
 
     def test_generation_route_initializes_selected_course_workspace(self):
         dialog = QDialog()
@@ -357,7 +365,8 @@ class CourseHubNavigationTests(unittest.TestCase):
         )
         self.window.generation_flow.open = Mock()
 
-        self.window._course_screen.knowledge_table.cellClicked.emit(0, 7)
+        self.window._course_screen.knowledge_table.selectRow(0)
+        self.window._course_screen.knowledge_panel.detail_action_btn.click()
 
         self.window.generation_flow.open.assert_called_once()
         call = self.window.generation_flow.open.call_args
@@ -374,7 +383,8 @@ class CourseHubNavigationTests(unittest.TestCase):
             )
         )
 
-        self.window._course_screen.knowledge_table.cellClicked.emit(1, 7)
+        self.window._course_screen.knowledge_table.selectRow(1)
+        self.window._course_screen.knowledge_panel.detail_action_btn.click()
 
         self.assertEqual(
             Route.course(self.project.course_id, tab="knowledge"),

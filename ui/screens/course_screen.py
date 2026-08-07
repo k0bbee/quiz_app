@@ -319,6 +319,10 @@ class CourseScreen(QWidget):
         self.empty_state_label.setVisible(False)
         self.left_layout.addWidget(self.empty_state_label, 1)
         self.project_list = QListWidget()
+        self.project_list.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.project_list.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.project_list.currentItemChanged.connect(self._on_project_selected)
         self.left_layout.addWidget(self.project_list, 1)
 
@@ -680,6 +684,7 @@ class CourseScreen(QWidget):
             item = QListWidgetItem(
                 f"{prefix}{project.title}  [{scope_count}/{len(project.topics)} {scope_label}]"
             )
+            item.setToolTip(item.text())
             item.setData(Qt.ItemDataRole.UserRole, project.course_id)
             self.project_list.addItem(item)
         is_empty = not projects

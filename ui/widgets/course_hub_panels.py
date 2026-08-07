@@ -7,9 +7,11 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHeaderView,
     QLabel,
+    QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QTextBrowser,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -54,6 +56,7 @@ class CourseSourcesPanel(QWidget):
 
     def render(self, view, get_text) -> None:
         self._view = view
+        self._get_text = get_text
         self._get_text = get_text
         self.table.setHorizontalHeaderLabels([
             get_text("资料", "Source"),
@@ -136,30 +139,57 @@ class CourseKnowledgePanel(QWidget):
         self.status_label.setWordWrap(True)
         layout.addWidget(self.status_label)
 
-        self.table = _read_only_table(8)
+        self.table = _read_only_table(4)
         self.table.setObjectName("courseKnowledgeTable")
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for column in range(1, 8):
-            header.setSectionResizeMode(
-                column,
-                QHeaderView.ResizeMode.ResizeToContents,
-            )
-        self.table.cellClicked.connect(self._handle_cell_clicked)
-        layout.addWidget(self.table, 1)
+        for column, width in ((1, 58), (2, 64), (3, 96)):
+            header.setSectionResizeMode(column, QHeaderView.ResizeMode.Fixed)
+            self.table.setColumnWidth(column, width)
+        self.table.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.table.itemSelectionChanged.connect(self._render_detail)
+        self.table.setMinimumWidth(240)
+
+        detail_widget = QWidget()
+        detail_layout = QVBoxLayout(detail_widget)
+        detail_layout.setContentsMargins(12, 0, 0, 0)
+        detail_layout.setSpacing(8)
+        self.detail_title = QLabel()
+        self.detail_title.setObjectName("courseKnowledgeDetailTitle")
+        self.detail_title.setWordWrap(True)
+        detail_layout.addWidget(self.detail_title)
+        self.detail_summary = QLabel()
+        self.detail_summary.setObjectName("courseKnowledgeDetailSummary")
+        self.detail_summary.setWordWrap(True)
+        detail_layout.addWidget(self.detail_summary)
+        self.detail_action_btn = QPushButton()
+        self.detail_action_btn.setObjectName("secondaryButton")
+        self.detail_action_btn.clicked.connect(self._emit_detail_action)
+        self.detail_action_btn.setEnabled(False)
+        detail_layout.addWidget(self.detail_action_btn)
+        detail_layout.addStretch(1)
+        self.knowledge_splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.knowledge_splitter.setChildrenCollapsible(False)
+        self.knowledge_splitter.addWidget(self.table)
+        self.knowledge_splitter.addWidget(detail_widget)
+        self.knowledge_splitter.setStretchFactor(0, 3)
+        self.knowledge_splitter.setStretchFactor(1, 2)
+        self.knowledge_splitter.setSizes([360, 240])
+        layout.addWidget(self.knowledge_splitter, 1)
         self._view = None
+        self._selected_topic = None
+        self._get_text = None
 
     def render(self, view, get_text) -> None:
         self._view = view
+        self._get_text = get_text
         self.table.setHorizontalHeaderLabels([
             get_text("知识点", "Knowledge Point"),
-            get_text("出题权重", "Generation Weight"),
             get_text("资料覆盖", "Sources"),
             get_text("题目数量", "Questions"),
-            get_text("历史表现", "Historical Performance"),
-            get_text("最近练习", "Last Practice"),
-            get_text("状态", "Status"),
-            get_text("下一步", "Next Action"),
+            get_text("学习状态", "Learning Status"),
         ])
         self.status_label.setText(
             get_text(
@@ -175,41 +205,66 @@ class CourseKnowledgePanel(QWidget):
         for row, topic in enumerate(view.topics):
             values = (
                 topic.title,
-                (
-                    f"{topic.generation_weight}%"
-                    if topic.generation_weight
-                    else (
-                        get_text("范围内", "Included")
-                        if topic.in_exam_scope
-                        else get_text("范围外", "Excluded")
-                    )
-                ),
                 str(topic.source_count),
                 str(topic.question_count),
-                get_text("已掌握", "Mastered")
-                if topic.mastery == "mastered"
-                else topic.mastery,
-                topic.recent_practice,
-                _topic_status_text(topic.status, get_text),
-                _topic_action_text(
-                    topic.status,
-                    get_text,
-                    in_exam_scope=topic.in_exam_scope,
-                ),
+                _topic_table_status(topic, get_text),
             )
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.ItemDataRole.UserRole, topic.topic_id)
                 self.table.setItem(row, column, item)
+        if view.topics:
+            self.table.selectRow(0)
+        else:
+            self._clear_detail()
 
-    def _handle_cell_clicked(self, row: int, column: int) -> None:
-        if column != 7 or self._view is None:
+    def _render_detail(self) -> None:
+        if self._view is None:
             return
+        row = self.table.currentRow()
         if not 0 <= row < len(self._view.topics):
+            self._clear_detail()
             return
         topic = self._view.topics[row]
+        self._selected_topic = topic
+        get_text = self._get_text
+        self.detail_title.setText(topic.title)
+        self.detail_summary.setText(get_text(
+            f"考试范围：{'是' if topic.in_exam_scope else '否'} · "
+            f"资料覆盖：{topic.source_count} · 题目：{topic.question_count}\n"
+            f"历史表现：{_topic_mastery_text(topic, get_text)} · "
+            f"最近练习：{topic.recent_practice} · "
+            f"出题权重：{topic.generation_weight or '—'}%",
+            f"Exam scope: {'Yes' if topic.in_exam_scope else 'No'} · "
+            f"Sources: {topic.source_count} · Questions: {topic.question_count}\n"
+            f"Historical performance: {_topic_mastery_text(topic, get_text)} · "
+            f"Last practice: {topic.recent_practice} · "
+            f"Generation weight: {topic.generation_weight or '—'}%",
+        ))
+        self.detail_action_btn.setText(_topic_action_text(
+            topic.status,
+            get_text,
+            in_exam_scope=topic.in_exam_scope,
+        ))
+        self.detail_action_btn.setEnabled(True)
+
+    def _clear_detail(self) -> None:
+        self._selected_topic = None
+        self.detail_title.clear()
+        self.detail_summary.clear()
+        self.detail_action_btn.setText(
+            self._get_text("请选择知识点", "Select a knowledge point")
+            if self._get_text is not None
+            else ""
+        )
+        self.detail_action_btn.setEnabled(False)
+
+    def _emit_detail_action(self) -> None:
+        if self._selected_topic is None:
+            return
+        topic = self._selected_topic
         action = _topic_action(topic.status, in_exam_scope=topic.in_exam_scope)
-        self.topic_action_requested.emit(topic.topic_id, action)
+        self.topic_action_requested.emit(self._selected_topic.topic_id, action)
 
 
 def _read_only_table(columns: int) -> QTableWidget:
@@ -230,6 +285,18 @@ def _topic_status_text(status: str, get_text) -> str:
         "uncovered": get_text("尚未覆盖", "Uncovered"),
         "not_started": get_text("未开始", "Not started"),
     }.get(status, get_text("未开始", "Not started"))
+
+
+def _topic_table_status(topic, get_text) -> str:
+    status = _topic_status_text(topic.status, get_text)
+    scope = get_text("范围内", "In scope") if topic.in_exam_scope else get_text("范围外", "Out of scope")
+    return f"{status} · {scope}"
+
+
+def _topic_mastery_text(topic, get_text) -> str:
+    if topic.mastery == "mastered":
+        return get_text("已掌握", "Mastered")
+    return topic.mastery or get_text("未开始", "Not started")
 
 
 def _topic_action(status: str, *, in_exam_scope: bool = True) -> str:
