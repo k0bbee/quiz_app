@@ -42,6 +42,16 @@ def _source_ref_lines(source_refs, html: bool = False, language: str = "en") -> 
         if page_or_slide not in ("", None):
             page_label = "页码/幻灯片" if language == "zh" else "page"
             parts.append(f"{page_label} {page_or_slide}")
+        line_start = _positive_int(ref.get("line_start"))
+        line_end = _positive_int(ref.get("line_end"))
+        if line_start is not None:
+            line_label = "行" if language == "zh" else "line"
+            end = line_end if line_end is not None and line_end >= line_start else line_start
+            parts.append(
+                f"{line_label} {line_start}-{end}"
+                if end != line_start
+                else f"{line_label} {line_start}"
+            )
         if chunk_id:
             parts.append(chunk_id)
         if heading:
@@ -64,6 +74,14 @@ def _compact_excerpt(value, limit: int = 120) -> str:
     if len(text) <= limit:
         return text
     return text[:limit].rstrip() + "…"
+
+
+def _positive_int(value) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
 
 
 def _source_ref_status_label(status: str | None, language: str = "en") -> str:

@@ -23,6 +23,20 @@ class SourceRefsFormattingTests(unittest.TestCase):
         self.assertIn("DMA transfers data directly", text)
         self.assertNotIn("abcdef123456", text)
 
+    def test_format_source_refs_includes_text_line_range(self):
+        text = format_source_refs(
+            [{
+                "source_file": "exam.txt",
+                "line_start": 12,
+                "line_end": 18,
+                "excerpt": "Imported question block",
+            }],
+            language="en",
+        )
+
+        self.assertIn("exam.txt", text)
+        self.assertIn("line 12-18", text)
+
     def test_format_source_refs_truncates_long_excerpt(self):
         long_excerpt = "x" * 200
 

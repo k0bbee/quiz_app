@@ -115,11 +115,20 @@ class SourceRefsPanel(QWidget):
         if page not in (None, ""):
             page_label = "页码/幻灯片" if self._language == "zh" else "page/slide"
             parts.append(f"{page_label} {page}")
+        line_start = _positive_int(ref.get("line_start"))
+        line_end = _positive_int(ref.get("line_end"))
+        if line_start is not None:
+            line_label = "行" if self._language == "zh" else "line"
+            end = line_end if line_end is not None and line_end >= line_start else line_start
+            parts.append(
+                f"{line_label} {line_start}-{end}"
+                if end != line_start
+                else f"{line_label} {line_start}"
+            )
         heading = str(ref.get("heading", "") or "").strip()
         if heading:
             parts.append(heading)
         return " · ".join(parts)
-
     def _selected(self) -> tuple[dict | None, SourceLocation | None]:
         row = self.source_list.currentRow()
         if row < 0 or row >= len(self._refs):
@@ -198,3 +207,11 @@ class SourceRefsPanel(QWidget):
             "来源定位" if self._language == "zh" else "Source Location",
             details,
         )
+
+
+def _positive_int(value) -> int | None:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
