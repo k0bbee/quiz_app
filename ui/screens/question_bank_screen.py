@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QTextEdit, QMessageBox, QSplitter, QAbstractItemView, QStackedWidget,
     QHeaderView, QTableView, QFileDialog, QDialog,
+    QInputDialog,
 )
 from PyQt6.QtCore import (
     Qt,
@@ -817,6 +818,9 @@ class QuestionBankScreen(QWidget):
         )
         if not filepath:
             return
+        course_id = self._select_import_course_id()
+        if course_id is None:
+            return
         source_path = Path(filepath)
         try:
             if source_path.stat().st_size > MAX_EXTRACTED_TEXT_CHARS * 4:
@@ -846,7 +850,7 @@ class QuestionBankScreen(QWidget):
                 kind="historical_question_import",
                 title=self.lang_manager.get_text("导入历史题目", "Import Historical Questions"),
                 metadata={
-                    "course_id": self._current_course_id,
+                    "course_id": course_id,
                     "source_file": str(source_path.resolve()),
                 },
             )
@@ -854,7 +858,7 @@ class QuestionBankScreen(QWidget):
         self._historical_import_task_id = task_id
         worker = HistoricalQuestionImportWorker(
             str(source_path),
-            course_id=self._current_course_id,
+            course_id=course_id,
             task_center=self.task_center,
             task_id=task_id,
             parent=self,
@@ -866,6 +870,39 @@ class QuestionBankScreen(QWidget):
         worker.cancelled.connect(self._on_historical_import_cancelled)
         self._set_historical_import_busy(True)
         worker.start()
+
+    def _select_import_course_id(self) -> str | None:
+        """Use the current course or let an unscoped library import choose one."""
+        if self._current_course_id:
+            return self._current_course_id
+        try:
+            courses = self.course_manager.load_all()
+        except (OSError, TypeError, ValueError):
+            courses = []
+        if not courses:
+            return ""
+        labels = [self.lang_manager.get_text("不归属课程", "No course")]
+        course_by_label = {}
+        for project in courses:
+            label = str(project.title or project.course_id).strip()
+            if label in course_by_label:
+                label = f"{label} ({project.course_id})"
+            labels.append(label)
+            course_by_label[label] = project.course_id
+        selected, accepted = QInputDialog.getItem(
+            self,
+            self.lang_manager.get_text("选择课程归属", "Choose Course"),
+            self.lang_manager.get_text(
+                "将导入题目归入：",
+                "Assign imported questions to:",
+            ),
+            labels,
+            0,
+            False,
+        )
+        if not accepted:
+            return None
+        return str(course_by_label.get(selected, "")).strip()
 
     def _set_historical_import_busy(self, busy: bool):
         self.import_text_btn.setEnabled(not busy)
@@ -926,7 +963,7 @@ class QuestionBankScreen(QWidget):
         dialog = QuestionReviewDialog(
             list(result.questions),
             parent=self,
-            course_project=self._active_course_project(),
+            course_project=self._import_course_project(result),
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -945,6 +982,15 @@ class QuestionBankScreen(QWidget):
                 f"Saved {saved} question(s).",
             ),
         )
+
+    def _import_course_project(self, result: HistoricalQuestionParseResult):
+        course_id = self._current_course_id
+        if result.questions:
+            course_id = str(
+                (result.questions[0].metadata or {}).get("course_id", "")
+                or course_id
+            ).strip()
+        return self.course_manager.get(course_id) if course_id else None
 
     def _cancel_historical_import(self):
         worker = self._historical_import_worker
