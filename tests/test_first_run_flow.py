@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -216,6 +217,35 @@ class FirstRunFlowTests(unittest.TestCase):
         workspace.primary_btn.click()
 
         self.assertEqual(["example", "import"], requested)
+
+    def test_first_run_workspace_exposes_a_file_drop_import_zone(self):
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+
+        self.assertTrue(workspace.materials_drop_zone.acceptDrops())
+        self.assertEqual("firstRunDropZone", workspace.materials_drop_zone.objectName())
+        self.assertIn("拖入", workspace.materials_drop_zone.text())
+
+    def test_first_run_hands_dropped_files_to_background_course_import(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+        course_screen = Mock()
+        course_screen.start_import.return_value = True
+        window._get_course_screen = Mock(return_value=course_screen)
+
+        with tempfile.TemporaryDirectory() as source_dir:
+            source_file = Path(source_dir) / "lecture.pdf"
+            source_file.write_bytes(b"pdf")
+            window.first_run_screen.materials_dropped.emit([str(source_file)])
+
+        course_screen.start_import.assert_called_once_with(
+            files=[str(source_file.resolve())],
+            present_result=False,
+        )
+        self.assertEqual(
+            FirstRunStage.IMPORTING,
+            window.first_run_screen.state.stage,
+        )
 
     def test_first_run_example_installs_without_ai_and_becomes_ready(self):
         window = MainWindow()

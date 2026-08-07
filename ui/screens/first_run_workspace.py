@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame,
@@ -17,6 +19,50 @@ from PyQt6.QtWidgets import (
 
 from core.first_run_flow import FirstRunStage, FirstRunState
 from core.language_manager import LanguageManager
+from core.document_parser import SUPPORTED_EXTENSIONS
+
+
+class _FirstRunDropZone(QLabel):
+    """Accept supported local course files without starting import itself."""
+
+    files_dropped = pyqtSignal(list)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setObjectName("firstRunDropZone")
+        self.setAcceptDrops(True)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMinimumHeight(58)
+
+    @staticmethod
+    def _paths_from_event(event) -> list[str]:
+        paths = []
+        for url in event.mimeData().urls():
+            if not url.isLocalFile():
+                continue
+            path = url.toLocalFile()
+            candidate = Path(path) if path else None
+            if (
+                candidate is not None
+                and candidate.is_file()
+                and candidate.suffix.lower() in SUPPORTED_EXTENSIONS
+            ):
+                paths.append(path)
+        return list(dict.fromkeys(paths))
+
+    def dragEnterEvent(self, event):
+        if self._paths_from_event(event):
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dropEvent(self, event):
+        paths = self._paths_from_event(event)
+        if not paths:
+            event.ignore()
+            return
+        self.files_dropped.emit(paths)
+        event.acceptProposedAction()
 
 
 class _FirstRunStep(QFrame):
@@ -62,6 +108,7 @@ class FirstRunWorkspace(QWidget):
     """Guide an empty installation through three explicit decisions."""
 
     choose_materials_requested = pyqtSignal()
+    materials_dropped = pyqtSignal(list)
     example_requested = pyqtSignal()
     generate_requested = pyqtSignal()
     start_requested = pyqtSignal()
@@ -101,6 +148,10 @@ class FirstRunWorkspace(QWidget):
         self.subtitle_label.setWordWrap(True)
         card_layout.addWidget(self.subtitle_label)
         card_layout.addSpacing(6)
+
+        self.materials_drop_zone = _FirstRunDropZone()
+        self.materials_drop_zone.files_dropped.connect(self.materials_dropped.emit)
+        card_layout.addWidget(self.materials_drop_zone)
 
         self.materials_step = _FirstRunStep(1)
         self.generation_step = _FirstRunStep(2)
@@ -250,6 +301,14 @@ class FirstRunWorkspace(QWidget):
             gm("根据课程知识点准备 10 道快速复习题", "Prepare 10 quick-review questions from course topics"),
             statuses[1],
             self._status_text(statuses[1]),
+        )
+        self.materials_drop_zone.setText(gm(
+            "将 PDF、PPTX、DOCX、TXT 或 Markdown 拖入这里，或点击下方选择资料",
+            "Drop PDF, PPTX, DOCX, TXT, or Markdown here, or choose materials below",
+        ))
+        self.materials_drop_zone.setVisible(
+            self.state.stage is FirstRunStage.MATERIALS
+            and not recovery
         )
         self._render_action()
         self._render_progress()

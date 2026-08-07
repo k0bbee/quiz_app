@@ -490,6 +490,19 @@ QLabel#firstRunTitle {
     font-weight: 700;
 }
 
+QLabel#firstRunDropZone {
+    color: #b8d8ee;
+    background-color: #18252e;
+    border: 1px dashed #4e88ac;
+    border-radius: 6px;
+    padding: 10px 14px;
+}
+
+QLabel#firstRunDropZone:hover {
+    background-color: #203443;
+    border-color: #75beff;
+}
+
 QFrame#firstRunStep {
     background-color: #181818;
     border: 1px solid #333333;

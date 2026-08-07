@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtWidgets import QFileDialog
 
 from core.first_run_flow import build_first_run_exam_plan, resolve_first_run_state
 from core.example_course import install_example_course
 from core.study_intent import StudyAction, StudyIntent
+from core.document_parser import SUPPORTED_EXTENSIONS
 
 
 class FirstRunController:
@@ -137,12 +140,40 @@ class FirstRunController:
         )
         if not folder:
             return
+        self._start_material_import(folder=folder)
+
+    def import_files(self, files) -> None:
+        """Start the same import task for files dropped on the first-run page."""
+        normalized = []
+        for raw_path in files or ():
+            path = Path(str(raw_path or "")).expanduser()
+            if not path.is_file() or path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                continue
+            normalized.append(str(path.resolve()))
+        normalized = list(dict.fromkeys(normalized))
+        if normalized:
+            self._start_material_import(files=normalized)
+
+    def _start_material_import(self, *, folder: str = "", files=None) -> None:
+        """Start a folder or explicit-file import through the course page."""
+        host = self._host
         course_screen = host._get_course_screen()
         host._first_run_operation = "importing"
         host._first_run_error = ""
         host._first_run_progress = None
         self.refresh()
-        if not course_screen.start_import(folder, "", present_result=False):
+        if files:
+            started = course_screen.start_import(
+                files=list(files),
+                present_result=False,
+            )
+        else:
+            started = course_screen.start_import(
+                folder,
+                "",
+                present_result=False,
+            )
+        if not started:
             host._first_run_operation = ""
             host._first_run_error = host.lang_manager.get_text(
                 "课程导入任务未能启动，请检查当前后台任务。",

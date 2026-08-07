@@ -444,6 +444,9 @@ class MainWindow(QMainWindow):
         self.first_run_screen.choose_materials_requested.connect(
             self.first_run.choose_materials
         )
+        self.first_run_screen.materials_dropped.connect(
+            self.first_run.import_files
+        )
         self.first_run_screen.example_requested.connect(
             self.first_run.load_example
         )
