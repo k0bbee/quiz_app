@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QMessageBox, QWidget
 
+from ai.exam_plan import ExamGenerationPlan
 from core.session_retry import session_retry_question_ids
 from core.study_intent import StudyAction, StudyIntent
+from utils.constants import topic_value
 
 
 class ResultFlowController:
@@ -202,6 +204,77 @@ class ResultFlowController:
             resolved_intent,
             questions,
             label=gm("历史错题复习", "Incorrect Review"),
+        )
+
+    def generate_reinforcement(self) -> None:
+        """Open the existing generation workspace for weak result topics."""
+        host = self.host
+        gm = host.lang_manager.get_text
+        record = host.results_screen.current_record
+        if record is None:
+            return
+
+        topic_ids = tuple(host.results_screen.reinforcement_topic_ids())
+        if not topic_ids:
+            self.message_box.information(
+                self._parent(),
+                gm("暂无强化主题", "No Reinforcement Topics"),
+                gm(
+                    "本次没有标记为薄弱的知识点。",
+                    "This result has no weak topics to reinforce.",
+                ),
+            )
+            return
+
+        course_id = str(
+            getattr(record, "course_id_snapshot", "") or ""
+        ).strip() or str(host.course_context.current_course_id() or "").strip()
+        course_manager = getattr(host, "course_manager", None)
+        course_project = (
+            course_manager.get(course_id)
+            if course_manager is not None and course_id
+            else None
+        )
+        if course_project is None:
+            self.message_box.warning(
+                self._parent(),
+                gm("课程不可用", "Course Unavailable"),
+                gm(
+                    "无法找到这次结果所属课程，不能安全生成强化题。",
+                    "The course for this result is unavailable, so reinforcement questions cannot be generated safely.",
+                ),
+            )
+            return
+
+        available_topics = {
+            topic_value(topic)
+            for topic in getattr(course_project, "topics", ()) or ()
+            if topic_value(topic)
+        }
+        topic_ids = tuple(topic_id for topic_id in topic_ids if topic_id in available_topics)
+        if not topic_ids:
+            self.message_box.warning(
+                self._parent(),
+                gm("主题不可用", "Topics Unavailable"),
+                gm(
+                    "原结果中的薄弱主题已不在当前课程范围内。",
+                    "The weak topics from this result are no longer in the active course scope.",
+                ),
+            )
+            return
+
+        plan = ExamGenerationPlan(
+            question_count=5,
+            difficulty="mixed",
+            template="quick_review",
+            selected_topics=topic_ids,
+            topic_weights={topic_id: 1 for topic_id in topic_ids},
+        )
+        host.generation_flow.open(
+            course_override=course_project,
+            initial_plan=plan,
+            question_set_title=gm("薄弱主题强化练习", "Weak Topic Reinforcement"),
+            draft_source="result_reinforcement",
         )
 
     def _parent(self):

@@ -21,6 +21,7 @@ from models.question_set import SetManager
 from core.mastery_overrides import MasteryOverrideStore
 from core.language_manager import LanguageManager
 from core.study_intent import StudyAction, StudyIntent
+from ai.exam_plan import ExamGenerationPlan
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.results_screen import ResultsScreen
 from ui.result_flow_controller import ResultFlowController
@@ -532,19 +533,84 @@ class ResultsFlowTests(unittest.TestCase):
 
             self.assertEqual("primaryButton", screen.retry_incorrect_btn.objectName())
             self.assertEqual("secondaryButton", screen.return_home_btn.objectName())
-            self.assertFalse(hasattr(screen, "more_practice_btn"))
-            self.assertFalse(hasattr(screen, "next_action_btn"))
-            self.assertFalse(hasattr(screen, "reinforce_btn"))
-            self.assertFalse(hasattr(screen, "repeat_study_btn"))
+            self.assertEqual("secondaryButton", screen.reinforce_btn.objectName())
+            self.assertTrue(screen.reinforce_btn.isHidden())
 
             screen.return_home_btn.click()
             self.assertEqual([True], emitted)
+
+    def test_results_screen_exposes_reinforcement_topics_only_after_mistakes(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+                course = self._make_course("course-a", "课程 A")
+                course.topics = [CourseTopic("topic-a", "主题 A")]
+                self.assertTrue(manager.save(course, make_current=True))
+                question = self._make_question("q-wrong", "topic-a")
+                question.metadata["course_id"] = course.course_id
+                record = ProgressRecord.create_new("set-reinforce")
+                record.status = "completed"
+                record.course_id_snapshot = course.course_id
+                record.answers = [AnswerRecord("q-wrong", 0, "B", False)]
+                record.summary = SessionSummary.compute(record.answers, 1, 10)
+
+                screen = ResultsScreen(course_manager=manager)
+                screen.set_results(record, {question.question_id: question}, "zh")
+
+                self.assertEqual(("topic-a",), screen.reinforcement_topic_ids())
+                self.assertTrue(screen.reinforce_btn.isVisibleTo(screen))
+
+                correct_record = ProgressRecord.create_new("set-correct")
+                correct_record.status = "completed"
+                correct_record.course_id_snapshot = course.course_id
+                correct_record.answers = [AnswerRecord("q-right", 0, "A", True)]
+                correct_record.summary = SessionSummary.compute(correct_record.answers, 1, 10)
+                screen.set_results(
+                    correct_record,
+                    {"q-right": self._make_question("q-right")},
+                    "zh",
+                )
+
+                self.assertEqual((), screen.reinforcement_topic_ids())
+                self.assertTrue(screen.reinforce_btn.isHidden())
 
     def test_results_screen_does_not_keep_legacy_question_injection_wrappers(self):
             screen = self._make_results_screen()
 
             self.assertFalse(hasattr(screen, "set_questions"))
             self.assertFalse(hasattr(screen, "retryable_questions"))
+
+    def test_result_flow_opens_existing_generation_workspace_for_weak_topics(self):
+            record = ProgressRecord.create_new("set-reinforce")
+            record.status = "completed"
+            record.course_id_snapshot = "course-a"
+            record.answers = [AnswerRecord("q-wrong", 0, "B", False)]
+            record.summary = SessionSummary.compute(record.answers, 1, 10)
+            course = self._make_course("course-a", "课程 A")
+            course.topics = [CourseTopic("topic-a", "主题 A")]
+            opened = {}
+            host = types.SimpleNamespace(
+                results_screen=types.SimpleNamespace(
+                    current_record=record,
+                    reinforcement_topic_ids=lambda: ("topic-a",),
+                ),
+                course_context=_course_context("course-a"),
+                course_manager=types.SimpleNamespace(get=lambda course_id: course if course_id == "course-a" else None),
+                generation_flow=types.SimpleNamespace(
+                    open=lambda **kwargs: opened.update(kwargs) or True,
+                ),
+                lang_manager=LanguageManager.instance(),
+            )
+
+            ResultFlowController(host).generate_reinforcement()
+
+            self.assertIs(course, opened["course_override"])
+            self.assertEqual("result_reinforcement", opened["draft_source"])
+            self.assertEqual("薄弱主题强化练习", opened["question_set_title"])
+            plan = opened["initial_plan"]
+            self.assertIsInstance(plan, ExamGenerationPlan)
+            self.assertEqual(5, plan.question_count)
+            self.assertEqual(("topic-a",), plan.selected_topics)
+            self.assertEqual({"topic-a": 100}, dict(plan.topic_weights))
 
     def test_results_screen_only_shows_items_needing_review(self):
             record = ProgressRecord.create_new("set-review-filter")

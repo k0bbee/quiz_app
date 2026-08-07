@@ -479,6 +479,9 @@ class MainWindow(QMainWindow):
         self.results_screen.retry_incorrect.connect(
             self.result_flow.retry_incorrect
         )
+        self.results_screen.reinforcement_requested.connect(
+            self.result_flow.generate_reinforcement
+        )
         self.results_screen.return_home_requested.connect(
             lambda: self.navigate_to(self.SCREEN_HOME, confirm_current=False)
         )

@@ -11,12 +11,12 @@ from PyQt6.QtCore import pyqtSignal, Qt
 from core.language_manager import LanguageManager
 from core.progress_archive import validate_review_snapshot
 from core.study_intent import StudyIntent
+from core.topic_display import topic_display_name
 from models.progress import ProgressRecord, QuestionReviewSnapshot
 from models.question import Question
 from ui.widgets.question_review_card import QuestionReviewCard
 from ui.widgets.progress_summary_bar import ProgressSummaryBar
 from utils.constants import Difficulty, QuestionType, topic_value
-from core.topic_display import topic_display_name
 from models.course_project import CourseProjectManager
 from ui.archive_status_presenter import build_archive_status_view
 
@@ -25,6 +25,7 @@ class ResultsScreen(QWidget):
     """Shows quiz results with review and retry options."""
 
     retry_incorrect = pyqtSignal()
+    reinforcement_requested = pyqtSignal()
     return_home_requested = pyqtSignal()
 
     def __init__(self, parent=None, *, course_manager: CourseProjectManager):
@@ -125,6 +126,14 @@ class ResultsScreen(QWidget):
         self.retry_incorrect_btn.clicked.connect(self.retry_incorrect.emit)
         btn_layout.addWidget(self.retry_incorrect_btn)
 
+        self.reinforce_btn = QPushButton()
+        self.reinforce_btn.setObjectName("secondaryButton")
+        self.reinforce_btn.setMinimumHeight(40)
+        self.reinforce_btn.setMinimumWidth(170)
+        self.reinforce_btn.clicked.connect(self.reinforcement_requested.emit)
+        self.reinforce_btn.hide()
+        btn_layout.addWidget(self.reinforce_btn)
+
         self.return_home_btn = QPushButton()
         self.return_home_btn.setObjectName("secondaryButton")
         self.return_home_btn.setMinimumHeight(40)
@@ -142,6 +151,9 @@ class ResultsScreen(QWidget):
         )
         self.retry_incorrect_btn.setText(
             self.lang_manager.get_text("复习错题", "Review Incorrect")
+        )
+        self.reinforce_btn.setText(
+            self.lang_manager.get_text("生成强化题", "Generate Reinforcement")
         )
         self.return_home_btn.setText(
             self.lang_manager.get_text("返回首页", "Return Home")
@@ -197,6 +209,7 @@ class ResultsScreen(QWidget):
         self._lang = lang
         self.retry_incorrect_btn.setToolTip("")
         self._set_retry_action_state(False)
+        self._set_reinforcement_action_state(False)
         context_parts = [
             str(value or "").strip()
             for value in (
@@ -320,6 +333,44 @@ class ResultsScreen(QWidget):
         )
 
         self._refresh_retry_action_state()
+        self._refresh_reinforcement_action_state()
+
+    def reinforcement_topic_ids(self, limit: int = 2) -> tuple[str, ...]:
+        """Return the weakest topics represented by this result for reinforcement."""
+        record = self.current_record
+        if record is None:
+            return ()
+        counts: dict[str, int] = {}
+        for answer in getattr(record, "answers", ()) or ():
+            needs_reinforcement = (
+                bool(answer.skipped)
+                or not bool(answer.is_correct)
+                or str(getattr(answer, "confidence", "sure") or "sure") == "unsure"
+            )
+            if not needs_reinforcement:
+                continue
+            question = self._review_questions.get(answer.question_id)
+            if question is None:
+                continue
+            topic_id = topic_value(question.topic)
+            if topic_id:
+                counts[topic_id] = counts.get(topic_id, 0) + 1
+        return tuple(
+            topic_id
+            for topic_id, _count in sorted(
+                counts.items(), key=lambda item: (-item[1], item[0])
+            )[: max(1, int(limit or 1))]
+        )
+
+    def _refresh_reinforcement_action_state(self) -> None:
+        """Show reinforcement only when a course-backed weak topic is available."""
+        topics = self.reinforcement_topic_ids()
+        has_course = self._course_project is not None
+        self._set_reinforcement_action_state(bool(topics and has_course))
+
+    def _set_reinforcement_action_state(self, available: bool) -> None:
+        self.reinforce_btn.setVisible(bool(available))
+        self.reinforce_btn.setEnabled(bool(available))
 
     def set_retry_availability(
         self,

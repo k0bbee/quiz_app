@@ -87,7 +87,7 @@ The scope constrains AI generation, home-page recommendations, and incorrect-que
 - Exam mode lets users move freely and submits drafts together at the end.
 - Matching questions require every pair; unchanged default ordering receives a confirmation prompt.
 - Questions may be marked **uncertain** or **review later**.
-- The result screen keeps the score, correctness summary, review list, and the weakest one or two topics in focus. Its primary action is **Review Incorrect** and its secondary action is **Return Home**.
+- The result screen keeps the score, correctness summary, review list, and the weakest one or two topics in focus. Its primary action is **Review Incorrect**; when the result still resolves to a course, a secondary **Generate Reinforcement** action prepares five questions for those weak topics, alongside **Return Home**.
 - Exiting an unfinished session saves its question order, position, submitted answers, draft input, mode, and markers.
 - Keyboard shortcuts: `1-9` select an option, `Enter` activates the current primary action, and `Esc` exits.
 
