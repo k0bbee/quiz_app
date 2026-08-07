@@ -162,6 +162,17 @@ class AppShellUiTests(unittest.TestCase):
         self.assertIs(window._progress_screen, window.progress_screen)
         self.assertIs(window._progress_screen, window.stack.currentWidget())
 
+    def test_progress_route_installs_dashboard_before_semantic_navigation(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+
+        self.assertIsNone(window._progress_screen)
+
+        self.assertTrue(window.navigate_route(Route.study("analysis")))
+
+        self.assertIs(window._progress_screen, window.stack.currentWidget())
+        self.assertEqual(Route.study("analysis"), window.current_route)
+
     def test_main_reads_startup_settings_through_supported_json_api(self):
             app = Mock()
             app.exec.return_value = 0
