@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from models.question import Question
 from utils.constants import Difficulty, QuestionType
@@ -122,6 +123,33 @@ def parse_historical_questions(
         if question is not None:
             questions.append(question)
     return HistoricalQuestionParseResult(tuple(questions), tuple(warnings))
+
+
+def parse_historical_document(
+    path: str | Path,
+    *,
+    course_id: str = "",
+    task=None,
+) -> HistoricalQuestionParseResult:
+    """Extract a supported local document, then parse its question blocks.
+
+    ``DocumentParser`` owns PDF/DOCX/PPTX/OCR limits and cancellation checks;
+    this function only adds its extraction warnings to the review result.
+    """
+
+    from core.document_parser import DocumentParser
+
+    document = DocumentParser().parse_file(Path(path), task=task)
+    result = parse_historical_questions(
+        document.text,
+        source_file=document.path,
+        course_id=course_id,
+    )
+    extraction_warnings = tuple(str(warning) for warning in document.warnings if str(warning).strip())
+    return HistoricalQuestionParseResult(
+        questions=result.questions,
+        warnings=extraction_warnings + result.warnings,
+    )
 
 
 def _normalized_lines(text: str) -> list[str]:

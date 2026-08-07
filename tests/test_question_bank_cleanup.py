@@ -18,7 +18,11 @@ from core.question_quality_scan import QuestionQualityResult, QuestionQualitySca
 from models.course_project import CourseProject, CourseProjectManager, CourseTopic
 from models.question import Question, QuestionBank
 from models.question_set import QuestionSet, SetManager
-from ui.screens.question_bank_screen import QuestionBankScreen, QuestionQualityScanWorker
+from ui.screens.question_bank_screen import (
+    HistoricalQuestionImportWorker,
+    QuestionBankScreen,
+    QuestionQualityScanWorker,
+)
 from utils.constants import Difficulty, QuestionType
 
 
@@ -83,6 +87,11 @@ class QuestionBankCleanupTests(unittest.TestCase):
             dialog = Mock()
             dialog.exec.return_value = QDialog.DialogCode.Accepted
             dialog.get_accepted_questions.return_value = [reviewed_question]
+            worker = Mock()
+            worker.progressed = ManualSignal()
+            worker.completed = ManualSignal()
+            worker.failed = ManualSignal()
+            worker.cancelled = ManualSignal()
 
             with patch(
                 "ui.screens.question_bank_screen.QFileDialog.getOpenFileName",
@@ -90,8 +99,18 @@ class QuestionBankCleanupTests(unittest.TestCase):
             ), patch(
                 "ui.dialogs.question_review_dialog.QuestionReviewDialog",
                 return_value=dialog,
+            ), patch(
+                "ui.screens.question_bank_screen.HistoricalQuestionImportWorker",
+                return_value=worker,
             ), patch("ui.screens.question_bank_screen.QMessageBox.information"):
                 screen._import_historical_text()
+                worker.start.assert_called_once_with()
+                screen._on_historical_import_completed(
+                    parse_historical_questions(
+                        source.read_text(encoding="utf-8"),
+                        source_file=str(source.resolve()),
+                    )
+                )
 
             saved = bank.get(reviewed_question.question_id)
             self.assertIsNotNone(saved)
@@ -101,6 +120,27 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 saved.metadata["source_refs"][0]["source_file"],
             )
             dialog.get_accepted_questions.assert_called_once_with()
+
+    def test_historical_import_worker_parses_document_without_blocking_ui(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / "exam.txt"
+            source.write_text(
+                "1. 哪个选项正确？\nA. 甲\nB. 乙\n答案：A\n",
+                encoding="utf-8",
+            )
+            worker = HistoricalQuestionImportWorker(str(source))
+            results = []
+            worker.completed.connect(results.append)
+
+            worker.start()
+            while worker.isRunning():
+                _APP.processEvents()
+                worker.wait(10)
+            _APP.processEvents()
+
+            self.assertEqual(1, len(results))
+            self.assertEqual(1, len(results[0].questions))
+            self.assertFalse(worker.isRunning())
 
     def _screen(
         self,

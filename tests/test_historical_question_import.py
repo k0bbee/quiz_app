@@ -1,6 +1,9 @@
 import unittest
 
-from core.historical_question_import import parse_historical_questions
+from core.historical_question_import import (
+    parse_historical_document,
+    parse_historical_questions,
+)
 from utils.constants import QuestionType
 
 
@@ -80,6 +83,22 @@ B．选项乙
         self.assertEqual("哪个选项正确？", question.get_stem("zh"))
         self.assertEqual("B", question.correct_answer)
         self.assertEqual(7, question.metadata["source_question_number"])
+
+    def test_uses_document_parser_for_supported_text_documents(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "paper.txt"
+            path.write_text(
+                "1. 题目？\nA. 甲\nB. 乙\n答案：A\n",
+                encoding="utf-8",
+            )
+
+            result = parse_historical_document(path, course_id="course-1")
+
+        self.assertEqual(1, len(result.questions))
+        self.assertEqual("course-1", result.questions[0].metadata["course_id"])
 
 
 if __name__ == "__main__":

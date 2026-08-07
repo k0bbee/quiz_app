@@ -28,7 +28,10 @@ from core.library_scope import LibraryAssetScope, LibraryScopeKind
 from core.question_bank_maintenance import backfill_source_refs_from_course, remove_question_from_sets
 from core.question_quality_scan import scan_question_bank_quality
 from core.question_validation import validate_question_quality
-from core.historical_question_import import parse_historical_questions
+from core.historical_question_import import (
+    HistoricalQuestionParseResult,
+    parse_historical_document,
+)
 from core.input_limits import MAX_EXTRACTED_TEXT_CHARS
 from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
@@ -108,6 +111,78 @@ class QuestionQualityScanWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class HistoricalQuestionImportWorker(QThread):
+    """Extract and parse one local exam document outside the UI thread."""
+
+    progressed = pyqtSignal(object)
+    completed = pyqtSignal(object)
+    failed = pyqtSignal(str)
+    cancelled = pyqtSignal()
+
+    def __init__(
+        self,
+        path: str,
+        *,
+        course_id: str = "",
+        task_center=None,
+        task_id: str = "",
+        parent=None,
+    ):
+        super().__init__(parent)
+        self.path = str(path)
+        self.course_id = str(course_id or "")
+        self.task_id = str(task_id or "")
+        self._bridge = (
+            BackgroundTaskBridge(task_center, self.task_id)
+            if task_center is not None and self.task_id
+            else None
+        )
+        self._control = TaskControl(self._report_progress)
+
+    def cancel(self):
+        self._control.cancel()
+
+    def _report_progress(self, progress: TaskProgress):
+        self.progressed.emit(progress)
+        if self._bridge is not None:
+            self._bridge.report(progress)
+
+    def run(self):
+        if self._bridge is not None and not self._bridge.start(self.cancel):
+            self.cancelled.emit()
+            return
+        try:
+            self._control.report(
+                "reading_document",
+                detail=Path(self.path).name,
+            )
+            result = parse_historical_document(
+                self.path,
+                course_id=self.course_id,
+                task=self._control,
+            )
+            self._control.report(
+                "parsing_questions",
+                current=len(result.questions),
+                total=len(result.questions),
+                detail="question blocks",
+            )
+            if self._bridge is not None:
+                self._bridge.complete(
+                    result_summary=f"Parsed {len(result.questions)} question(s)",
+                    result_count=len(result.questions),
+                )
+            self.completed.emit(result)
+        except BackgroundTaskCancelled:
+            if self._bridge is not None:
+                self._bridge.cancelled()
+            self.cancelled.emit()
+        except Exception as exc:
+            if self._bridge is not None:
+                self._bridge.fail(exc)
+            self.failed.emit(str(exc))
+
+
 class QuestionBankScreen(QWidget):
     """Manage question JSON records."""
 
@@ -140,6 +215,8 @@ class QuestionBankScreen(QWidget):
         self._quality_scan_worker = None
         self._quality_scan_task_id = ""
         self._quality_scan_results = {}
+        self._historical_import_worker = None
+        self._historical_import_task_id = ""
         self.search_debounce_timer = QTimer(self)
         self.search_debounce_timer.setSingleShot(True)
         self.search_debounce_timer.setInterval(250)
@@ -213,14 +290,31 @@ class QuestionBankScreen(QWidget):
         self.import_text_btn.setObjectName("secondaryButton")
         self.import_text_btn.setToolTip(
             self.lang_manager.get_text(
-                "导入 TXT/Markdown 真题文本，先审核再保存",
-                "Import TXT/Markdown exam text for review before saving",
+                "导入文本、PDF、DOCX 或 PPTX，先审核再保存",
+                "Import text, PDF, DOCX, or PPTX for review before saving",
             )
         )
         self.import_text_btn.clicked.connect(self._import_historical_text)
         list_actions_row.addWidget(self.import_text_btn)
         list_actions_row.addStretch(1)
         layout.addLayout(list_actions_row)
+
+        historical_import_row = QHBoxLayout()
+        self.historical_import_status_label = QLabel()
+        self.historical_import_status_label.setObjectName("secondaryText")
+        self.historical_import_status_label.setWordWrap(True)
+        self.historical_import_status_label.hide()
+        historical_import_row.addWidget(self.historical_import_status_label, 1)
+        self.cancel_historical_import_btn = QPushButton(
+            self.lang_manager.get_text("停止导入", "Stop Import")
+        )
+        self.cancel_historical_import_btn.setObjectName("secondaryButton")
+        self.cancel_historical_import_btn.clicked.connect(
+            self._cancel_historical_import
+        )
+        self.cancel_historical_import_btn.hide()
+        historical_import_row.addWidget(self.cancel_historical_import_btn)
+        layout.addLayout(historical_import_row)
 
         quality_scan_row = QHBoxLayout()
         self.quality_scan_status_label = QLabel("")
@@ -453,9 +547,12 @@ class QuestionBankScreen(QWidget):
         )
         self.import_text_btn.setToolTip(
             self.lang_manager.get_text(
-                "导入 TXT/Markdown 真题文本，先审核再保存",
-                "Import TXT/Markdown exam text for review before saving",
+                "导入文本、PDF、DOCX 或 PPTX，先审核再保存",
+                "Import text, PDF, DOCX, or PPTX for review before saving",
             )
+        )
+        self.cancel_historical_import_btn.setText(
+            self.lang_manager.get_text("停止导入", "Stop Import")
         )
         self.empty_state_label.setText(
             self.lang_manager.get_text(
@@ -706,37 +803,33 @@ class QuestionBankScreen(QWidget):
             self._open_responsive_inspector()
 
     def _import_historical_text(self):
-        """Parse a local text/OCR export and route candidates through review."""
+        """Extract a local exam document and route candidates through review."""
+        if self._historical_import_worker is not None:
+            return
         filepath, _ = QFileDialog.getOpenFileName(
             self,
-            self.lang_manager.get_text("选择题目文本", "Select Question Text"),
+            self.lang_manager.get_text("选择题目资料", "Select Question Source"),
             "",
             self.lang_manager.get_text(
-                "题目文本 (*.txt *.md);;所有文件 (*.*)",
-                "Question text (*.txt *.md);;All files (*.*)",
+                "题目资料 (*.txt *.md *.pdf *.docx *.pptx);;所有文件 (*.*)",
+                "Question sources (*.txt *.md *.pdf *.docx *.pptx);;All files (*.*)",
             ),
         )
         if not filepath:
             return
+        source_path = Path(filepath)
         try:
-            source_path = Path(filepath)
             if source_path.stat().st_size > MAX_EXTRACTED_TEXT_CHARS * 4:
-                raise ValueError(
+                QMessageBox.warning(
+                    self,
+                    self.lang_manager.get_text("导入失败", "Import Failed"),
                     self.lang_manager.get_text(
                         "文件超过文本导入大小限制。",
                         "The file exceeds the text import size limit.",
-                    )
+                    ),
                 )
-            with source_path.open("r", encoding="utf-8-sig") as handle:
-                text = handle.read(MAX_EXTRACTED_TEXT_CHARS + 1)
-            if len(text) > MAX_EXTRACTED_TEXT_CHARS:
-                raise ValueError(
-                    self.lang_manager.get_text(
-                        "文件超过文本内容限制。",
-                        "The file exceeds the extracted text limit.",
-                    )
-                )
-        except (OSError, UnicodeError) as exc:
+                return
+        except OSError as exc:
             QMessageBox.warning(
                 self,
                 self.lang_manager.get_text("导入失败", "Import Failed"),
@@ -746,19 +839,58 @@ class QuestionBankScreen(QWidget):
                 ),
             )
             return
-        except ValueError as exc:
-            QMessageBox.warning(
-                self,
-                self.lang_manager.get_text("导入失败", "Import Failed"),
-                str(exc),
-            )
-            return
 
-        result = parse_historical_questions(
-            text,
-            source_file=str(source_path.resolve()),
+        task_id = ""
+        if self.task_center is not None:
+            snapshot = self.task_center.create(
+                kind="historical_question_import",
+                title=self.lang_manager.get_text("导入历史题目", "Import Historical Questions"),
+                metadata={
+                    "course_id": self._current_course_id,
+                    "source_file": str(source_path.resolve()),
+                },
+            )
+            task_id = snapshot.task_id
+        self._historical_import_task_id = task_id
+        worker = HistoricalQuestionImportWorker(
+            str(source_path),
             course_id=self._current_course_id,
+            task_center=self.task_center,
+            task_id=task_id,
+            parent=self,
         )
+        self._historical_import_worker = worker
+        worker.progressed.connect(self._on_historical_import_progress)
+        worker.completed.connect(self._on_historical_import_completed)
+        worker.failed.connect(self._on_historical_import_failed)
+        worker.cancelled.connect(self._on_historical_import_cancelled)
+        self._set_historical_import_busy(True)
+        worker.start()
+
+    def _set_historical_import_busy(self, busy: bool):
+        self.import_text_btn.setEnabled(not busy)
+        self.cancel_historical_import_btn.setVisible(busy)
+        self.cancel_historical_import_btn.setEnabled(busy)
+        self.historical_import_status_label.setVisible(busy)
+        if busy:
+            self.historical_import_status_label.setText(
+                self.lang_manager.get_text("正在读取题目资料…", "Reading question source…")
+            )
+
+    def _on_historical_import_progress(self, progress: TaskProgress):
+        labels = {
+            "reading_document": self.lang_manager.get_text("读取资料", "Reading source"),
+            "files_found": self.lang_manager.get_text("发现资料", "Source found"),
+            "parsing": self.lang_manager.get_text("解析资料", "Parsing source"),
+            "parsing_questions": self.lang_manager.get_text("识别题目", "Parsing questions"),
+        }
+        label = labels.get(progress.stage, progress.stage)
+        count = f" {progress.current}/{progress.total}" if progress.total else ""
+        detail = f" · {progress.detail}" if progress.detail else ""
+        self.historical_import_status_label.setText(f"{label}{count}{detail}")
+
+    def _on_historical_import_completed(self, result: HistoricalQuestionParseResult):
+        self._finish_historical_import()
         if not result.questions:
             warning_text = "\n".join(result.warnings[:6])
             if len(result.warnings) > 6:
@@ -773,6 +905,10 @@ class QuestionBankScreen(QWidget):
             )
             return
 
+        self._review_historical_import(result)
+
+    def _review_historical_import(self, result: HistoricalQuestionParseResult):
+        """Show parser warnings and reuse the existing human review workflow."""
         from ui.dialogs.question_review_dialog import QuestionReviewDialog
 
         if result.warnings:
@@ -809,6 +945,39 @@ class QuestionBankScreen(QWidget):
                 f"Saved {saved} question(s).",
             ),
         )
+
+    def _cancel_historical_import(self):
+        worker = self._historical_import_worker
+        if worker is None:
+            return
+        self.cancel_historical_import_btn.setEnabled(False)
+        self.historical_import_status_label.setText(
+            self.lang_manager.get_text("正在安全停止…", "Stopping safely…")
+        )
+        if self.task_center is not None and self._historical_import_task_id:
+            try:
+                self.task_center.request_cancel(self._historical_import_task_id)
+            except (KeyError, ValueError):
+                pass
+        worker.cancel()
+
+    def _on_historical_import_cancelled(self):
+        self._finish_historical_import()
+
+    def _on_historical_import_failed(self, message: str):
+        self._finish_historical_import()
+        QMessageBox.critical(
+            self,
+            self.lang_manager.get_text("题目资料导入失败", "Question Import Failed"),
+            message,
+        )
+
+    def _finish_historical_import(self):
+        self._set_historical_import_busy(False)
+        self.cancel_historical_import_btn.hide()
+        self.historical_import_status_label.hide()
+        self._historical_import_worker = None
+        self._historical_import_task_id = ""
 
     def _save_question(self):
         try:
