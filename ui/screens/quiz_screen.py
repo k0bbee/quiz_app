@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QProgressBar, QFrame, QScrollArea, QMessageBox,
     QListWidget, QListWidgetItem, QSplitter, QCheckBox, QDialog, QButtonGroup,
-    QSizePolicy,
+    QSizePolicy, QComboBox,
 )
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
@@ -18,6 +18,7 @@ from core.quiz_engine import QuizSession
 from core.study_intent import StudyIntent
 from core.language_manager import LanguageManager
 from core.progress_tracker import ProgressManager
+from models.progress import ERROR_REASON_VALUES
 from core.answer_display import format_answer_for_display
 from utils.constants import QuestionType, QuizState
 from ui.widgets.question_card import QuestionCard
@@ -31,6 +32,11 @@ class QuizScreen(QWidget):
     """Main quiz-taking screen with question, answer area, and feedback."""
 
     _NARROW_LAYOUT_WIDTH = 1000
+    _ERROR_REASON_LABELS = {
+        "concept_gap": ("概念没掌握", "Concept gap"),
+        "misread": ("看错题目", "Misread the question"),
+        "guess": ("不确定/猜的", "Unsure or guessed"),
+    }
 
     quiz_finished = pyqtSignal(object)  # ProgressRecord
     return_home = pyqtSignal()
@@ -257,6 +263,16 @@ class QuizScreen(QWidget):
         self.explanation_label.setWordWrap(True)
         fb_layout.addWidget(self.explanation_label)
 
+        self.error_reason_combo = QComboBox()
+        self.error_reason_combo.setObjectName("quizErrorReasonCombo")
+        self.error_reason_combo.setMaximumWidth(280)
+        self.error_reason_combo.currentIndexChanged.connect(
+            self._set_current_error_reason
+        )
+        fb_layout.addWidget(self.error_reason_combo, 0, Qt.AlignmentFlag.AlignCenter)
+        self._refresh_error_reason_options()
+        self.error_reason_combo.hide()
+
         self.source_refs_panel = SourceRefsPanel()
         self.source_refs_panel.setObjectName("quizFeedbackSourceEvidence")
         self.source_refs_panel.hide()
@@ -331,6 +347,25 @@ class QuizScreen(QWidget):
         self.practice_scroll.setWidget(scroll_content)
         layout.addWidget(self.practice_scroll, 1)
         self._update_responsive_layout()
+
+    def _refresh_error_reason_options(self) -> None:
+        """Keep the optional missed-question selector localized and stable."""
+        current_reason = self.error_reason_combo.currentData()
+        self.error_reason_combo.blockSignals(True)
+        self.error_reason_combo.clear()
+        self.error_reason_combo.addItem(
+            self.lang_manager.get_text("错误原因（可选）", "Why did you miss it?"),
+            "",
+        )
+        for reason in ERROR_REASON_VALUES:
+            zh, en = self._ERROR_REASON_LABELS[reason]
+            self.error_reason_combo.addItem(
+                self.lang_manager.get_text(zh, en),
+                reason,
+            )
+        index = self.error_reason_combo.findData(current_reason or "")
+        self.error_reason_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.error_reason_combo.blockSignals(False)
 
     def resizeEvent(self, event):
         """Keep the answer workspace usable when the window becomes narrow."""
@@ -609,6 +644,8 @@ class QuizScreen(QWidget):
 
         self.answer_area.set_enabled(True)
         self.feedback_frame.hide()
+        self.error_reason_combo.hide()
+        self.error_reason_combo.setCurrentIndex(0)
         self._clear_source_evidence()
         self._set_correct_indicator_state("")
         self._refresh_navigation_button_state()
@@ -704,6 +741,16 @@ class QuizScreen(QWidget):
             self._unsure_question_ids.discard(question_id)
             self.session.set_answer_confidence(question_id, "sure")
         self._refresh_question_nav()
+
+    def _set_current_error_reason(self):
+        """Persist a learner-selected reason for an incorrect answer."""
+        question = self.session.current_question
+        if question is None:
+            return
+        self.session.set_answer_error_reason(
+            self._displayed_question_id or question.question_id,
+            str(self.error_reason_combo.currentData() or ""),
+        )
 
     def _set_current_review_from_checkbox(self):
         """Persist the current question's independent review marker."""
@@ -1141,6 +1188,7 @@ class QuizScreen(QWidget):
         self.lang_btn.setText("English" if lang == "zh" else "中文")
         self._refresh_review_toggle_text()
         self._refresh_quiz_hints()
+        self._refresh_error_reason_options()
         self._refresh_unsure_state()
         self._refresh_review_state()
         self.prev_question_btn.setText(self.lang_manager.get_text("上一题", "Previous"))
@@ -1246,6 +1294,14 @@ class QuizScreen(QWidget):
             language=self.lang_manager.current,
         )
         self.explanation_label.setText(feedback)
+
+        self.error_reason_combo.blockSignals(True)
+        reason_index = self.error_reason_combo.findData(
+            getattr(record, "error_reason", "") or ""
+        )
+        self.error_reason_combo.setCurrentIndex(reason_index if reason_index >= 0 else 0)
+        self.error_reason_combo.blockSignals(False)
+        self.error_reason_combo.setVisible(not record.is_correct and not record.skipped)
 
         self.feedback_frame.show()
         self.answer_area.set_enabled(False)

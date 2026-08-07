@@ -80,6 +80,54 @@ class QuizSessionCoreTests(unittest.TestCase):
 
         self.assertEqual("manual_self_assessment", loaded.grading_method)
 
+    def test_answer_record_persists_optional_error_reason(self):
+        record = AnswerRecord(
+            question_id="q1",
+            index_in_session=0,
+            user_answer="B",
+            is_correct=False,
+            error_reason="concept_gap",
+        )
+
+        loaded = AnswerRecord.from_dict(record.to_dict())
+
+        self.assertEqual("concept_gap", loaded.error_reason)
+
+    def test_quiz_session_updates_error_reason_for_incorrect_answer(self):
+        question_set = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["cache"],
+            question_ids=[],
+        )
+        question = self._make_question("q1")
+        session = QuizSession()
+        session.start_fixed_order(question_set, [question], language="zh")
+        session.submit_answer("B")
+
+        changed = session.set_answer_error_reason("q1", "misread")
+
+        self.assertTrue(changed)
+        self.assertEqual("misread", session.answers[0].error_reason)
+
+        self.assertFalse(session.set_answer_error_reason("q1", "not-a-reason"))
+        self.assertEqual("misread", session.answers[0].error_reason)
+
+    def test_quiz_session_does_not_tag_correct_or_skipped_answers(self):
+        question_set = QuestionSet.create_new(
+            title={"zh": "测试", "en": "Test"},
+            description={"zh": "", "en": ""},
+            topics=["cache"],
+            question_ids=[],
+        )
+        question = self._make_question("q1")
+        session = QuizSession()
+        session.start_fixed_order(question_set, [question], language="zh")
+        session.submit_answer("A")
+
+        self.assertFalse(session.set_answer_error_reason("q1", "guess"))
+        self.assertEqual("", session.answers[0].error_reason)
+
     def test_quiz_session_requires_and_records_short_answer_self_assessment(self):
         question = Question.create_new(
             qtype=QuestionType.SHORT_ANSWER,

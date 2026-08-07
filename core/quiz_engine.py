@@ -13,6 +13,7 @@ from models.question import Question
 from models.question_set import QuestionSet
 from models.progress import (
     AnswerRecord,
+    ERROR_REASON_VALUES,
     ProgressRecord,
     QuestionReviewSnapshot,
     SessionSummary,
@@ -419,6 +420,20 @@ class QuizSession:
         for answer in reversed(self._answers):
             if answer.question_id == question_id:
                 answer.confidence = confidence
+                return True
+        return False
+
+    def set_answer_error_reason(self, question_id: str, reason: str) -> bool:
+        """Update the optional reason for an incorrect submitted answer."""
+        if reason and reason not in ERROR_REASON_VALUES:
+            return False
+        for answer in reversed(self._answers):
+            if (
+                answer.question_id == question_id
+                and not answer.skipped
+                and not answer.is_correct
+            ):
+                answer.error_reason = reason
                 return True
         return False
 

@@ -468,6 +468,33 @@ class QuizSessionFlowTests(unittest.TestCase):
 
                 self.assertEqual("unsure", screen.session.answers[0].confidence)
 
+    def test_quiz_screen_collects_optional_error_reason_after_incorrect_answer(self):
+            question = self._make_question("q1")
+            qset = QuestionSet.create_new(
+                title={"zh": "测试", "en": "Test"},
+                description={"zh": "", "en": ""},
+                topics=["test"],
+                question_ids=[question.question_id],
+            )
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                screen = QuizScreen(
+                    QuestionBank(str(Path(tmpdir) / "questions")),
+                    ProgressManager(str(Path(tmpdir) / "progress")),
+                )
+                screen.start_quiz(qset, [question], show_timer=False)
+                screen.answer_area.choice_widget.buttons[1].setChecked(True)
+                screen._submit_answer()
+
+                self.assertFalse(screen.session.answers[0].is_correct)
+                self.assertFalse(screen.error_reason_combo.isHidden())
+                reason_index = screen.error_reason_combo.findData("concept_gap")
+                self.assertGreaterEqual(reason_index, 0)
+
+                screen.error_reason_combo.setCurrentIndex(reason_index)
+
+                self.assertEqual("concept_gap", screen.session.answers[0].error_reason)
+
     def test_exam_mode_next_only_switches_and_finish_submits_all_drafts(self):
             q1 = self._make_question("q1")
             q2 = self._make_question("q2")

@@ -9,6 +9,9 @@ from datetime import datetime, timezone
 from typing import Optional
 
 
+ERROR_REASON_VALUES = ("concept_gap", "misread", "guess")
+
+
 @dataclass
 class AnswerRecord:
     """A single answer given during a quiz session."""
@@ -19,6 +22,7 @@ class AnswerRecord:
     is_correct: bool
     skipped: bool = False
     confidence: str = "sure"  # "sure" or "unsure"
+    error_reason: str = ""  # concept_gap, misread, guess, or empty
     grading_method: str = "automatic"
     time_spent_seconds: float = 0.0
     attempted_at: str = ""
@@ -31,6 +35,9 @@ class AnswerRecord:
             "is_correct": self.is_correct,
             "skipped": self.skipped,
             "confidence": self.confidence,
+            "error_reason": (
+                self.error_reason if self.error_reason in ERROR_REASON_VALUES else ""
+            ),
             "grading_method": self.grading_method,
             "time_spent_seconds": self.time_spent_seconds,
             "attempted_at": self.attempted_at,
@@ -45,6 +52,11 @@ class AnswerRecord:
             is_correct=data.get("is_correct", False),
             skipped=data.get("skipped", False),
             confidence=data.get("confidence", "sure"),
+            error_reason=(
+                data.get("error_reason", "")
+                if data.get("error_reason", "") in ERROR_REASON_VALUES
+                else ""
+            ),
             grading_method=data.get("grading_method", "automatic"),
             time_spent_seconds=data.get("time_spent_seconds", 0.0),
             attempted_at=data.get("attempted_at", ""),
