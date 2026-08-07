@@ -90,6 +90,7 @@ The scope constrains AI generation, home-page recommendations, and incorrect-que
 - Matching questions require every pair; unchanged default ordering receives a confirmation prompt.
 - Questions may be marked **uncertain** or **review later**.
 - The result screen keeps the score, correctness summary, review list, and the weakest one or two topics in focus. Its primary action is **Review Incorrect**; when the result still resolves to a course, a secondary **Generate Reinforcement** action prepares five questions for those weak topics, alongside **Return Home**.
+- Course Q&A review lives inside the course workspace rather than the top-level navigation. Each request is explicitly sent by the user, is grounded in the current exam scope and original course sources, validates cited source numbers, and can be stopped with the question restored for retry.
 - Exiting an unfinished session saves its question order, position, submitted answers, draft input, mode, and markers.
 - Keyboard shortcuts: `1-9` select an option, `Enter` activates the current primary action, and `Esc` exits.
 

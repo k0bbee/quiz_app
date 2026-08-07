@@ -408,6 +408,7 @@ class MainWindow(QMainWindow):
                 ("course_sources_tab_btn", Route.course(tab="sources")),
                 ("course_knowledge_tab_btn", Route.course(tab="knowledge")),
                 ("course_generation_tab_btn", Route.course(tab="generation")),
+                ("course_qa_tab_btn", Route.course(tab="qa")),
                 ("bank_tab_btn", Route.library("questions")),
                 ("sets_tab_btn", Route.library("sets")),
             ),
@@ -432,6 +433,7 @@ class MainWindow(QMainWindow):
             "course_sources_tab_btn",
             "course_knowledge_tab_btn",
             "course_generation_tab_btn",
+            "course_qa_tab_btn",
             "bank_tab_btn",
             "sets_tab_btn",
         ):

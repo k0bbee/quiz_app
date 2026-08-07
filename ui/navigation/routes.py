@@ -27,7 +27,7 @@ class ScreenKey(str, Enum):
 _VALID_TABS = {
     Workspace.STUDY: frozenset({"today", "practice", "analysis"}),
     Workspace.COURSE: frozenset(
-        {"overview", "sources", "knowledge", "generation"}
+        {"overview", "sources", "knowledge", "generation", "qa"}
     ),
     Workspace.LIBRARY: frozenset({"questions", "sets"}),
     Workspace.FOCUS: frozenset({"quiz", "results"}),
@@ -136,6 +136,7 @@ _WORKSPACE_TABS = {
         RouteTab(Route.course(tab="sources"), "资料", "Sources"),
         RouteTab(Route.course(tab="knowledge"), "知识点", "Knowledge"),
         RouteTab(Route.course(tab="generation"), "生成与审核", "Generate and Review"),
+        RouteTab(Route.course(tab="qa"), "问答巩固", "Q&A Review"),
     ),
     Workspace.LIBRARY: (
         RouteTab(Route.library("questions"), "题目", "Questions"),

@@ -36,6 +36,7 @@ from ui.widgets.course_hub_panels import (
     CourseKnowledgePanel,
     CourseSourcesPanel,
 )
+from ui.widgets.course_qa_panel import CourseQAPanel
 from utils.json_io import read_json
 
 
@@ -98,6 +99,7 @@ class CourseScreen(QWidget):
         generation_draft_store=None,
         parent=None,
         task_center=None,
+        qa_service_factory=None,
         checkpoint_store=None,
     ):
         super().__init__(parent)
@@ -109,6 +111,7 @@ class CourseScreen(QWidget):
         self.mastery_overrides = mastery_overrides
         self.generation_draft_store = generation_draft_store
         self.task_center = task_center
+        self.qa_service_factory = qa_service_factory or self._create_qa_service
         self.checkpoint_store = checkpoint_store or CourseParseCheckpointStore(
             COURSE_CHECKPOINTS_DIR
         )
@@ -178,6 +181,7 @@ class CourseScreen(QWidget):
         )
         self.scope_btn.setText(self.lang_manager.get_text("考试范围", "Exam Scope"))
         self.more_actions_btn.setText(self.lang_manager.get_text("更多操作", "More Actions"))
+        self.qa_panel.retranslate()
         self.rename_action.setText(self.lang_manager.get_text("重命名", "Rename"))
         self.regenerate_action.setText(self.lang_manager.get_text("重新生成总结", "Regenerate Summary"))
         self.refresh_action.setText(self.lang_manager.get_text("刷新", "Refresh"))
@@ -470,6 +474,8 @@ class CourseScreen(QWidget):
             self._on_knowledge_topic_action
         )
         self.content_stack.addWidget(self.knowledge_panel)
+        self.qa_panel = CourseQAPanel(self.qa_service_factory)
+        self.content_stack.addWidget(self.qa_panel)
         right_layout.addWidget(self.content_stack, 1)
         splitter.addWidget(right)
         splitter.setSizes([280, 620])
@@ -526,6 +532,7 @@ class CourseScreen(QWidget):
             "overview": self.overview_panel,
             "sources": self.sources_panel,
             "knowledge": self.knowledge_panel,
+            "qa": self.qa_panel,
         }
         if normalized not in widgets:
             raise ValueError(f"unknown course section: {normalized}")
@@ -615,6 +622,7 @@ class CourseScreen(QWidget):
         )
         self.sources_panel.render(view, gm)
         self.knowledge_panel.render(view, gm)
+        self.qa_panel.set_course(project)
 
     def _clear_course_hub(self) -> None:
         self._course_hub_view = None
@@ -629,6 +637,7 @@ class CourseScreen(QWidget):
             label.clear()
         self.sources_table.setRowCount(0)
         self.knowledge_table.setRowCount(0)
+        self.qa_panel.set_course(None)
 
     def _on_knowledge_topic_action(self, topic_id: str, action: str) -> None:
         course_id = self.selected_course_id()
@@ -986,6 +995,9 @@ class CourseScreen(QWidget):
 
     def _set_course_task_active(self, active: bool) -> None:
         """Keep all course actions consistent while one background task owns state."""
+        if active:
+            self.qa_panel.stop_request(show_status=False)
+        self.qa_panel.setEnabled(not active)
         self.progress_bar.setVisible(active)
         self.task_status_label.setVisible(active)
         self.cancel_task_btn.setVisible(active)
@@ -1045,6 +1057,7 @@ class CourseScreen(QWidget):
 
     def request_shutdown(self) -> bool:
         """Request cooperative cancellation; never block the GUI thread."""
+        self.qa_panel.stop_request(show_status=False)
         workers = [
             worker
             for worker in (
@@ -1820,6 +1833,7 @@ class CourseScreen(QWidget):
         section_labels = {
             "sources": ("资料", "Sources"),
             "knowledge": ("知识点", "Knowledge"),
+            "qa": ("问答巩固", "Q&A Review"),
         }
         labels = section_labels.get(self._active_section)
         if labels is None:
@@ -1830,6 +1844,47 @@ class CourseScreen(QWidget):
             f"{zh} · {project.title}",
             f"{en} · {project.title}",
         ))
+
+    def _create_qa_service(self, project):
+        """Build a validated, course-scoped Q&A service from local settings."""
+        from ai.course_qa import CourseQAError, CourseQAService
+        from ai.course_summary_factory import provider_requires_api_key
+        from ai.llm_client import LLMClient
+        from ai.provider_presets import detect_local_agents
+        from ai.settings_validation import validate_ai_settings
+        from core.app_errors import AppError
+        from core.secrets_manager import SecretsManager
+
+        settings = read_json(SETTINGS_FILE) or {}
+        api_key = (
+            SecretsManager.instance().get_key()
+            if provider_requires_api_key(settings)
+            else ""
+        )
+        validation = validate_ai_settings(
+            settings,
+            api_key=api_key,
+            detected_agents=detect_local_agents(),
+        )
+        if not validation.ok:
+            raise CourseQAError(AppError(
+                code="QA-SETTINGS-001",
+                severity="warning",
+                title_zh="AI 设置需要处理",
+                title_en="AI Settings Need Attention",
+                message_zh=validation.message,
+                message_en=validation.message,
+                action_zh="请到设置页检查服务商、地址、模型和 API Key。",
+                action_en="Check the provider, endpoint, model, and API key in Settings.",
+                technical_detail=validation.message,
+            ))
+        client = LLMClient(
+            api_key=api_key,
+            base_url=settings.get("ai_base_url", "https://api.anthropic.com/v1"),
+            model=settings.get("ai_model", "claude-sonnet-4-6"),
+            provider=settings.get("ai_provider", ""),
+        )
+        return CourseQAService(client, project)
 
     def _show_summary(self, markdown: str):
         """Display course summary as rendered Markdown by default."""

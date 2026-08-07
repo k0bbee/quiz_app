@@ -878,3 +878,26 @@ class CourseScreenFlowTests(unittest.TestCase):
 
                 self.assertIn("# 课程总结", screen.summary_preview.toPlainText())
                 self.assertIn("**DMA**", screen.summary_preview.toPlainText())
+
+    def test_course_screen_exposes_q_and_a_as_a_course_context_tab(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+                project = CourseProject(
+                    course_id="course-qa-screen",
+                    title="Systems",
+                    source_folder="",
+                    summary_markdown="# I/O\n\nDMA transfers blocks.",
+                    summary_path="",
+                    topics=[CourseTopic("io", "I/O")],
+                    documents=[],
+                    created_at="2026-07-05T00:00:00+00:00",
+                    updated_at="2026-07-05T00:00:00+00:00",
+                )
+                manager.save(project)
+                screen = CourseScreen(manager, qa_service_factory=lambda _project: None)
+
+                screen.show_section("qa")
+
+                self.assertIs(screen.content_stack.currentWidget(), screen.qa_panel)
+                self.assertEqual(project.course_id, screen.qa_panel.course.course_id)
+                self.assertIn("问答", screen.summary_label.text())
