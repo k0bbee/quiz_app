@@ -51,7 +51,7 @@ python scripts/check_environment.py --json
 | Question generation | Stream accepted questions one at a time, validate plan slots and source references, accept additional instructions while generation is running, and safely preserve partial results on cancellation |
 | Background tasks | Show long-running task stages, cancellation state, and failures; imports, generation, and quality scans can be stopped safely from their current page without restoring stale task inputs |
 | Question types | Multiple choice, true/false, scenario choice, matching, ordering, fill-in-the-blank, and short answer |
-| Question bank | Search and filter by set, topic, difficulty, and quality; create or edit every question type; multi-select and batch-delete questions |
+| Question bank | Search and filter by set, topic, difficulty, and quality; create or edit every question type; import TXT/Markdown/PDF/DOCX/PPTX exam or OCR text for review before saving, with safe cancellation; multi-select and batch-delete questions |
 | Question sets | Rename sets, select multiple topics, create random practice sets, regenerate questions, and export one or more mock exams as UTF-8 Markdown |
 | Quiz sessions | Practice/exam modes, free previous/next navigation, paper preview on demand, uncertain/review markers, keyboard controls, and complete draft recovery |
 | Progress | Course-scoped statistics, mastery overrides, prioritized review, topic actions, and full progress reset |
@@ -60,6 +60,8 @@ python scripts/check_environment.py --json
 | Localization | Live Chinese/English UI switching with bilingual question content and explanations |
 
 Folder imports skip symbolic links and resolved paths outside the selected folder. Explicit file selections are de-duplicated and remain the source set for later summary regeneration. One import accepts at most 2,000 supported files and 1 GiB of source data; larger collections must be split before import.
+
+The Library workspace also provides **Import Question Text** for TXT, Markdown, PDF, DOCX, and PPTX exam material. Extraction reuses the existing parser and scanned-PDF OCR fallback in a background task with visible stages and cancellation. Parsed candidates keep the source file, excerpt, and line location where available; incomplete blocks are reported, and no candidate is saved until it is accepted in the existing review dialog.
 
 Deleting a course reports its linked questions, sets, archive states, and unfinished drafts before confirmation. Unfinished drafts are cancelled. A failed course deletion restores the affected data. Newly completed sessions preserve course, set, and immutable per-question review snapshots; double-click a recent session on the Progress page, or select it and press Enter, to reopen it. Successfully archived stems, submitted and correct answers, explanations, and source references remain reviewable when the original questions or set no longer exist, while unavailable retry actions are disabled with an explanation.
 
