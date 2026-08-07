@@ -34,7 +34,7 @@ python scripts/check_environment.py --json
 
 ## Typical workflow
 
-1. **Import course materials** — Open Course Management and select a folder containing PPTX, PDF, DOCX, Markdown, or text files.
+1. **Import course materials** — Open Course Management and choose a folder, or multi-select/drop PPTX, PDF, DOCX, Markdown, or text files into the staging list before confirming.
 2. **Review the course summary and topics** — The application extracts document text, creates a summary, assigns stable topic IDs, and builds page- or slide-level source references.
 3. **Choose the exam scope** — Use every topic or select only the topics relevant to the current exam.
 4. **Generate questions** — Use course defaults, adjust question type/topic/difficulty weights, and start generation.
@@ -59,7 +59,7 @@ python scripts/check_environment.py --json
 | Settings | Open the utility entry at the bottom of the sidebar in a separate window without replacing the current study workspace |
 | Localization | Live Chinese/English UI switching with bilingual question content and explanations |
 
-Course-folder imports skip symbolic links and resolved paths outside the selected folder. One import accepts at most 2,000 supported files and 1 GiB of source data; larger collections must be split before import.
+Folder imports skip symbolic links and resolved paths outside the selected folder. Explicit file selections are de-duplicated and remain the source set for later summary regeneration. One import accepts at most 2,000 supported files and 1 GiB of source data; larger collections must be split before import.
 
 Deleting a course reports its linked questions, sets, archive states, and unfinished drafts before confirmation. Unfinished drafts are cancelled. A failed course deletion restores the affected data. Newly completed sessions preserve course, set, and immutable per-question review snapshots; double-click a recent session on the Progress page, or select it and press Enter, to reopen it. Successfully archived stems, submitted and correct answers, explanations, and source references remain reviewable when the original questions or set no longer exist, while unavailable retry actions are disabled with an explanation.
 
