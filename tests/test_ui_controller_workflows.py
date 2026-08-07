@@ -16,6 +16,7 @@ from ui.first_run_controller import FirstRunController
 from ui.generation_workspace_controller import (
     GenerationWorkspaceController,
     find_generation_gap_topic_ids,
+    find_historical_exam_profile,
 )
 from ui.history_protection_controller import HistoryProtectionController
 from ui.main_window import MainWindow
@@ -349,6 +350,58 @@ class GenerationWorkspaceControllerTests(unittest.TestCase):
 
         self.assertIs(preparation, result)
         dialog.set_generation_gap_topics.assert_called_once_with(("process",))
+
+    def test_prepare_attaches_imported_exam_structure_without_persisting_it(self):
+        course = SimpleNamespace(
+            course_id="course-1",
+            topics=[SimpleNamespace(topic_id="cache")],
+            exam_topics=lambda: [SimpleNamespace(topic_id="cache")],
+        )
+        imported = Question(
+            question_id="historical-cache",
+            type=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={"zh": {"stem": "缓存题"}, "en": {"stem": "Cache"}},
+            correct_answer="A",
+            topic="cache",
+            metadata={
+                "historical_import": True,
+                "source": "historical_import",
+                "course_id": "course-1",
+                "topic_match_status": "matched",
+            },
+        )
+        dialog = SimpleNamespace(
+            set_generation_gap_topics=Mock(),
+            set_historical_exam_profile=Mock(),
+        )
+        preparation = SimpleNamespace(ok=True, dialog=dialog, course_project=course)
+        host = SimpleNamespace(
+            lang_manager=SimpleNamespace(get_text=lambda zh_text, _en_text: zh_text),
+            settings_snapshot=lambda: {},
+            course_context=SimpleNamespace(generation_context=lambda: ("# Course", [], course)),
+            task_center=None,
+            question_bank=SimpleNamespace(
+                topic_index=lambda course_id: {"q-1": ("cache", "Cache")},
+                load_all=lambda: [imported],
+            ),
+        )
+        launcher = Mock()
+        launcher.prepare.return_value = preparation
+
+        with patch(
+            "ui.generation_workspace_controller.GenerationLaunchController",
+            return_value=launcher,
+        ):
+            result = GenerationWorkspaceController(host).prepare()
+
+        self.assertIs(preparation, result)
+        profile = dialog.set_historical_exam_profile.call_args.args[0]
+        self.assertEqual(1, profile.sample_count)
+        self.assertEqual(
+            profile,
+            find_historical_exam_profile(course, host.question_bank),
+        )
 
     def test_sync_draft_persists_review_state_without_destination_metadata(self):
         question = Question(

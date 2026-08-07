@@ -73,6 +73,8 @@ The generation dialog only displays currently selected topics. Effective percent
 
 All seven question types are supported. Matching, ordering, and short-answer questions are grouped as advanced types and default to zero weight so existing ordinary-generation profiles are not changed unexpectedly.
 
+When a course contains reviewed historical imports, the Mock Exam goal offers an optional **Use imported exam structure** reference. If selected, the dialog uses only that course's matched imported questions to seed topic, question-type, and difficulty weights. The values remain editable and this is a transparent structure reference, not a prediction guarantee.
+
 Short answers do not pretend to have reliable automatic semantic grading. Practice mode shows the submitted answer, reference answer, and explanation, then asks for self-assessment. Exam mode collects short-answer assessments after the paper is submitted.
 
 ## Course exam scope

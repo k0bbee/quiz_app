@@ -3,7 +3,7 @@
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QProgressBar, QTextEdit, QMessageBox, QGroupBox, QScrollArea, QFrame, QWidget, QSlider, QFormLayout,
-    QSplitter, QLineEdit, QButtonGroup
+    QSplitter, QLineEdit, QButtonGroup, QCheckBox
 )
 import time
 import re
@@ -98,6 +98,8 @@ class AIGenerationDialog(QDialog):
         # an empty tuple is a real result meaning the exam scope is complete.
         self._generation_gap_topic_ids: tuple[str, ...] | None = None
         self._generation_goal = "quick_review"
+        self._historical_exam_profile = None
+        self._historical_profile_baseline: dict[QSlider, int] | None = None
         self.generation_status_timer = QTimer(self)
         # Worker progress signals update the status immediately; this timer
         # only refreshes elapsed-time text and need not wake the UI every second.
@@ -221,6 +223,24 @@ class AIGenerationDialog(QDialog):
             goal_layout.addWidget(button)
         self.quick_review_goal_btn.setChecked(True)
 
+        self.historical_profile_checkbox = QCheckBox(
+            self.lang_manager.get_text(
+                "参考已导入真题结构（可选）",
+                "Use imported exam structure (optional)",
+            )
+        )
+        self.historical_profile_checkbox.setObjectName("historicalExamProfileCheck")
+        self.historical_profile_checkbox.setToolTip(
+            self.lang_manager.get_text(
+                "仅参考已审核导入题目的主题、题型和难度分布，不代表预测结果。",
+                "Uses reviewed imported questions only as a topic, type, and difficulty reference; it is not a prediction.",
+            )
+        )
+        self.historical_profile_checkbox.setHidden(True)
+        self.historical_profile_checkbox.toggled.connect(
+            self._on_historical_profile_toggled
+        )
+
         self.basic_group = QGroupBox(
             self.lang_manager.get_text("练习设置", "Practice Settings")
         )
@@ -254,6 +274,7 @@ class AIGenerationDialog(QDialog):
                 break
         basic_layout.addRow(self.diff_label, self.diff_combo)
         basic_layout.addRow("", self.goal_group)
+        basic_layout.addRow("", self.historical_profile_checkbox)
         right_layout.addWidget(self.basic_group)
 
         self.config_group = QGroupBox(
@@ -699,6 +720,96 @@ class AIGenerationDialog(QDialog):
             "Collapse Advanced Settings" if expanded else "Show Advanced Settings",
         ))
 
+    def set_historical_exam_profile(self, profile) -> None:
+        """Attach an optional imported-exam structure reference to this dialog."""
+        self._historical_exam_profile = profile
+        self._historical_profile_baseline = None
+        was_blocked = self.historical_profile_checkbox.blockSignals(True)
+        try:
+            self.historical_profile_checkbox.setChecked(False)
+        finally:
+            self.historical_profile_checkbox.blockSignals(was_blocked)
+        self.historical_profile_checkbox.setHidden(
+            self._generation_goal != "mock_exam" or profile is None
+        )
+        if profile is not None:
+            sample_count = int(getattr(profile, "sample_count", 0) or 0)
+            source_count = len(getattr(profile, "source_files", ()) or ())
+            self.historical_profile_checkbox.setToolTip(
+                self.lang_manager.get_text(
+                    f"参考 {sample_count} 道已导入真题（{source_count} 份来源）的主题、题型和难度分布；不代表预测结果。",
+                    f"Reference {sample_count} imported question(s) from {source_count} source(s) for topic, type, and difficulty distribution; not a prediction.",
+                )
+            )
+
+    def _historical_profile_sliders(self) -> dict[QSlider, int]:
+        profile = self._historical_exam_profile
+        if profile is None:
+            return {}
+        values = {}
+        type_sliders = {
+            "multiple_choice": self.mc_slider,
+            "scenario_choice": self.scenario_slider,
+            "true_false": self.true_false_slider,
+            "fill_in_blank": self.fill_blank_slider,
+            "matching": self.matching_slider,
+            "ordering": self.ordering_slider,
+            "short_answer": self.short_answer_slider,
+        }
+        difficulty_sliders = {
+            "easy": self.easy_slider,
+            "medium": self.medium_slider,
+            "hard": self.hard_slider,
+        }
+        for key, slider in type_sliders.items():
+            if key in profile.question_type_weights:
+                values[slider] = int(profile.question_type_weights[key])
+        for key, slider in difficulty_sliders.items():
+            if key in profile.difficulty_weights:
+                values[slider] = int(profile.difficulty_weights[key])
+        for topic in self._get_selected_topics():
+            key = topic_value(topic)
+            slider = self.topic_weight_sliders.get(key)
+            if slider is not None and key in profile.topic_weights:
+                values[slider] = int(profile.topic_weights[key])
+        return values
+
+    def _apply_historical_exam_profile(self) -> None:
+        values = self._historical_profile_sliders()
+        if not values:
+            return
+        if self._historical_profile_baseline is None:
+            self._historical_profile_baseline = {
+                slider: slider.value() for slider in values
+            }
+        for slider, value in values.items():
+            slider.setValue(max(slider.minimum(), min(slider.maximum(), value)))
+        self._refresh_weight_labels()
+
+    def _restore_historical_profile_baseline(self) -> None:
+        baseline = self._historical_profile_baseline
+        if not baseline:
+            return
+        for slider, value in baseline.items():
+            slider.setValue(value)
+        self._historical_profile_baseline = None
+        self._refresh_weight_labels()
+
+    def _on_historical_profile_toggled(self, checked: bool) -> None:
+        if self._generation_goal != "mock_exam":
+            return
+        if checked:
+            self._apply_historical_exam_profile()
+            profile = self._historical_exam_profile
+            sample_count = int(getattr(profile, "sample_count", 0) or 0)
+            self.status_label.setText(self.lang_manager.get_text(
+                f"已参考 {sample_count} 道已导入真题的结构，可继续调整权重。",
+                f"Using the structure of {sample_count} imported question(s); you can still adjust the weights.",
+            ))
+        else:
+            self._restore_historical_profile_baseline()
+        self._update_preview()
+
     def _apply_generation_goal(self, goal: str) -> None:
         """Apply a transparent starting point; every field remains editable."""
         self._generation_goal = str(goal or "quick_review")
@@ -710,6 +821,19 @@ class AIGenerationDialog(QDialog):
         selected_button = goal_buttons.get(self._generation_goal)
         if selected_button is not None:
             selected_button.setChecked(True)
+        if self._generation_goal != "mock_exam":
+            if self.historical_profile_checkbox.isChecked():
+                was_blocked = self.historical_profile_checkbox.blockSignals(True)
+                try:
+                    self.historical_profile_checkbox.setChecked(False)
+                finally:
+                    self.historical_profile_checkbox.blockSignals(was_blocked)
+                self._restore_historical_profile_baseline()
+            self.historical_profile_checkbox.hide()
+        else:
+            self.historical_profile_checkbox.setVisible(
+                self._historical_exam_profile is not None
+            )
         presets = {
             "quick_review": ("quick_review", 10, "mixed"),
             "gap_fill": ("quick_review", 8, "mixed"),
@@ -747,6 +871,13 @@ class AIGenerationDialog(QDialog):
                     if slider is not None:
                         slider.setValue(value)
                 self._refresh_weight_labels()
+            if self.historical_profile_checkbox.isChecked():
+                self._apply_historical_exam_profile()
+                self.status_label.setText(self.lang_manager.get_text(
+                    "已按考试范围、课程权重和导入真题结构准备模拟考试。",
+                    "Mock exam prepared with exam scope, course weights, and imported exam structure.",
+                ))
+            elif scope_keys is not None:
                 self.status_label.setText(self.lang_manager.get_text(
                     "已按考试范围和课程出题权重准备模拟考试。",
                     "Mock exam prepared with the exam scope and course generation weights.",
@@ -829,6 +960,19 @@ class AIGenerationDialog(QDialog):
         self.mock_exam_goal_btn.setText(
             self.lang_manager.get_text("模拟考试", "Mock Exam")
         )
+        self.historical_profile_checkbox.setText(
+            self.lang_manager.get_text(
+                "参考已导入真题结构（可选）",
+                "Use imported exam structure (optional)",
+            )
+        )
+        if self._historical_exam_profile is None:
+            self.historical_profile_checkbox.setToolTip(
+                self.lang_manager.get_text(
+                    "仅参考已审核导入题目的主题、题型和难度分布，不代表预测结果。",
+                    "Uses reviewed imported questions only as a topic, type, and difficulty reference; it is not a prediction.",
+                )
+            )
         self.select_all_btn.setText(self.lang_manager.get_text("全选", "Select All"))
         self.deselect_btn.setText(self.lang_manager.get_text("取消全选", "Deselect All"))
 
@@ -1352,19 +1496,30 @@ class AIGenerationDialog(QDialog):
             self.diff_combo.currentData() if hasattr(self, "diff_combo") else "medium",
             difficulty_labels["medium"],
         )
+        profile_suffix_zh = ""
+        profile_suffix_en = ""
+        if (
+            self._generation_goal == "mock_exam"
+            and self.historical_profile_checkbox.isChecked()
+        ):
+            sample_count = int(
+                getattr(self._historical_exam_profile, "sample_count", 0) or 0
+            )
+            profile_suffix_zh = f" | 结构参考：{sample_count} 道已导入真题"
+            profile_suffix_en = f" | Structure reference: {sample_count} imported question(s)"
         topic_names = [topic_label(topic, self.lang_manager.current) for topic in topics]
         if topic_names:
             coverage = ", ".join(topic_names[:3])
             if len(topic_names) > 3:
                 coverage += self.lang_manager.get_text(f" 等 {len(topic_names)} 个", f" and {len(topic_names) - 3} more")
             text = self.lang_manager.get_text(
-                f"目标：{goal_zh} | 难度：{difficulty_zh} | 已选主题：{len(topic_names)} 个 | 计划生成：{count} 题 | 覆盖：{coverage}",
-                f"Goal: {goal_en} | Difficulty: {difficulty_en} | Selected topics: {len(topic_names)} | Planned: {count} question(s) | Coverage: {coverage}",
+                f"目标：{goal_zh} | 难度：{difficulty_zh} | 已选主题：{len(topic_names)} 个 | 计划生成：{count} 题 | 覆盖：{coverage}{profile_suffix_zh}",
+                f"Goal: {goal_en} | Difficulty: {difficulty_en} | Selected topics: {len(topic_names)} | Planned: {count} question(s) | Coverage: {coverage}{profile_suffix_en}",
             )
         else:
             text = self.lang_manager.get_text(
-                f"目标：{goal_zh} | 难度：{difficulty_zh} | 已选主题：0 个 | 计划生成：{count} 题 | 请选择主题后生成",
-                f"Goal: {goal_en} | Difficulty: {difficulty_en} | Selected topics: 0 | Planned: {count} question(s) | Select topics before generating",
+                f"目标：{goal_zh} | 难度：{difficulty_zh} | 已选主题：0 个 | 计划生成：{count} 题 | 请选择主题后生成{profile_suffix_zh}",
+                f"Goal: {goal_en} | Difficulty: {difficulty_en} | Selected topics: 0 | Planned: {count} question(s) | Select topics before generating{profile_suffix_en}",
             )
         self.footer_summary_label.setText(text)
 

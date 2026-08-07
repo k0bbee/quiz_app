@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QApplication
 
 from core.generation_session_state import GenerationStage
+from core.historical_exam_profile import HistoricalExamProfile
 from ai.exam_plan import ExamGenerationPlan
 from models.course_project import CourseProject, CourseTopic
 from models.question import Question
@@ -151,6 +152,46 @@ class GenerationDialogStageTests(unittest.TestCase):
         self.assertEqual(["cache", "process"], selected)
         self.assertEqual(70, dialog.topic_weight_sliders["cache"].value())
         self.assertEqual(30, dialog.topic_weight_sliders["process"].value())
+
+    def test_mock_exam_can_apply_and_remove_imported_exam_structure_reference(self):
+        dialog = AIGenerationDialog(
+            "course content",
+            {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto"},
+            available_topics=["cache", "process"],
+        )
+        self.addCleanup(dialog.close)
+        dialog.set_historical_exam_profile(
+            HistoricalExamProfile(
+                sample_count=4,
+                topic_weights={"cache": 80, "process": 20},
+                question_type_weights={
+                    "multiple_choice": 40,
+                    "scenario_choice": 20,
+                    "true_false": 20,
+                    "fill_in_blank": 10,
+                    "matching": 5,
+                    "ordering": 3,
+                    "short_answer": 2,
+                },
+                difficulty_weights={"easy": 10, "medium": 30, "hard": 60},
+                source_files=("midterm.txt",),
+            )
+        )
+        dialog._select_topic_keys(("cache", "process"))
+        dialog.mock_exam_goal_btn.click()
+
+        self.assertFalse(dialog.historical_profile_checkbox.isHidden())
+        self.assertFalse(dialog.historical_profile_checkbox.isChecked())
+        before_multiple_choice = dialog.mc_slider.value()
+        dialog.historical_profile_checkbox.setChecked(True)
+
+        self.assertEqual(40, dialog.mc_slider.value())
+        self.assertEqual(60, dialog.hard_slider.value())
+        self.assertEqual(80, dialog.topic_weight_sliders["cache"].value())
+        self.assertIn("4", dialog.status_label.text())
+
+        dialog.historical_profile_checkbox.setChecked(False)
+        self.assertEqual(before_multiple_choice, dialog.mc_slider.value())
 
 
 if __name__ == "__main__":

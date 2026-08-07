@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import QMessageBox, QWidget
 
 from ai.course_summary_factory import provider_requires_api_key
 from ai.settings_validation import ai_generation_settings_error
+from core.historical_exam_profile import build_historical_exam_profile
 from core.question_set_builder import build_ai_question_set
 from core.question_set_regenerator import persist_new_question_set
 from core.study_intent import StudyAction, StudyIntent
@@ -18,6 +19,7 @@ from ui.generation_launch_controller import (
     generation_launch_copy,
 )
 from utils.logger import warning as log_warning
+from utils.constants import topic_value
 
 
 _DRAFT_SYNC_DELAY_MS = 250
@@ -52,6 +54,28 @@ def find_generation_gap_topic_ids(course_project, question_bank) -> tuple[str, .
         if (topic_id := str(getattr(topic, "topic_id", topic) or "").strip())
         and topic_id not in covered
     )
+
+
+def find_historical_exam_profile(course_project, question_bank):
+    """Build a one-shot imported-exam structure hint for mock generation."""
+    if course_project is None or question_bank is None:
+        return None
+    try:
+        questions = question_bank.load_all()
+        scope = getattr(course_project, "exam_topics", None)
+        topics = list(
+            scope()
+            if callable(scope)
+            else getattr(course_project, "topics", ()) or ()
+        )
+        return build_historical_exam_profile(
+            questions,
+            allowed_topic_ids=tuple(topic_value(topic) for topic in topics),
+            course_id=str(getattr(course_project, "course_id", "") or "").strip(),
+        )
+    except Exception as exc:
+        log_warning("Could not build historical exam profile: %s", exc)
+        return None
 
 
 class GenerationWorkspaceController:
@@ -108,6 +132,18 @@ class GenerationWorkspaceController:
             set_gap_topics = getattr(preparation.dialog, "set_generation_gap_topics", None)
             if gap_topic_ids is not None and callable(set_gap_topics):
                 set_gap_topics(gap_topic_ids)
+            set_historical_profile = getattr(
+                preparation.dialog,
+                "set_historical_exam_profile",
+                None,
+            )
+            if callable(set_historical_profile):
+                set_historical_profile(
+                    find_historical_exam_profile(
+                        preparation.course_project,
+                        getattr(host, "question_bank", None),
+                    )
+                )
             return preparation
         copy = generation_launch_copy(preparation.issue, purpose=purpose)
         detail = preparation.message or gm(copy.detail_zh, copy.detail_en)
