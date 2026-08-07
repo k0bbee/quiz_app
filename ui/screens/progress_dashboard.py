@@ -494,10 +494,12 @@ class ProgressDashboard(QWidget):
 
         zh_lines = [
             f"{index}. {topic.title} · 正确率 {topic.accuracy:.0%}"
+            f"{self._focus_reason_suffix(topic, 'zh')}"
             for index, topic in enumerate(topics, start=1)
         ]
         en_lines = [
             f"{index}. {topic.title} · {topic.accuracy:.0%} accuracy"
+            f"{self._focus_reason_suffix(topic, 'en')}"
             for index, topic in enumerate(topics, start=1)
         ]
         self.recommendation_label.setText(self.lang_manager.get_text(
@@ -508,6 +510,22 @@ class ProgressDashboard(QWidget):
         self.recommendation_label.show()
         self._show_focus_actions(topics)
         self._set_source_refs([])
+
+    @staticmethod
+    def _focus_reason_suffix(topic, lang: str) -> str:
+        """Render the dominant learner-selected reason without adding a new panel."""
+        counts = getattr(topic, "error_reason_counts", ()) or ()
+        if not counts:
+            return ""
+        labels = {
+            "concept_gap": ("概念错误", "Concept gap"),
+            "misread": ("审题错误", "Misread"),
+            "guess": ("猜测/不确定", "Guess or unsure"),
+        }
+        label = labels.get(str(counts[0][0]))
+        if not label:
+            return ""
+        return f" · {'主要原因：' + label[0] if lang == 'zh' else 'main reason: ' + label[1]}"
 
     def _show_focus_actions(self, topics) -> None:
         self._recommended_topic_ids = [

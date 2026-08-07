@@ -19,6 +19,7 @@ class TopicFocus:
     correct_count: int
     incorrect_count: int
     unsure_count: int
+    error_reason_counts: tuple[tuple[str, int], ...] = ()
 
     @property
     def accuracy(self) -> float:
@@ -82,6 +83,16 @@ def build_learning_dashboard(
             correct_count=int(values["correct"]),
             incorrect_count=int(values["incorrect"]),
             unsure_count=int(values["unsure"]),
+            error_reason_counts=tuple(
+                sorted(
+                    (
+                        (str(reason), int(count))
+                        for reason, count in (values.get("error_reasons", {}) or {}).items()
+                        if str(reason).strip() and int(count) > 0
+                    ),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            ),
         )
         for topic_id, values in topics.items()
         if (

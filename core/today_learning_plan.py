@@ -174,6 +174,7 @@ def build_topic_learning(topic_index, progress_records) -> dict[str, dict]:
             "correct": 0,
             "incorrect": 0,
             "unsure": 0,
+            "error_reasons": {},
             "recent": "",
         })
         row["question_count"] += 1
@@ -200,6 +201,11 @@ def build_topic_learning(topic_index, progress_records) -> dict[str, dict]:
                 row["correct"] += 1
             else:
                 row["incorrect"] += 1
+                reason = str(getattr(answer, "error_reason", "") or "").strip()
+                if reason:
+                    row["error_reasons"][reason] = (
+                        row["error_reasons"].get(reason, 0) + 1
+                    )
             if str(getattr(answer, "confidence", "sure") or "sure") == "unsure":
                 row["unsure"] += 1
             row["recent"] = max(row["recent"], recent)

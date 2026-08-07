@@ -58,7 +58,12 @@ class LearningDashboardTests(unittest.TestCase):
                 self._record(
                     self._answer("cache-1", False),
                     self._answer("cache-2", True),
-                    self._answer("io-1", False, confidence="unsure"),
+                    self._answer(
+                        "io-1",
+                        False,
+                        confidence="unsure",
+                        error_reason="concept_gap",
+                    ),
                     self._answer("io-2", False),
                     self._answer("process-1", True),
                 )
@@ -70,6 +75,7 @@ class LearningDashboardTests(unittest.TestCase):
         self.assertEqual("输入输出", io_focus.title)
         self.assertEqual(2, io_focus.incorrect_count)
         self.assertEqual(1, io_focus.unsure_count)
+        self.assertEqual((("concept_gap", 1),), io_focus.error_reason_counts)
         self.assertEqual(0.0, io_focus.accuracy)
         self.assertEqual("高速缓存", cache_focus.title)
         self.assertEqual(1, cache_focus.incorrect_count)
@@ -93,6 +99,23 @@ class LearningDashboardTests(unittest.TestCase):
         )
 
         self.assertEqual((), dashboard.focus_topics)
+
+    def test_focus_topics_keep_reason_counts_for_incorrect_answers(self):
+        dashboard = build_learning_dashboard(
+            {"cache-1": ("cache", "高速缓存")},
+            records=[
+                self._record(
+                    self._answer("cache-1", False, error_reason="misread"),
+                    self._answer("cache-1", False, error_reason="concept_gap"),
+                    self._answer("cache-1", False, error_reason="concept_gap"),
+                )
+            ],
+        )
+
+        self.assertEqual(
+            (("concept_gap", 2), ("misread", 1)),
+            dashboard.focus_topics[0].error_reason_counts,
+        )
 
     def test_learning_views_do_not_retain_removed_persistent_plan_state(self):
         self.assertNotIn("daily_plan", signature(build_learning_dashboard).parameters)
@@ -138,10 +161,18 @@ class LearningDashboardTests(unittest.TestCase):
         )
 
     @staticmethod
-    def _answer(question_id, is_correct, *, confidence="sure", skipped=False):
+    def _answer(
+        question_id,
+        is_correct,
+        *,
+        confidence="sure",
+        skipped=False,
+        error_reason="",
+    ):
         return SimpleNamespace(
             question_id=question_id,
             is_correct=is_correct,
             confidence=confidence,
             skipped=skipped,
+            error_reason=error_reason,
         )

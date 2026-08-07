@@ -503,7 +503,13 @@ class ProgressDashboardFlowTests(unittest.TestCase):
                 record = ProgressRecord.create_new("set-any")
                 record.status = "completed"
                 record.answers = [
-                    AnswerRecord(question_id=cache.question_id, index_in_session=0, user_answer="B", is_correct=False),
+                    AnswerRecord(
+                        question_id=cache.question_id,
+                        index_in_session=0,
+                        user_answer="B",
+                        is_correct=False,
+                        error_reason="concept_gap",
+                    ),
                     AnswerRecord(question_id=process.question_id, index_in_session=1, user_answer="A", is_correct=True),
                     AnswerRecord(question_id=other_course.question_id, index_in_session=2, user_answer="B", is_correct=False),
                 ]
@@ -518,6 +524,7 @@ class ProgressDashboardFlowTests(unittest.TestCase):
 
                 self.assertIn("建议复习", screen.recommendation_label.text())
                 self.assertIn("Cache", screen.recommendation_label.text())
+                self.assertIn("主要原因：概念错误", screen.recommendation_label.text())
                 self.assertNotIn("Process", screen.recommendation_label.text())
                 self.assertNotIn("Virtual Memory", screen.recommendation_label.text())
                 self.assertFalse(screen.recommendation_label.isHidden())
