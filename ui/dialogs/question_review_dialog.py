@@ -65,6 +65,7 @@ class QuestionReviewDialog(QDialog):
         self.lang_manager = LanguageManager.instance()
         self._accepted: set[int] = self._initial_accepted_indexes()
         self._rejected: set[int] = set()
+        self._focus_review_warnings = False
         self._restore_review_state(review_state)
         self._loading_edit_fields = False
         self.course_project = course_project
@@ -106,6 +107,16 @@ class QuestionReviewDialog(QDialog):
 
         self.questions_label = QLabel(self.lang_manager.get_text("题目列表:", "Questions:"))
         left_layout.addWidget(self.questions_label)
+
+        filter_layout = QHBoxLayout()
+        filter_layout.addStretch()
+        self.review_warnings_only_btn = QPushButton()
+        self.review_warnings_only_btn.setObjectName("secondaryButton")
+        self.review_warnings_only_btn.setCheckable(True)
+        self.review_warnings_only_btn.clicked.connect(self._toggle_review_warnings_only)
+        filter_layout.addWidget(self.review_warnings_only_btn)
+        left_layout.addLayout(filter_layout)
+        self._update_review_warnings_only_text()
 
         self.question_list = QListWidget()
         self.question_list.setMinimumWidth(250)
@@ -254,6 +265,7 @@ class QuestionReviewDialog(QDialog):
         self.questions_label.setText(self.lang_manager.get_text("题目列表:", "Questions:"))
         self.prev_page_btn.setText(self.lang_manager.get_text("上一页", "Previous"))
         self.next_page_btn.setText(self.lang_manager.get_text("下一页", "Next"))
+        self._update_review_warnings_only_text()
         self.accept_all_btn.setText(self.lang_manager.get_text("接受无警告题", "Accept No-Warning"))
         self.reject_all_btn.setText(self.lang_manager.get_text("全部拒绝", "Reject All"))
         self.preview_label.setText(self.lang_manager.get_text("选择题目以预览", "Select a question to preview"))
@@ -386,6 +398,25 @@ class QuestionReviewDialog(QDialog):
                 self._rejected.discard(i)
         self._render_current_page(preserve_selection=True)
 
+    def _toggle_review_warnings_only(self, checked: bool):
+        """Filter the list to quality/source warnings without changing decisions."""
+        self._apply_current_edits(refresh=False)
+        self._focus_review_warnings = bool(checked)
+        self._current_page = 0
+        self._render_current_page()
+        self._update_review_warnings_only_text()
+
+    def _update_review_warnings_only_text(self) -> None:
+        """Keep the warning-list filter copy aligned with its current state."""
+        if not hasattr(self, "review_warnings_only_btn"):
+            return
+        self.review_warnings_only_btn.setText(
+            self.lang_manager.get_text(
+                "显示全部" if self._focus_review_warnings else "仅看待检查",
+                "Show All" if self._focus_review_warnings else "Review Warnings",
+            )
+        )
+
     def _reject_all(self):
         """Reject all questions."""
         self._accepted.clear()
@@ -415,8 +446,10 @@ class QuestionReviewDialog(QDialog):
         selected_index = self._current_index if preserve_selection else -1
         self.question_list.blockSignals(True)
         self.question_list.clear()
-        start, end = self._page_bounds()
-        for index in range(start, end):
+        visible_indexes = self._visible_indexes()
+        start = self._current_page * self.page_size
+        end = min(start + self.page_size, len(visible_indexes))
+        for index in visible_indexes[start:end]:
             item = QListWidgetItem()
             item.setData(Qt.ItemDataRole.UserRole, index)
             self.question_list.addItem(item)
@@ -429,28 +462,42 @@ class QuestionReviewDialog(QDialog):
             return
 
         row_to_select = 0
-        if start <= selected_index < end:
-            row_to_select = selected_index - start
+        page_indexes = visible_indexes[start:end]
+        if selected_index in page_indexes:
+            row_to_select = page_indexes.index(selected_index)
         self.question_list.setCurrentRow(row_to_select)
 
     def _page_bounds(self) -> tuple[int, int]:
         """Return start/end indexes for the current page."""
         start = self._current_page * self.page_size
-        end = min(start + self.page_size, len(self.questions))
+        end = min(start + self.page_size, len(self._visible_indexes()))
         return start, end
+
+    def _visible_indexes(self) -> list[int]:
+        """Return source indexes included by the current review-list filter."""
+        if not self._focus_review_warnings:
+            return list(range(len(self.questions)))
+        return [
+            index
+            for index, question in enumerate(self.questions)
+            if self._review_warnings(question)
+        ]
 
     def _page_count(self) -> int:
         """Return the number of pages needed for the review list."""
-        if not self.questions:
+        visible_count = len(self._visible_indexes())
+        if not visible_count:
             return 1
-        return (len(self.questions) + self.page_size - 1) // self.page_size
+        return (visible_count + self.page_size - 1) // self.page_size
 
     def _visible_item_for_index(self, index: int):
         """Return the visible QListWidgetItem for a global question index."""
+        visible_indexes = self._visible_indexes()
         start, end = self._page_bounds()
-        if index < start or index >= end:
+        page_indexes = visible_indexes[start:end]
+        if index not in page_indexes:
             return None
-        return self.question_list.item(index - start)
+        return self.question_list.item(page_indexes.index(index))
 
     def _update_pagination_controls(self):
         """Keep pagination controls in sync with the current page."""

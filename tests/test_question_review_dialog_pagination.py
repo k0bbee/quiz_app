@@ -244,6 +244,34 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertIn("来源明确 1/3", dialog.source_coverage_label.text())
         self.assertIn("建议检查 2", dialog.source_coverage_label.text())
 
+    def test_review_dialog_can_focus_on_questions_requiring_review(self):
+        clear = make_question(1)
+        clear.metadata["source_ref_status"] = "valid_model_ref"
+        clear.metadata["source_refs"] = [{"chunk_id": "source-clear"}]
+        warning = make_question(2)
+        warning.metadata["source_ref_status"] = "invalid_model_ref"
+        another_clear = make_question(3)
+        another_clear.metadata["source_ref_status"] = "valid_model_ref"
+        another_clear.metadata["source_refs"] = [{"chunk_id": "source-clear-2"}]
+
+        dialog = QuestionReviewDialog(
+            [clear, warning, another_clear],
+            page_size=2,
+        )
+        self.addCleanup(dialog.close)
+
+        self.assertEqual([0, 1], self._visible_question_indexes(dialog))
+        dialog.review_warnings_only_btn.click()
+
+        self.assertEqual([1], self._visible_question_indexes(dialog))
+        self.assertIn("显示全部", dialog.review_warnings_only_btn.text())
+        self.assertIn("1 / 1", dialog.page_label.text())
+
+        dialog.review_warnings_only_btn.click()
+
+        self.assertEqual([0, 1], self._visible_question_indexes(dialog))
+        self.assertIn("仅看待检查", dialog.review_warnings_only_btn.text())
+
     def test_review_dialog_accept_all_excludes_weak_source_questions(self):
         exact = make_question(1)
         exact.metadata["source_ref_status"] = "valid_model_ref"
