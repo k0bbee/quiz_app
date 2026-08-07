@@ -245,6 +245,8 @@ class WorkspaceLayoutTests(unittest.TestCase):
             self.assertTrue(dialog.advanced_content.isHidden())
             self.assertTrue(dialog.config_group.isHidden())
             self.assertIn("展开高级设置", dialog.advanced_toggle_btn.text())
+            self.assertFalse(dialog.goal_group.isHidden())
+            self.assertIs(dialog.goal_group.parentWidget(), dialog.basic_group)
             self.assertTrue(dialog.generation_log_group.isHidden())
             self.assertTrue(dialog.advanced_content.isAncestorOf(dialog.topic_weight_group))
             self.assertTrue(dialog.advanced_content.isAncestorOf(dialog.structure_group))

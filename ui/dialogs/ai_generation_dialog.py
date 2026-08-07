@@ -247,6 +247,7 @@ class AIGenerationDialog(QDialog):
                 self.diff_combo.setCurrentIndex(i)
                 break
         basic_layout.addRow(self.diff_label, self.diff_combo)
+        basic_layout.addRow("", self.goal_group)
         right_layout.addWidget(self.basic_group)
 
         self.config_group = QGroupBox(
@@ -287,7 +288,6 @@ class AIGenerationDialog(QDialog):
         advanced_layout = QVBoxLayout(self.advanced_content)
         advanced_layout.setContentsMargins(0, 0, 0, 0)
         advanced_layout.setSpacing(12)
-        advanced_layout.addWidget(self.goal_group)
         advanced_layout.addWidget(self.config_group)
         self.config_group.hide()
         self.advanced_content.hide()
