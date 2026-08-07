@@ -962,3 +962,69 @@ class GenerationRuntimeFlowTests(unittest.TestCase):
                 self.assertTrue(dialog.generate_btn.isEnabled())
                 self.assertFalse(dialog.progress_bar.isVisible())
                 self.assertEqual(TaskStatus.FAILED, center.get("task-1").status)
+
+    def test_review_can_regenerate_explicitly_rejected_questions_only(self):
+            accepted = Question.create_new(
+                QuestionType.MULTIPLE_CHOICE,
+                Difficulty.MEDIUM,
+                {
+                    "zh": {"stem": "Cache?", "options": ["A", "B"], "explanation": "解释"},
+                    "en": {"stem": "Cache?", "options": ["A", "B"], "explanation": "Explanation"},
+                },
+                "A",
+                "cache",
+            )
+            rejected = Question.create_new(
+                QuestionType.TRUE_FALSE,
+                Difficulty.HARD,
+                {
+                    "zh": {"stem": "DMA?", "options": ["正确", "错误"], "explanation": "解释"},
+                    "en": {"stem": "DMA?", "options": ["True", "False"], "explanation": "Explanation"},
+                },
+                True,
+                "io",
+            )
+
+            class RepairingReviewDialog:
+                def __init__(self, questions, parent=None, **kwargs):
+                    self.questions = list(questions)
+
+                def exec(self):
+                    return QDialog.DialogCode.Accepted
+
+                def get_accepted_questions(self):
+                    return [accepted]
+
+                def get_rejected_questions(self):
+                    return [rejected]
+
+                def save_and_repair_requested(self):
+                    return True
+
+                def get_review_state(self):
+                    return {accepted.question_id: "accepted", rejected.question_id: "rejected"}
+
+            dialog = AIGenerationDialog(
+                "course content",
+                {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+                available_topics=["cache", "io"],
+            )
+            self.addCleanup(dialog.close)
+            dialog.generated_questions = [accepted, rejected]
+
+            with patch(
+                "ui.dialogs.ai_generation_dialog.QuestionReviewDialog",
+                RepairingReviewDialog,
+            ), patch.object(dialog, "_start_generation") as start_generation:
+                dialog._review_generated_questions()
+
+            start_generation.assert_called_once()
+            kwargs = start_generation.call_args.kwargs
+            retry_plan = kwargs["retry_plan"]
+            self.assertEqual(1, retry_plan.count)
+            self.assertEqual(["io"], retry_plan.topics)
+            self.assertEqual("true_false", retry_plan.plan_items[0].question_type)
+            self.assertEqual("hard", retry_plan.plan_items[0].difficulty)
+            self.assertEqual([accepted], kwargs["carryover_questions"])
+            self.assertEqual({accepted.question_id: "accepted"}, kwargs["carryover_review_state"])
+            self.assertEqual([accepted], dialog.generated_questions)

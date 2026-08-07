@@ -537,6 +537,37 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.assertEqual([["left_1", "right_1"]], edited.correct_answer)
         self.assertEqual("配对 I/O 机制和含义。", edited.get_stem("zh"))
 
+    def test_review_dialog_exposes_only_explicitly_rejected_questions_for_repair(self):
+        accepted = make_question(1)
+        rejected = make_question(2)
+        dialog = QuestionReviewDialog([accepted, rejected], page_size=10)
+        self.addCleanup(dialog.close)
+
+        dialog.question_list.setCurrentRow(1)
+        dialog.reject_btn.click()
+
+        self.assertFalse(dialog.save_and_repair_btn.isHidden())
+        self.assertEqual([rejected], dialog.get_rejected_questions())
+
+    def test_review_dialog_can_save_accepted_questions_and_request_repair(self):
+        accepted = make_question(1)
+        rejected = make_question(2)
+        dialog = QuestionReviewDialog([accepted, rejected], page_size=10)
+        self.addCleanup(dialog.close)
+
+        dialog.question_list.setCurrentRow(1)
+        dialog.reject_btn.click()
+        with patch(
+            "ui.dialogs.question_review_dialog.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ):
+            dialog.save_and_repair_btn.click()
+
+        self.assertEqual(QDialog.DialogCode.Accepted, dialog.result())
+        self.assertTrue(dialog.save_and_repair_requested())
+        self.assertEqual([accepted], dialog.get_accepted_questions())
+        self.assertEqual([rejected], dialog.get_rejected_questions())
+
     def _visible_question_indexes(self, dialog: QuestionReviewDialog) -> list[int]:
         return [
             dialog.question_list.item(row).data(Qt.ItemDataRole.UserRole)

@@ -65,6 +65,7 @@ class QuestionReviewDialog(QDialog):
         self.lang_manager = LanguageManager.instance()
         self._accepted: set[int] = self._initial_accepted_indexes()
         self._rejected: set[int] = set()
+        self._save_and_repair = False
         self._focus_review_warnings = False
         self._restore_review_state(review_state)
         self._loading_edit_fields = False
@@ -249,6 +250,14 @@ class QuestionReviewDialog(QDialog):
         self.save_btn.clicked.connect(self._on_save)
         btn_layout.addWidget(self.save_btn)
 
+        self.save_and_repair_btn = QPushButton()
+        self.save_and_repair_btn.setObjectName("secondaryButton")
+        self.save_and_repair_btn.setMinimumHeight(36)
+        self.save_and_repair_btn.clicked.connect(self._on_save_and_repair)
+        self.save_and_repair_btn.setHidden(True)
+        btn_layout.insertWidget(btn_layout.count() - 1, self.save_and_repair_btn)
+        self._update_save_and_repair_button()
+
         layout.addLayout(btn_layout)
 
     def _on_language_changed(self, lang):
@@ -279,6 +288,7 @@ class QuestionReviewDialog(QDialog):
         self.review_tabs.setTabText(3, self.lang_manager.get_text("质量问题", "Quality"))
         self.cancel_btn.setText(self.lang_manager.get_text("取消", "Cancel"))
         self.save_btn.setText(self._save_button_text())
+        self._update_save_and_repair_button()
 
         # Update visible list item stems (may change with language)
         self._render_current_page(preserve_selection=True)
@@ -382,6 +392,7 @@ class QuestionReviewDialog(QDialog):
             self._accepted.add(self._current_index)
             self._rejected.discard(self._current_index)
             self._update_list_item(self._current_index)
+            self._update_save_and_repair_button()
 
     def _reject_current(self):
         """Reject the currently viewed question."""
@@ -389,6 +400,7 @@ class QuestionReviewDialog(QDialog):
             self._accepted.discard(self._current_index)
             self._rejected.add(self._current_index)
             self._update_list_item(self._current_index)
+            self._update_save_and_repair_button()
 
     def _accept_all(self):
         """Accept all questions that do not require manual quality review."""
@@ -397,6 +409,7 @@ class QuestionReviewDialog(QDialog):
                 self._accepted.add(i)
                 self._rejected.discard(i)
         self._render_current_page(preserve_selection=True)
+        self._update_save_and_repair_button()
 
     def _toggle_review_warnings_only(self, checked: bool):
         """Filter the list to quality/source warnings without changing decisions."""
@@ -422,6 +435,7 @@ class QuestionReviewDialog(QDialog):
         self._accepted.clear()
         self._rejected = set(range(len(self.questions)))
         self._render_current_page(preserve_selection=True)
+        self._update_save_and_repair_button()
 
     def _update_list_item(self, index: int):
         """Update the visual indicator on a list item."""
@@ -552,6 +566,25 @@ class QuestionReviewDialog(QDialog):
         if reply == QMessageBox.StandardButton.Yes:
             self.accept()
 
+    def _on_save_and_repair(self):
+        """Save accepted questions and ask the generation flow to replace rejects."""
+        self._apply_current_edits(refresh=False)
+        rejected_count = len(self._rejected)
+        if rejected_count == 0:
+            return
+        reply = QMessageBox.question(
+            self,
+            self.lang_manager.get_text("重新生成拒绝题？", "Regenerate rejected questions?"),
+            self.lang_manager.get_text(
+                f"保存已接受题目，并重新生成 {rejected_count} 道被拒绝的题目？",
+                f"Save accepted questions and regenerate {rejected_count} rejected question(s)?",
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self._save_and_repair = True
+            self.accept()
+
     def _save_button_text(self) -> str:
         if self.allow_empty_accept:
             return self.lang_manager.get_text(
@@ -566,6 +599,28 @@ class QuestionReviewDialog(QDialog):
     def get_accepted_questions(self) -> list[Question]:
         """Return only the accepted questions."""
         return [self.questions[i] for i in sorted(self._accepted)]
+
+    def get_rejected_questions(self) -> list[Question]:
+        """Return only questions explicitly rejected by the user."""
+        return [self.questions[i] for i in sorted(self._rejected)]
+
+    def save_and_repair_requested(self) -> bool:
+        """Whether the user requested replacement generation for rejected questions."""
+        return self._save_and_repair
+
+    def _update_save_and_repair_button(self) -> None:
+        """Show the repair action only when an explicit rejection exists."""
+        if not hasattr(self, "save_and_repair_btn"):
+            return
+        rejected_count = len(self._rejected)
+        self.save_and_repair_btn.setText(
+            self.lang_manager.get_text(
+                f"保存并重生成 {rejected_count} 道拒绝题",
+                f"Save and regenerate {rejected_count} rejected",
+            )
+        )
+        self.save_and_repair_btn.setHidden(rejected_count == 0)
+        self.save_and_repair_btn.setEnabled(rejected_count > 0)
 
     def get_review_state(self) -> dict[str, str]:
         """Return stable question-id decisions for draft persistence."""

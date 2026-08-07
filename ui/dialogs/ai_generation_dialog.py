@@ -25,8 +25,8 @@ from ai.generation_config import (
     GenerationConfig,
     planned_generation_counts,
 )
-from ai.generation_report import GenerationReport
-from ai.question_plan import build_question_plan, summarize_plan_items
+from ai.generation_report import GenerationReport, GenerationRetryPlan
+from ai.question_plan import QuestionPlanItem, build_question_plan, summarize_plan_items
 from ai.exam_plan import (
     ExamGenerationPlan,
     ExamPlanPatch,
@@ -1601,6 +1601,7 @@ class AIGenerationDialog(QDialog):
         retry_plan=None,
         retry_topics: list | None = None,
         carryover_questions: list[Question] | None = None,
+        carryover_review_state: dict[str, str] | None = None,
     ):
         """Start the background generation process."""
         topics = retry_topics if retry_plan is not None else self._get_selected_topics()
@@ -1660,7 +1661,7 @@ class AIGenerationDialog(QDialog):
         self._partial_generation_report = None
         self._retry_carryover_questions = carryover_questions
         self.generated_questions = []
-        self._review_state = {}
+        self._review_state = dict(carryover_review_state or {})
         self.draft_changed.emit()
         self._generation_started_at = time.monotonic()
         self._last_generation_progress = self.lang_manager.get_text(
@@ -1849,6 +1850,67 @@ class AIGenerationDialog(QDialog):
             if key:
                 topics.append(by_key.get(key, key))
         return topics
+
+    def _start_review_repair(
+        self,
+        rejected_questions: list[Question],
+        accepted_questions: list[Question],
+    ) -> None:
+        """Regenerate explicit review rejects while carrying accepted questions forward."""
+        if not rejected_questions:
+            return
+
+        type_weights = {key: 0 for key in QUESTION_TYPE_DEFAULTS}
+        difficulty_weights = {key: 0 for key in DIFFICULTY_DEFAULTS}
+        topic_weights: dict[str, int] = {}
+        plan_items: list[QuestionPlanItem] = []
+        for index, question in enumerate(rejected_questions, start=1):
+            topic_id = question.topic_id()
+            topic_weights[topic_id] = topic_weights.get(topic_id, 0) + 1
+            question_type = getattr(question.type, "value", str(question.type))
+            difficulty = getattr(question.difficulty, "value", str(question.difficulty))
+            type_weights[question_type] = type_weights.get(question_type, 0) + 1
+            difficulty_weights[difficulty] = difficulty_weights.get(difficulty, 0) + 1
+            metadata = question.metadata or {}
+            plan_items.append(
+                QuestionPlanItem(
+                    plan_id=f"repair-{index:03d}",
+                    topic_id=topic_id,
+                    topic_title=question.topic_title(),
+                    question_type=question_type,
+                    difficulty=difficulty,
+                    target_skill=str(metadata.get("target_skill", "definition") or "definition"),
+                )
+            )
+
+        template = self.template_combo.currentData() or "quick_review"
+        retry_plan = GenerationRetryPlan(
+            count=len(plan_items),
+            topics=list(topic_weights),
+            plan_items=plan_items,
+            config=GenerationConfig(
+                question_type_weights=type_weights,
+                difficulty_weights=difficulty_weights,
+                topic_weights=topic_weights,
+                template=template,
+            ),
+        )
+        self._append_generation_event(
+            self.lang_manager.get_text(
+                f"重新生成 {len(rejected_questions)} 道被拒绝题，已保留接受题目。",
+                f"Regenerating {len(rejected_questions)} rejected question(s); accepted questions are kept.",
+            )
+        )
+        self._start_generation(
+            retry_plan=retry_plan,
+            retry_topics=self._topics_for_retry(retry_plan.topics),
+            carryover_questions=list(accepted_questions),
+            carryover_review_state={
+                question.question_id: "accepted"
+                for question in accepted_questions
+                if question.question_id
+            },
+        )
 
     def _build_generation_config(self) -> GenerationConfig:
         topics = self._get_selected_topics()
@@ -2495,6 +2557,16 @@ class AIGenerationDialog(QDialog):
                         or question.question_id in accepted_warning_by_id
                     )
                 ]
+            get_rejected_questions = getattr(review_dialog, "get_rejected_questions", None)
+            rejected = list(get_rejected_questions() or []) if callable(get_rejected_questions) else []
+            repair_requested = bool(
+                getattr(review_dialog, "save_and_repair_requested", lambda: False)()
+            )
+            if repair_requested and rejected:
+                self.generated_questions = list(accepted)
+                self.draft_changed.emit()
+                self._start_review_repair(rejected, list(accepted))
+                return
             if not accepted:
                 QMessageBox.warning(
                     self,
