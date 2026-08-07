@@ -72,8 +72,42 @@ class DocumentParser:
         """
         root = Path(folder)
         paths = self.source_paths(folder)
+        return self._parse_paths(
+            paths,
+            task=task,
+            cached_documents=cached_documents,
+            on_document_parsed=on_document_parsed,
+            detail=str(root),
+        )
+
+    def parse_files(
+        self,
+        files,
+        task: TaskControl | None = None,
+        cached_documents: dict[str, ExtractedDocument] | None = None,
+        on_document_parsed: Callable[[Path, ExtractedDocument], None] | None = None,
+    ) -> list[ExtractedDocument]:
+        """Parse an explicit, de-duplicated set of supported source files."""
+        paths = self._explicit_source_paths(files)
+        return self._parse_paths(
+            paths,
+            task=task,
+            cached_documents=cached_documents,
+            on_document_parsed=on_document_parsed,
+            detail="selected files",
+        )
+
+    def _parse_paths(
+        self,
+        paths: list[Path],
+        *,
+        task: TaskControl | None,
+        cached_documents: dict[str, ExtractedDocument] | None,
+        on_document_parsed: Callable[[Path, ExtractedDocument], None] | None,
+        detail: str,
+    ) -> list[ExtractedDocument]:
         if task is not None:
-            task.report("files_found", total=len(paths), detail=str(root))
+            task.report("files_found", total=len(paths), detail=detail)
 
         docs: list[ExtractedDocument] = []
         cached_documents = cached_documents or {}
@@ -105,6 +139,49 @@ class DocumentParser:
                     seen_signatures.append(signature)
             docs.append(doc)
         return docs
+
+    @staticmethod
+    def _explicit_source_paths(files) -> list[Path]:
+        """Validate and normalize files staged by a user before parsing."""
+        from core.input_limits import (
+            InputLimitError,
+            MAX_COURSE_SOURCE_BYTES,
+            MAX_COURSE_SOURCE_FILES,
+        )
+
+        paths: list[Path] = []
+        seen: set[str] = set()
+        total_bytes = 0
+        for value in files or []:
+            path = Path(str(value)).expanduser()
+            if path.is_symlink() or not path.is_file():
+                raise FileNotFoundError(f"Course source file not found: {path}")
+            if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                raise ValueError(f"Unsupported course source file: {path.name}")
+            resolved = path.resolve()
+            key = str(resolved).replace("\\", "/").casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                source_bytes = resolved.stat().st_size
+            except OSError as exc:
+                raise OSError(f"Could not inspect course source file: {path}") from exc
+            paths.append(resolved)
+            if len(paths) > MAX_COURSE_SOURCE_FILES:
+                raise InputLimitError(
+                    "DOC-COURSE-001",
+                    f"课程资料文件超过 {MAX_COURSE_SOURCE_FILES} 个，请拆分后导入。",
+                    f"Course source exceeds {MAX_COURSE_SOURCE_FILES} files; split it before import.",
+                )
+            total_bytes += source_bytes
+            if total_bytes > MAX_COURSE_SOURCE_BYTES:
+                raise InputLimitError(
+                    "DOC-COURSE-002",
+                    f"课程资料总大小超过 {MAX_COURSE_SOURCE_BYTES} 字节，请拆分后导入。",
+                    f"Course source exceeds {MAX_COURSE_SOURCE_BYTES} bytes; split it before import.",
+                )
+        return sorted(paths, key=_source_sort_key)
 
     def source_paths(self, folder: str) -> list[Path]:
         """Return supported source files in the same stable order used for parsing."""

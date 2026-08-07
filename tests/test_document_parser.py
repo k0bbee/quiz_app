@@ -14,6 +14,21 @@ from core.input_limits import InputLimitError
 
 
 class DocumentParserQualityTests(unittest.TestCase):
+    def test_parse_files_accepts_a_staged_set_of_supported_documents(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            first = root / "lecture-two.md"
+            second = root / "lecture-one.txt"
+            first.write_text("Virtual memory maps pages to frames.", encoding="utf-8")
+            second.write_text("A page fault loads a missing page.", encoding="utf-8")
+
+            documents = DocumentParser().parse_files([first, second, first])
+
+        self.assertEqual(
+            ["lecture-one", "lecture-two"],
+            [document.title for document in documents],
+        )
+
     def test_source_paths_skip_symbolic_linked_course_files(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
 from core.course_initializer import CourseInitializer
+from core.document_parser import SUPPORTED_EXTENSIONS
 from core.course_hub_presenter import build_course_hub_view
 from core.course_parse_checkpoint import CourseParseCheckpointStore
 from core.course_asset_lifecycle import (
@@ -43,6 +44,35 @@ def _contains_ocr_warning(warnings) -> bool:
         "ocr" in str(warning).lower() or "tesseract" in str(warning).lower()
         for warning in warnings
     )
+
+
+class _StagedFilesList(QListWidget):
+    """Drop target for local course files; parsing starts only after confirmation."""
+
+    files_dropped = pyqtSignal(list)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+        self.setToolTip("拖入课程资料文件，或点击“选择文件”。")
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+            return
+        event.ignore()
+
+    def dropEvent(self, event):
+        files = [
+            url.toLocalFile()
+            for url in event.mimeData().urls()
+            if url.isLocalFile()
+        ]
+        if files:
+            self.files_dropped.emit(files)
+            event.acceptProposedAction()
+            return
+        event.ignore()
 
 
 class CourseScreen(QWidget):
@@ -99,6 +129,7 @@ class CourseScreen(QWidget):
         self._import_expanded = False
         self._course_scope = "active"
         self._setup_ui()
+        self.folder_input.textEdited.connect(self._on_folder_text_edited)
         self.folder_input.editingFinished.connect(self._refresh_checkpoint_action)
         self.lang_manager.language_changed.connect(self._on_language_changed)
         self.refresh()
@@ -114,6 +145,16 @@ class CourseScreen(QWidget):
             )
         )
         self.browse_btn.setText(self.lang_manager.get_text("浏览", "Browse"))
+        self.choose_files_btn.setText(self.lang_manager.get_text("选择文件", "Choose Files"))
+        self.clear_files_btn.setText(
+            self.lang_manager.get_text("清空已选文件", "Clear Selected Files")
+        )
+        self.staged_files_list.setToolTip(
+            self.lang_manager.get_text(
+                "拖入课程资料文件，或点击“选择文件”。",
+                "Drop course material files here, or click \"Choose Files\".",
+            )
+        )
         self.title_input.setPlaceholderText(
             self.lang_manager.get_text("课程名称（可选）", "Course title (optional)")
         )
@@ -183,7 +224,29 @@ class CourseScreen(QWidget):
         self.browse_btn.setObjectName("secondaryButton")
         self.browse_btn.clicked.connect(self._browse_folder)
         folder_row.addWidget(self.browse_btn)
+        self.choose_files_btn = QPushButton(
+            self.lang_manager.get_text("选择文件", "Choose Files")
+        )
+        self.choose_files_btn.setObjectName("secondaryButton")
+        self.choose_files_btn.clicked.connect(self._choose_files)
+        folder_row.addWidget(self.choose_files_btn)
         import_layout.addLayout(folder_row)
+
+        self.staged_files_list = _StagedFilesList()
+        self.staged_files_list.setObjectName("stagedCourseFiles")
+        self.staged_files_list.setMinimumHeight(56)
+        self.staged_files_list.setMaximumHeight(104)
+        self.staged_files_list.setVisible(False)
+        self.staged_files_list.files_dropped.connect(self._stage_files)
+        import_layout.addWidget(self.staged_files_list)
+
+        self.clear_files_btn = QPushButton(
+            self.lang_manager.get_text("清空已选文件", "Clear Selected Files")
+        )
+        self.clear_files_btn.setObjectName("secondaryButton")
+        self.clear_files_btn.setVisible(False)
+        self.clear_files_btn.clicked.connect(self._clear_staged_files)
+        import_layout.addWidget(self.clear_files_btn)
 
         title_row = QHBoxLayout()
         self.title_input = QLineEdit()
@@ -708,6 +771,8 @@ class CourseScreen(QWidget):
     def _toggle_import_panel(self):
         self._import_expanded = not self._import_expanded
         self.import_group.setVisible(self._import_expanded)
+        if self.staged_files_list.count() == 0:
+            self.staged_files_list.setVisible(self._import_expanded)
         self._update_import_toggle_text()
 
     def _update_import_toggle_text(self):
@@ -724,10 +789,69 @@ class CourseScreen(QWidget):
             self.lang_manager.get_text("选择课程文件夹", "Select Course Folder")
         )
         if folder:
+            self._clear_staged_files()
             self.folder_input.setText(folder)
             if not self.title_input.text().strip():
                 self.title_input.setText(folder.split("/")[-1].split("\\")[-1])
             self._refresh_checkpoint_action()
+
+    def _on_folder_text_edited(self, text: str) -> None:
+        if str(text or "").strip() and self.staged_files_list.count():
+            self._clear_staged_files()
+
+    def _choose_files(self):
+        files, _filter = QFileDialog.getOpenFileNames(
+            self,
+            self.lang_manager.get_text(
+                "选择课程资料文件",
+                "Choose Course Material Files",
+            ),
+            "",
+            self.lang_manager.get_text(
+                "课程资料 (*.pdf *.pptx *.docx *.md *.txt)",
+                "Course materials (*.pdf *.pptx *.docx *.md *.txt)",
+            ),
+        )
+        if files:
+            self._stage_files(files)
+
+    def _stage_files(self, files) -> None:
+        """Show a de-duplicated file selection before background work starts."""
+        existing = {
+            str(self.staged_files_list.item(row).data(Qt.ItemDataRole.UserRole))
+            for row in range(self.staged_files_list.count())
+        }
+        for value in files or []:
+            path = Path(str(value)).expanduser()
+            if not path.is_file() or path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                continue
+            normalized = str(path.resolve())
+            if normalized in existing:
+                continue
+            item = QListWidgetItem(path.name)
+            item.setData(Qt.ItemDataRole.UserRole, normalized)
+            item.setToolTip(normalized)
+            self.staged_files_list.addItem(item)
+            existing.add(normalized)
+        has_files = self.staged_files_list.count() > 0
+        if has_files:
+            self.folder_input.clear()
+            if not self.title_input.text().strip():
+                first_path = self.staged_files_list.item(0).data(Qt.ItemDataRole.UserRole)
+                self.title_input.setText(Path(first_path).parent.name)
+        self.staged_files_list.setVisible(has_files)
+        self.clear_files_btn.setVisible(has_files)
+
+    def _clear_staged_files(self) -> None:
+        self.staged_files_list.clear()
+        self.staged_files_list.setVisible(self._import_expanded)
+        self.clear_files_btn.hide()
+
+    def _staged_files(self) -> list[str]:
+        return [
+            str(self.staged_files_list.item(row).data(Qt.ItemDataRole.UserRole))
+            for row in range(self.staged_files_list.count())
+        ]
 
     def _refresh_checkpoint_action(self) -> None:
         """Reflect reusable parsed files without starting background work."""
@@ -765,6 +889,7 @@ class CourseScreen(QWidget):
         self.start_import(
             self.folder_input.text(),
             self.title_input.text(),
+            files=self._staged_files(),
         )
 
     def start_import(
@@ -773,10 +898,16 @@ class CourseScreen(QWidget):
         title: str = "",
         *,
         present_result: bool = True,
+        files: list[str] | None = None,
     ) -> bool:
         """Start the existing background import from another workspace."""
         folder = str(folder or "").strip()
-        if not folder:
+        selected_files = [
+            str(path).strip()
+            for path in (files or [])
+            if str(path).strip()
+        ]
+        if not folder and not selected_files:
             if present_result:
                 QMessageBox.warning(
                     self,
@@ -791,13 +922,20 @@ class CourseScreen(QWidget):
             return False
 
         title = str(title or "").strip()
-        self.folder_input.setText(folder)
+        self.folder_input.setText(folder if not selected_files else "")
         self.title_input.setText(title)
         self._init_present_result = bool(present_result)
+        task_title = title or Path(folder).name
+        if not task_title:
+            task_title = self.lang_manager.get_text(
+                f"{len(selected_files)} 个文件",
+                f"{len(selected_files)} file(s)",
+            )
         self._init_worker = CourseScreen._InitWorker(
             folder,
             title,
             self._build_initializer(),
+            source_files=selected_files,
         )
         self._init_worker.finished.connect(self._on_init_done)
         self._init_worker.error.connect(self._on_init_error)
@@ -806,12 +944,13 @@ class CourseScreen(QWidget):
         self._begin_task(
             kind="course_import",
             title=self.lang_manager.get_text(
-                f"导入课程：{title or Path(folder).name}",
-                f"Import course: {title or Path(folder).name}",
+                f"导入课程：{task_title}",
+                f"Import course: {task_title}",
             ),
             metadata={
                 "source_folder": folder,
                 "course_title": title,
+                "source_files": selected_files,
             },
             worker=self._init_worker,
         )
@@ -850,6 +989,9 @@ class CourseScreen(QWidget):
         self.folder_input.setEnabled(not active)
         self.title_input.setEnabled(not active)
         self.browse_btn.setEnabled(not active)
+        self.choose_files_btn.setEnabled(not active)
+        self.clear_files_btn.setEnabled(not active)
+        self.staged_files_list.setEnabled(not active)
         self.init_btn.setEnabled(not active)
         self.import_toggle_btn.setEnabled(not active)
         self.project_list.setEnabled(not active)
@@ -1009,6 +1151,7 @@ class CourseScreen(QWidget):
             result_count=len(project.documents),
         )
         self._set_course_task_active(False)
+        self._clear_staged_files()
         self.cancel_task_btn.setText(self.lang_manager.get_text("停止", "Stop"))
 
         lang = self.lang_manager.current
@@ -1054,11 +1197,12 @@ class CourseScreen(QWidget):
         cancelled = pyqtSignal()
         progress = pyqtSignal(object)
 
-        def __init__(self, folder, title, initializer):
+        def __init__(self, folder, title, initializer, *, source_files=None):
             super().__init__()
             self._folder = folder
             self._title = title
             self._initializer = initializer
+            self._source_files = list(source_files or [])
             self._task = TaskControl(self.progress.emit)
 
         def cancel(self):
@@ -1066,9 +1210,10 @@ class CourseScreen(QWidget):
 
         def run(self):
             try:
-                project = self._initializer.initialize(
-                    self._folder, self._title, task=self._task
-                )
+                kwargs = {"task": self._task}
+                if self._source_files:
+                    kwargs["source_files"] = self._source_files
+                project = self._initializer.initialize(self._folder, self._title, **kwargs)
                 self.finished.emit(project)
             except BackgroundTaskCancelled:
                 self.cancelled.emit()

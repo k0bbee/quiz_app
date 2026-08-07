@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -99,19 +100,27 @@ class CourseInitializer:
         make_current: bool = True,
         task: TaskControl | None = None,
         course_id: str = "",
+        source_files: list[str] | None = None,
     ) -> CourseProject:
         """Parse a folder and save a course project."""
-        self._report(task, "parsing", detail=str(folder))
-        docs = self._parse_documents(
-            folder,
-            operation="initialize",
-            course_id=course_id,
-            task=task,
-        )
+        selected_files = [str(path) for path in (source_files or []) if str(path).strip()]
+        source_mode = "files" if selected_files else "folder"
+        self._report(task, "parsing", detail=(
+            "selected files" if selected_files else str(folder)
+        ))
+        if selected_files:
+            docs = self.parser.parse_files(selected_files, task=task)
+        else:
+            docs = self._parse_documents(
+                folder,
+                operation="initialize",
+                course_id=course_id,
+                task=task,
+            )
         self._check(task)
         self._require_readable_documents(docs)
 
-        course_title = title.strip() or Path(folder).name
+        course_title = title.strip() or self._default_title(folder, selected_files)
         artifacts = self._semantic_pipeline().build(
             course_title,
             docs,
@@ -122,7 +131,7 @@ class CourseInitializer:
         project = CourseProject(
             course_id=course_id.strip() or CourseProjectManager.new_id(),
             title=course_title,
-            source_folder=str(Path(folder).resolve()),
+            source_folder=self._source_folder(folder, selected_files),
             summary_markdown=artifacts.summary_markdown,
             summary_path="",
             topics=artifacts.topics,
@@ -134,6 +143,7 @@ class CourseInitializer:
             generation_profile=artifacts.generation_profile,
             generation_profile_source=artifacts.generation_profile_source,
             generation_profile_warning=artifacts.generation_profile_warning,
+            source_mode=source_mode,
         )
         self._report(task, "index")
         project = attach_index_to_project(project)
@@ -144,6 +154,40 @@ class CourseInitializer:
         if task is not None:
             task.complete("saved")
         return project
+
+    @staticmethod
+    def _default_title(folder: str, source_files: list[str]) -> str:
+        if folder:
+            return Path(folder).name
+        if source_files:
+            return Path(source_files[0]).parent.name
+        return "课程资料"
+
+    @staticmethod
+    def _source_folder(folder: str, source_files: list[str]) -> str:
+        if not source_files:
+            return str(Path(folder).resolve())
+        try:
+            common = Path(os.path.commonpath([str(Path(path).resolve()) for path in source_files]))
+            if common.is_file():
+                common = common.parent
+            return str(common)
+        except (OSError, ValueError):
+            return ""
+
+    @staticmethod
+    def _project_source_files(project) -> list[str]:
+        folder = Path(str(project.source_folder or ""))
+        paths = []
+        for document in project.documents or []:
+            raw_path = str(document.get("path", "") or "").strip()
+            if not raw_path:
+                continue
+            path = Path(raw_path)
+            if not path.is_absolute() and str(folder):
+                path = folder / path
+            paths.append(str(path))
+        return paths
 
     def _semantic_pipeline(self) -> CourseBuildPipeline:
         if self._build_pipeline_override is not None:
@@ -164,12 +208,18 @@ class CourseInitializer:
     ) -> CourseProject:
         """Re-parse an existing course's source folder and update its reusable summary."""
         self._report(task, "parsing", detail=project.source_folder)
-        docs = self._parse_documents(
-            project.source_folder,
-            operation="regenerate",
-            course_id=project.course_id,
-            task=task,
-        )
+        if project.source_mode == "files":
+            docs = self.parser.parse_files(
+                self._project_source_files(project),
+                task=task,
+            )
+        else:
+            docs = self._parse_documents(
+                project.source_folder,
+                operation="regenerate",
+                course_id=project.course_id,
+                task=task,
+            )
         self._check(task)
         self._require_readable_documents(docs)
 
@@ -197,6 +247,7 @@ class CourseInitializer:
             generation_profile_warning=artifacts.generation_profile_warning,
             exam_scope_mode=project.exam_scope_mode,
             exam_scope_topic_ids=list(project.exam_scope_topic_ids),
+            source_mode=project.source_mode,
         )
         self._report(task, "index")
         updated = attach_index_to_project(updated)

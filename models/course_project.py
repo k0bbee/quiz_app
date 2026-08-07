@@ -72,6 +72,7 @@ class CourseProject:
     exam_scope_mode: str = "all"
     exam_scope_topic_ids: list[str] = field(default_factory=list)
     status: str = COURSE_STATUS_ACTIVE
+    source_mode: str = "folder"
 
     def __post_init__(self) -> None:
         """Normalize persisted scope data without breaking legacy projects."""
@@ -89,6 +90,12 @@ class CourseProject:
         self.exam_scope_topic_ids = self._ordered_topic_ids(self.exam_scope_topic_ids)
         if self.exam_scope_mode == "all":
             self.exam_scope_topic_ids = []
+        normalized_source_mode = str(self.source_mode or "").strip().lower()
+        self.source_mode = (
+            normalized_source_mode
+            if normalized_source_mode in {"folder", "files"}
+            else "folder"
+        )
 
     @property
     def is_archived(self) -> bool:
@@ -148,6 +155,7 @@ class CourseProject:
             "exam_scope_mode": self.exam_scope_mode,
             "exam_scope_topic_ids": list(self.exam_scope_topic_ids),
             "status": self.status,
+            "source_mode": self.source_mode,
         }
 
     @classmethod
@@ -170,6 +178,7 @@ class CourseProject:
             exam_scope_mode=data.get("exam_scope_mode", "all"),
             exam_scope_topic_ids=list(data.get("exam_scope_topic_ids", []) or []),
             status=data.get("status", COURSE_STATUS_ACTIVE),
+            source_mode=data.get("source_mode", "folder"),
         )
 
 

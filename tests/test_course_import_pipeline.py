@@ -82,6 +82,126 @@ class CourseImportPipelineTests(unittest.TestCase):
                 )
             ]
 
+    def test_initializer_persists_an_explicit_file_selection_for_future_rebuilds(self):
+            artifacts = SimpleNamespace(
+                topics=self._topics(),
+                summary_markdown="# Selected files",
+                summary_source="local",
+                summary_warning="",
+                generation_profile={},
+                generation_profile_source="local",
+                generation_profile_warning="",
+            )
+            pipeline = Mock()
+            pipeline.build.return_value = artifacts
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                first = root / "week-one" / "memory.md"
+                second = root / "week-two" / "io.txt"
+                first.parent.mkdir()
+                second.parent.mkdir()
+                first.write_text("Memory pages and frames.", encoding="utf-8")
+                second.write_text("DMA transfers data.", encoding="utf-8")
+                manager = CourseProjectManager(str(root / "projects"))
+                initializer = CourseInitializer(manager=manager, build_pipeline=pipeline)
+
+                project = initializer.initialize(
+                    "",
+                    title="Selected Materials",
+                    source_files=[str(first), str(second), str(first)],
+                    make_current=False,
+                )
+
+            self.assertEqual("files", project.source_mode)
+            self.assertEqual(
+                {str(first.resolve()), str(second.resolve())},
+                {document["path"] for document in project.documents},
+            )
+
+    def test_regenerate_reuses_the_persisted_explicit_file_selection(self):
+            artifacts = SimpleNamespace(
+                topics=self._topics(),
+                summary_markdown="# Rebuilt selected files",
+                summary_source="local",
+                summary_warning="",
+                generation_profile={},
+                generation_profile_source="local",
+                generation_profile_warning="",
+            )
+            pipeline = Mock()
+            pipeline.build.return_value = artifacts
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                first = root / "one" / "memory.md"
+                second = root / "two" / "io.txt"
+                first.parent.mkdir()
+                second.parent.mkdir()
+                first.write_text("Memory pages and frames.", encoding="utf-8")
+                second.write_text("DMA transfers data.", encoding="utf-8")
+                manager = CourseProjectManager(str(root / "projects"))
+                initializer = CourseInitializer(manager=manager, build_pipeline=pipeline)
+                project = initializer.initialize(
+                    "",
+                    title="Selected Materials",
+                    source_files=[str(first), str(second)],
+                    make_current=False,
+                )
+                pipeline.reset_mock()
+
+                updated = initializer.regenerate_summary(project, make_current=False)
+
+            pipeline.build.assert_called_once()
+            rebuilt_docs = pipeline.build.call_args.args[1]
+            self.assertEqual({"memory", "io"}, {document.title for document in rebuilt_docs})
+            self.assertEqual("files", updated.source_mode)
+
+    def test_course_screen_stages_unique_supported_files_before_starting_import(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                first = root / "lecture-one.md"
+                second = root / "lecture-two.pdf"
+                first.write_text("Memory pages and frames.", encoding="utf-8")
+                second.write_bytes(b"%PDF-1.4")
+                screen = CourseScreen(CourseProjectManager(str(root / "projects")))
+                self.addCleanup(screen.close)
+
+                screen._stage_files([str(first), str(second), str(first)])
+
+                self.assertEqual(2, screen.staged_files_list.count())
+                self.assertEqual(str(first), screen.staged_files_list.item(0).data(0x0100))
+                self.assertEqual(str(second), screen.staged_files_list.item(1).data(0x0100))
+                self.assertTrue(screen.init_btn.isEnabled())
+
+                screen._clear_staged_files()
+
+                self.assertEqual(0, screen.staged_files_list.count())
+
+    def test_course_init_worker_forwards_staged_files_to_initializer(self):
+            captured = {}
+
+            class CapturingInitializer:
+                def initialize(self, folder, title, *, task=None, source_files=None):
+                    captured.update(
+                        folder=folder,
+                        title=title,
+                        source_files=source_files,
+                    )
+                    return SimpleNamespace(title=title, documents=[], topics=[])
+
+            worker = CourseScreen._InitWorker(
+                "",
+                "Selected Materials",
+                CapturingInitializer(),
+                source_files=["one.md", "two.pdf"],
+            )
+            worker.run()
+
+            self.assertEqual("", captured["folder"])
+            self.assertEqual("Selected Materials", captured["title"])
+            self.assertEqual(["one.md", "two.pdf"], captured["source_files"])
+
     def test_llm_summary_prompt_does_not_expose_absolute_source_paths(self):
             private_path = r"C:\Users\student\Downloads\private-course\lecture.md"
             messages = CourseSummaryGenerator.build_messages(
