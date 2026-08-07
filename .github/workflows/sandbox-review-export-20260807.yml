@@ -1,0 +1,26 @@
+name: Sandbox review export 20260807
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Package source
+        run: |
+          zip -qr quiz_app-simplify-core-loop-20260807.zip . -x '.git/*' 'quiz_app-simplify-core-loop-20260807.zip'
+      - name: Upload source bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-review-core-loop-20260807
+          path: quiz_app-simplify-core-loop-20260807.zip
+          compression-level: 0
+          retention-days: 1
