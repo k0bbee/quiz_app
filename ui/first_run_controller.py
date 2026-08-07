@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import QFileDialog
 
-from ai.course_summary_factory import provider_requires_api_key
-from ai.settings_validation import ai_generation_settings_error
 from core.first_run_flow import build_first_run_exam_plan, resolve_first_run_state
 from core.example_course import install_example_course
 from core.study_intent import StudyAction, StudyIntent
@@ -26,16 +24,6 @@ class FirstRunController:
             host._first_run_error = ""
         host._last_generation_launch_error = ""
         self.refresh()
-
-    def ai_error(self) -> str:
-        host = self._host
-        settings = host.settings_snapshot()
-        api_key = ""
-        if provider_requires_api_key(settings):
-            from core.secrets_manager import SecretsManager
-
-            api_key = SecretsManager.instance().get_key()
-        return ai_generation_settings_error(settings, api_key)
 
     def practice_candidates(self):
         host = self._host
@@ -119,7 +107,6 @@ class FirstRunController:
             or not self.has_completed_practice()
         )
         state = resolve_first_run_state(
-            ai_error=self.ai_error(),
             has_course=has_course,
             question_count=question_count,
             operation=host._first_run_operation,

@@ -21,7 +21,6 @@ class FirstRunStage(str, Enum):
 @dataclass(frozen=True)
 class FirstRunState:
     stage: FirstRunStage
-    ai_error: str = ""
     error: str = ""
     progress_text: str = ""
     progress_current: int = 0
@@ -56,7 +55,6 @@ def build_first_run_exam_plan(course_project) -> ExamGenerationPlan:
 
 def resolve_first_run_state(
     *,
-    ai_error: str,
     has_course: bool,
     question_count: int,
     operation: str = "",
@@ -87,7 +85,6 @@ def resolve_first_run_state(
         stage = FirstRunStage.MATERIALS
     return FirstRunState(
         stage=stage,
-        ai_error=str(ai_error or "").strip(),
         error=str(error or "").strip(),
         progress_text=str(progress_text or "").strip(),
         progress_current=max(0, int(progress_current or 0)),

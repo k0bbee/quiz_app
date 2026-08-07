@@ -23,6 +23,7 @@ from models.question_set import QuestionSet
 from ui.main_window import MainWindow
 from ui.generation_launch_controller import GenerationLaunchIssue
 from ui.generation_workspace_controller import GenerationWorkspaceController
+from ui.first_run_controller import FirstRunController
 from ui.screens.first_run_workspace import FirstRunWorkspace
 from utils.constants import Difficulty, QuestionType
 
@@ -31,6 +32,35 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class FirstRunFlowTests(unittest.TestCase):
+    def test_refresh_without_a_course_defers_ai_settings_and_credential_access(self):
+        """Keep the offline first-use path independent from the AI backend."""
+        settings_snapshot = Mock(
+            return_value={
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://",
+                "ai_model": "claude",
+            }
+        )
+        first_run_screen = Mock()
+        home_workspace = Mock()
+        host = Mock(
+            first_run_screen=first_run_screen,
+            home_workspace=home_workspace,
+            home_screen=object(),
+            settings_snapshot=settings_snapshot,
+            _first_run_progress=None,
+            _first_run_operation="",
+            course_context=Mock(current_course_id=Mock(return_value="")),
+            generation_flow=Mock(draft=Mock(return_value=None)),
+            course_manager=Mock(load_all=Mock(return_value=[])),
+        )
+
+        FirstRunController(host).refresh()
+
+        settings_snapshot.assert_not_called()
+        first_run_screen.set_state.assert_called_once()
+        home_workspace.setCurrentWidget.assert_called_once_with(first_run_screen)
+
     def test_first_run_has_no_standalone_ai_setup_gate(self):
         self.assertFalse(hasattr(FirstRunStage, "AI_SETUP"))
         workspace = FirstRunWorkspace()
@@ -94,19 +124,10 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual(("io",), plan.selected_topics)
         self.assertEqual({"io": 100}, dict(plan.topic_weights))
 
-    def test_state_keeps_materials_primary_when_ai_is_not_needed_yet(self):
+    def test_state_keeps_materials_primary_until_a_course_is_available(self):
         self.assertEqual(
             FirstRunStage.MATERIALS,
             resolve_first_run_state(
-                ai_error="API key missing",
-                has_course=False,
-                question_count=0,
-            ).stage,
-        )
-        self.assertEqual(
-            FirstRunStage.MATERIALS,
-            resolve_first_run_state(
-                ai_error="",
                 has_course=False,
                 question_count=0,
             ).stage,
@@ -114,7 +135,6 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual(
             FirstRunStage.IMPORTING,
             resolve_first_run_state(
-                ai_error="",
                 has_course=False,
                 question_count=0,
                 operation="importing",
@@ -123,7 +143,6 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual(
             FirstRunStage.GENERATE,
             resolve_first_run_state(
-                ai_error="API key missing",
                 has_course=True,
                 question_count=0,
             ).stage,
@@ -131,7 +150,6 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual(
             FirstRunStage.READY,
             resolve_first_run_state(
-                ai_error="API key missing",
                 has_course=True,
                 question_count=10,
             ).stage,
@@ -139,7 +157,6 @@ class FirstRunFlowTests(unittest.TestCase):
 
     def test_archived_courses_offer_recovery_before_empty_install_onboarding(self):
         state = resolve_first_run_state(
-            ai_error="API key missing",
             has_course=False,
             question_count=0,
             archived_course_count=2,
@@ -200,43 +217,9 @@ class FirstRunFlowTests(unittest.TestCase):
 
         self.assertEqual(["example", "import"], requested)
 
-    def test_stale_ai_error_is_hidden_until_generation_is_requested(self):
-        workspace = FirstRunWorkspace()
-        self.addCleanup(workspace.close)
-        requested = []
-        workspace.example_requested.connect(
-            lambda: requested.append("example")
-        )
-        workspace.choose_materials_requested.connect(
-            lambda: requested.append("import")
-        )
-
-        workspace.set_state(
-            FirstRunState(
-                FirstRunStage.MATERIALS,
-                ai_error="API key missing",
-            )
-        )
-
-        self.assertEqual("选择课程资料", workspace.primary_btn.text())
-        self.assertTrue(workspace.alternate_btn.isHidden())
-        self.assertFalse(workspace.example_btn.isHidden())
-        self.assertFalse(workspace.status_label.isVisible())
-
-        workspace.example_btn.click()
-        workspace.primary_btn.click()
-
-        self.assertEqual(["example", "import"], requested)
-
     def test_first_run_example_installs_without_ai_and_becomes_ready(self):
-        with patch(
-            "ui.first_run_controller.FirstRunController.ai_error",
-            return_value="",
-            create=True,
-        ):
-            window = MainWindow()
+        window = MainWindow()
         self.addCleanup(window.close)
-        window.first_run.ai_error = Mock(return_value="API key missing")
         window.first_run_screen.set_state(FirstRunState(FirstRunStage.MATERIALS))
 
         window.first_run_screen.example_btn.click()
@@ -250,7 +233,6 @@ class FirstRunFlowTests(unittest.TestCase):
 
     def test_review_pending_draft_precedes_regeneration(self):
         state = resolve_first_run_state(
-            ai_error="API key missing",
             has_course=True,
             question_count=0,
             draft_question_count=4,
@@ -274,14 +256,8 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertTrue(workspace.primary_btn.isEnabled())
 
     def test_empty_application_routes_primary_workspaces_to_one_first_run_view(self):
-        with patch(
-            "ui.first_run_controller.FirstRunController.ai_error",
-            return_value="",
-            create=True,
-        ):
-            window = MainWindow()
+        window = MainWindow()
         self.addCleanup(window.close)
-        window.first_run.ai_error = Mock(return_value="API key missing")
 
         self.assertEqual(window.SCREEN_HOME, window.stack.currentIndex())
         self.assertIs(
@@ -298,12 +274,7 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertIsNotNone(window._course_screen)
 
     def test_first_run_hands_selected_folder_to_background_course_import(self):
-        with patch(
-            "ui.first_run_controller.FirstRunController.ai_error",
-            return_value="",
-            create=True,
-        ):
-            window = MainWindow()
+        window = MainWindow()
         self.addCleanup(window.close)
         course_screen = Mock()
         course_screen.start_import.return_value = True
@@ -326,12 +297,7 @@ class FirstRunFlowTests(unittest.TestCase):
         )
 
     def test_archived_only_application_routes_to_course_recovery_workspace(self):
-        with patch(
-            "ui.first_run_controller.FirstRunController.ai_error",
-            return_value="",
-            create=True,
-        ):
-            window = MainWindow()
+        window = MainWindow()
         self.addCleanup(window.close)
         project = CourseProject(
             course_id="course-archived",
@@ -359,14 +325,8 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual(1, window._course_screen.project_list.count())
 
     def test_first_run_offers_first_practice_after_questions_exist(self):
-        with patch(
-            "ui.first_run_controller.FirstRunController.ai_error",
-            return_value="",
-            create=True,
-        ):
-            window = MainWindow()
+        window = MainWindow()
         self.addCleanup(window.close)
-        window.first_run.ai_error = Mock(return_value="")
         project = CourseProject(
             course_id="course-first-run",
             title="First Course",
@@ -435,12 +395,7 @@ class FirstRunFlowTests(unittest.TestCase):
         )
 
     def test_first_run_restores_review_pending_generation_without_new_request(self):
-        with patch(
-            "ui.first_run_controller.FirstRunController.ai_error",
-            return_value="",
-            create=True,
-        ):
-            window = MainWindow()
+        window = MainWindow()
         self.addCleanup(window.close)
         project = CourseProject(
             course_id="course-draft",
@@ -542,12 +497,7 @@ class FirstRunFlowTests(unittest.TestCase):
         )
 
     def test_saving_restored_generation_removes_draft_and_creates_set(self):
-        with patch(
-            "ui.first_run_controller.FirstRunController.ai_error",
-            return_value="",
-            create=True,
-        ):
-            window = MainWindow()
+        window = MainWindow()
         self.addCleanup(window.close)
         project = CourseProject(
             course_id="course-save-draft",
@@ -789,12 +739,7 @@ class FirstRunFlowTests(unittest.TestCase):
         dialog.show_save_error.assert_called_once_with("disk full")
 
     def test_first_run_generate_uses_default_plan_without_configuration_step(self):
-        with patch(
-            "ui.first_run_controller.FirstRunController.ai_error",
-            return_value="",
-            create=True,
-        ):
-            window = MainWindow()
+        window = MainWindow()
         self.addCleanup(window.close)
         project = CourseProject(
             course_id="course-auto-generate",
@@ -825,12 +770,7 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertFalse(kwargs["present_error"])
 
     def test_first_run_generation_settings_error_stays_in_workspace(self):
-        with patch(
-            "ui.first_run_controller.FirstRunController.ai_error",
-            return_value="",
-            create=True,
-        ):
-            window = MainWindow()
+        window = MainWindow()
         self.addCleanup(window.close)
         project = CourseProject(
             course_id="course-inline-error",
@@ -844,7 +784,6 @@ class FirstRunFlowTests(unittest.TestCase):
             updated_at="2026-07-29T00:00:00+00:00",
         )
         window.course_manager.save(project)
-        window.first_run.ai_error = Mock(return_value="API key missing")
         failed = Mock(
             ok=False,
             issue=GenerationLaunchIssue.INVALID_AI_SETTINGS,
@@ -870,7 +809,6 @@ class FirstRunFlowTests(unittest.TestCase):
         )
         self.assertIsNone(window.first_run_screen.generation_widget())
 
-        window.first_run.ai_error.return_value = ""
         window.first_run.settings_saved()
 
         self.assertEqual(
@@ -880,12 +818,7 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertFalse(window.first_run_screen.status_label.isVisible())
 
     def test_first_run_generation_is_embedded_without_modal_exec(self):
-        with patch(
-            "ui.first_run_controller.FirstRunController.ai_error",
-            return_value="",
-            create=True,
-        ):
-            window = MainWindow()
+        window = MainWindow()
         self.addCleanup(window.close)
         project = CourseProject(
             course_id="course-inline-generation",
