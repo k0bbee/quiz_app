@@ -35,6 +35,15 @@ _DIFFICULTY_LABELS = {
     Difficulty.HARD: ("困难", "Hard"),
 }
 
+_WEAK_SOURCE_STATUSES = {
+    "partial_model_ref",
+    "fallback_plan_evidence",
+    "fallback_global_evidence",
+    "global_fallback",
+    "invalid_model_ref",
+    "missing",
+}
+
 
 class QuestionReviewDialog(QDialog):
     """Review and approve/reject AI-generated questions before saving."""
@@ -64,6 +73,7 @@ class QuestionReviewDialog(QDialog):
         self.setWindowTitle(self.lang_manager.get_text("审查生成的题目", "Review Generated Questions"))
         self.resize(900, 600)
         self._setup_ui()
+        self._update_source_coverage()
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
         if self.questions:
@@ -81,6 +91,10 @@ class QuestionReviewDialog(QDialog):
         )
         self.header.setObjectName("dialogHeader")
         layout.addWidget(self.header)
+
+        self.source_coverage_label = QLabel()
+        self.source_coverage_label.setObjectName("reviewSourceCoverage")
+        layout.addWidget(self.source_coverage_label)
 
         # Splitter: list on left, preview on right
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -236,6 +250,7 @@ class QuestionReviewDialog(QDialog):
                 f"Generated {len(self.questions)} questions. Review and accept/reject each one."
             )
         )
+        self._update_source_coverage()
         self.questions_label.setText(self.lang_manager.get_text("题目列表:", "Questions:"))
         self.prev_page_btn.setText(self.lang_manager.get_text("上一页", "Previous"))
         self.next_page_btn.setText(self.lang_manager.get_text("下一页", "Next"))
@@ -327,6 +342,27 @@ class QuestionReviewDialog(QDialog):
             )
         )
         self._populate_edit_fields(q)
+
+    def _update_source_coverage(self) -> None:
+        """Show how many generated questions have strong source evidence."""
+        clear_count = 0
+        for question in self.questions:
+            metadata = question.metadata or {}
+            refs = metadata.get("source_refs")
+            has_refs = isinstance(refs, list) and any(
+                isinstance(ref, dict) and bool(ref) for ref in refs
+            )
+            status = str(metadata.get("source_ref_status", "") or "").strip().lower()
+            if has_refs and status not in _WEAK_SOURCE_STATUSES:
+                clear_count += 1
+        total = len(self.questions)
+        review_count = max(0, total - clear_count)
+        self.source_coverage_label.setText(
+            self.lang_manager.get_text(
+                f"来源明确 {clear_count}/{total} · 建议检查 {review_count}",
+                f"Clear sources {clear_count}/{total} · Review {review_count}",
+            )
+        )
 
     def _accept_current(self):
         """Accept the currently viewed question."""

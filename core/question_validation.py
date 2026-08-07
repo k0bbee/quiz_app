@@ -45,6 +45,12 @@ def validate_question_quality(question: Question) -> tuple[ValidationIssue, ...]
             "来源状态与证据不一致", "Source status has no supporting evidence",
             "[来源异常]", "[Source Mismatch]", "replace_source",
         ))
+    elif source_status in {"partial_model_ref", "fallback_plan_evidence"}:
+        issues.append(ValidationIssue(
+            "source_weak", "warning",
+            "来源证据不完整或来自计划补全", "Source evidence is partial or plan-completed",
+            "[来源较弱]", "[Weak Source]", "review_source",
+        ))
     elif source_status in {"fallback_global_evidence", "global_fallback"}:
         issues.append(ValidationIssue(
             "source_global_fallback", "warning",

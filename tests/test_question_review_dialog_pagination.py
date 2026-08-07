@@ -230,6 +230,35 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         details = dialog.quality_editor.toPlainText()
         self.assertIn("来源", details)
 
+    def test_review_dialog_summarizes_source_coverage(self):
+        exact = make_question(1)
+        exact.metadata["source_ref_status"] = "valid_model_ref"
+        exact.metadata["source_refs"] = [{"chunk_id": "source-exact"}]
+        fallback = make_question(2)
+        fallback.metadata["source_ref_status"] = "fallback_plan_evidence"
+        fallback.metadata["source_refs"] = [{"chunk_id": "source-fallback"}]
+
+        dialog = QuestionReviewDialog([exact, fallback, make_question(3)], page_size=10)
+        self.addCleanup(dialog.close)
+
+        self.assertIn("来源明确 1/3", dialog.source_coverage_label.text())
+        self.assertIn("建议检查 2", dialog.source_coverage_label.text())
+
+    def test_review_dialog_accept_all_excludes_weak_source_questions(self):
+        exact = make_question(1)
+        exact.metadata["source_ref_status"] = "valid_model_ref"
+        exact.metadata["source_refs"] = [{"chunk_id": "source-exact"}]
+        fallback = make_question(2)
+        fallback.metadata["source_ref_status"] = "fallback_plan_evidence"
+        fallback.metadata["source_refs"] = [{"chunk_id": "source-fallback"}]
+
+        dialog = QuestionReviewDialog([exact, fallback], page_size=10)
+        self.addCleanup(dialog.close)
+
+        dialog.accept_all_btn.click()
+
+        self.assertEqual([exact.question_id], [question.question_id for question in dialog.get_accepted_questions()])
+
     def test_review_dialog_accept_all_keeps_warning_questions_rejected(self):
         good = make_question(1)
         warning = make_question(2)

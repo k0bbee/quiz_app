@@ -66,6 +66,20 @@ class QuestionValidationTests(unittest.TestCase):
         self.assertEqual("replace_source", issues[0].repair_action)
         self.assertEqual("[无来源]", issues[0].tag("zh"))
 
+    def test_validator_marks_partial_and_plan_fallback_sources_for_review(self):
+        for source_status in ("partial_model_ref", "fallback_plan_evidence"):
+            with self.subTest(source_status=source_status):
+                question = _question()
+                question.metadata["source_ref_status"] = source_status
+                question.metadata["source_refs"] = [{"chunk_id": "source-1"}]
+
+                issues = validate_question_quality(question)
+
+                self.assertIn(
+                    "source_weak",
+                    [issue.code for issue in issues],
+                )
+
     def test_validator_detects_bilingual_imbalance_and_option_length_bias(self):
         question = _question()
         question.bilingual["zh"]["explanation"] = "短"
