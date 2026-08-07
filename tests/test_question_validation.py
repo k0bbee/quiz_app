@@ -80,6 +80,22 @@ class QuestionValidationTests(unittest.TestCase):
                     [issue.code for issue in issues],
                 )
 
+    def test_validator_keeps_imported_text_questions_in_manual_review(self):
+        question = _question()
+        question.metadata.update(
+            {
+                "historical_import": True,
+                "import_review_required": True,
+                "source_ref_status": "imported_text",
+                "source_refs": [{"source_file": "exam.txt", "line_start": 1}],
+            }
+        )
+
+        issues = validate_question_quality(question)
+
+        self.assertEqual(["imported_text_review"], [issue.code for issue in issues])
+        self.assertEqual("导入题目需人工核对", issues[0].message("zh"))
+
     def test_validator_detects_bilingual_imbalance_and_option_length_bias(self):
         question = _question()
         question.bilingual["zh"]["explanation"] = "短"

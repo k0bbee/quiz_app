@@ -33,6 +33,12 @@ def validate_question_quality(question: Question) -> tuple[ValidationIssue, ...]
     has_source_refs = isinstance(source_refs, list) and any(
         isinstance(ref, dict) and bool(ref) for ref in source_refs
     )
+    if bool(metadata.get("import_review_required")):
+        issues.append(ValidationIssue(
+            "imported_text_review", "warning",
+            "导入题目需人工核对", "Imported question requires manual review",
+            "[导入待核对]", "[Imported Review]", "review_import",
+        ))
     if source_status in {"invalid_model_ref", "missing"}:
         issues.append(ValidationIssue(
             "source_invalid", "warning",
