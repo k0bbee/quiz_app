@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import re
+from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QTextEdit, QMessageBox, QSplitter, QAbstractItemView, QStackedWidget,
-    QHeaderView, QTableView,
+    QHeaderView, QTableView, QFileDialog, QDialog,
 )
 from PyQt6.QtCore import (
     Qt,
@@ -27,6 +28,8 @@ from core.library_scope import LibraryAssetScope, LibraryScopeKind
 from core.question_bank_maintenance import backfill_source_refs_from_course, remove_question_from_sets
 from core.question_quality_scan import scan_question_bank_quality
 from core.question_validation import validate_question_quality
+from core.historical_question_import import parse_historical_questions
+from core.input_limits import MAX_EXTRACTED_TEXT_CHARS
 from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
 from models.question_set import SetManager
@@ -204,6 +207,18 @@ class QuestionBankScreen(QWidget):
         self.new_btn.setObjectName("secondaryButton")
         self.new_btn.clicked.connect(self._new_question)
         list_actions_row.addWidget(self.new_btn)
+        self.import_text_btn = QPushButton(
+            self.lang_manager.get_text("导入题目文本", "Import Question Text")
+        )
+        self.import_text_btn.setObjectName("secondaryButton")
+        self.import_text_btn.setToolTip(
+            self.lang_manager.get_text(
+                "导入 TXT/Markdown 真题文本，先审核再保存",
+                "Import TXT/Markdown exam text for review before saving",
+            )
+        )
+        self.import_text_btn.clicked.connect(self._import_historical_text)
+        list_actions_row.addWidget(self.import_text_btn)
         list_actions_row.addStretch(1)
         layout.addLayout(list_actions_row)
 
@@ -432,6 +447,15 @@ class QuestionBankScreen(QWidget):
         )
         self.new_btn.setText(
             self.lang_manager.get_text("新建题目", "New Question")
+        )
+        self.import_text_btn.setText(
+            self.lang_manager.get_text("导入题目文本", "Import Question Text")
+        )
+        self.import_text_btn.setToolTip(
+            self.lang_manager.get_text(
+                "导入 TXT/Markdown 真题文本，先审核再保存",
+                "Import TXT/Markdown exam text for review before saving",
+            )
         )
         self.empty_state_label.setText(
             self.lang_manager.get_text(
@@ -680,6 +704,111 @@ class QuestionBankScreen(QWidget):
         self.delete_btn.setEnabled(False)
         if self.width() < 1100:
             self._open_responsive_inspector()
+
+    def _import_historical_text(self):
+        """Parse a local text/OCR export and route candidates through review."""
+        filepath, _ = QFileDialog.getOpenFileName(
+            self,
+            self.lang_manager.get_text("选择题目文本", "Select Question Text"),
+            "",
+            self.lang_manager.get_text(
+                "题目文本 (*.txt *.md);;所有文件 (*.*)",
+                "Question text (*.txt *.md);;All files (*.*)",
+            ),
+        )
+        if not filepath:
+            return
+        try:
+            source_path = Path(filepath)
+            if source_path.stat().st_size > MAX_EXTRACTED_TEXT_CHARS * 4:
+                raise ValueError(
+                    self.lang_manager.get_text(
+                        "文件超过文本导入大小限制。",
+                        "The file exceeds the text import size limit.",
+                    )
+                )
+            with source_path.open("r", encoding="utf-8-sig") as handle:
+                text = handle.read(MAX_EXTRACTED_TEXT_CHARS + 1)
+            if len(text) > MAX_EXTRACTED_TEXT_CHARS:
+                raise ValueError(
+                    self.lang_manager.get_text(
+                        "文件超过文本内容限制。",
+                        "The file exceeds the extracted text limit.",
+                    )
+                )
+        except (OSError, UnicodeError) as exc:
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text("导入失败", "Import Failed"),
+                self.lang_manager.get_text(
+                    f"无法读取文件：{exc}",
+                    f"Could not read the file: {exc}",
+                ),
+            )
+            return
+        except ValueError as exc:
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text("导入失败", "Import Failed"),
+                str(exc),
+            )
+            return
+
+        result = parse_historical_questions(
+            text,
+            source_file=str(source_path.resolve()),
+            course_id=self._current_course_id,
+        )
+        if not result.questions:
+            warning_text = "\n".join(result.warnings[:6])
+            if len(result.warnings) > 6:
+                warning_text += self.lang_manager.get_text("\n…其余问题已省略", "\n…more warnings omitted")
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text("没有可审核的题目", "No Reviewable Questions"),
+                warning_text or self.lang_manager.get_text(
+                    "未识别到完整的题目、选项和答案。",
+                    "No complete question, option, and answer blocks were found.",
+                ),
+            )
+            return
+
+        from ui.dialogs.question_review_dialog import QuestionReviewDialog
+
+        if result.warnings:
+            warning_text = "\n".join(result.warnings[:6])
+            if len(result.warnings) > 6:
+                warning_text += self.lang_manager.get_text("\n…其余问题已省略", "\n…more warnings omitted")
+            QMessageBox.information(
+                self,
+                self.lang_manager.get_text("部分题目需要检查", "Some Blocks Need Review"),
+                self.lang_manager.get_text(
+                    f"已识别 {len(result.questions)} 道题，以下题块未导入：\n{warning_text}",
+                    f"Recognized {len(result.questions)} question(s). These blocks were skipped:\n{warning_text}",
+                ),
+            )
+        dialog = QuestionReviewDialog(
+            list(result.questions),
+            parent=self,
+            course_project=self._active_course_project(),
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        accepted = dialog.get_accepted_questions()
+        if not accepted:
+            return
+        saved = self.question_bank.save_many(accepted)
+        self._invalidate_quality_scan()
+        self.question_bank_changed.emit()
+        self.refresh()
+        QMessageBox.information(
+            self,
+            self.lang_manager.get_text("导入完成", "Import Complete"),
+            self.lang_manager.get_text(
+                f"已保存 {saved} 道题目。",
+                f"Saved {saved} question(s).",
+            ),
+        )
 
     def _save_question(self):
         try:

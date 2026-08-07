@@ -3,12 +3,12 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QMessageBox, QAbstractItemView, QTableView
+from PyQt6.QtWidgets import QApplication, QMessageBox, QAbstractItemView, QTableView, QDialog
 
 from core import course_index
 from core.language_manager import LanguageManager
@@ -60,6 +60,47 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
             with self.assertRaises(TypeError):
                 QuestionBankScreen(question_bank)
+
+    def test_import_historical_text_reviews_candidates_before_saving(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "exam.txt"
+            source.write_text(
+                "1. 哪个选项正确？\nA. 甲\nB. 乙\n答案：B\n",
+                encoding="utf-8",
+            )
+            bank = QuestionBank(str(root / "questions"))
+            screen = self._screen(root, bank)
+            self.addCleanup(screen.close)
+
+            reviewed_question = None
+            from core.historical_question_import import parse_historical_questions
+
+            reviewed_question = parse_historical_questions(
+                source.read_text(encoding="utf-8"),
+                source_file=str(source.resolve()),
+            ).questions[0]
+            dialog = Mock()
+            dialog.exec.return_value = QDialog.DialogCode.Accepted
+            dialog.get_accepted_questions.return_value = [reviewed_question]
+
+            with patch(
+                "ui.screens.question_bank_screen.QFileDialog.getOpenFileName",
+                return_value=(str(source), ""),
+            ), patch(
+                "ui.dialogs.question_review_dialog.QuestionReviewDialog",
+                return_value=dialog,
+            ), patch("ui.screens.question_bank_screen.QMessageBox.information"):
+                screen._import_historical_text()
+
+            saved = bank.get(reviewed_question.question_id)
+            self.assertIsNotNone(saved)
+            self.assertEqual("historical_import", saved.metadata["source"])
+            self.assertEqual(
+                str(source.resolve()),
+                saved.metadata["source_refs"][0]["source_file"],
+            )
+            dialog.get_accepted_questions.assert_called_once_with()
 
     def _screen(
         self,
