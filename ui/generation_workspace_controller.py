@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Callable
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QObject, QTimer
 from PyQt6.QtWidgets import QMessageBox, QWidget
 
 from ai.course_summary_factory import provider_requires_api_key
@@ -18,6 +18,9 @@ from ui.generation_launch_controller import (
     generation_launch_copy,
 )
 from utils.logger import warning as log_warning
+
+
+_DRAFT_SYNC_DELAY_MS = 250
 
 
 def find_generation_gap_topic_ids(course_project, question_bank) -> tuple[str, ...] | None:
@@ -238,7 +241,7 @@ class GenerationWorkspaceController:
         start_after_save: bool = False,
     ) -> None:
         """Publish reviewed questions while retaining the surface on failure."""
-        self.sync_draft(dialog, course_project, source=draft_source)
+        self._flush_draft_sync(dialog, course_project, source=draft_source)
         saved = self.save(
             dialog,
             course_project,
@@ -265,7 +268,7 @@ class GenerationWorkspaceController:
     ) -> None:
         """Leave generation without discarding a reviewable course draft."""
         host = self._host
-        self.sync_draft(dialog, course_project, source=draft_source)
+        self._flush_draft_sync(dialog, course_project, source=draft_source)
         workspace = self._workspace()
         workspace.clear_generation_widget(dialog)
         dialog.deleteLater()
@@ -416,7 +419,11 @@ class GenerationWorkspaceController:
         draft_signal = getattr(dialog, "draft_changed", None)
         if draft_signal is not None and hasattr(draft_signal, "connect"):
             draft_signal.connect(
-                lambda: self.sync_draft(dialog, course_project, source=draft_source)
+                lambda: self._schedule_draft_sync(
+                    dialog,
+                    course_project,
+                    source=draft_source,
+                )
             )
         return dialog, course_project, restored_draft, draft_source
 
@@ -545,6 +552,33 @@ class GenerationWorkspaceController:
         except (OSError, TypeError, ValueError) as exc:
             log_warning(f"Failed to persist generation draft: {exc}")
             return False
+
+    def _schedule_draft_sync(self, dialog, course_project, *, source: str) -> None:
+        """Coalesce live generation updates before serializing the full draft."""
+        timer = self._draft_sync_timer(dialog, course_project, source=source)
+        timer.start()
+
+    def _flush_draft_sync(self, dialog, course_project, *, source: str) -> bool:
+        """Persist a terminal draft state without leaving a stale timer behind."""
+        timer = getattr(dialog, "_generation_draft_sync_timer", None)
+        if isinstance(timer, QTimer):
+            timer.stop()
+        return self.sync_draft(dialog, course_project, source=source)
+
+    def _draft_sync_timer(self, dialog, course_project, *, source: str) -> QTimer:
+        """Return the dialog-owned one-shot timer for automatic draft saves."""
+        timer = getattr(dialog, "_generation_draft_sync_timer", None)
+        if isinstance(timer, QTimer):
+            return timer
+        parent = dialog if isinstance(dialog, QObject) else None
+        timer = QTimer(parent)
+        timer.setSingleShot(True)
+        timer.setInterval(_DRAFT_SYNC_DELAY_MS)
+        timer.timeout.connect(
+            lambda: self.sync_draft(dialog, course_project, source=source)
+        )
+        setattr(dialog, "_generation_draft_sync_timer", timer)
+        return timer
 
     def delete_draft(self, course_id: str, *, draft_id: str = "") -> None:
         store = getattr(self._host, "generation_draft_store", None)

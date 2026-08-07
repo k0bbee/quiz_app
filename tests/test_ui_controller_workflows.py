@@ -5,8 +5,11 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtTest import QTest
 
 from ai.exam_plan import ExamGenerationPlan
+from core.generation_draft_store import GenerationDraftStore
 from models.question import Question
 from utils.constants import Difficulty, QuestionType
 from ui.first_run_controller import FirstRunController
@@ -206,6 +209,86 @@ class QuestionSetActionControllerTests(unittest.TestCase):
 
 
 class GenerationWorkspaceControllerTests(unittest.TestCase):
+    def test_draft_changes_wait_for_a_quiet_interval_before_persisting(self):
+        """Protect generation from writing a growing draft for every live batch."""
+
+        class DraftDialog(QObject):
+            draft_changed = pyqtSignal()
+
+            def __init__(self, questions):
+                super().__init__()
+                self.generated_questions = questions
+                self._review_warnings_only = False
+                self.review_state = {}
+
+            @staticmethod
+            def question_set_title():
+                return "实时生成题集"
+
+            @staticmethod
+            def build_exam_plan():
+                return ExamGenerationPlan(
+                    question_count=3,
+                    selected_topics=("topic-io",),
+                )
+
+        first_question = Question(
+            question_id="draft-q-1",
+            type=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "第一题", "options": ["正确", "错误"]},
+                "en": {"stem": "First", "options": ["True", "False"]},
+            },
+            correct_answer=True,
+            topic="topic-io",
+        )
+        second_question = Question(
+            question_id="draft-q-2",
+            type=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.EASY,
+            bilingual={
+                "zh": {"stem": "第二题", "options": ["正确", "错误"]},
+                "en": {"stem": "Second", "options": ["True", "False"]},
+            },
+            correct_answer=False,
+            topic="topic-io",
+        )
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        store = GenerationDraftStore(Path(temp_dir.name) / "generation_drafts.json")
+        course = SimpleNamespace(course_id="course-a")
+        dialog = DraftDialog([first_question])
+        host = SimpleNamespace(
+            course_manager=SimpleNamespace(current=lambda: course),
+            generation_draft_store=store,
+            lang_manager=SimpleNamespace(get_text=lambda zh_text, _en_text: zh_text),
+        )
+        controller = GenerationWorkspaceController(host)
+
+        with patch.object(
+            controller,
+            "prepare",
+            return_value=SimpleNamespace(dialog=dialog, course_project=course),
+        ):
+            controller.configure(present_error=False)
+
+        dialog.draft_changed.emit()
+        self.assertIsNone(store.get("course-a"))
+
+        dialog.generated_questions.append(second_question)
+        dialog.draft_changed.emit()
+        QTest.qWait(120)
+        self.assertIsNone(store.get("course-a"))
+
+        QTest.qWait(180)
+        draft = store.get("course-a")
+        self.assertIsNotNone(draft)
+        self.assertEqual(
+            ["draft-q-1", "draft-q-2"],
+            [question.question_id for question in draft.questions],
+        )
+
     def test_generation_controller_does_not_keep_unreachable_resume_wrapper(self):
         host = SimpleNamespace()
 
