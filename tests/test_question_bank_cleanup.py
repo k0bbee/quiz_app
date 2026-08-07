@@ -142,6 +142,50 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertEqual(1, len(results[0].questions))
             self.assertFalse(worker.isRunning())
 
+    def test_unscoped_import_can_assign_candidates_to_an_active_course(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            course_manager = CourseProjectManager(str(root / "courses"))
+            course = CourseProject(
+                course_id="course-history",
+                title="历史课程",
+                source_folder=str(root / "materials"),
+                summary_markdown="# 历史课程",
+                summary_path="",
+                topics=[CourseTopic("general", "通用")],
+                documents=[],
+                created_at="2026-08-07T00:00:00+00:00",
+                updated_at="2026-08-07T00:00:00+00:00",
+            )
+            self.assertTrue(course_manager.save(course))
+            source = root / "exam.txt"
+            source.write_text(
+                "1. 哪个选项正确？\nA. 甲\nB. 乙\n答案：A\n",
+                encoding="utf-8",
+            )
+            screen = self._screen(root, QuestionBank(str(root / "questions")), course_manager=course_manager)
+            self.addCleanup(screen.close)
+            worker = Mock()
+            worker.progressed = ManualSignal()
+            worker.completed = ManualSignal()
+            worker.failed = ManualSignal()
+            worker.cancelled = ManualSignal()
+
+            with patch(
+                "ui.screens.question_bank_screen.QFileDialog.getOpenFileName",
+                return_value=(str(source), ""),
+            ), patch(
+                "ui.screens.question_bank_screen.QInputDialog.getItem",
+                return_value=(course.title, True),
+            ), patch(
+                "ui.screens.question_bank_screen.HistoricalQuestionImportWorker",
+                return_value=worker,
+            ) as worker_type:
+                screen._import_historical_text()
+
+            self.assertEqual(course.course_id, worker_type.call_args.kwargs["course_id"])
+            worker.start.assert_called_once_with()
+
     def _screen(
         self,
         root: str | Path,
