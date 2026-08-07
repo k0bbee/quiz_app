@@ -3,7 +3,7 @@
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QProgressBar, QTextEdit, QMessageBox, QGroupBox, QScrollArea, QFrame, QWidget, QSlider, QFormLayout,
-    QSplitter, QLineEdit
+    QSplitter, QLineEdit, QButtonGroup
 )
 import time
 import re
@@ -97,6 +97,7 @@ class AIGenerationDialog(QDialog):
         # ``None`` means the caller did not provide course coverage data;
         # an empty tuple is a real result meaning the exam scope is complete.
         self._generation_gap_topic_ids: tuple[str, ...] | None = None
+        self._generation_goal = "quick_review"
         self.generation_status_timer = QTimer(self)
         # Worker progress signals update the status immediately; this timer
         # only refreshes elapsed-time text and need not wake the UI every second.
@@ -194,6 +195,8 @@ class AIGenerationDialog(QDialog):
             self.lang_manager.get_text("生成目标", "Generation Goal")
         )
         goal_layout = QHBoxLayout(self.goal_group)
+        self.goal_button_group = QButtonGroup(self)
+        self.goal_button_group.setExclusive(True)
         self.quick_review_goal_btn = QPushButton(
             self.lang_manager.get_text("快速复习", "Quick Review")
         )
@@ -209,11 +212,14 @@ class AIGenerationDialog(QDialog):
             (self.mock_exam_goal_btn, "mock_exam"),
         ):
             button.setObjectName("secondaryButton")
+            button.setCheckable(True)
+            self.goal_button_group.addButton(button)
             button.clicked.connect(
                 lambda _checked=False, selected=goal:
                 self._apply_generation_goal(selected)
             )
             goal_layout.addWidget(button)
+        self.quick_review_goal_btn.setChecked(True)
 
         self.basic_group = QGroupBox(
             self.lang_manager.get_text("练习设置", "Practice Settings")
@@ -695,6 +701,15 @@ class AIGenerationDialog(QDialog):
 
     def _apply_generation_goal(self, goal: str) -> None:
         """Apply a transparent starting point; every field remains editable."""
+        self._generation_goal = str(goal or "quick_review")
+        goal_buttons = {
+            "quick_review": self.quick_review_goal_btn,
+            "gap_fill": self.gap_fill_goal_btn,
+            "mock_exam": self.mock_exam_goal_btn,
+        }
+        selected_button = goal_buttons.get(self._generation_goal)
+        if selected_button is not None:
+            selected_button.setChecked(True)
         presets = {
             "quick_review": ("quick_review", 10, "mixed"),
             "gap_fill": ("quick_review", 8, "mixed"),
@@ -1318,19 +1333,38 @@ class AIGenerationDialog(QDialog):
         if not hasattr(self, "footer_summary_label"):
             return
         count = self.count_spin.value() if hasattr(self, "count_spin") else 0
+        goal_labels = {
+            "quick_review": ("快速复习", "Quick Review"),
+            "gap_fill": ("补齐知识缺口", "Fill Knowledge Gaps"),
+            "mock_exam": ("模拟考试", "Mock Exam"),
+        }
+        goal_zh, goal_en = goal_labels.get(
+            self._generation_goal,
+            goal_labels["quick_review"],
+        )
+        difficulty_labels = {
+            "easy": ("简单", "Easy"),
+            "medium": ("中等", "Medium"),
+            "hard": ("困难", "Hard"),
+            "mixed": ("混合", "Mixed"),
+        }
+        difficulty_zh, difficulty_en = difficulty_labels.get(
+            self.diff_combo.currentData() if hasattr(self, "diff_combo") else "medium",
+            difficulty_labels["medium"],
+        )
         topic_names = [topic_label(topic, self.lang_manager.current) for topic in topics]
         if topic_names:
             coverage = ", ".join(topic_names[:3])
             if len(topic_names) > 3:
                 coverage += self.lang_manager.get_text(f" 等 {len(topic_names)} 个", f" and {len(topic_names) - 3} more")
             text = self.lang_manager.get_text(
-                f"已选主题：{len(topic_names)} 个 | 计划生成：{count} 题 | 覆盖：{coverage}",
-                f"Selected topics: {len(topic_names)} | Planned: {count} question(s) | Coverage: {coverage}",
+                f"目标：{goal_zh} | 难度：{difficulty_zh} | 已选主题：{len(topic_names)} 个 | 计划生成：{count} 题 | 覆盖：{coverage}",
+                f"Goal: {goal_en} | Difficulty: {difficulty_en} | Selected topics: {len(topic_names)} | Planned: {count} question(s) | Coverage: {coverage}",
             )
         else:
             text = self.lang_manager.get_text(
-                f"已选主题：0 个 | 计划生成：{count} 题 | 请选择主题后生成",
-                f"Selected topics: 0 | Planned: {count} question(s) | Select topics before generating",
+                f"目标：{goal_zh} | 难度：{difficulty_zh} | 已选主题：0 个 | 计划生成：{count} 题 | 请选择主题后生成",
+                f"Goal: {goal_en} | Difficulty: {difficulty_en} | Selected topics: 0 | Planned: {count} question(s) | Select topics before generating",
             )
         self.footer_summary_label.setText(text)
 

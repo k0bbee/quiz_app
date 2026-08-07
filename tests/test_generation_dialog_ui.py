@@ -42,6 +42,29 @@ class GenerationDialogUiTests(unittest.TestCase):
             self.assertTrue(dialog.config_group.isHidden())
             self.assertEqual(2000, dialog.generation_status_timer.interval())
 
+    def test_generation_goal_shows_current_selection_in_basic_summary(self):
+            dialog = AIGenerationDialog(
+                "course content",
+                {
+                    "ai_provider": "local_agent",
+                    "ai_base_url": "local-agent://auto",
+                    "ai_model": "codex",
+                },
+                available_topics=["cache"],
+            )
+            self.addCleanup(dialog.close)
+
+            self.assertTrue(dialog.quick_review_goal_btn.isChecked())
+            self.assertIn("目标：快速复习", dialog.footer_summary_label.text())
+            self.assertIn("难度：中等", dialog.footer_summary_label.text())
+
+            dialog.mock_exam_goal_btn.click()
+
+            self.assertTrue(dialog.mock_exam_goal_btn.isChecked())
+            self.assertFalse(dialog.quick_review_goal_btn.isChecked())
+            self.assertIn("目标：模拟考试", dialog.footer_summary_label.text())
+            self.assertIn("难度：混合", dialog.footer_summary_label.text())
+
     def test_generation_dialog_keeps_review_action_after_save_error(self):
             dialog = AIGenerationDialog(
                 "course content",
