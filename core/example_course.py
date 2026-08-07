@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 from models.course_project import CourseProject, CourseTopic
 from models.question import Question
@@ -12,6 +13,7 @@ from utils.constants import Difficulty, QuestionType
 
 EXAMPLE_COURSE_ID = "example-study-skills"
 EXAMPLE_SET_ID = "example-study-skills-set"
+EXAMPLE_MATERIAL_FILENAME = "example-study-skills-material.md"
 _STAMP = datetime(2026, 1, 1, tzinfo=timezone.utc).isoformat()
 
 _TOPICS = (
@@ -20,16 +22,51 @@ _TOPICS = (
     ("error_review", "错题复盘", ["错题", "反馈", "复盘"]),
 )
 
+_SOURCE_EVIDENCE = {
+    "active_recall": {
+        "heading": "主动回忆",
+        "excerpt": "主动回忆要求学习者在查看答案之前，先尝试从记忆中提取要点或答案。",
+    },
+    "spaced_review": {
+        "heading": "间隔复习",
+        "excerpt": "间隔复习把检索安排在逐渐拉开的时间间隔中，并根据回忆结果调整下一次复习。",
+    },
+    "error_review": {
+        "heading": "错题复盘",
+        "excerpt": "错题复盘先定位错误原因，再理解修正后的判断，并用新的练习验证掌握情况。",
+    },
+}
+
+_EXAMPLE_MATERIAL = """# 有效学习方法示例材料
+
+## 主动回忆
+
+主动回忆要求学习者在查看答案之前，先尝试从记忆中提取要点或答案。自测的价值在于暴露哪些内容能够提取、哪些内容还不能提取；只反复阅读而不尝试回答，更接近被动阅读。
+
+## 间隔复习
+
+间隔复习把检索安排在逐渐拉开的时间间隔中，而不是在一次长时间学习里完成所有重复。随着回忆更稳定，复习间隔可以逐渐拉长；遗忘后的重新检索和核对，也能帮助调整下一次复习。
+
+## 错题复盘
+
+错题复盘先定位错误原因，例如概念不清、审题错误或粗心。随后理解修正后的判断，并通过新的检索或练习验证掌握情况。答对但不确定的题目同样值得标记，以便后续温和巩固。
+"""
+
 
 def install_example_course(*, course_manager, question_bank, set_manager):
     """Create or reuse a complete ten-question course without network access."""
     existing = course_manager.get(EXAMPLE_COURSE_ID)
     existing_set = set_manager.get(EXAMPLE_SET_ID)
-    if existing is not None and existing_set is not None:
+    material_path = _ensure_example_material(course_manager)
+    if (
+        existing is not None
+        and existing_set is not None
+        and _has_source_assets(existing, existing_set, question_bank, material_path)
+    ):
         course_manager.set_current(EXAMPLE_COURSE_ID)
         return existing, existing_set
 
-    project = _build_project()
+    project = _build_project(material_path)
     questions = _build_questions()
     question_set = QuestionSet(
         set_id=EXAMPLE_SET_ID,
@@ -60,7 +97,41 @@ def install_example_course(*, course_manager, question_bank, set_manager):
     return project, question_set
 
 
-def _build_project() -> CourseProject:
+def _ensure_example_material(course_manager) -> Path:
+    """Create the deterministic local material used by the offline sample."""
+    material_path = Path(course_manager.directory) / EXAMPLE_MATERIAL_FILENAME
+    if not material_path.is_file():
+        material_path.parent.mkdir(parents=True, exist_ok=True)
+        material_path.write_text(_EXAMPLE_MATERIAL, encoding="utf-8", newline="\n")
+    return material_path
+
+
+def _has_source_assets(project, question_set, question_bank, material_path: Path) -> bool:
+    """Avoid rewriting an already current offline example installation."""
+    if not material_path.is_file():
+        return False
+    source_paths = {
+        str(document.get("path", "") or "").strip()
+        for document in project.documents
+        if isinstance(document, dict)
+    }
+    if str(material_path) not in source_paths:
+        return False
+    questions = question_bank.get_many(
+        question_set.questions,
+        course_id=EXAMPLE_COURSE_ID,
+    )
+    return len(questions) == len(question_set.questions) and all(
+        any(
+            ref.get("source_file") == EXAMPLE_MATERIAL_FILENAME
+            for ref in (question.metadata or {}).get("source_refs", [])
+            if isinstance(ref, dict)
+        )
+        for question in questions
+    )
+
+
+def _build_project(material_path: Path) -> CourseProject:
     topics = [
         CourseTopic(topic_id=topic_id, title=title, keywords=list(keywords))
         for topic_id, title, keywords in _TOPICS
@@ -68,7 +139,7 @@ def _build_project() -> CourseProject:
     return CourseProject(
         course_id=EXAMPLE_COURSE_ID,
         title="示例课程：有效学习方法",
-        source_folder="",
+        source_folder=str(material_path.parent),
         summary_markdown=(
             "# 示例课程：有效学习方法\n\n"
             "## 学习目标\n"
@@ -81,7 +152,7 @@ def _build_project() -> CourseProject:
         ),
         summary_path="",
         topics=topics,
-        documents=[],
+        documents=[{"path": str(material_path)}],
         created_at=_STAMP,
         updated_at=_STAMP,
         summary_source="builtin",
@@ -127,6 +198,13 @@ def _build_questions() -> list[Question]:
                 "topic_title": topic_titles[topic_id],
                 "created_at": _STAMP,
                 "source": "builtin_example",
+                "source_refs": [
+                    {
+                        "chunk_id": f"example-{topic_id}",
+                        "source_file": EXAMPLE_MATERIAL_FILENAME,
+                        **_SOURCE_EVIDENCE[topic_id],
+                    }
+                ],
             },
         ))
     return questions
