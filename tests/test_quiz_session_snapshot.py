@@ -54,7 +54,8 @@ class QuizSessionSnapshotTests(unittest.TestCase):
     def test_snapshot_round_trips_all_recovery_fields(self):
         snapshot = self._snapshot()
 
-        loaded = QuizSessionSnapshot.from_dict(snapshot.to_dict())
+        serialized = snapshot.to_dict()
+        loaded = QuizSessionSnapshot.from_dict(serialized)
 
         self.assertEqual("snapshot-a", loaded.snapshot_id)
         self.assertEqual("set-1", loaded.set_id)
@@ -67,10 +68,24 @@ class QuizSessionSnapshotTests(unittest.TestCase):
         self.assertEqual(["q1", "q2"], loaded.unsure_question_ids)
         self.assertEqual(["q2"], loaded.marked_review_question_ids)
         self.assertEqual(60.0, loaded.elapsed_seconds)
+        self.assertEqual("zh", loaded.snapshot_language)
+        self.assertEqual("zh", serialized["snapshot_language"])
+        self.assertNotIn("language", serialized)
         self.assertEqual("practice", loaded.mode)
         self.assertEqual("set-1", loaded.question_set_data["set_id"])
         self.assertEqual("daily_queue", loaded.study_intent_data["action"])
         self.assertEqual(["q4"], loaded.study_intent_data["remaining_question_ids"])
+
+    def test_snapshot_reads_legacy_language_key(self):
+        snapshot = self._snapshot()
+        legacy = snapshot.to_dict()
+        legacy.pop("snapshot_language")
+        legacy["language"] = "en"
+
+        loaded = QuizSessionSnapshot.from_dict(legacy)
+
+        self.assertEqual("en", loaded.snapshot_language)
+        self.assertEqual("en", loaded.language)
 
     def test_snapshot_manager_saves_loads_latest_and_deletes(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -548,7 +548,7 @@ class QuizScreen(QWidget):
             questions=ordered_questions,
             current_index=snapshot.current_index,
             answers=snapshot.submitted_answers,
-            language=snapshot.language,
+            language=snapshot.snapshot_language,
             progress_id=progress_id,
             elapsed_seconds=snapshot.elapsed_seconds,
         )

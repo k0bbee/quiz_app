@@ -46,7 +46,7 @@ class QuizSessionSnapshot:
             "started_at": self.started_at,
             "updated_at": self.updated_at,
             "elapsed_seconds": self.elapsed_seconds,
-            "language": self.language,
+            "snapshot_language": self.snapshot_language,
             "mode": self.mode,
             "question_set_data": copy.deepcopy(self.question_set_data),
             "study_intent_data": copy.deepcopy(self.study_intent_data),
@@ -71,7 +71,10 @@ class QuizSessionSnapshot:
             started_at=data.get("started_at", ""),
             updated_at=data.get("updated_at", ""),
             elapsed_seconds=float(data.get("elapsed_seconds", 0.0) or 0.0),
-            language=data.get("language", "zh"),
+            language=data.get(
+                "snapshot_language",
+                data.get("language", "zh"),
+            ),
             mode=data.get("mode", "practice"),
             question_set_data=(
                 copy.deepcopy(data.get("question_set_data", {}))
@@ -84,6 +87,15 @@ class QuizSessionSnapshot:
                 else {}
             ),
         )
+
+    @property
+    def snapshot_language(self) -> str:
+        """Return the language captured when this session was displayed."""
+        return self.language
+
+    @snapshot_language.setter
+    def snapshot_language(self, value: str) -> None:
+        self.language = value if value in ("zh", "en") else "zh"
 
     @classmethod
     def create_new(
