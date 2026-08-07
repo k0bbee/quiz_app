@@ -56,6 +56,7 @@ def parse_historical_questions(
     course_id: str = "",
     topic_id: str = "general",
     topic_title: str = "",
+    course_topics=None,
 ) -> HistoricalQuestionParseResult:
     """Parse numbered multiple-choice/true-false questions from plain text.
 
@@ -116,6 +117,7 @@ def parse_historical_questions(
             course_id=course_id,
             topic_id=topic_id,
             topic_title=topic_title,
+            course_topics=course_topics,
         )
         warnings.extend(
             f"question {block.number}: {warning}" for warning in block_warnings
@@ -129,6 +131,7 @@ def parse_historical_document(
     path: str | Path,
     *,
     course_id: str = "",
+    course_topics=None,
     task=None,
 ) -> HistoricalQuestionParseResult:
     """Extract a supported local document, then parse its question blocks.
@@ -144,6 +147,7 @@ def parse_historical_document(
         document.text,
         source_file=document.path,
         course_id=course_id,
+        course_topics=course_topics,
     )
     extraction_warnings = tuple(str(warning) for warning in document.warnings if str(warning).strip())
     return HistoricalQuestionParseResult(
@@ -166,6 +170,7 @@ def _build_question(
     course_id: str,
     topic_id: str,
     topic_title: str,
+    course_topics,
 ) -> tuple[Question | None, list[str]]:
     warnings: list[str] = []
     stem = " ".join(part for part in block.stem_lines if part).strip()
@@ -229,7 +234,65 @@ def _build_question(
         metadata["course_id"] = str(course_id).strip()
     if topic_title:
         metadata["topic_title"] = str(topic_title).strip()
+    inferred_id, inferred_title, match_status = _infer_topic(
+        stem,
+        option_values,
+        topic_id=topic_id,
+        topic_title=topic_title,
+        course_topics=course_topics,
+    )
+    question.topic = inferred_id
+    metadata["topic_match_status"] = match_status
+    if inferred_title:
+        metadata["topic_title"] = inferred_title
     return question, []
+
+
+def _infer_topic(
+    stem: str,
+    options: list[str],
+    *,
+    topic_id: str,
+    topic_title: str,
+    course_topics,
+) -> tuple[str, str, str]:
+    """Return a topic only when a course term produces a clear match."""
+    fallback_id = str(topic_id or "general").strip().lower() or "general"
+    fallback_title = str(topic_title or "").strip()
+    topics = list(course_topics or [])
+    if not topics:
+        return fallback_id, fallback_title, "unavailable"
+    text = " ".join([stem, *options]).casefold()
+    scored: list[tuple[int, str, str]] = []
+    for topic in topics:
+        current_id = str(getattr(topic, "topic_id", "") or "").strip().lower()
+        current_title = str(getattr(topic, "title", "") or current_id).strip()
+        if not current_id:
+            continue
+        terms = [
+            (current_title, 4),
+            (current_id, 3),
+            *[(str(value or "").strip(), 2) for value in getattr(topic, "keywords", []) or []],
+            *[(str(value or "").strip(), 2) for value in getattr(topic, "aliases", []) or []],
+        ]
+        score = 0
+        seen: set[str] = set()
+        for term, weight in terms:
+            normalized = term.casefold()
+            if len(normalized) < 2 or normalized in seen:
+                continue
+            seen.add(normalized)
+            if normalized in text:
+                score += weight
+        if score:
+            scored.append((score, current_id, current_title))
+    if not scored:
+        return fallback_id, fallback_title, "unmatched"
+    scored.sort(reverse=True)
+    best = scored[0]
+    if len(scored) > 1 and scored[1][0] == best[0]:
+        return fallback_id, fallback_title, "ambiguous"
+    return best[1], best[2], "matched"
 
 
 def _answer_value(value: str) -> str:

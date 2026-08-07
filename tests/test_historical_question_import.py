@@ -4,6 +4,7 @@ from core.historical_question_import import (
     parse_historical_document,
     parse_historical_questions,
 )
+from models.course_project import CourseTopic
 from utils.constants import QuestionType
 
 
@@ -99,6 +100,21 @@ B．选项乙
 
         self.assertEqual(1, len(result.questions))
         self.assertEqual("course-1", result.questions[0].metadata["course_id"])
+
+    def test_conservatively_maps_question_to_matching_course_topic(self):
+        result = parse_historical_questions(
+            "1. DMA 完成后设备如何通知 CPU？\n"
+            "A. 中断\nB. 轮询\n答案：A\n",
+            course_topics=[
+                CourseTopic("io", "输入输出", keywords=["DMA", "中断"]),
+                CourseTopic("memory", "虚拟内存", keywords=["页表", "缺页"]),
+            ],
+        )
+
+        question = result.questions[0]
+        self.assertEqual("io", question.topic_id())
+        self.assertEqual("输入输出", question.topic_title())
+        self.assertEqual("matched", question.metadata["topic_match_status"])
 
 
 if __name__ == "__main__":

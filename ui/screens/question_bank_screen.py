@@ -125,6 +125,7 @@ class HistoricalQuestionImportWorker(QThread):
         path: str,
         *,
         course_id: str = "",
+        course_topics=None,
         task_center=None,
         task_id: str = "",
         parent=None,
@@ -132,6 +133,7 @@ class HistoricalQuestionImportWorker(QThread):
         super().__init__(parent)
         self.path = str(path)
         self.course_id = str(course_id or "")
+        self.course_topics = list(course_topics or [])
         self.task_id = str(task_id or "")
         self._bridge = (
             BackgroundTaskBridge(task_center, self.task_id)
@@ -160,6 +162,7 @@ class HistoricalQuestionImportWorker(QThread):
             result = parse_historical_document(
                 self.path,
                 course_id=self.course_id,
+                course_topics=self.course_topics,
                 task=self._control,
             )
             self._control.report(
@@ -856,9 +859,11 @@ class QuestionBankScreen(QWidget):
             )
             task_id = snapshot.task_id
         self._historical_import_task_id = task_id
+        import_course = self.course_manager.get(course_id) if course_id else None
         worker = HistoricalQuestionImportWorker(
             str(source_path),
             course_id=course_id,
+            course_topics=getattr(import_course, "topics", []) if import_course else [],
             task_center=self.task_center,
             task_id=task_id,
             parent=self,
