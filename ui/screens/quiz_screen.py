@@ -22,7 +22,7 @@ from core.answer_display import format_answer_for_display
 from utils.constants import QuestionType, QuizState
 from ui.widgets.question_card import QuestionCard
 from ui.widgets.answer_area import AnswerArea
-from ui.widgets.source_refs import format_source_refs
+from ui.widgets.source_refs_panel import SourceRefsPanel
 from ui.widgets.wheel_safe_controls import WheelSafeComboBox
 from ui.dialogs.short_answer_assessment_dialog import ShortAnswerAssessmentDialog
 
@@ -41,11 +41,13 @@ class QuizScreen(QWidget):
         progress_manager: ProgressManager,
         parent=None,
         snapshot_manager=None,
+        course_manager=None,
     ):
         super().__init__(parent)
         self.question_bank = question_bank
         self.progress_manager = progress_manager
         self.snapshot_manager = snapshot_manager
+        self.course_manager = course_manager
         self.lang_manager = LanguageManager.instance()
 
         self.session = QuizSession()
@@ -255,6 +257,11 @@ class QuizScreen(QWidget):
         self.explanation_label.setWordWrap(True)
         fb_layout.addWidget(self.explanation_label)
 
+        self.source_refs_panel = SourceRefsPanel()
+        self.source_refs_panel.setObjectName("quizFeedbackSourceEvidence")
+        self.source_refs_panel.hide()
+        fb_layout.addWidget(self.source_refs_panel)
+
         self.feedback_frame.hide()
 
         # === Action buttons ===
@@ -430,6 +437,7 @@ class QuizScreen(QWidget):
         self.preview_pane.hide()
         self.answer_area.clear()
         self.feedback_frame.hide()
+        self._clear_source_evidence()
         self._set_correct_indicator_state("")
         self.timer_label.setVisible(show_timer)
         self.session.start(question_set, questions, lang)
@@ -530,6 +538,7 @@ class QuizScreen(QWidget):
         self._draft_answers_by_question_id = dict(snapshot.draft_answers)
         self.answer_area.clear()
         self.feedback_frame.hide()
+        self._clear_source_evidence()
         self._set_correct_indicator_state("")
         self.timer_label.setVisible(show_timer)
 
@@ -600,12 +609,29 @@ class QuizScreen(QWidget):
 
         self.answer_area.set_enabled(True)
         self.feedback_frame.hide()
+        self._clear_source_evidence()
         self._set_correct_indicator_state("")
         self._refresh_navigation_button_state()
         self._refresh_unsure_state()
         self._refresh_review_state()
 
         self._refresh_feedback_next_text()
+
+    def _clear_source_evidence(self) -> None:
+        """Hide feedback evidence before showing an unanswered question."""
+        self.source_refs_panel.set_source_refs(
+            [],
+            language=self.lang_manager.current,
+            label=self.lang_manager.get_text("来源", "Source Evidence"),
+        )
+
+    def _course_project_for_question(self, question: Question):
+        """Resolve source navigation only within the question's own course."""
+        if self.course_manager is None:
+            return None
+        metadata = question.metadata or {}
+        course_id = str(metadata.get("course_id", "") or "").strip()
+        return self.course_manager.get(course_id) if course_id else None
 
     def _submit_answer(self):
         """Grade the current answer and show feedback."""
@@ -1212,15 +1238,13 @@ class QuizScreen(QWidget):
             f"{explanation}"
         )
         metadata = question.metadata or {}
-        source_text = format_source_refs(
+        self.source_refs_panel.set_source_refs(
             metadata.get("source_refs", []),
+            course_project=self._course_project_for_question(question),
             label=self.lang_manager.get_text("来源", "Source Evidence"),
-            html=True,
             status=metadata.get("source_ref_status"),
             language=self.lang_manager.current,
         )
-        if source_text:
-            feedback += f"<br><br>{source_text}"
         self.explanation_label.setText(feedback)
 
         self.feedback_frame.show()

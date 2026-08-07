@@ -1056,7 +1056,7 @@ class QuizSessionFlowTests(unittest.TestCase):
 
                 self.assertEqual([question.question_id], finished[0].marked_review_question_ids)
 
-    def test_quiz_feedback_shows_source_refs_after_answer_submission(self):
+    def test_quiz_feedback_offers_registered_source_evidence_actions(self):
             question = self._make_question("q-source")
             question.metadata["source_refs"] = [
                 {
@@ -1066,6 +1066,7 @@ class QuizSessionFlowTests(unittest.TestCase):
                     "heading": "Cache Address Breakdown",
                 }
             ]
+            question.metadata["course_id"] = "course-source"
             qset = QuestionSet.create_new(
                 title={"zh": "测试", "en": "Test"},
                 description={"zh": "", "en": ""},
@@ -1074,19 +1075,40 @@ class QuizSessionFlowTests(unittest.TestCase):
             )
 
             with tempfile.TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                source_path = root / "第21讲 Cache.pdf"
+                source_path.write_bytes(b"course source")
+                course_manager = CourseProjectManager(str(root / "courses"))
+                course_manager.save(
+                    CourseProject(
+                        course_id="course-source",
+                        title="计算机系统",
+                        source_folder=str(root),
+                        summary_markdown="# 计算机系统",
+                        summary_path="",
+                        topics=[],
+                        documents=[{"path": str(source_path)}],
+                        created_at="2026-08-07T00:00:00+00:00",
+                        updated_at="2026-08-07T00:00:00+00:00",
+                    )
+                )
                 screen = QuizScreen(
-                    QuestionBank(str(Path(tmpdir) / "questions")),
-                    ProgressManager(str(Path(tmpdir) / "progress")),
+                    QuestionBank(str(root / "questions")),
+                    ProgressManager(str(root / "progress")),
+                    course_manager=course_manager,
                 )
                 screen.start_quiz(qset, [question], show_timer=False, submission_mode="practice")
                 screen.answer_area.choice_widget.buttons[1].setChecked(True)
                 screen._submit_answer()
 
-                feedback = screen.explanation_label.text()
-                self.assertIn("第21讲 Cache.pdf", feedback)
-                self.assertIn("页码/幻灯片 8", feedback)
-                self.assertIn("source-0007", feedback)
-                self.assertIn("Cache Address Breakdown", feedback)
+                self.assertFalse(screen.source_refs_panel.isHidden())
+                self.assertTrue(screen.source_refs_panel.open_btn.isEnabled())
+                source_text = screen.source_refs_panel.text()
+                self.assertIn("第21讲 Cache.pdf", source_text)
+                self.assertIn("页码/幻灯片 8", source_text)
+                self.assertIn("source-0007", source_text)
+                self.assertIn("Cache Address Breakdown", source_text)
+                self.assertNotIn("第21讲 Cache.pdf", screen.explanation_label.text())
 
     def test_quiz_feedback_escapes_generated_html_content(self):
             question = self._make_question("q-html")
@@ -1119,9 +1141,16 @@ class QuizSessionFlowTests(unittest.TestCase):
                 feedback = screen.explanation_label.text()
                 self.assertIn("&lt;b&gt;正确&lt;/b&gt;", feedback)
                 self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", feedback)
-                self.assertIn("&lt;img", feedback)
                 self.assertNotIn("<script>", feedback)
                 self.assertNotIn("<img", feedback)
+                self.assertIn(
+                    "<img src=x onerror=alert(1)>",
+                    screen.source_refs_panel.source_list.item(0).text(),
+                )
+                self.assertEqual(
+                    Qt.TextFormat.PlainText,
+                    screen.source_refs_panel.excerpt_label.textFormat(),
+                )
 
     def test_quiz_feedback_formats_matching_ids_as_readable_labels(self):
             question = Question.create_new(

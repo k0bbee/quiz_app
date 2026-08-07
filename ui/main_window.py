@@ -140,6 +140,7 @@ class MainWindow(QMainWindow):
             self.question_bank,
             self.progress_manager,
             snapshot_manager=self.snapshot_manager,
+            course_manager=self.course_manager,
         )
         self.results_screen = ResultsScreen(course_manager=self.course_manager)
         self._progress_screen = None
