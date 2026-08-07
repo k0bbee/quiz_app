@@ -560,6 +560,8 @@ class QuizSessionFlowTests(unittest.TestCase):
                 self.assertEqual(1, screen.session.current_index)
                 self.assertEqual(QuizState.IN_PROGRESS, screen.session.state)
                 self.assertEqual(0, screen.session.answered_count)
+                self.assertFalse(screen.preview_pane.isHidden())
+                self.assertTrue(screen._review_panel_visible)
 
     def test_exam_mode_finish_submits_after_unanswered_confirmation(self):
             q1 = self._make_question("q1")

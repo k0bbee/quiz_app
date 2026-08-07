@@ -1032,6 +1032,13 @@ class QuizScreen(QWidget):
         if unanswered_count <= 0:
             return True
 
+        # Mirror the established "return to attempt" flow: once the user is
+        # about to finish with open questions, expose the existing paper
+        # preview so choosing No leaves them with a direct, jumpable review
+        # surface instead of another hidden state.
+        if not self._review_panel_visible:
+            self._toggle_review_panel()
+
         reply = QMessageBox.question(
             self,
             self.lang_manager.get_text("确认交卷", "Submit Exam?"),
