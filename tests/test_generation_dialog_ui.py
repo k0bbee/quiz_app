@@ -14,6 +14,7 @@ from core.question_set_builder import build_ai_question_set
 from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from ui.navigation import Route
 from models.question import Question
+from models.course_project import CourseTopic
 from models.question_set import QuestionSet
 from utils.constants import Difficulty, QuestionType
 
@@ -653,9 +654,25 @@ class GenerationDialogUiTests(unittest.TestCase):
 
             status = dialog.status_label.text()
             log_text = dialog.generation_log.toPlainText()
-            self.assertIn("正在安排", status)
+            self.assertIn("正在准备本批 2 个计划槽位", status)
             self.assertNotIn("input_output_improvements/true_false/easy", status)
             self.assertNotIn("input_output_improvements/true_false/easy", log_text)
+
+    def test_generation_progress_names_known_topics_without_exposing_slot_keys(self):
+            dialog = AIGenerationDialog(
+                "course content",
+                {"ai_provider": "local_agent", "ai_base_url": "local-agent://auto", "ai_model": "codex"},
+                available_topics=[CourseTopic("input_output_improvements", "I/O 改进")],
+            )
+
+            message = dialog._display_progress_message(
+                "Filling plan slots: input_output_improvements/true_false/easy, "
+                "input_output_improvements/multiple_choice/medium"
+            )
+
+            self.assertIn("2", message)
+            self.assertIn("I/O 改进", message)
+            self.assertNotIn("input_output_improvements/true_false/easy", message)
 
     def test_generation_progress_keeps_readable_plan_slot_summary(self):
             dialog = AIGenerationDialog(

@@ -1892,6 +1892,20 @@ class AIGenerationDialog(QDialog):
                     f"正在处理本批 {count} 个计划槽位：{topics}。",
                     f"Processing {count} planned slot(s): {topics}.",
                 )
+            slot_topics = self._known_plan_slot_topics(detail)
+            slot_count = len([part for part in detail.split(",") if part.strip()])
+            if slot_count and slot_topics:
+                joined_topics = "、".join(slot_topics)
+                joined_topics_en = ", ".join(slot_topics)
+                return self.lang_manager.get_text(
+                    f"正在准备本批 {slot_count} 个计划槽位，覆盖主题：{joined_topics}。",
+                    f"Preparing {slot_count} planned slot(s) for: {joined_topics_en}.",
+                )
+            if slot_count:
+                return self.lang_manager.get_text(
+                    f"正在准备本批 {slot_count} 个计划槽位，覆盖已选主题。",
+                    f"Preparing {slot_count} planned slot(s) across the selected topics.",
+                )
             return self.lang_manager.get_text(
                 "正在安排本批计划槽位，优先补齐未完成的题型、难度和主题分布…",
                 "Preparing this batch's plan slots to satisfy type, difficulty, and topic coverage...",
@@ -1941,6 +1955,27 @@ class AIGenerationDialog(QDialog):
                 "AI response may be truncated; retrying with a smaller batch...",
             )
         return raw
+
+    def _known_plan_slot_topics(self, detail: str) -> list[str]:
+        """Return display names for plan topics without leaking internal IDs."""
+        topic_keys = []
+        for slot in str(detail or "").split(","):
+            key = str(slot or "").strip().split("/", 1)[0].strip().lower()
+            if key and key not in topic_keys:
+                topic_keys.append(key)
+
+        labels = []
+        for key in topic_keys:
+            topic = next(
+                (candidate for candidate in self.available_topics if topic_value(candidate) == key),
+                None,
+            )
+            if topic is None:
+                continue
+            label = topic_label(topic, self.lang_manager.current).strip()
+            if label and topic_value(label) != key and label not in labels:
+                labels.append(label)
+        return labels
 
     def _on_question_ready(self, questions: list[Question]):
         if self._generation_cancelled or not questions:
