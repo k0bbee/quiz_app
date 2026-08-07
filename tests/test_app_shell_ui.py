@@ -160,6 +160,7 @@ class AppShellUiTests(unittest.TestCase):
 
         self.assertIsNotNone(window._progress_screen)
         self.assertIs(window._progress_screen, window.progress_screen)
+        self.assertIs(window._progress_screen, window.stack.currentWidget())
 
     def test_main_reads_startup_settings_through_supported_json_api(self):
             app = Mock()

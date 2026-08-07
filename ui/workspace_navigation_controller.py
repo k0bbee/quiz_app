@@ -136,6 +136,8 @@ class WorkspaceNavigationController:
             host._get_course_screen()
         elif screen_index == host.SCREEN_QUESTION_BANK:
             host._get_question_bank_screen()
+        elif screen_index == host.SCREEN_PROGRESS:
+            host._get_progress_screen()
         elif screen_index == host.SCREEN_GENERATION:
             generation_workspace = host._get_generation_workspace()
             if route.course_id and generation_workspace.generation_widget() is None:
