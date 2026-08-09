@@ -137,16 +137,26 @@ class GenerationReport:
             "question_types": "question_type",
             "difficulties": "difficulty",
         }
+        topic_titles = {
+            item.topic_id: item.topic_title
+            for item in self.failed_plan_items
+            if item.topic_title
+        }
         groups = []
         for group_name, values in self.missing_quotas.items():
             group_pair = group_labels.get(group_name, (group_name, group_name))
             group_label = group_pair[0] if lang == "zh" else group_pair[1]
             value_kind = value_kinds.get(group_name)
-            missing = ", ".join(
-                f"{plan_value_label(key, value_kind, lang) if value_kind else key}: {count}"
-                for key, count in values.items()
-                if count > 0
-            )
+            missing_parts = []
+            for key, count in values.items():
+                if count <= 0:
+                    continue
+                if group_name == "topics":
+                    label = topic_titles.get(str(key), str(key))
+                else:
+                    label = plan_value_label(key, value_kind, lang) if value_kind else key
+                missing_parts.append(f"{label}: {count}")
+            missing = ", ".join(missing_parts)
             if missing:
                 groups.append(f"{group_label} [{missing}]")
         return "; ".join(groups)

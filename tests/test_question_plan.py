@@ -91,6 +91,29 @@ class QuestionPlanTests(unittest.TestCase):
         self.assertIn("困难 / 情境选择题 / 情境推理", text)
         self.assertNotIn("scenario_choice", text)
 
+    def test_generation_report_uses_topic_titles_for_missing_topic_quotas(self):
+        report = GenerationReport(
+            requested_count=1,
+            accepted_count=0,
+            status="partial",
+            missing_quotas={"topics": {"input_output_improvements": 1}},
+            failed_plan_items=[
+                QuestionPlanItem(
+                    plan_id="plan-001",
+                    topic_id="input_output_improvements",
+                    topic_title="I/O 改进",
+                    question_type="multiple_choice",
+                    difficulty="medium",
+                    target_skill="definition",
+                )
+            ],
+        )
+
+        text = report.summary_text("zh")
+
+        self.assertIn("主题 [I/O 改进: 1]", text)
+        self.assertNotIn("input_output_improvements: 1", text)
+
     def test_generation_report_builds_retry_plan_from_failed_plan_items_only(self):
         failed = [
             QuestionPlanItem(
