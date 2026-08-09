@@ -51,9 +51,9 @@ class HomeScreen(QWidget):
         self.lang_manager.language_changed.connect(self._on_language_changed)
 
     def _setup_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(36, 28, 36, 28)
-        main_layout.setSpacing(16)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(36, 28, 36, 28)
+        self.main_layout.setSpacing(16)
 
         self.page_header = PageHeader(
             self.lang_manager.get_text("今天的学习", "Today's Learning"),
@@ -64,7 +64,7 @@ class HomeScreen(QWidget):
         )
         self.title = self.page_header.title_label
         self.subtitle = self.page_header.subtitle_label
-        main_layout.addWidget(self.page_header)
+        self.main_layout.addWidget(self.page_header)
 
         # The visual center is a recommendation plus its course context, not a
         # grid of competing navigation actions.
@@ -136,10 +136,32 @@ class HomeScreen(QWidget):
 
         self.hero_layout.addWidget(self.today_plan_frame, 13)
         self.hero_layout.addWidget(self.context_frame, 7)
-        main_layout.addLayout(self.hero_layout)
+        self.main_layout.addLayout(self.hero_layout)
 
-        main_layout.addStretch(1)
+        self.main_layout.addStretch(1)
         self._render_today_plan()
+        self._update_responsive_layout()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(self) -> None:
+        """Stack the home focus panels before they force a wide window."""
+        narrow = 0 < self.width() < 720
+        direction = (
+            QHBoxLayout.Direction.TopToBottom
+            if narrow
+            else QHBoxLayout.Direction.LeftToRight
+        )
+        self.hero_layout.setDirection(direction)
+        self.quick_links.setDirection(direction)
+        self.main_layout.setContentsMargins(
+            24 if narrow else 36,
+            24 if narrow else 28,
+            24 if narrow else 36,
+            24 if narrow else 28,
+        )
 
     def _make_text_link(self, zh: str, en: str, callback) -> QPushButton:
         button = QPushButton(self.lang_manager.get_text(zh, en))

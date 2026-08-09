@@ -11,9 +11,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtCore import Qt
-from PyQt6.QtWidgets import QApplication, QHBoxLayout, QMessageBox, QPushButton
+from PyQt6.QtWidgets import (
+    QApplication,
+    QBoxLayout,
+    QHBoxLayout,
+    QMessageBox,
+    QPushButton,
+)
 
 from core.background_task_center import BackgroundTaskCenter
+from core.language_manager import LanguageManager
 from core.progress_tracker import ProgressManager
 from core.mastery_overrides import MasteryOverrideStore
 from core.quiz_snapshot_manager import QuizSnapshotManager
@@ -32,6 +39,57 @@ from utils.constants import Difficulty, QuestionType
 _APP = QApplication.instance() or QApplication([])
 
 class AppShellUiTests(unittest.TestCase):
+    def test_home_stacks_focus_and_scope_on_narrow_windows(self):
+            language = LanguageManager.instance()
+            language.set_language("en")
+            self.addCleanup(language.set_language, "zh")
+
+            home = HomeScreen()
+            self.addCleanup(home.close)
+            home.resize(640, 680)
+            home.show()
+            _APP.processEvents()
+
+            self.assertEqual(
+                QBoxLayout.Direction.TopToBottom,
+                home.hero_layout.direction(),
+            )
+            self.assertEqual(
+                QBoxLayout.Direction.TopToBottom,
+                home.quick_links.direction(),
+            )
+            self.assertLessEqual(home.minimumSizeHint().width(), 520)
+
+            home.resize(900, 680)
+            _APP.processEvents()
+            self.assertEqual(
+                QBoxLayout.Direction.LeftToRight,
+                home.hero_layout.direction(),
+            )
+            self.assertEqual(
+                QBoxLayout.Direction.LeftToRight,
+                home.quick_links.direction(),
+            )
+
+    def test_progress_route_stays_narrow_when_empty_in_english(self):
+            language = LanguageManager.instance()
+            language.set_language("en")
+            self.addCleanup(language.set_language, "zh")
+
+            window = MainWindow()
+            self.addCleanup(window.close)
+            self.assertTrue(window.navigate_route(Route.study("analysis")))
+
+            window.resize(680, 680)
+            window.show()
+            _APP.processEvents()
+
+            self.assertLessEqual(window.width(), 680)
+            self.assertLessEqual(
+                window.progress_screen.minimumSizeHint().width(),
+                500,
+            )
+
     def test_study_setup_keeps_the_only_saved_set_optional(self):
             with tempfile.TemporaryDirectory() as tmpdir:
                 set_manager = SetManager(str(Path(tmpdir) / "sets"))

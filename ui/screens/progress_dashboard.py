@@ -66,13 +66,18 @@ class ProgressDashboard(QWidget):
 
         # Overall summary
         self.summary_group = QGroupBox()
+        self.summary_group.setMinimumWidth(0)
         summary_layout = QVBoxLayout(self.summary_group)
 
         self.overall_label = QLabel()
         self.overall_label.setObjectName("dashboardOverallLabel")
+        self.overall_label.setMinimumWidth(0)
+        self.overall_label.setWordWrap(True)
         summary_layout.addWidget(self.overall_label)
 
         self.detail_label = QLabel()
+        self.detail_label.setMinimumWidth(0)
+        self.detail_label.setWordWrap(True)
         summary_layout.addWidget(self.detail_label)
 
         self.recommendation_label = QLabel()
