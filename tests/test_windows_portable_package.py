@@ -29,7 +29,7 @@ class WindowsPortablePackageTests(unittest.TestCase):
             )
 
             self.assertEqual(
-                dist / "AI-Course-Quiz-1.0.0-Windows-x64.zip",
+                (dist / "AI-Course-Quiz-1.0.0-Windows-x64.zip").resolve(),
                 archive,
             )
             self.assertTrue(archive.is_file())
