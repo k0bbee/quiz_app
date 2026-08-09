@@ -474,6 +474,49 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 saved.questions,
             )
 
+    def test_selected_questions_can_create_a_named_course_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            set_manager = SetManager(str(root / "sets"))
+            questions = [
+                self._question("q-course-a", "cache"),
+                self._question("q-course-b", "pipeline"),
+            ]
+            for question in questions:
+                question.metadata["course_id"] = "course-a"
+            question_bank.save_many(questions)
+
+            screen = self._screen(
+                root,
+                question_bank,
+                set_manager=set_manager,
+            )
+            screen.set_current_course("course-a")
+            screen.refresh()
+            self._select_question_ids(screen, {"q-course-a", "q-course-b"})
+
+            with patch(
+                "ui.screens.question_bank_screen.QInputDialog.getItem",
+                return_value=("新建题目集…", True),
+            ), patch(
+                "ui.screens.question_bank_screen.QInputDialog.getText",
+                return_value=("期末重点", True),
+            ), patch("ui.screens.question_bank_screen.QMessageBox.information"):
+                screen._add_selected_to_question_set()
+
+            saved_sets = set_manager.load_all()
+            self.assertEqual(1, len(saved_sets))
+            self.assertEqual("期末重点", saved_sets[0].get_title("zh"))
+            self.assertEqual(
+                ["q-course-a", "q-course-b"],
+                saved_sets[0].questions,
+            )
+            self.assertEqual("course-a", saved_sets[0].metadata.get("course_id"))
+            self.assertEqual({"cache", "pipeline"}, {
+                str(topic) for topic in saved_sets[0].topics
+            })
+
     def test_selected_question_can_be_removed_from_current_set_without_deleting_it(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

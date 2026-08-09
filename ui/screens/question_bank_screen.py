@@ -36,7 +36,7 @@ from core.historical_question_import import (
 from core.input_limits import MAX_EXTRACTED_TEXT_CHARS
 from models.course_project import CourseProjectManager
 from models.question import Question, QuestionBank
-from models.question_set import SetManager
+from models.question_set import QuestionSet, SetManager
 from ui.components import PageHeader
 from ui.models.question_table_model import QuestionTableModel, QuestionTableRow
 from ui.widgets.source_refs_panel import SourceRefsPanel
@@ -804,7 +804,7 @@ class QuestionBankScreen(QWidget):
         self._update_set_membership_actions()
 
     def _add_selected_to_question_set(self):
-        """Add selected questions to one existing set in the current course."""
+        """Add selected questions to an existing or newly named course set."""
         if self.set_manager is None:
             return
         question_ids = self._selected_question_ids()
@@ -815,35 +815,39 @@ class QuestionBankScreen(QWidget):
             for question_set in self.set_manager.load_all()
             if self._matches_current_course(question_set)
         ]
-        if not question_sets:
-            QMessageBox.information(
-                self,
-                self.lang_manager.get_text("没有可用题目集", "No Question Sets"),
-                self.lang_manager.get_text(
-                    "当前课程还没有题目集，请先生成或创建一个题目集。",
-                    "There are no question sets for the current course yet. Create or generate one first.",
-                ),
-            )
-            return
         language = self.lang_manager.current
-        labels = [
-            question_set.get_title(language) or question_set.set_id
-            for question_set in question_sets
-        ]
+        create_label = self.lang_manager.get_text(
+            "新建题目集…",
+            "Create a new question set…",
+        )
+        labels = [create_label]
+        set_by_label = {}
+        for question_set in question_sets:
+            title = question_set.get_title(language) or question_set.set_id
+            label = title
+            if label in set_by_label:
+                label = f"{title} · {question_set.set_id}"
+            set_by_label[label] = question_set
+            labels.append(label)
         selected, accepted = QInputDialog.getItem(
             self,
             self.lang_manager.get_text("加入题目集", "Add to Question Set"),
-            self.lang_manager.get_text("选择题目集：", "Question set:"),
+            self.lang_manager.get_text(
+                "选择题目集，或新建一个：",
+                "Choose a question set or create one:",
+            ),
             labels,
             0,
             False,
         )
         if not accepted:
             return
-        selected_index = labels.index(selected) if selected in labels else -1
-        if selected_index < 0:
+        if selected == create_label:
+            self._create_question_set_from_selection(question_ids)
             return
-        question_set = question_sets[selected_index]
+        question_set = set_by_label.get(selected)
+        if question_set is None:
+            return
         existing_ids = set(question_set.questions)
         new_ids = [question_id for question_id in question_ids if question_id not in existing_ids]
         if not new_ids:
@@ -875,6 +879,68 @@ class QuestionBankScreen(QWidget):
             self.lang_manager.get_text(
                 f"已将 {len(new_ids)} 道题加入“{question_set.get_title(language)}”。",
                 f"Added {len(new_ids)} question(s) to “{question_set.get_title(language)}”.",
+            ),
+        )
+
+    def _create_question_set_from_selection(self, question_ids: list[str]) -> None:
+        """Create a named set from the selected bank questions."""
+        new_title, accepted = QInputDialog.getText(
+            self,
+            self.lang_manager.get_text("新建题目集", "Create Question Set"),
+            self.lang_manager.get_text("题目集名称：", "Question set name:"),
+        )
+        new_title = new_title.strip()
+        if not accepted or not new_title:
+            return
+
+        selected_questions = [
+            self.question_bank.get(question_id)
+            for question_id in question_ids
+        ]
+        selected_questions = [question for question in selected_questions if question]
+        if not selected_questions:
+            return
+        topic_by_id = {}
+        for question in selected_questions:
+            topic_by_id.setdefault(question.topic_id(), question.topic)
+        difficulties = {question.difficulty for question in selected_questions}
+        difficulty = (
+            selected_questions[0].difficulty
+            if len(difficulties) == 1
+            else Difficulty.MEDIUM
+        )
+        question_set = QuestionSet.create_new(
+            title={"zh": new_title, "en": new_title},
+            description={
+                "zh": "由题库手动编排",
+                "en": "Curated manually from the question bank",
+            },
+            topics=list(topic_by_id.values()),
+            question_ids=[question.question_id for question in selected_questions],
+            difficulty=difficulty,
+            estimated_minutes=max(5, min(120, len(selected_questions) * 2)),
+            source="manual_curation",
+        )
+        if self._current_course_id:
+            question_set.metadata["course_id"] = self._current_course_id
+        if not self.set_manager.save(question_set):
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text("保存失败", "Save Failed"),
+                self.lang_manager.get_text(
+                    "题目集保存失败，未创建题目集。",
+                    "The question set could not be saved; no set was created.",
+                ),
+            )
+            return
+        self.question_bank_changed.emit()
+        self.refresh()
+        QMessageBox.information(
+            self,
+            self.lang_manager.get_text("已创建题目集", "Question Set Created"),
+            self.lang_manager.get_text(
+                f"已创建“{new_title}”，并加入 {len(selected_questions)} 道题。",
+                f"Created “{new_title}” with {len(selected_questions)} question(s).",
             ),
         )
 
