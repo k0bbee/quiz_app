@@ -239,6 +239,9 @@ class MainWindow(QMainWindow):
             self._course_screen.course_topic_action_requested.connect(
                 self._on_course_topic_action
             )
+            self._course_screen.course_primary_action_requested.connect(
+                self._on_course_primary_action
+            )
             self._course_screen.view_course_library_requested.connect(
                 self._open_course_library
             )
@@ -811,6 +814,27 @@ class MainWindow(QMainWindow):
                 allow_first_run_redirect=False,
             ):
                 self._get_course_screen().focus_knowledge_topic(topic_id)
+
+    def _on_course_primary_action(self, course_id: str, action: str) -> None:
+        """Route the course hub's one next-step action to existing flows."""
+        course_id = str(course_id or "").strip()
+        action = str(action or "").strip()
+        if not course_id or not action:
+            return
+        if self.course_context.current_course_id() != course_id:
+            if not self.course_manager.set_current(course_id):
+                return
+            self.course_context.course_changed()
+        if action in {"generate", "review_generation"}:
+            self.navigate_route(
+                Route.course(course_id, tab="generation"),
+                allow_first_run_redirect=False,
+            )
+        elif action == "practice":
+            self.navigate_route(
+                Route.study("practice"),
+                allow_first_run_redirect=False,
+            )
 
     def _start_progress_topic_quiz(self, questions: list, label: str):
         """Open QuizScreen for a progress-topic action."""

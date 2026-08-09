@@ -81,6 +81,7 @@ class CourseScreen(QWidget):
 
     current_course_changed = pyqtSignal()
     course_topic_action_requested = pyqtSignal(str, str, str)
+    course_primary_action_requested = pyqtSignal(str, str)
     view_course_library_requested = pyqtSignal(str)
     course_import_started = pyqtSignal()
     course_import_progressed = pyqtSignal(object)
@@ -439,6 +440,13 @@ class CourseScreen(QWidget):
         self.course_production_label.setObjectName("courseProductionSummary")
         self.course_production_label.setWordWrap(True)
         overview_layout.addWidget(self.course_production_label)
+        self.course_primary_action_btn = QPushButton()
+        self.course_primary_action_btn.setObjectName("primaryButton")
+        self.course_primary_action_btn.clicked.connect(
+            self._emit_course_primary_action
+        )
+        self.course_primary_action_btn.setVisible(False)
+        overview_layout.addWidget(self.course_primary_action_btn)
         self.course_summary_heading = QLabel()
         self.course_summary_heading.setObjectName("courseSummaryHeading")
         overview_layout.addWidget(self.course_summary_heading)
@@ -620,6 +628,7 @@ class CourseScreen(QWidget):
         self.course_summary_heading.setText(
             gm("课程总结", "Course Summary")
         )
+        self._update_course_primary_action_text()
         self.sources_panel.render(view, gm)
         self.knowledge_panel.render(view, gm)
         self.qa_panel.set_course(project)
@@ -635,6 +644,8 @@ class CourseScreen(QWidget):
             self.course_summary_heading,
         ):
             label.clear()
+        self.course_primary_action_btn.setVisible(False)
+        self.course_primary_action_btn.setProperty("courseAction", "")
         self.sources_table.setRowCount(0)
         self.knowledge_table.setRowCount(0)
         self.qa_panel.set_course(None)
@@ -644,6 +655,43 @@ class CourseScreen(QWidget):
         if not course_id:
             return
         self.course_topic_action_requested.emit(course_id, topic_id, action)
+
+    def _update_course_primary_action_text(self) -> None:
+        """Expose one context-aware next step without adding navigation."""
+        view = self._course_hub_view
+        course = self.manager.get(self.selected_course_id())
+        if view is None or course is None or getattr(course, "is_archived", False):
+            self.course_primary_action_btn.setVisible(False)
+            self.course_primary_action_btn.setProperty("courseAction", "")
+            return
+        gm = self.lang_manager.get_text
+        if view.pending_review_question_count:
+            action = "review_generation"
+            label = gm("继续审核题目", "Continue reviewing")
+        elif view.uncovered_exam_topic_count or not view.question_count:
+            action = "generate"
+            label = (
+                gm("补齐题目", "Add questions")
+                if view.uncovered_exam_topic_count
+                else gm("生成第一套练习", "Generate first practice")
+            )
+        elif view.weak_topic_count:
+            action = "practice"
+            label = gm("强化薄弱知识点", "Practice weak topics")
+        else:
+            action = "practice"
+            label = gm("开始练习", "Start practice")
+        self.course_primary_action_btn.setText(label)
+        self.course_primary_action_btn.setProperty("courseAction", action)
+        self.course_primary_action_btn.setVisible(True)
+
+    def _emit_course_primary_action(self) -> None:
+        course_id = self.selected_course_id()
+        action = str(
+            self.course_primary_action_btn.property("courseAction") or ""
+        )
+        if course_id and action:
+            self.course_primary_action_requested.emit(course_id, action)
 
     def refresh(self):
         """Reload active or archived projects from disk."""

@@ -253,6 +253,21 @@ class CourseHubNavigationTests(unittest.TestCase):
         self.assertIs(screen.overview_panel, screen.content_stack.currentWidget())
         self.assertFalse(hasattr(screen, "exam_goal_btn"))
 
+    def test_course_overview_exposes_one_contextual_primary_action(self):
+        self.assertTrue(
+            self.window.navigate_route(
+                Route.course(self.project.course_id, tab="overview"),
+                allow_first_run_redirect=False,
+            )
+        )
+        screen = self.window._course_screen
+        self.assertFalse(screen.course_primary_action_btn.isHidden())
+        self.assertIn("补齐题目", screen.course_primary_action_btn.text())
+        self.assertEqual(
+            "generate",
+            screen.course_primary_action_btn.property("courseAction"),
+        )
+
         self.assertEqual(
             ["overview", "sources", "knowledge", "generation", "qa"],
             [
