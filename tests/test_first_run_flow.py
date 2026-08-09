@@ -218,6 +218,26 @@ class FirstRunFlowTests(unittest.TestCase):
 
         self.assertEqual(["example", "import"], requested)
 
+    def test_first_run_workspace_shows_import_readiness_before_generation(self):
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+
+        workspace.set_state(
+            FirstRunState(
+                FirstRunStage.GENERATE,
+                course_title="Operating Systems",
+                document_count=6,
+                topic_count=14,
+                warning_count=1,
+            )
+        )
+
+        self.assertIn("Operating Systems", workspace.title_label.text())
+        self.assertIn("6", workspace.subtitle_label.text())
+        self.assertIn("14", workspace.subtitle_label.text())
+        self.assertIn("1", workspace.subtitle_label.text())
+        self.assertIn("14", workspace.generation_step.detail_label.text())
+
     def test_first_run_workspace_exposes_a_file_drop_import_zone(self):
         workspace = FirstRunWorkspace()
         self.addCleanup(workspace.close)
@@ -363,8 +383,8 @@ class FirstRunFlowTests(unittest.TestCase):
             source_folder="",
             summary_markdown="# First Course",
             summary_path="",
-            topics=[],
-            documents=[],
+            topics=[CourseTopic("general", "General")],
+            documents=[{"path": "lecture.pdf", "warnings": ["OCR fallback"]}],
             created_at="2026-07-28T00:00:00+00:00",
             updated_at="2026-07-28T00:00:00+00:00",
         )
@@ -397,6 +417,10 @@ class FirstRunFlowTests(unittest.TestCase):
             FirstRunStage.GENERATE,
             window.first_run_screen.state.stage,
         )
+        self.assertEqual("First Course", window.first_run_screen.state.course_title)
+        self.assertEqual(1, window.first_run_screen.state.document_count)
+        self.assertEqual(1, window.first_run_screen.state.topic_count)
+        self.assertEqual(1, window.first_run_screen.state.warning_count)
 
         question_set = QuestionSet(
             set_id="first-set",

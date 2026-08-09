@@ -101,6 +101,13 @@ class FirstRunController:
         progress = host._first_run_progress
         course_id = host.course_context.current_course_id()
         has_course = bool(course_id)
+        course = host.course_manager.current() if has_course else None
+        documents = list(getattr(course, "documents", ()) or ())
+        warning_count = sum(
+            bool((document or {}).get("warnings"))
+            for document in documents
+            if isinstance(document, dict)
+        )
         question_count = self.question_count()
         generation_draft = host.generation_flow.draft(course_id)
         first_run_required = (
@@ -125,6 +132,10 @@ class FirstRunController:
                 else 0
             ),
             archived_course_count=self.archived_course_count(),
+            course_title=str(getattr(course, "title", "") or ""),
+            document_count=len(documents),
+            topic_count=len(getattr(course, "topics", ()) or ()) if course else 0,
+            warning_count=warning_count,
         )
         host.first_run_screen.set_state(state)
         host.home_workspace.setCurrentWidget(

@@ -262,6 +262,7 @@ class FirstRunWorkspace(QWidget):
     def _render(self, *_args) -> None:
         gm = self.lang_manager.get_text
         recovery = self.state.stage is FirstRunStage.ARCHIVED_RECOVERY
+        has_course = bool(self.state.course_title) and not recovery
         if recovery:
             count = self.state.archived_course_count
             self.title_label.setText(gm(
@@ -271,6 +272,23 @@ class FirstRunWorkspace(QWidget):
             self.subtitle_label.setText(gm(
                 f"你有 {count} 门已归档课程。可以恢复原课程，或导入一门新课程。",
                 f"You have {count} archived course(s). Restore one or import a new course.",
+            ))
+        elif has_course:
+            self.title_label.setText(gm(
+                f"{self.state.course_title} 已准备",
+                f"{self.state.course_title} is ready",
+            ))
+            warning_text = (
+                gm(
+                    f"另有 {self.state.warning_count} 份资料需要检查。",
+                    f"{self.state.warning_count} source(s) need attention.",
+                )
+                if self.state.warning_count
+                else gm("资料未发现需要处理的提醒。", "No source alerts were found.")
+            )
+            self.subtitle_label.setText(gm(
+                f"已解析 {self.state.document_count} 份资料，识别 {self.state.topic_count} 个知识点。{warning_text}",
+                f"Parsed {self.state.document_count} source(s) and identified {self.state.topic_count} knowledge point(s). {warning_text}",
             ))
         else:
             self.title_label.setText(gm("创建第一门课程", "Create Your First Course"))
@@ -298,7 +316,17 @@ class FirstRunWorkspace(QWidget):
         )
         self.generation_step.render(
             gm("生成练习", "Generate practice"),
-            gm("根据课程知识点准备 10 道快速复习题", "Prepare 10 quick-review questions from course topics"),
+            (
+                gm(
+                    f"根据 {self.state.topic_count} 个知识点准备 10 道快速复习题",
+                    f"Prepare 10 quick-review questions from {self.state.topic_count} knowledge point(s)",
+                )
+                if self.state.topic_count
+                else gm(
+                    "根据课程知识点准备 10 道快速复习题",
+                    "Prepare 10 quick-review questions from course topics",
+                )
+            ),
             statuses[1],
             self._status_text(statuses[1]),
         )

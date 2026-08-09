@@ -28,6 +28,10 @@ class FirstRunState:
     question_count: int = 0
     draft_question_count: int = 0
     archived_course_count: int = 0
+    course_title: str = ""
+    document_count: int = 0
+    topic_count: int = 0
+    warning_count: int = 0
 
 
 def build_first_run_exam_plan(course_project) -> ExamGenerationPlan:
@@ -64,6 +68,10 @@ def resolve_first_run_state(
     progress_total: int = 0,
     draft_question_count: int = 0,
     archived_course_count: int = 0,
+    course_title: str = "",
+    document_count: int = 0,
+    topic_count: int = 0,
+    warning_count: int = 0,
 ) -> FirstRunState:
     """Resolve one visible stage from durable resources plus transient work."""
     normalized_operation = str(operation or "").strip().lower()
@@ -92,4 +100,8 @@ def resolve_first_run_state(
         question_count=max(0, int(question_count or 0)),
         draft_question_count=max(0, int(draft_question_count or 0)),
         archived_course_count=max(0, int(archived_course_count or 0)),
+        course_title=str(course_title or "").strip(),
+        document_count=max(0, int(document_count or 0)),
+        topic_count=max(0, int(topic_count or 0)),
+        warning_count=max(0, int(warning_count or 0)),
     )
