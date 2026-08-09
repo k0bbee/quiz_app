@@ -1,0 +1,39 @@
+name: Sandbox review export 20260810
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Download PyQt6 wheels
+        run: |
+          python -m pip download --only-binary=:all: --dest wheelhouse 'PyQt6==6.10.2'
+
+      - name: Package source
+        run: |
+          zip -qr quiz_app-core-loop-20260810.zip . -x '.git/*' 'wheelhouse/*' 'quiz_app-core-loop-20260810.zip'
+
+      - name: Upload review bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-review-core-loop-20260810
+          path: |
+            quiz_app-core-loop-20260810.zip
+            wheelhouse/
+          compression-level: 0
+          retention-days: 1
