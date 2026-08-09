@@ -78,7 +78,10 @@ class QuizScreen(QWidget):
         layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(8)
 
-        # === Top bar (two rows: info + progress bar) ===
+        # === Top bar (status row + mode row) ===
+        top_bar = QVBoxLayout()
+        top_bar.setSpacing(6)
+
         info_row = QHBoxLayout()
         info_row.setSpacing(10)
 
@@ -114,13 +117,10 @@ class QuizScreen(QWidget):
         self.mode_button_group.addButton(self.exam_mode_btn)
         mode_layout.addWidget(self.practice_mode_btn)
         mode_layout.addWidget(self.exam_mode_btn)
-        info_row.addLayout(mode_layout)
-
         self.mode_status_label = QLabel()
         self.mode_status_label.setObjectName("quizModeStatus")
         self.mode_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.mode_status_label.hide()
-        info_row.addWidget(self.mode_status_label)
 
         self.review_toggle_btn = QPushButton(
             self.lang_manager.get_text("整卷复查", "Review Paper")
@@ -138,7 +138,14 @@ class QuizScreen(QWidget):
         self.lang_btn.clicked.connect(self._toggle_language)
         info_row.addWidget(self.lang_btn)
 
-        layout.addLayout(info_row)
+        top_bar.addLayout(info_row)
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(8)
+        mode_row.addLayout(mode_layout)
+        mode_row.addWidget(self.mode_status_label)
+        mode_row.addStretch(1)
+        top_bar.addLayout(mode_row)
+        layout.addLayout(top_bar)
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setMinimum(0)
@@ -329,7 +336,8 @@ class QuizScreen(QWidget):
         self.shortcut_hint_label = QLabel()
         self.shortcut_hint_label.setObjectName("quizShortcutHint")
         self.shortcut_hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.shortcut_hint_label.setWordWrap(False)
+        self.shortcut_hint_label.setMinimumWidth(0)
+        self.shortcut_hint_label.setWordWrap(True)
         practice_layout.addWidget(self.shortcut_hint_label)
         self._refresh_quiz_hints()
         # Keep feedback below the navigation controls so grading does not

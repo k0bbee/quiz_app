@@ -453,6 +453,16 @@ class AppShellUiTests(unittest.TestCase):
                 )
             )
 
+    def test_english_shell_fits_a_compact_window(self):
+            main_window = MainWindow()
+            self.addCleanup(main_window.close)
+            self.addCleanup(main_window.lang_manager.set_language, "zh")
+            main_window.lang_manager.set_language("en")
+            main_window.show()
+            _APP.processEvents()
+
+            self.assertLessEqual(main_window.minimumSizeHint().width(), 680)
+
     def test_course_context_does_not_promote_qna_to_primary_navigation(self):
             main_window = MainWindow()
             self.addCleanup(main_window.close)

@@ -327,6 +327,24 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual("继续审核 4 道题", workspace.primary_btn.text())
         self.assertTrue(workspace.primary_btn.isEnabled())
 
+    def test_first_run_generation_action_uses_compact_label(self):
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+        self.addCleanup(workspace.lang_manager.set_language, "zh")
+        workspace.lang_manager.set_language("en")
+
+        workspace.set_state(
+            FirstRunState(
+                FirstRunStage.GENERATE,
+                course_title="Operating Systems",
+                document_count=2,
+                topic_count=4,
+            )
+        )
+
+        self.assertEqual("Generate Practice", workspace.primary_btn.text())
+        self.assertIn("10 quick-review questions", workspace.generation_step.detail_label.text())
+
     def test_empty_application_routes_primary_workspaces_to_one_first_run_view(self):
         window = MainWindow()
         self.addCleanup(window.close)

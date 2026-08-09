@@ -58,6 +58,8 @@ class AppShell(QWidget):
 
         self.sidebar_title = QLabel("")
         self.sidebar_title.setObjectName("sidebarTitle")
+        self.sidebar_title.setWordWrap(True)
+        self.sidebar_title.setMinimumWidth(0)
         sidebar_layout.addWidget(self.sidebar_title)
         sidebar_layout.addSpacing(20)
 

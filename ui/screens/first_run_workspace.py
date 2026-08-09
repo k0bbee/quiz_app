@@ -174,7 +174,8 @@ class FirstRunWorkspace(QWidget):
         self.status_label.hide()
         card_layout.addWidget(self.status_label)
 
-        action_layout = QHBoxLayout()
+        action_layout = QVBoxLayout()
+        action_layout.setSpacing(8)
         action_layout.addStretch(1)
         self.example_btn = QPushButton()
         self.example_btn.setObjectName("secondaryButton")
@@ -376,7 +377,7 @@ class FirstRunWorkspace(QWidget):
             FirstRunStage.MATERIALS: gm("选择课程资料", "Choose Course Materials"),
             FirstRunStage.ARCHIVED_RECOVERY: gm("恢复课程", "Restore Course"),
             FirstRunStage.IMPORTING: gm("正在准备课程…", "Preparing Course…"),
-            FirstRunStage.GENERATE: gm("生成 10 道快速复习题", "Generate 10 Quick-Review Questions"),
+            FirstRunStage.GENERATE: gm("生成练习", "Generate Practice"),
             FirstRunStage.GENERATING: gm("正在生成练习…", "Generating Practice…"),
             FirstRunStage.REVIEW_PENDING: gm(
                 f"继续审核 {self.state.draft_question_count} 道题",
