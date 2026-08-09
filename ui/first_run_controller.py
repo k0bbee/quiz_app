@@ -109,6 +109,8 @@ class FirstRunController:
             or question_count <= 0
             or not self.has_completed_practice()
         )
+        if getattr(host.home_screen, "has_resumable_draft", False):
+            first_run_required = False
         state = resolve_first_run_state(
             has_course=has_course,
             question_count=question_count,

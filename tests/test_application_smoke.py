@@ -8,7 +8,8 @@ import pytest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QCloseEvent
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
 from core.application_services import ApplicationServices
 from core.background_task_center import BackgroundTaskCenter
@@ -55,6 +56,94 @@ class ApplicationSmokeTests(unittest.TestCase):
         self.assertTrue(
             window.quiz_screen.session.current_question.metadata["source_refs"]
         )
+
+    def test_incomplete_first_practice_resumes_after_window_restart(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            set_manager = SetManager(str(root / "sets"))
+            progress_manager = ProgressManager(str(root / "progress"))
+            snapshot_manager = QuizSnapshotManager(str(root / "snapshots"))
+            course_manager = CourseProjectManager(str(root / "courses"))
+            course = CourseProject(
+                course_id="resume-course",
+                title="恢复课程",
+                source_folder=str(root / "materials"),
+                summary_markdown="# 恢复课程",
+                summary_path="",
+                topics=[CourseTopic("resume", "恢复测试")],
+                documents=[],
+                created_at="2026-08-09T00:00:00+00:00",
+                updated_at="2026-08-09T00:00:00+00:00",
+            )
+            question = Question(
+                question_id="resume-q1",
+                type=QuestionType.MULTIPLE_CHOICE,
+                difficulty=Difficulty.EASY,
+                bilingual={
+                    "zh": {
+                        "stem": "恢复测试题？",
+                        "options": ["A. 正确", "B. 错误"],
+                        "explanation": "恢复测试。",
+                    },
+                    "en": {
+                        "stem": "Resume test?",
+                        "options": ["A. Correct", "B. Wrong"],
+                        "explanation": "Resume test.",
+                    },
+                },
+                correct_answer="A",
+                topic="resume",
+                metadata={"course_id": "resume-course"},
+            )
+            self.assertTrue(question_bank.save(question))
+            question_set = QuestionSet.create_new(
+                title={"zh": "恢复练习", "en": "Resume Practice"},
+                description={"zh": "", "en": ""},
+                topics=["resume"],
+                question_ids=[question.question_id],
+            )
+            question_set.metadata["course_id"] = course.course_id
+            self.assertTrue(set_manager.save(question_set))
+            self.assertTrue(course_manager.save(course, make_current=True))
+
+            services = ApplicationServices(
+                question_bank=question_bank,
+                set_manager=set_manager,
+                progress_manager=progress_manager,
+                snapshot_manager=snapshot_manager,
+                mastery_overrides=MasteryOverrideStore(root / "mastery.json"),
+                course_manager=course_manager,
+                task_center=BackgroundTaskCenter(),
+            )
+            first_window = MainWindow(services)
+            self.addCleanup(first_window.deleteLater)
+            first_window.first_run_screen.primary_btn.click()
+            _APP.processEvents()
+            self.assertEqual(first_window.SCREEN_QUIZ, first_window.stack.currentIndex())
+
+            close_event = QCloseEvent()
+            with patch(
+                "ui.screens.quiz_screen.QMessageBox.question",
+                return_value=QMessageBox.StandardButton.Yes,
+            ):
+                first_window.closeEvent(close_event)
+            self.assertTrue(close_event.isAccepted())
+            self.assertIsNotNone(snapshot_manager.load_latest())
+
+            second_window = MainWindow(services)
+            self.addCleanup(second_window.deleteLater)
+
+            self.assertIs(
+                second_window.home_screen,
+                second_window.home_workspace.currentWidget(),
+            )
+            self.assertIn("继续", second_window.home_screen.start_btn.text())
+
+            second_window.home_screen.start_btn.click()
+            _APP.processEvents()
+            self.assertEqual(second_window.SCREEN_QUIZ, second_window.stack.currentIndex())
+            self.assertIsNotNone(second_window.quiz_screen.session.current_question)
 
     def test_main_window_navigation_and_one_question_practice_close_the_loop(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -216,6 +216,11 @@ class HomeScreen(QWidget):
         self._resume_mode = None
         self._refresh_today_plan()
 
+    @property
+    def has_resumable_draft(self) -> bool:
+        """Return whether the current recommendation can resume a saved quiz."""
+        return self._today_plan.action is LearningPlanAction.RESUME_DRAFT
+
     def set_current_course(
         self,
         course_id: str | None,
