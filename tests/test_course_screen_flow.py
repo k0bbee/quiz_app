@@ -68,6 +68,24 @@ class FakeProfileGenerator:
         )
 
 class CourseScreenFlowTests(unittest.TestCase):
+    def test_course_workspace_stacks_columns_when_narrow(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                root = Path(tmpdir)
+                screen = CourseScreen(
+                    CourseProjectManager(str(root / "courses")),
+                )
+                self.addCleanup(screen.close)
+                screen.resize(640, 680)
+                screen.show()
+                _APP.processEvents()
+
+                self.assertEqual(Qt.Orientation.Vertical, screen.course_splitter.orientation())
+                self.assertLessEqual(screen.minimumSizeHint().width(), 400)
+
+                screen.resize(900, 680)
+                _APP.processEvents()
+                self.assertEqual(Qt.Orientation.Horizontal, screen.course_splitter.orientation())
+
     def _docs(self):
             return [
                 ExtractedDocument(

@@ -77,6 +77,8 @@ class _StagedFilesList(QListWidget):
 
 
 class CourseScreen(QWidget):
+    _NARROW_SPLITTER_WIDTH = 700
+
     """Import folders of course files and choose the active course project."""
 
     current_course_changed = pyqtSignal()
@@ -285,7 +287,8 @@ class CourseScreen(QWidget):
         progress_row.addWidget(self.cancel_task_btn)
         layout.addLayout(progress_row)
 
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.course_splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter = self.course_splitter
 
         left = QWidget()
         self.left_layout = QVBoxLayout(left)
@@ -489,6 +492,26 @@ class CourseScreen(QWidget):
         splitter.setSizes([280, 620])
 
         layout.addWidget(splitter, 1)
+        self._update_responsive_layout()
+
+    def resizeEvent(self, event):
+        """Stack course list and details when the workspace cannot split cleanly."""
+        super().resizeEvent(event)
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(self) -> None:
+        desired = (
+            Qt.Orientation.Vertical
+            if self.width() < self._NARROW_SPLITTER_WIDTH
+            else Qt.Orientation.Horizontal
+        )
+        if self.course_splitter.orientation() == desired:
+            return
+        self.course_splitter.setOrientation(desired)
+        if desired is Qt.Orientation.Vertical:
+            self.course_splitter.setSizes([300, 420])
+        else:
+            self.course_splitter.setSizes([280, 620])
 
     def _all_projects(self) -> list:
         try:
