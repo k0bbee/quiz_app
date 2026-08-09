@@ -148,6 +148,23 @@ class FirstRunController:
 
     def choose_materials(self) -> None:
         host = self._host
+        files, _filter = QFileDialog.getOpenFileNames(
+            host,
+            host.lang_manager.get_text(
+                "选择课程资料文件",
+                "Choose Course Material Files",
+            ),
+            "",
+            host.lang_manager.get_text(
+                "课程资料 (*.pdf *.pptx *.docx *.md *.txt)",
+                "Course materials (*.pdf *.pptx *.docx *.md *.txt)",
+            ),
+        )
+        self.import_files(files)
+
+    def choose_folder(self) -> None:
+        """Keep folder import as the secondary bulk-selection path."""
+        host = self._host
         folder = QFileDialog.getExistingDirectory(
             host,
             host.lang_manager.get_text(
@@ -166,7 +183,7 @@ class FirstRunController:
             path = Path(str(raw_path or "")).expanduser()
             if not path.is_file() or path.suffix.lower() not in SUPPORTED_EXTENSIONS:
                 continue
-            normalized.append(str(path.resolve()))
+            normalized.append(str(path.absolute()))
         normalized = list(dict.fromkeys(normalized))
         if normalized:
             self._start_material_import(files=normalized)

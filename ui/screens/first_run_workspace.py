@@ -108,6 +108,7 @@ class FirstRunWorkspace(QWidget):
     """Guide an empty installation through three explicit decisions."""
 
     choose_materials_requested = pyqtSignal()
+    choose_folder_requested = pyqtSignal()
     materials_dropped = pyqtSignal(list)
     example_requested = pyqtSignal()
     generate_requested = pyqtSignal()
@@ -184,7 +185,7 @@ class FirstRunWorkspace(QWidget):
         action_layout.addWidget(self.example_btn)
         self.alternate_btn = QPushButton()
         self.alternate_btn.setObjectName("secondaryButton")
-        self.alternate_btn.clicked.connect(self.choose_materials_requested.emit)
+        self.alternate_btn.clicked.connect(self._activate_alternate)
         self.alternate_btn.hide()
         action_layout.addWidget(self.alternate_btn)
         self.cancel_btn = QPushButton()
@@ -316,7 +317,10 @@ class FirstRunWorkspace(QWidget):
         statuses = self._step_statuses()
         self.materials_step.render(
             gm("导入资料", "Import materials"),
-            gm("选择包含 PDF、PPTX、DOCX、TXT 或 Markdown 的文件夹", "Choose a folder containing PDF, PPTX, DOCX, TXT, or Markdown"),
+            gm(
+                "选择或拖入 PDF、PPTX、DOCX、TXT、Markdown；也可批量导入文件夹",
+                "Choose or drop PDF, PPTX, DOCX, TXT, or Markdown; folders remain available for bulk import",
+            ),
             statuses[0],
             self._status_text(statuses[0]),
         )
@@ -374,7 +378,7 @@ class FirstRunWorkspace(QWidget):
         gm = self.lang_manager.get_text
         stage = self.state.stage
         labels = {
-            FirstRunStage.MATERIALS: gm("选择课程资料", "Choose Course Materials"),
+            FirstRunStage.MATERIALS: gm("选择文件", "Choose Files"),
             FirstRunStage.ARCHIVED_RECOVERY: gm("恢复课程", "Restore Course"),
             FirstRunStage.IMPORTING: gm("正在准备课程…", "Preparing Course…"),
             FirstRunStage.GENERATE: gm("生成练习", "Generate Practice"),
@@ -394,11 +398,14 @@ class FirstRunWorkspace(QWidget):
             and not busy
         )
         alternate_label = (
-            gm("导入新课程", "Import New Course")
+            gm("批量导入文件夹", "Import Folder")
+            if stage is FirstRunStage.MATERIALS
+            else gm("导入新课程", "Import New Course")
         )
         self.alternate_btn.setText(alternate_label)
         self.alternate_btn.setVisible(
             stage in {
+                FirstRunStage.MATERIALS,
                 FirstRunStage.ARCHIVED_RECOVERY,
             }
             and not busy
@@ -438,3 +445,9 @@ class FirstRunWorkspace(QWidget):
         }.get(self.state.stage)
         if signal is not None:
             signal.emit()
+
+    def _activate_alternate(self) -> None:
+        if self.state.stage is FirstRunStage.MATERIALS:
+            self.choose_folder_requested.emit()
+        elif self.state.stage is FirstRunStage.ARCHIVED_RECOVERY:
+            self.choose_materials_requested.emit()

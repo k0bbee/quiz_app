@@ -205,18 +205,23 @@ class FirstRunFlowTests(unittest.TestCase):
         workspace.choose_materials_requested.connect(
             lambda: requested.append("import")
         )
+        workspace.choose_folder_requested.connect(
+            lambda: requested.append("folder")
+        )
 
         workspace.set_state(FirstRunState(FirstRunStage.MATERIALS))
 
         self.assertFalse(workspace.example_btn.isHidden())
-        self.assertTrue(workspace.alternate_btn.isHidden())
+        self.assertFalse(workspace.alternate_btn.isHidden())
         self.assertEqual("体验示例课程", workspace.example_btn.text())
-        self.assertEqual("选择课程资料", workspace.primary_btn.text())
+        self.assertEqual("批量导入文件夹", workspace.alternate_btn.text())
+        self.assertEqual("选择文件", workspace.primary_btn.text())
 
         workspace.example_btn.click()
+        workspace.alternate_btn.click()
         workspace.primary_btn.click()
 
-        self.assertEqual(["example", "import"], requested)
+        self.assertEqual(["example", "folder", "import"], requested)
 
     def test_first_run_workspace_shows_import_readiness_before_generation(self):
         workspace = FirstRunWorkspace()
@@ -354,7 +359,7 @@ class FirstRunFlowTests(unittest.TestCase):
             window.first_run_screen,
             window.home_workspace.currentWidget(),
         )
-        self.assertEqual("选择课程资料", window.first_run_screen.primary_btn.text())
+        self.assertEqual("选择文件", window.first_run_screen.primary_btn.text())
 
         self.assertTrue(window.navigate_to(window.SCREEN_TOPIC_SELECTION))
         self.assertEqual(window.SCREEN_HOME, window.stack.currentIndex())
@@ -363,7 +368,37 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertEqual(window.SCREEN_COURSES, window.stack.currentIndex())
         self.assertIsNotNone(window._course_screen)
 
-    def test_first_run_hands_selected_folder_to_background_course_import(self):
+    def test_first_run_hands_selected_files_to_background_course_import(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+        course_screen = Mock()
+        course_screen.start_import.return_value = True
+        window._get_course_screen = Mock(return_value=course_screen)
+
+        with tempfile.TemporaryDirectory() as source_dir:
+            first = Path(source_dir) / "lecture.pdf"
+            second = Path(source_dir) / "notes.docx"
+            first.write_bytes(b"pdf")
+            second.write_bytes(b"docx")
+            with patch(
+                "ui.first_run_controller.QFileDialog.getOpenFileNames",
+                return_value=([str(first), str(second)], ""),
+            ), patch(
+                "ui.first_run_controller.QFileDialog.getExistingDirectory",
+                return_value="",
+            ):
+                window.first_run_screen.primary_btn.click()
+
+        course_screen.start_import.assert_called_once_with(
+            files=[str(first.absolute()), str(second.absolute())],
+            present_result=False,
+        )
+        self.assertEqual(
+            FirstRunStage.IMPORTING,
+            window.first_run_screen.state.stage,
+        )
+
+    def test_first_run_keeps_folder_import_as_a_secondary_action(self):
         window = MainWindow()
         self.addCleanup(window.close)
         course_screen = Mock()
@@ -374,7 +409,7 @@ class FirstRunFlowTests(unittest.TestCase):
             "ui.first_run_controller.QFileDialog.getExistingDirectory",
             return_value=source_dir,
         ):
-            window.first_run_screen.primary_btn.click()
+            window.first_run_screen.alternate_btn.click()
 
         course_screen.start_import.assert_called_once_with(
             source_dir,

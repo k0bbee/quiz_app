@@ -34,7 +34,7 @@ python scripts/check_environment.py --json
 
 ## Typical workflow
 
-1. **Import course materials** — Open Course Management and choose a folder, or multi-select/drop PPTX, PDF, DOCX, Markdown, or text files into the staging list before confirming.
+1. **Import course materials** — On first launch, multi-select or drop PPTX, PDF, DOCX, Markdown, or text files; use the secondary folder action for a bulk folder import. The Course workspace keeps its staging list for review before parsing.
 2. **Review the course summary and topics** — The application extracts document text, creates a summary, assigns stable topic IDs, and builds page- or slide-level source references.
 3. **Choose the exam scope** — Use every topic or select only the topics relevant to the current exam.
 4. **Generate questions** — Use course defaults, adjust question type/topic/difficulty weights, and start generation.
