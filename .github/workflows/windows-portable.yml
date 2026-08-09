@@ -1,0 +1,84 @@
+name: Windows Portable
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version used in the portable archive name
+        required: false
+        default: "1.0.0"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-portable-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Set up Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install build environment
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+          pip install pytest pytest-timeout
+      - name: Verify dependencies
+        run: python -m pip check
+      - name: Run release regression suite
+        run: python -m pytest -q --timeout=60 --timeout-method=thread
+      - name: Resolve package version
+        shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          if ($env:REF_TYPE -eq "tag") {
+            $packageVersion = $env:REF_NAME.TrimStart("v")
+          } else {
+            $packageVersion = $env:INPUT_VERSION
+          }
+          if (-not $packageVersion) {
+            $packageVersion = python -c "import config; print(config.APP_VERSION)"
+          }
+          "PACKAGE_VERSION=$packageVersion" >> $env:GITHUB_ENV
+      - name: Build portable application
+        run: pyinstaller quiz_app.spec --noconfirm --clean
+      - name: Package notices and checksum
+        shell: pwsh
+        run: python scripts/package_windows_portable.py --dist-root dist --version $env:PACKAGE_VERSION
+      - name: Upload portable artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: AI-Course-Quiz-${{ env.PACKAGE_VERSION }}-Windows-x64
+          path: |
+            dist/AI-Course-Quiz-*.zip
+            dist/AI-Course-Quiz-*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish tagged release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: pwsh
+        run: |
+          gh release create $env:RELEASE_TAG `
+            dist/AI-Course-Quiz-*.zip `
+            dist/AI-Course-Quiz-*.zip.sha256 `
+            --verify-tag `
+            --generate-notes `
+            --title "AI课程刷题软件 $env:RELEASE_TAG"
