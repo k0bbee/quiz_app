@@ -311,7 +311,7 @@ class FirstRunFlowTests(unittest.TestCase):
             window.first_run_screen.materials_dropped.emit([str(source_file)])
 
         course_screen.start_import.assert_called_once_with(
-            files=[str(source_file.resolve())],
+            files=[str(source_file.absolute())],
             present_result=False,
         )
         self.assertEqual(
