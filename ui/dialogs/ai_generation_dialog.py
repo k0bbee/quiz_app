@@ -26,7 +26,12 @@ from ai.generation_config import (
     planned_generation_counts,
 )
 from ai.generation_report import GenerationReport, GenerationRetryPlan
-from ai.question_plan import QuestionPlanItem, build_question_plan, summarize_plan_items
+from ai.question_plan import (
+    QuestionPlanItem,
+    build_question_plan,
+    plan_value_label,
+    summarize_plan_items,
+)
 from ai.exam_plan import (
     ExamGenerationPlan,
     ExamPlanPatch,
@@ -1573,43 +1578,13 @@ class AIGenerationDialog(QDialog):
                     display_key = (
                         topic_titles.get(str(key), str(key))
                         if value_kind == "topic"
-                        else self._plan_value_label(key, value_kind)
+                        else plan_value_label(
+                            key, value_kind, self.lang_manager.current
+                        )
                     )
                     lines.append(f"- {display_key}: {value}")
         self._append_plan_item_summary(lines, plan_items)
         self.plan_preview.setPlainText("\n".join(lines))
-
-    def _plan_value_label(self, value: str, kind: str) -> str:
-        """Convert stable plan enum values to readable localized labels."""
-        labels = {
-            "question_type": {
-                "multiple_choice": ("选择题", "Multiple choice"),
-                "scenario_choice": ("情境选择题", "Scenario choice"),
-                "true_false": ("判断题", "True/false"),
-                "fill_in_blank": ("填空题", "Fill in the blank"),
-                "matching": ("配对题", "Matching"),
-                "ordering": ("排序题", "Ordering"),
-                "short_answer": ("简答题", "Short answer"),
-            },
-            "difficulty": {
-                "easy": ("简单", "Easy"),
-                "medium": ("中等", "Medium"),
-                "hard": ("困难", "Hard"),
-            },
-            "skill": {
-                "definition": ("定义回忆", "Definition recall"),
-                "comparison": ("比较辨析", "Comparison"),
-                "application": ("实际应用", "Application"),
-                "scenario": ("情境推理", "Scenario reasoning"),
-                "calculation": ("计算", "Calculation"),
-                "debugging": ("排错", "Debugging"),
-            },
-        }
-        pair = labels.get(kind, {}).get(str(value))
-        if pair is None:
-            fallback = " ".join(str(value or "").replace("_", " ").split())
-            return fallback
-        return self.lang_manager.get_text(*pair)
 
     def _append_plan_item_summary(self, lines: list[str], plan_items: list) -> None:
         if self.lang_manager.current == "zh":
@@ -1624,9 +1599,9 @@ class AIGenerationDialog(QDialog):
                 for (question_type, difficulty, skill), amount in groups.items():
                     lines.append(
                         f"- {amount} 道 "
-                        f"{self._plan_value_label(difficulty, 'difficulty')} / "
-                        f"{self._plan_value_label(question_type, 'question_type')} / "
-                        f"{self._plan_value_label(skill, 'skill')}"
+                        f"{plan_value_label(difficulty, 'difficulty', self.lang_manager.current)} / "
+                        f"{plan_value_label(question_type, 'question_type', self.lang_manager.current)} / "
+                        f"{plan_value_label(skill, 'skill', self.lang_manager.current)}"
                     )
             return
 
@@ -1641,9 +1616,9 @@ class AIGenerationDialog(QDialog):
             for (question_type, difficulty, skill), amount in groups.items():
                 lines.append(
                     f"- {amount} x "
-                    f"{self._plan_value_label(difficulty, 'difficulty')} / "
-                    f"{self._plan_value_label(question_type, 'question_type')} / "
-                    f"{self._plan_value_label(skill, 'skill')}"
+                    f"{plan_value_label(difficulty, 'difficulty', self.lang_manager.current)} / "
+                    f"{plan_value_label(question_type, 'question_type', self.lang_manager.current)} / "
+                    f"{plan_value_label(skill, 'skill', self.lang_manager.current)}"
                 )
 
     def _start_generation(

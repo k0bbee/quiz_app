@@ -87,8 +87,9 @@ class QuestionPlanTests(unittest.TestCase):
 
         self.assertIn("失败组合", text)
         self.assertIn("cache", text)
-        self.assertIn("hard / scenario_choice / application", text)
-        self.assertIn("hard / scenario_choice / scenario", text)
+        self.assertIn("困难 / 情境选择题 / 实际应用", text)
+        self.assertIn("困难 / 情境选择题 / 情境推理", text)
+        self.assertNotIn("scenario_choice", text)
 
     def test_generation_report_builds_retry_plan_from_failed_plan_items_only(self):
         failed = [

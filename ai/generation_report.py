@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ai.generation_config import DIFFICULTY_DEFAULTS, QUESTION_TYPE_DEFAULTS, GenerationConfig
-from ai.question_plan import QuestionPlanItem, summarize_plan_items
+from ai.question_plan import QuestionPlanItem, plan_value_label, summarize_plan_items
 from core.app_errors import AppError
 
 
@@ -52,7 +52,7 @@ class GenerationReport:
             reasons = self._rejection_summary()
             if reasons:
                 lines.append(f"拒绝原因: {reasons}")
-            missing = self._missing_summary()
+            missing = self._missing_summary(lang)
             if missing:
                 lines.append(f"缺口: {missing}")
             failed = self._failed_plan_summary(lang)
@@ -71,7 +71,7 @@ class GenerationReport:
         reasons = self._rejection_summary()
         if reasons:
             lines.append(f"Rejected reasons: {reasons}")
-        missing = self._missing_summary()
+        missing = self._missing_summary(lang)
         if missing:
             lines.append(f"Missing: {missing}")
         failed = self._failed_plan_summary(lang)
@@ -111,16 +111,28 @@ class GenerationReport:
         reasons.sort(key=lambda item: (-item[1], item[0]))
         return ", ".join(f"{reason}: {count}" for reason, count in reasons[:3])
 
-    def _missing_summary(self) -> str:
+    def _missing_summary(self, lang: str) -> str:
+        group_labels = {
+            "question_types": ("题型", "Question types"),
+            "difficulties": ("难度", "Difficulties"),
+            "topics": ("主题", "Topics"),
+        }
+        value_kinds = {
+            "question_types": "question_type",
+            "difficulties": "difficulty",
+        }
         groups = []
         for group_name, values in self.missing_quotas.items():
+            group_pair = group_labels.get(group_name, (group_name, group_name))
+            group_label = group_pair[0] if lang == "zh" else group_pair[1]
+            value_kind = value_kinds.get(group_name)
             missing = ", ".join(
-                f"{key}: {count}"
+                f"{plan_value_label(key, value_kind, lang) if value_kind else key}: {count}"
                 for key, count in values.items()
                 if count > 0
             )
             if missing:
-                groups.append(f"{group_name} [{missing}]")
+                groups.append(f"{group_label} [{missing}]")
         return "; ".join(groups)
 
     def _failed_plan_summary(self, lang: str) -> str:
@@ -136,14 +148,12 @@ class GenerationReport:
             for (question_type, difficulty, skill), count in values.items():
                 if count <= 0:
                     continue
-                if lang == "zh":
-                    groups.append(
-                        f"{topic_title} {difficulty} / {question_type} / {skill}: {count}"
-                    )
-                else:
-                    groups.append(
-                        f"{topic_title} {difficulty} / {question_type} / {skill}: {count}"
-                    )
+                groups.append(
+                    f"{topic_title} "
+                    f"{plan_value_label(difficulty, 'difficulty', lang)} / "
+                    f"{plan_value_label(question_type, 'question_type', lang)} / "
+                    f"{plan_value_label(skill, 'skill', lang)}: {count}"
+                )
         return "; ".join(groups)
 
 

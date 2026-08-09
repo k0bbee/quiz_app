@@ -35,6 +35,40 @@ SKILL_WEIGHT_DEFAULTS: dict[str, dict[str, int]] = {
 }
 
 
+PLAN_VALUE_LABELS: dict[str, dict[str, tuple[str, str]]] = {
+    "question_type": {
+        "multiple_choice": ("选择题", "Multiple choice"),
+        "scenario_choice": ("情境选择题", "Scenario choice"),
+        "true_false": ("判断题", "True/false"),
+        "fill_in_blank": ("填空题", "Fill in the blank"),
+        "matching": ("配对题", "Matching"),
+        "ordering": ("排序题", "Ordering"),
+        "short_answer": ("简答题", "Short answer"),
+    },
+    "difficulty": {
+        "easy": ("简单", "Easy"),
+        "medium": ("中等", "Medium"),
+        "hard": ("困难", "Hard"),
+    },
+    "skill": {
+        "definition": ("定义回忆", "Definition recall"),
+        "comparison": ("比较辨析", "Comparison"),
+        "application": ("实际应用", "Application"),
+        "scenario": ("情境推理", "Scenario reasoning"),
+        "calculation": ("计算", "Calculation"),
+        "debugging": ("排错", "Debugging"),
+    },
+}
+
+
+def plan_value_label(value: str, kind: str, language: str = "zh") -> str:
+    """Return a readable label for a stable generation-plan value."""
+    pair = PLAN_VALUE_LABELS.get(kind, {}).get(str(value))
+    if pair is not None:
+        return pair[0] if language == "zh" else pair[1]
+    return " ".join(str(value or "").replace("_", " ").split())
+
+
 @dataclass(frozen=True)
 class QuestionPlanItem:
     """One planned question slot before asking the LLM to generate content."""

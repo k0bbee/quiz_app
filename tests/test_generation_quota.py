@@ -682,7 +682,8 @@ class GenerationQuotaTests(unittest.TestCase):
         self.assertEqual("GEN-QUOTA-001", report.error.code)
         self.assertIn("Rejected reasons", report.summary_text("en"))
         self.assertIn("quota already filled", report.summary_text("en"))
-        self.assertIn("true_false", report.summary_text("en"))
+        self.assertIn("True/false", report.summary_text("en"))
+        self.assertNotIn("true_false", report.summary_text("en"))
         self.assertIn("已生成 2/4", report.summary_text("zh"))
 
     def test_worker_emits_partial_result_when_cancelled_after_accepting_questions(self):
