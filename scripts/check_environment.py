@@ -11,7 +11,10 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from core.environment_check import collect_environment_report, format_environment_report
+from core.environment_check import (  # noqa: E402
+    collect_environment_report,
+    format_environment_report,
+)
 
 
 def main() -> int:

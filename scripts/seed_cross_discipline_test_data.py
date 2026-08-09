@@ -12,8 +12,8 @@ import sys
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from config import DATA_DIR
-from core.cross_discipline_test_data import (
+from config import DATA_DIR  # noqa: E402
+from core.cross_discipline_test_data import (  # noqa: E402
     audit_cross_discipline_data,
     seed_cross_discipline_data,
 )
