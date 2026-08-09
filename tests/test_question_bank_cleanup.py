@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import Qt, QItemSelectionModel
-from PyQt6.QtWidgets import QApplication, QMessageBox, QAbstractItemView, QTableView, QDialog
+from PyQt6.QtWidgets import QApplication, QMessageBox, QAbstractItemView, QTableView, QDialog, QBoxLayout
 
 from core import course_index
 from core.language_manager import LanguageManager
@@ -248,6 +248,35 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
             self.assertFalse(screen.question_list_panel.isHidden())
             self.assertTrue(screen.inspector_panel.isHidden())
+
+    def test_question_bank_toolbar_stacks_when_narrow(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            screen = self._screen(root, QuestionBank(str(root / "questions")))
+            self.addCleanup(screen.close)
+            self.addCleanup(screen.lang_manager.set_language, "zh")
+            screen.lang_manager.set_language("en")
+            screen.resize(640, 680)
+            screen.show()
+            _APP.processEvents()
+
+            self.assertEqual(640, screen.width())
+            self.assertLessEqual(screen.minimumSizeHint().width(), 500)
+            self.assertEqual(
+                QBoxLayout.Direction.TopToBottom,
+                screen.filter_layout.direction(),
+            )
+            self.assertEqual(
+                QBoxLayout.Direction.TopToBottom,
+                screen.list_actions_layout.direction(),
+            )
+
+            screen.resize(1200, 680)
+            _APP.processEvents()
+            self.assertEqual(
+                QBoxLayout.Direction.LeftToRight,
+                screen.filter_layout.direction(),
+            )
 
     def test_narrow_empty_library_exposes_create_first_question(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -9,7 +9,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QTextEdit, QMessageBox, QSplitter, QAbstractItemView, QStackedWidget,
-    QHeaderView, QTableView, QFileDialog, QDialog,
+    QHeaderView, QTableView, QFileDialog, QDialog, QBoxLayout,
     QInputDialog,
 )
 from PyQt6.QtCore import (
@@ -244,6 +244,7 @@ class QuestionBankScreen(QWidget):
         layout.addWidget(self.page_header)
 
         filter_row = QHBoxLayout()
+        self.filter_layout = filter_row
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText(
             self.lang_manager.get_text("搜索题干、解析、主题", "Search stem, explanation, topic")
@@ -282,6 +283,7 @@ class QuestionBankScreen(QWidget):
         layout.addLayout(filter_row)
 
         list_actions_row = QHBoxLayout()
+        self.list_actions_layout = list_actions_row
         self.new_btn = QPushButton(
             self.lang_manager.get_text("新建题目", "New Question")
         )
@@ -516,6 +518,13 @@ class QuestionBankScreen(QWidget):
 
     def _apply_responsive_layout(self) -> None:
         narrow = self.width() < 1100
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if narrow
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self.filter_layout.setDirection(direction)
+        self.list_actions_layout.setDirection(direction)
         if not narrow:
             self.question_list_panel.show()
             self.inspector_panel.show()
