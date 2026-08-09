@@ -262,9 +262,9 @@ class CourseHubNavigationTests(unittest.TestCase):
         )
         screen = self.window._course_screen
         self.assertFalse(screen.course_primary_action_btn.isHidden())
-        self.assertIn("补齐题目", screen.course_primary_action_btn.text())
+        self.assertIn("查看资料提醒", screen.course_primary_action_btn.text())
         self.assertEqual(
-            "generate",
+            "sources",
             screen.course_primary_action_btn.property("courseAction"),
         )
 

@@ -668,6 +668,9 @@ class CourseScreen(QWidget):
         if view.pending_review_question_count:
             action = "review_generation"
             label = gm("继续审核题目", "Continue reviewing")
+        elif view.warning_count and not view.question_count:
+            action = "sources"
+            label = gm("查看资料提醒", "Review source alerts")
         elif view.uncovered_exam_topic_count or not view.question_count:
             action = "generate"
             label = (

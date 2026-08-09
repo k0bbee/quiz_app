@@ -830,6 +830,11 @@ class MainWindow(QMainWindow):
                 Route.course(course_id, tab="generation"),
                 allow_first_run_redirect=False,
             )
+        elif action == "sources":
+            self.navigate_route(
+                Route.course(course_id, tab="sources"),
+                allow_first_run_redirect=False,
+            )
         elif action == "practice":
             self.navigate_route(
                 Route.study("practice"),
