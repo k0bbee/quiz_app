@@ -238,6 +238,28 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertIn("1", workspace.subtitle_label.text())
         self.assertIn("14", workspace.generation_step.detail_label.text())
 
+    def test_first_run_readiness_counts_summary_and_profile_warnings(self):
+        window = MainWindow()
+        self.addCleanup(window.close)
+        project = CourseProject(
+            course_id="course-readiness-warning",
+            title="Fallback Course",
+            source_folder="",
+            summary_markdown="# Fallback Course",
+            summary_path="",
+            topics=[CourseTopic("topic", "Topic")],
+            documents=[],
+            created_at="2026-08-09T00:00:00+00:00",
+            updated_at="2026-08-09T00:00:00+00:00",
+            summary_warning="summary fallback",
+            generation_profile_warning="profile fallback",
+        )
+        self.assertTrue(window.course_manager.save(project))
+
+        window.first_run.refresh()
+
+        self.assertEqual(2, window.first_run_screen.state.warning_count)
+
     def test_first_run_workspace_exposes_a_file_drop_import_zone(self):
         workspace = FirstRunWorkspace()
         self.addCleanup(workspace.close)

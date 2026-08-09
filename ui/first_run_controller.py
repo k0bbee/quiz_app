@@ -108,6 +108,10 @@ class FirstRunController:
             for document in documents
             if isinstance(document, dict)
         )
+        warning_count += sum(
+            bool(str(getattr(course, field, "") or "").strip())
+            for field in ("summary_warning", "generation_profile_warning")
+        )
         question_count = self.question_count()
         generation_draft = host.generation_flow.draft(course_id)
         first_run_required = (

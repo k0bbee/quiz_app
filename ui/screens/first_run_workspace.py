@@ -280,8 +280,8 @@ class FirstRunWorkspace(QWidget):
             ))
             warning_text = (
                 gm(
-                    f"另有 {self.state.warning_count} 份资料需要检查。",
-                    f"{self.state.warning_count} source(s) need attention.",
+                    f"另有 {self.state.warning_count} 项资料处理提醒。",
+                    f"There are {self.state.warning_count} processing notice(s) to review.",
                 )
                 if self.state.warning_count
                 else gm("资料未发现需要处理的提醒。", "No source alerts were found.")
