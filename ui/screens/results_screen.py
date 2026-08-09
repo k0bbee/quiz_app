@@ -298,6 +298,7 @@ class ResultsScreen(QWidget):
                         if answer.question_id in self._snapshot_question_ids
                         else self._live_course_project
                     ),
+                    error_reason=getattr(answer, "error_reason", ""),
                 )
             else:
                 # Minimal card without question data

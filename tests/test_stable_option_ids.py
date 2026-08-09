@@ -145,6 +145,39 @@ class StableOptionIdTests(unittest.TestCase):
         self.assertIn("Fetch → Decode", text)
         self.assertNotIn("decode → fetch", text)
 
+    def test_review_card_shows_the_selected_error_reason(self):
+        question = Question(
+            question_id="q-review-reason",
+            type=QuestionType.TRUE_FALSE,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": {
+                    "stem": "题目",
+                    "options": ["正确", "错误"],
+                    "explanation": "解释",
+                },
+                "en": {
+                    "stem": "Question",
+                    "options": ["True", "False"],
+                    "explanation": "Explanation",
+                },
+            },
+            correct_answer=True,
+            topic="topic",
+        )
+        card = QuestionReviewCard()
+        self.addCleanup(card.close)
+        card.set_result(
+            0,
+            question,
+            False,
+            is_correct=False,
+            error_reason="concept_gap",
+        )
+
+        self.assertFalse(card.error_reason_label.isHidden())
+        self.assertIn("概念没掌握", card.error_reason_label.text())
+
 
 if __name__ == "__main__":
     unittest.main()

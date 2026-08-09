@@ -9,6 +9,13 @@ from ui.widgets.source_refs import format_source_refs
 from ui.widgets.source_refs_panel import SourceRefsPanel
 
 
+_ERROR_REASON_LABELS = {
+    "concept_gap": ("概念没掌握", "Concept gap"),
+    "misread": ("看错题目", "Misread the question"),
+    "guess": ("不确定/猜的", "Unsure or guessed"),
+}
+
+
 class QuestionReviewCard(QFrame):
     """Displays a single question result in the review list."""
 
@@ -22,6 +29,7 @@ class QuestionReviewCard(QFrame):
         self._user_answer = None
         self._is_correct = None
         self._skipped = False
+        self._error_reason = ""
 
         self.setFrameStyle(QFrame.Shape.StyledPanel | QFrame.Shadow.Plain)
         self.setObjectName("reviewCard")
@@ -53,6 +61,12 @@ class QuestionReviewCard(QFrame):
         self.answer_info.setObjectName("reviewAnswerInfo")
         layout.addWidget(self.answer_info)
 
+        self.error_reason_label = QLabel()
+        self.error_reason_label.setObjectName("reviewErrorReason")
+        self.error_reason_label.setWordWrap(True)
+        self.error_reason_label.hide()
+        layout.addWidget(self.error_reason_label)
+
         # Explanation
         self.explanation_label = QLabel()
         self.explanation_label.setObjectName("reviewExplanation")
@@ -82,6 +96,7 @@ class QuestionReviewCard(QFrame):
         lang: str = None,
         skipped: bool = False,
         course_project=None,
+        error_reason: str = "",
     ):
         """Populate the card with question result data."""
         self._index = index
@@ -89,6 +104,7 @@ class QuestionReviewCard(QFrame):
         self._user_answer = user_answer
         self._is_correct = is_correct
         self._skipped = skipped
+        self._error_reason = str(error_reason or "").strip()
         self._course_project = course_project
         self._render()
 
@@ -122,6 +138,18 @@ class QuestionReviewCard(QFrame):
                 "Your answer: {}  |  Correct: {}"
             ).format(user, correct)
         )
+        reason = _ERROR_REASON_LABELS.get(self._error_reason)
+        if reason and not self._skipped and not self._is_correct:
+            self.error_reason_label.setText(
+                self.lang_manager.get_text(
+                    "记录原因：{}",
+                    "Recorded reason: {}",
+                ).format(self.lang_manager.get_text(*reason))
+            )
+            self.error_reason_label.show()
+        else:
+            self.error_reason_label.clear()
+            self.error_reason_label.hide()
 
         # Explanation
         self.explanation_label.setText(self.lang_manager.get_text(
