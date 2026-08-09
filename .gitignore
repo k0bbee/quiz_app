@@ -40,6 +40,8 @@ exports/
 generated/
 copyright-submission/
 软件著作权申请资料/
+/build/
+/dist/
 
 # Local software-copyright application tooling and source materials
 /core/copyright_*.py
