@@ -50,6 +50,15 @@ class ApplicationSmokeTests(unittest.TestCase):
             )
             self.assertTrue(course_manager.save(course))
 
+            source_path = root / "materials" / "startup-notes.md"
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            source_path.write_text(
+                "# 启动测试\n\n这是用于跨页面来源复盘烟测的课程资料。\n",
+                encoding="utf-8",
+            )
+            course.documents = [{"path": str(source_path)}]
+            self.assertTrue(course_manager.save(course))
+
             question = Question(
                 question_id="smoke-q1",
                 type=QuestionType.MULTIPLE_CHOICE,
@@ -71,6 +80,16 @@ class ApplicationSmokeTests(unittest.TestCase):
                 metadata={
                     "course_id": course.course_id,
                     "topic_title": "启动测试",
+                    "source_refs": [
+                        {
+                            "chunk_id": "smoke-source-1",
+                            "source_file": source_path.name,
+                            "line_start": 3,
+                            "line_end": 3,
+                            "heading": "启动测试",
+                            "excerpt": "这是用于跨页面来源复盘烟测的课程资料。",
+                        }
+                    ],
                 },
             )
             self.assertTrue(question_bank.save(question))
@@ -119,20 +138,26 @@ class ApplicationSmokeTests(unittest.TestCase):
                     window.SCREEN_QUIZ,
                     window.stack.currentIndex(),
                 )
-                window.quiz_screen.answer_area.set_answer("A")
+                window.quiz_screen.answer_area.set_answer("B")
                 window.quiz_screen.next_question_btn.click()
                 self.assertTrue(window.quiz_screen.feedback_frame.isVisibleTo(window.quiz_screen))
+                self.assertFalse(window.quiz_screen.source_refs_panel.isHidden())
+                self.assertIn("startup-notes.md", window.quiz_screen.source_refs_panel.text())
+                self.assertIn("行 3", window.quiz_screen.source_refs_panel.text())
                 window.quiz_screen.next_question_btn.click()
                 _APP.processEvents()
 
                 self.assertEqual(window.SCREEN_RESULTS, window.stack.currentIndex())
                 records = progress_manager.load_all()
                 self.assertEqual(1, len(records))
-                self.assertEqual(1, records[0].summary.correct)
+                self.assertEqual(0, records[0].summary.correct)
                 self.assertTrue(records[0].set_id.startswith("set-"))
                 self.assertNotEqual(question_set.set_id, records[0].set_id)
-                self.assertFalse(window.results_screen.retry_incorrect_btn.isEnabled())
+                self.assertTrue(window.results_screen.retry_incorrect_btn.isEnabled())
                 self.assertEqual("返回首页", window.results_screen.return_home_btn.text())
+                self.assertEqual(1, window.results_screen.review_layout.count() - 1)
+                review_card = window.results_screen.review_layout.itemAt(0).widget()
+                self.assertIn("startup-notes.md", review_card.source_label.text())
 
                 window.results_screen.return_home_btn.click()
                 _APP.processEvents()
