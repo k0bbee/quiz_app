@@ -474,6 +474,44 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 saved.questions,
             )
 
+    def test_selected_question_can_be_removed_from_current_set_without_deleting_it(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            set_manager = SetManager(str(root / "sets"))
+            question = self._question("q-course-a")
+            question.metadata["course_id"] = "course-a"
+            question_bank.save(question)
+            question_set = QuestionSet.create_new(
+                title={"zh": "重点复习", "en": "Focused Review"},
+                description={"zh": "", "en": ""},
+                topics=["cache"],
+                question_ids=[question.question_id],
+            )
+            question_set.metadata["course_id"] = "course-a"
+            set_manager.save(question_set)
+
+            screen = self._screen(
+                root,
+                question_bank,
+                set_manager=set_manager,
+            )
+            screen.set_current_course("course-a")
+            screen.set_filter.setCurrentIndex(
+                screen.set_filter.findData(question_set.set_id)
+            )
+            screen.refresh()
+            screen.question_table.selectRow(0)
+            self.assertFalse(screen.remove_from_set_btn.isHidden())
+            self.assertTrue(screen.remove_from_set_btn.isEnabled())
+
+            with patch("ui.screens.question_bank_screen.QMessageBox.information"):
+                screen._remove_selected_from_question_set()
+
+            saved = set_manager.get(question_set.set_id)
+            self.assertEqual([], saved.questions)
+            self.assertIsNotNone(question_bank.get(question.question_id))
+
     def test_question_bank_screen_filters_questions_by_selected_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             question_bank = QuestionBank(str(Path(tmpdir) / "questions"))

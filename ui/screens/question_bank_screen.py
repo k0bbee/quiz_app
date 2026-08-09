@@ -313,6 +313,20 @@ class QuestionBankScreen(QWidget):
         self.add_to_set_btn.clicked.connect(self._add_selected_to_question_set)
         self.add_to_set_btn.setEnabled(False)
         list_actions_row.addWidget(self.add_to_set_btn)
+        self.remove_from_set_btn = QPushButton(
+            self.lang_manager.get_text("从当前题集移除", "Remove from Current Set")
+        )
+        self.remove_from_set_btn.setObjectName("secondaryButton")
+        self.remove_from_set_btn.setToolTip(
+            self.lang_manager.get_text(
+                "仅移除题目集引用，不删除题库题目",
+                "Remove only the question-set references; keep bank questions",
+            )
+        )
+        self.remove_from_set_btn.clicked.connect(self._remove_selected_from_question_set)
+        self.remove_from_set_btn.setVisible(False)
+        self.remove_from_set_btn.setEnabled(False)
+        list_actions_row.addWidget(self.remove_from_set_btn)
         list_actions_row.addStretch(1)
         layout.addLayout(list_actions_row)
 
@@ -577,6 +591,15 @@ class QuestionBankScreen(QWidget):
                 "Add selected questions to a question set in the current course",
             )
         )
+        self.remove_from_set_btn.setText(
+            self.lang_manager.get_text("从当前题集移除", "Remove from Current Set")
+        )
+        self.remove_from_set_btn.setToolTip(
+            self.lang_manager.get_text(
+                "仅移除题目集引用，不删除题库题目",
+                "Remove only the question-set references; keep bank questions",
+            )
+        )
         self.cancel_historical_import_btn.setText(
             self.lang_manager.get_text("停止导入", "Stop Import")
         )
@@ -740,6 +763,7 @@ class QuestionBankScreen(QWidget):
             self._show_empty_state()
             self.delete_btn.setEnabled(False)
             self.add_to_set_btn.setEnabled(False)
+            self._update_set_membership_actions()
             return
         if len(selected_ids) > 1:
             self.current_question_id = ""
@@ -757,6 +781,7 @@ class QuestionBankScreen(QWidget):
             self.save_btn.setEnabled(False)
             self.delete_btn.setEnabled(True)
             self.add_to_set_btn.setEnabled(self.set_manager is not None)
+            self._update_set_membership_actions()
             return
 
         qid = selected_ids[0]
@@ -776,6 +801,7 @@ class QuestionBankScreen(QWidget):
         self.save_btn.setEnabled(True)
         self.delete_btn.setEnabled(True)
         self.add_to_set_btn.setEnabled(self.set_manager is not None)
+        self._update_set_membership_actions()
 
     def _add_selected_to_question_set(self):
         """Add selected questions to one existing set in the current course."""
@@ -852,6 +878,58 @@ class QuestionBankScreen(QWidget):
             ),
         )
 
+    def _remove_selected_from_question_set(self):
+        """Remove selected questions from the active set without deleting them."""
+        if self.set_manager is None:
+            return
+        set_id = self._selected_set_id()
+        question_ids = self._selected_question_ids()
+        if not set_id or not question_ids:
+            return
+        question_set = self.set_manager.get(set_id)
+        if question_set is None:
+            return
+        selected = set(question_ids)
+        original_questions = list(question_set.questions)
+        question_set.questions = [
+            question_id
+            for question_id in original_questions
+            if question_id not in selected
+        ]
+        removed_count = len(original_questions) - len(question_set.questions)
+        if removed_count <= 0:
+            return
+        if not self.set_manager.save(question_set):
+            question_set.questions = original_questions
+            QMessageBox.warning(
+                self,
+                self.lang_manager.get_text("保存失败", "Save Failed"),
+                self.lang_manager.get_text(
+                    "题目集保存失败，未修改题目归属。",
+                    "The question set could not be saved; no membership was changed.",
+                ),
+            )
+            return
+        self.question_bank_changed.emit()
+        self.refresh()
+        QMessageBox.information(
+            self,
+            self.lang_manager.get_text("已从题集移除", "Removed from Set"),
+            self.lang_manager.get_text(
+                f"已从“{question_set.get_title(self.lang_manager.current)}”移除 {removed_count} 道题；题库题目仍保留。",
+                f"Removed {removed_count} question(s) from “{question_set.get_title(self.lang_manager.current)}”; bank questions were kept.",
+            ),
+        )
+
+    def _update_set_membership_actions(self):
+        """Keep add/remove actions aligned with the current set filter."""
+        selected = bool(self._selected_question_ids())
+        has_sets = self.set_manager is not None
+        current_set = bool(self._selected_set_id())
+        self.add_to_set_btn.setEnabled(selected and has_sets)
+        self.remove_from_set_btn.setVisible(current_set and has_sets)
+        self.remove_from_set_btn.setEnabled(selected and current_set and has_sets)
+
     def _show_empty_state(self):
         """Show an explicit empty detail state instead of a blank editor."""
         self.editor.setReadOnly(True)
@@ -904,6 +982,7 @@ class QuestionBankScreen(QWidget):
         self.save_btn.setEnabled(True)
         self.delete_btn.setEnabled(False)
         self.add_to_set_btn.setEnabled(False)
+        self._update_set_membership_actions()
         if self.width() < 1100:
             self._open_responsive_inspector()
 
@@ -1013,6 +1092,9 @@ class QuestionBankScreen(QWidget):
     def _set_historical_import_busy(self, busy: bool):
         self.import_text_btn.setEnabled(not busy)
         self.add_to_set_btn.setEnabled(not busy and bool(self._selected_question_ids()))
+        self.remove_from_set_btn.setEnabled(
+            not busy and bool(self._selected_question_ids()) and bool(self._selected_set_id())
+        )
         self.cancel_historical_import_btn.setVisible(busy)
         self.cancel_historical_import_btn.setEnabled(busy)
         self.historical_import_status_label.setVisible(busy)
@@ -1513,6 +1595,7 @@ class QuestionBankScreen(QWidget):
             self.next_btn,
             self.new_btn,
             self.add_to_set_btn,
+            self.remove_from_set_btn,
             self.save_btn,
             self.delete_btn,
         ):
