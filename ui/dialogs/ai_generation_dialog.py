@@ -1548,27 +1548,68 @@ class AIGenerationDialog(QDialog):
         if self.lang_manager.current == "zh":
             lines = [f"本次计划生成 {count} 题"]
             sections = (
-                ("主题分布", plan["topics"]),
-                ("题型分布", plan["question_types"]),
-                ("难度分布", plan["difficulties"]),
-                ("能力分布", Counter(item.target_skill for item in plan_items)),
+                ("主题分布", plan["topics"], "topic"),
+                ("题型分布", plan["question_types"], "question_type"),
+                ("难度分布", plan["difficulties"], "difficulty"),
+                ("能力分布", Counter(item.target_skill for item in plan_items), "skill"),
             )
         else:
             lines = [f"Planned total: {count} question(s)"]
             sections = (
-                ("Topic distribution", plan["topics"]),
-                ("Question type distribution", plan["question_types"]),
-                ("Difficulty distribution", plan["difficulties"]),
-                ("Skill distribution", Counter(item.target_skill for item in plan_items)),
+                ("Topic distribution", plan["topics"], "topic"),
+                ("Question type distribution", plan["question_types"], "question_type"),
+                ("Difficulty distribution", plan["difficulties"], "difficulty"),
+                ("Skill distribution", Counter(item.target_skill for item in plan_items), "skill"),
             )
-        for title, values in sections:
+        topic_titles = {
+            topic_value(topic): topic_label(topic, self.lang_manager.current)
+            for topic in topics
+        }
+        for title, values, value_kind in sections:
             lines.append("")
             lines.append(title)
             for key, value in values.items():
                 if value > 0:
-                    lines.append(f"- {key}: {value}")
+                    display_key = (
+                        topic_titles.get(str(key), str(key))
+                        if value_kind == "topic"
+                        else self._plan_value_label(key, value_kind)
+                    )
+                    lines.append(f"- {display_key}: {value}")
         self._append_plan_item_summary(lines, plan_items)
         self.plan_preview.setPlainText("\n".join(lines))
+
+    def _plan_value_label(self, value: str, kind: str) -> str:
+        """Convert stable plan enum values to readable localized labels."""
+        labels = {
+            "question_type": {
+                "multiple_choice": ("选择题", "Multiple choice"),
+                "scenario_choice": ("情境选择题", "Scenario choice"),
+                "true_false": ("判断题", "True/false"),
+                "fill_in_blank": ("填空题", "Fill in the blank"),
+                "matching": ("配对题", "Matching"),
+                "ordering": ("排序题", "Ordering"),
+                "short_answer": ("简答题", "Short answer"),
+            },
+            "difficulty": {
+                "easy": ("简单", "Easy"),
+                "medium": ("中等", "Medium"),
+                "hard": ("困难", "Hard"),
+            },
+            "skill": {
+                "definition": ("定义回忆", "Definition recall"),
+                "comparison": ("比较辨析", "Comparison"),
+                "application": ("实际应用", "Application"),
+                "scenario": ("情境推理", "Scenario reasoning"),
+                "calculation": ("计算", "Calculation"),
+                "debugging": ("排错", "Debugging"),
+            },
+        }
+        pair = labels.get(kind, {}).get(str(value))
+        if pair is None:
+            fallback = " ".join(str(value or "").replace("_", " ").split())
+            return fallback
+        return self.lang_manager.get_text(*pair)
 
     def _append_plan_item_summary(self, lines: list[str], plan_items: list) -> None:
         if self.lang_manager.current == "zh":
@@ -1581,7 +1622,12 @@ class AIGenerationDialog(QDialog):
                 )
                 lines.append(topic_title)
                 for (question_type, difficulty, skill), amount in groups.items():
-                    lines.append(f"- {amount} 道 {difficulty} / {question_type} / {skill}")
+                    lines.append(
+                        f"- {amount} 道 "
+                        f"{self._plan_value_label(difficulty, 'difficulty')} / "
+                        f"{self._plan_value_label(question_type, 'question_type')} / "
+                        f"{self._plan_value_label(skill, 'skill')}"
+                    )
             return
 
         lines.append("")
@@ -1593,7 +1639,12 @@ class AIGenerationDialog(QDialog):
             )
             lines.append(topic_title)
             for (question_type, difficulty, skill), amount in groups.items():
-                lines.append(f"- {amount} x {difficulty} / {question_type} / {skill}")
+                lines.append(
+                    f"- {amount} x "
+                    f"{self._plan_value_label(difficulty, 'difficulty')} / "
+                    f"{self._plan_value_label(question_type, 'question_type')} / "
+                    f"{self._plan_value_label(skill, 'skill')}"
+                )
 
     def _start_generation(
         self,
