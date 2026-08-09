@@ -913,7 +913,12 @@ class CourseScreen(QWidget):
             path = Path(str(value)).expanduser()
             if not path.is_file() or path.suffix.lower() not in SUPPORTED_EXTENSIONS:
                 continue
-            normalized = str(path.resolve())
+            # Keep the path spelling selected by the user.  ``resolve()`` can
+            # expand Windows 8.3 aliases (for example ``RUNNER~1``), which
+            # changes the value displayed/stored by the staging UI without
+            # changing the underlying file.  ``absolute()`` still normalizes
+            # relative drops while preserving that user-facing identity.
+            normalized = str(path.absolute())
             if normalized in existing:
                 continue
             item = QListWidgetItem(path.name)
