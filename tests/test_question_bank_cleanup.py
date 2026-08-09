@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QItemSelectionModel
 from PyQt6.QtWidgets import QApplication, QMessageBox, QAbstractItemView, QTableView, QDialog
 
 from core import course_index
@@ -428,6 +428,51 @@ class QuestionBankCleanupTests(unittest.TestCase):
 
             visible_ids = self._visible_question_ids(screen)
             self.assertEqual({"q-course-a"}, visible_ids)
+
+    def test_selected_questions_can_be_added_to_a_named_course_set(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            question_bank = QuestionBank(str(root / "questions"))
+            set_manager = SetManager(str(root / "sets"))
+            questions = [self._question("q-course-a"), self._question("q-course-b")]
+            for question in questions:
+                question.metadata["course_id"] = "course-a"
+            question_bank.save_many(questions)
+            question_set = QuestionSet.create_new(
+                title={"zh": "重点复习", "en": "Focused Review"},
+                description={"zh": "", "en": ""},
+                topics=["cache"],
+                question_ids=["q-course-a"],
+            )
+            question_set.metadata["course_id"] = "course-a"
+            set_manager.save(question_set)
+
+            screen = self._screen(
+                root,
+                question_bank,
+                set_manager=set_manager,
+            )
+            screen.set_current_course("course-a")
+            screen.refresh()
+            screen.question_table.selectRow(0)
+            second_index = screen.question_table_model.index(1, 0)
+            screen.question_table.selectionModel().select(
+                second_index,
+                QItemSelectionModel.SelectionFlag.Select
+                | QItemSelectionModel.SelectionFlag.Rows,
+            )
+
+            with patch(
+                "ui.screens.question_bank_screen.QInputDialog.getItem",
+                return_value=("重点复习", True),
+            ), patch("ui.screens.question_bank_screen.QMessageBox.information"):
+                screen._add_selected_to_question_set()
+
+            saved = set_manager.get(question_set.set_id)
+            self.assertEqual(
+                ["q-course-a", "q-course-b"],
+                saved.questions,
+            )
 
     def test_question_bank_screen_filters_questions_by_selected_set(self):
         with tempfile.TemporaryDirectory() as tmpdir:
