@@ -310,6 +310,12 @@ class FirstRunFlowTests(unittest.TestCase):
             source_file.write_bytes(b"pdf")
             window.first_run_screen.materials_dropped.emit([str(source_file)])
 
+            course_screen.start_import.assert_not_called()
+            self.assertEqual(1, window.first_run_screen.staged_files_list.count())
+            self.assertEqual("导入 1 个文件", window.first_run_screen.primary_btn.text())
+
+            window.first_run_screen.primary_btn.click()
+
         course_screen.start_import.assert_called_once_with(
             files=[str(source_file.absolute())],
             present_result=False,
@@ -413,6 +419,9 @@ class FirstRunFlowTests(unittest.TestCase):
                 return_value="",
             ):
                 window.first_run_screen.primary_btn.click()
+                course_screen.start_import.assert_not_called()
+                self.assertEqual(2, window.first_run_screen.staged_files_list.count())
+                window.first_run_screen.primary_btn.click()
 
         course_screen.start_import.assert_called_once_with(
             files=[str(first.absolute()), str(second.absolute())],
@@ -422,6 +431,31 @@ class FirstRunFlowTests(unittest.TestCase):
             FirstRunStage.IMPORTING,
             window.first_run_screen.state.stage,
         )
+
+    def test_first_run_staging_deduplicates_and_removes_selected_files(self):
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+        self.addCleanup(workspace.lang_manager.set_language, "zh")
+
+        with tempfile.TemporaryDirectory() as source_dir:
+            first = Path(source_dir) / "lecture.pdf"
+            second = Path(source_dir) / "notes.docx"
+            first.write_bytes(b"pdf")
+            second.write_bytes(b"docx")
+
+            workspace.stage_materials([str(first), str(second), str(first)])
+
+            self.assertEqual(2, workspace.staged_files_list.count())
+            self.assertEqual("导入 2 个文件", workspace.primary_btn.text())
+            self.assertFalse(workspace.remove_selected_btn.isHidden())
+
+            workspace.staged_files_list.setCurrentRow(0)
+            workspace.remove_selected_btn.click()
+
+        self.assertEqual(1, workspace.staged_files_list.count())
+        self.assertEqual("导入 1 个文件", workspace.primary_btn.text())
+        workspace.lang_manager.set_language("en")
+        self.assertEqual("Import 1 File", workspace.primary_btn.text())
 
     def test_first_run_keeps_folder_import_as_a_secondary_action(self):
         window = MainWindow()

@@ -11,6 +11,8 @@ from PyQt6.QtWidgets import (
     QLabel,
     QProgressBar,
     QPushButton,
+    QListWidget,
+    QListWidgetItem,
     QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
@@ -110,6 +112,7 @@ class FirstRunWorkspace(QWidget):
     choose_materials_requested = pyqtSignal()
     choose_folder_requested = pyqtSignal()
     materials_dropped = pyqtSignal(list)
+    materials_import_requested = pyqtSignal(list)
     example_requested = pyqtSignal()
     generate_requested = pyqtSignal()
     start_requested = pyqtSignal()
@@ -157,7 +160,21 @@ class FirstRunWorkspace(QWidget):
         self.materials_drop_zone.setMinimumWidth(0)
         self.materials_drop_zone.setWordWrap(True)
         self.materials_drop_zone.files_dropped.connect(self.materials_dropped.emit)
+        self.materials_dropped.connect(self.stage_materials)
         card_layout.addWidget(self.materials_drop_zone)
+
+        self.staged_files_list = QListWidget()
+        self.staged_files_list.setObjectName("firstRunStagedFiles")
+        self.staged_files_list.setMinimumHeight(60)
+        self.staged_files_list.setMaximumHeight(110)
+        self.staged_files_list.hide()
+        card_layout.addWidget(self.staged_files_list)
+
+        self.remove_selected_btn = QPushButton()
+        self.remove_selected_btn.setObjectName("secondaryButton")
+        self.remove_selected_btn.clicked.connect(self.remove_selected_materials)
+        self.remove_selected_btn.hide()
+        card_layout.addWidget(self.remove_selected_btn)
 
         self.materials_step = _FirstRunStep(1)
         self.generation_step = _FirstRunStep(2)
@@ -356,6 +373,7 @@ class FirstRunWorkspace(QWidget):
             self.state.stage is FirstRunStage.MATERIALS
             and not recovery
         )
+        self._render_staged_materials()
         self._render_action()
         self._render_progress()
 
@@ -385,8 +403,20 @@ class FirstRunWorkspace(QWidget):
     def _render_action(self) -> None:
         gm = self.lang_manager.get_text
         stage = self.state.stage
+        staged_count = len(self.staged_materials())
         labels = {
-            FirstRunStage.MATERIALS: gm("选择文件", "Choose Files"),
+            FirstRunStage.MATERIALS: (
+                gm(
+                    f"导入 {staged_count} 个文件",
+                    (
+                        "Import 1 File"
+                        if staged_count == 1
+                        else f"Import {staged_count} Files"
+                    ),
+                )
+                if staged_count
+                else gm("选择文件", "Choose Files")
+            ),
             FirstRunStage.ARCHIVED_RECOVERY: gm("恢复课程", "Restore Course"),
             FirstRunStage.IMPORTING: gm("正在准备课程…", "Preparing Course…"),
             FirstRunStage.GENERATE: gm("生成练习", "Generate Practice"),
@@ -404,9 +434,12 @@ class FirstRunWorkspace(QWidget):
         self.example_btn.setVisible(
             stage is FirstRunStage.MATERIALS
             and not busy
+            and not staged_count
         )
         alternate_label = (
-            gm("批量导入文件夹", "Import Folder")
+            gm("添加更多文件", "Add More Files")
+            if stage is FirstRunStage.MATERIALS and staged_count
+            else gm("批量导入文件夹", "Import Folder")
             if stage is FirstRunStage.MATERIALS
             else gm("导入新课程", "Import New Course")
         )
@@ -444,6 +477,11 @@ class FirstRunWorkspace(QWidget):
         self.status_label.style().polish(self.status_label)
 
     def _activate_primary(self) -> None:
+        if self.state.stage is FirstRunStage.MATERIALS:
+            staged = self.staged_materials()
+            if staged:
+                self.materials_import_requested.emit(staged)
+                return
         signal = {
             FirstRunStage.MATERIALS: self.choose_materials_requested,
             FirstRunStage.ARCHIVED_RECOVERY: self.restore_courses_requested,
@@ -456,6 +494,59 @@ class FirstRunWorkspace(QWidget):
 
     def _activate_alternate(self) -> None:
         if self.state.stage is FirstRunStage.MATERIALS:
-            self.choose_folder_requested.emit()
+            if self.staged_materials():
+                self.choose_materials_requested.emit()
+            else:
+                self.choose_folder_requested.emit()
         elif self.state.stage is FirstRunStage.ARCHIVED_RECOVERY:
             self.choose_materials_requested.emit()
+
+    def stage_materials(self, files) -> None:
+        """Stage supported files locally; parsing starts only on confirmation."""
+        existing = {
+            str(self.staged_files_list.item(row).data(Qt.ItemDataRole.UserRole)).casefold()
+            for row in range(self.staged_files_list.count())
+        }
+        for raw_path in files or ():
+            path = Path(str(raw_path or "")).expanduser()
+            if not path.is_file() or path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+                continue
+            normalized = str(path.absolute())
+            key = normalized.casefold()
+            if key in existing:
+                continue
+            item = QListWidgetItem(f"{path.name} — {path.parent.name}")
+            item.setData(Qt.ItemDataRole.UserRole, normalized)
+            item.setToolTip(normalized)
+            self.staged_files_list.addItem(item)
+            existing.add(key)
+        self._render_staged_materials()
+        self._render_action()
+
+    def staged_materials(self) -> list[str]:
+        return [
+            str(self.staged_files_list.item(row).data(Qt.ItemDataRole.UserRole))
+            for row in range(self.staged_files_list.count())
+        ]
+
+    def remove_selected_materials(self) -> None:
+        for item in list(self.staged_files_list.selectedItems()):
+            self.staged_files_list.takeItem(self.staged_files_list.row(item))
+        self._render_staged_materials()
+        self._render_action()
+
+    def clear_staged_materials(self) -> None:
+        self.staged_files_list.clear()
+        self._render_staged_materials()
+        self._render_action()
+
+    def _render_staged_materials(self) -> None:
+        visible = (
+            self.state.stage is FirstRunStage.MATERIALS
+            and self.staged_files_list.count() > 0
+        )
+        self.staged_files_list.setVisible(visible)
+        self.remove_selected_btn.setVisible(visible)
+        self.remove_selected_btn.setText(
+            self.lang_manager.get_text("移除所选文件", "Remove Selected")
+        )

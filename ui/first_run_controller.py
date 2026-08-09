@@ -6,7 +6,11 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import QFileDialog
 
-from core.first_run_flow import build_first_run_exam_plan, resolve_first_run_state
+from core.first_run_flow import (
+    FirstRunStage,
+    build_first_run_exam_plan,
+    resolve_first_run_state,
+)
 from core.example_course import install_example_course
 from core.study_intent import StudyAction, StudyIntent
 from core.document_parser import SUPPORTED_EXTENSIONS
@@ -160,7 +164,12 @@ class FirstRunController:
                 "Course materials (*.pdf *.pptx *.docx *.md *.txt)",
             ),
         )
-        self.import_files(files)
+        if not files:
+            return
+        if host.first_run_screen.state.stage is FirstRunStage.MATERIALS:
+            host.first_run_screen.stage_materials(files)
+        else:
+            self.import_files(files)
 
     def choose_folder(self) -> None:
         """Keep folder import as the secondary bulk-selection path."""
@@ -250,6 +259,7 @@ class FirstRunController:
 
     def import_completed(self, _project) -> None:
         host = self._host
+        host.first_run_screen.clear_staged_materials()
         host._first_run_operation = ""
         host._first_run_error = ""
         host._first_run_progress = None

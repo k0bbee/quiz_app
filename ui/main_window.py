@@ -452,7 +452,7 @@ class MainWindow(QMainWindow):
         self.first_run_screen.choose_folder_requested.connect(
             self.first_run.choose_folder
         )
-        self.first_run_screen.materials_dropped.connect(
+        self.first_run_screen.materials_import_requested.connect(
             self.first_run.import_files
         )
         self.first_run_screen.example_requested.connect(
