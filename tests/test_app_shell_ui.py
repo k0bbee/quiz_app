@@ -426,6 +426,33 @@ class AppShellUiTests(unittest.TestCase):
             self.assertEqual(main_window.SCREEN_QUIZ, main_window.stack.currentIndex())
             self.assertTrue(main_window.settings_window.isVisible())
 
+    def test_english_context_tabs_do_not_force_a_wider_window(self):
+            main_window = MainWindow()
+            self.addCleanup(main_window.close)
+            self.addCleanup(main_window.lang_manager.set_language, "zh")
+            main_window.lang_manager.set_language("en")
+            main_window.resize(900, 680)
+            main_window.show()
+            _APP.processEvents()
+
+            self.assertLessEqual(main_window.width(), 900)
+            self.assertTrue(
+                main_window.navigate_route(
+                    Route.course(tab="overview"),
+                    allow_first_run_redirect=False,
+                )
+            )
+            self.assertEqual(
+                ["Overview", "Sources", "Knowledge", "Generate and Review", "Q&A Review"],
+                [button.text() for button in main_window.app_shell.context_tabs()],
+            )
+            self.assertTrue(
+                all(
+                    button.width() >= button.sizeHint().width()
+                    for button in main_window.app_shell.context_tabs()
+                )
+            )
+
     def test_course_context_does_not_promote_qna_to_primary_navigation(self):
             main_window = MainWindow()
             self.addCleanup(main_window.close)

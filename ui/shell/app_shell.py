@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
@@ -104,7 +105,7 @@ class AppShell(QWidget):
         self.context_title = QLabel("")
         self.context_title.setObjectName("contextTitle")
         self.context_title.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Preferred,
         )
         header_layout.addWidget(self.context_title)
@@ -114,8 +115,29 @@ class AppShell(QWidget):
             self._create_context_tab(attribute, route, navigate)
             for attribute, route in context_routes
         )
+        self.context_tabs_scroll = QScrollArea(self.context_header)
+        self.context_tabs_scroll.setObjectName("contextTabsScroll")
+        self.context_tabs_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.context_tabs_scroll.setWidgetResizable(False)
+        self.context_tabs_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.context_tabs_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self.context_tabs_scroll.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        self.context_tabs_container = QWidget()
+        self.context_tabs_layout = QHBoxLayout(self.context_tabs_container)
+        self.context_tabs_layout.setContentsMargins(0, 0, 0, 0)
+        self.context_tabs_layout.setSpacing(8)
         for button in self._context_tabs:
-            header_layout.addWidget(button)
+            self.context_tabs_layout.addWidget(button)
+        self.context_tabs_layout.addStretch(1)
+        self.context_tabs_scroll.setWidget(self.context_tabs_container)
+        header_layout.addWidget(self.context_tabs_scroll, 1)
 
         content_layout.addWidget(self.context_header)
         content_layout.addWidget(stack, 1)
@@ -167,6 +189,8 @@ class AppShell(QWidget):
             tab = route_tab(route)
             if tab is not None:
                 button.setText(get_text(tab.label_zh, tab.label_en))
+                button.updateGeometry()
+        self._refresh_context_tabs_extent()
         self.context_back_btn.setText(get_text("返回", "Back"))
         self.settings_nav_btn.setText(get_text("设置", "Settings"))
 
@@ -184,6 +208,7 @@ class AppShell(QWidget):
             button.setChecked(
                 visible and destination.tab == route.tab
             )
+        self._refresh_context_tabs_extent()
         self.context_title.setText(
             get_text(spec.title_zh, spec.title_en)
         )
@@ -192,6 +217,22 @@ class AppShell(QWidget):
             (spec.focus or is_library_context) and can_go_back
         )
         self.context_back_btn.setEnabled(can_go_back)
+
+    def _refresh_context_tabs_extent(self) -> None:
+        """Keep translated tab labels readable inside the scrollable strip."""
+        visible_buttons = [
+            button for button in self._context_tabs if button.isVisible()
+        ]
+        buttons = visible_buttons or list(self._context_tabs)
+        margins = self.context_tabs_layout.contentsMargins()
+        spacing = self.context_tabs_layout.spacing()
+        content_width = (
+            sum(button.sizeHint().width() for button in buttons)
+            + max(0, len(buttons) - 1) * spacing
+            + margins.left()
+            + margins.right()
+        )
+        self.context_tabs_container.setFixedWidth(max(1, content_width))
 
     def navigation_buttons(self) -> tuple[QPushButton, ...]:
         return self._navigation_buttons

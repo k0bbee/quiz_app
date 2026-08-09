@@ -126,15 +126,18 @@ class FirstRunWorkspace(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         self.content_stack = QStackedWidget()
         self.content_stack.setObjectName("firstRunContentStack")
+        self.content_stack.setMinimumWidth(0)
         outer.addWidget(self.content_stack)
 
         self.overview_page = QWidget()
+        self.overview_page.setMinimumWidth(0)
         overview_layout = QHBoxLayout(self.overview_page)
         overview_layout.setContentsMargins(28, 28, 28, 28)
         overview_layout.addStretch(1)
 
         self.card = QFrame()
         self.card.setObjectName("firstRunCard")
+        self.card.setMinimumWidth(0)
         self.card.setMaximumWidth(1080)
         card_layout = QVBoxLayout(self.card)
         card_layout.setContentsMargins(28, 26, 28, 26)
@@ -150,6 +153,8 @@ class FirstRunWorkspace(QWidget):
         card_layout.addSpacing(6)
 
         self.materials_drop_zone = _FirstRunDropZone()
+        self.materials_drop_zone.setMinimumWidth(0)
+        self.materials_drop_zone.setWordWrap(True)
         self.materials_drop_zone.files_dropped.connect(self.materials_dropped.emit)
         card_layout.addWidget(self.materials_drop_zone)
 
