@@ -49,7 +49,7 @@ class GenerationReport:
             ]
             if self.rejected_count:
                 lines.append(f"已拒绝候选 {self.rejected_count} 个")
-            reasons = self._rejection_summary()
+            reasons = self._rejection_summary(lang)
             if reasons:
                 lines.append(f"拒绝原因: {reasons}")
             missing = self._missing_summary(lang)
@@ -68,7 +68,7 @@ class GenerationReport:
         ]
         if self.rejected_count:
             lines.append(f"Rejected candidates: {self.rejected_count}")
-        reasons = self._rejection_summary()
+        reasons = self._rejection_summary(lang)
         if reasons:
             lines.append(f"Rejected reasons: {reasons}")
         missing = self._missing_summary(lang)
@@ -102,14 +102,30 @@ class GenerationReport:
             ),
         )
 
-    def _rejection_summary(self) -> str:
+    def _rejection_summary(self, lang: str) -> str:
+        reason_labels = {
+            "quota already filled": ("已满足配额", "Quota already filled"),
+            "no remaining plan slot": ("没有剩余计划槽位", "No remaining plan slot"),
+            "topic not selected": ("主题未选中", "Topic not selected"),
+            "incomplete question content": ("题目内容不完整", "Incomplete question content"),
+            "unknown question type": ("未知题型", "Unknown question type"),
+            "unknown rejection": ("未知原因", "Unknown rejection"),
+        }
         reasons = [
             (reason, count)
             for reason, count in self.rejection_reasons.items()
             if count > 0
         ]
         reasons.sort(key=lambda item: (-item[1], item[0]))
-        return ", ".join(f"{reason}: {count}" for reason, count in reasons[:3])
+        rendered = []
+        for reason, count in reasons[:3]:
+            pair = reason_labels.get(reason)
+            if pair is None:
+                label = reason
+            else:
+                label = pair[0] if lang == "zh" else pair[1]
+            rendered.append(f"{label}: {count}")
+        return ", ".join(rendered)
 
     def _missing_summary(self, lang: str) -> str:
         group_labels = {
