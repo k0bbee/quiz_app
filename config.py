@@ -1,9 +1,16 @@
 """Application configuration — file paths, defaults, constants."""
 
 import os
+import sys
 
-# Base directory of the quiz_app package
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Source checkout root during development; portable executable directory after
+# a PyInstaller build.  User data must never be written into PyInstaller's
+# temporary/internal resource directory.
+BASE_DIR = (
+    os.path.dirname(os.path.abspath(sys.executable))
+    if getattr(sys, "frozen", False)
+    else os.path.dirname(os.path.abspath(__file__))
+)
 
 # ── Data directories ──────────────────────────────────────────
 DATA_DIR = os.path.join(BASE_DIR, "data")
