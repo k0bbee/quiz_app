@@ -99,6 +99,31 @@ class FirstRunFlowTests(unittest.TestCase):
         self.assertGreaterEqual(workspace.card.width(), 960)
         self.assertLessEqual(side_gutter, 120)
 
+    def test_first_run_keeps_steps_and_actions_in_one_visual_center(self):
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+        workspace.resize(900, 680)
+        workspace.show()
+        _APP.processEvents()
+
+        action_gap = (
+            workspace.example_btn.geometry().top()
+            - workspace.generation_step.geometry().bottom()
+        )
+        card_center = workspace.card.geometry().center().y()
+        workspace_center = workspace.rect().center().y()
+
+        self.assertLessEqual(action_gap, 48)
+        self.assertLessEqual(abs(card_center - workspace_center), 48)
+
+    def test_first_run_initial_keyboard_focus_uses_the_primary_action(self):
+        workspace = FirstRunWorkspace()
+        self.addCleanup(workspace.close)
+        workspace.show()
+        _APP.processEvents()
+
+        self.assertIs(workspace.primary_btn, workspace.focusWidget())
+
     def test_first_run_plan_uses_ten_quick_review_questions_in_exam_scope(self):
         project = CourseProject(
             course_id="course-plan",

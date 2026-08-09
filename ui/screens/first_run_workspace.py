@@ -177,7 +177,6 @@ class FirstRunWorkspace(QWidget):
 
         action_layout = QVBoxLayout()
         action_layout.setSpacing(8)
-        action_layout.addStretch(1)
         self.example_btn = QPushButton()
         self.example_btn.setObjectName("secondaryButton")
         self.example_btn.clicked.connect(self.example_requested.emit)
@@ -201,7 +200,11 @@ class FirstRunWorkspace(QWidget):
         action_layout.addWidget(self.primary_btn)
         card_layout.addLayout(action_layout)
 
-        overview_layout.addWidget(self.card, 12)
+        overview_layout.addWidget(
+            self.card,
+            12,
+            Qt.AlignmentFlag.AlignVCenter,
+        )
         overview_layout.addStretch(1)
         self.content_stack.addWidget(self.overview_page)
 
@@ -265,6 +268,11 @@ class FirstRunWorkspace(QWidget):
 
     def generation_widget(self):
         return self._generation_widget
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self.primary_btn.isVisible() and self.primary_btn.isEnabled():
+            self.primary_btn.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def _render(self, *_args) -> None:
         gm = self.lang_manager.get_text
