@@ -304,13 +304,13 @@ class ResultsScreen(QWidget):
                 # Minimal card without question data
                 card.index_label.setText(f"Q{i + 1}")
                 if answer.skipped:
-                    card.icon_label.setText("—")
+                    card.icon_label.clear()
                     card.result_label.setText(self.lang_manager.get_text("未答", "Unanswered"))
                 elif answer.is_correct:
-                    card.icon_label.setText("✅")
+                    card.icon_label.clear()
                     card.result_label.setText(self.lang_manager.get_text("正确", "Correct"))
                 else:
-                    card.icon_label.setText("❌")
+                    card.icon_label.clear()
                     card.result_label.setText(self.lang_manager.get_text("错误", "Incorrect"))
                 card.stem_label.setText(
                     self.lang_manager.get_text(

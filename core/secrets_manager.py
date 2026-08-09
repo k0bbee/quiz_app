@@ -259,5 +259,5 @@ class SecretsManager:
                 return "Windows DPAPI encrypted store"
             settings = read_json(SETTINGS_FILE) or {}
             if settings.get("ai_api_key"):
-                return "settings.json (⚠ plaintext)"
+                return "settings.json (plaintext warning)"
             return "not set"

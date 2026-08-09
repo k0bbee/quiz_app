@@ -222,9 +222,9 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
 
         self.assertEqual({0}, dialog._accepted)
         self.assertEqual([good.question_id], [question.question_id for question in dialog.get_accepted_questions()])
-        self.assertIn("⚠", dialog.question_list.item(1).text())
-        self.assertIn("⚠", dialog.question_list.item(2).text())
-        self.assertIn("⚠", dialog.question_list.item(3).text())
+        self.assertIn("警告", dialog.question_list.item(1).text())
+        self.assertIn("警告", dialog.question_list.item(2).text())
+        self.assertIn("警告", dialog.question_list.item(3).text())
 
         dialog.question_list.setCurrentRow(1)
         details = dialog.quality_editor.toPlainText()
@@ -444,8 +444,8 @@ class QuestionReviewDialogPaginationTests(unittest.TestCase):
         self.addCleanup(dialog.close)
 
         self.assertEqual(set(), dialog._accepted)
-        self.assertIn("⚠", dialog.question_list.item(0).text())
-        self.assertIn("⚠", dialog.question_list.item(1).text())
+        self.assertIn("警告", dialog.question_list.item(0).text())
+        self.assertIn("警告", dialog.question_list.item(1).text())
 
         dialog.question_list.setCurrentRow(0)
         self.assertIn("正确选项", dialog.quality_editor.toPlainText())

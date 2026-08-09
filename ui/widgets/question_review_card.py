@@ -45,7 +45,6 @@ class QuestionReviewCard(QFrame):
         self.index_label = QLabel()
         self.index_label.setObjectName("reviewIndexLabel")
         self.result_label = QLabel()
-        top.addWidget(self.icon_label)
         top.addWidget(self.index_label)
         top.addWidget(self.result_label)
         top.addStretch()
@@ -117,14 +116,14 @@ class QuestionReviewCard(QFrame):
 
         # Icon + result text
         if self._skipped:
-            self.icon_label.setText("—")
+            self.icon_label.clear()
             self.result_label.setText(self.lang_manager.get_text("未答", "Unanswered"))
         elif self._is_correct:
-            self.icon_label.setText("✅")
-            self.result_label.setText(self.lang_manager.get_text("正确 ✓", "Correct ✓"))
+            self.icon_label.clear()
+            self.result_label.setText(self.lang_manager.get_text("正确", "Correct"))
         else:
-            self.icon_label.setText("❌")
-            self.result_label.setText(self.lang_manager.get_text("错误 ✗", "Incorrect ✗"))
+            self.icon_label.clear()
+            self.result_label.setText(self.lang_manager.get_text("错误", "Incorrect"))
 
         # Stem
         self.stem_label.setText(self._question.get_stem(current_lang))
@@ -153,8 +152,8 @@ class QuestionReviewCard(QFrame):
 
         # Explanation
         self.explanation_label.setText(self.lang_manager.get_text(
-            "💡 解析: {}",
-            "💡 Explanation: {}"
+            "解析: {}",
+            "Explanation: {}"
         ).format(self._question.get_explanation(current_lang)))
         metadata = self._question.metadata or {}
         self.source_label.setText(format_source_refs(

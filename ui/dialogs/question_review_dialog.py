@@ -447,11 +447,16 @@ class QuestionReviewDialog(QDialog):
         stem = q.get_stem(lang)
         short = stem[:80] + "..." if len(stem) > 80 else stem
         warning_tags = self._review_warning_tags(q)
-        warning_prefix = f"⚠ {' '.join(warning_tags)} " if warning_tags else ""
+        warning_prefix = (
+            f"{self.lang_manager.get_text('警告：', 'Warning:')}"
+            f"{' '.join(warning_tags)} "
+            if warning_tags
+            else ""
+        )
         prefix = {
-            "accepted": "✓ ",
-            "rejected": "✗ ",
-            "pending": "… ",
+            "accepted": self.lang_manager.get_text("[已接受] ", "[Accepted] "),
+            "rejected": self.lang_manager.get_text("[已拒绝] ", "[Rejected] "),
+            "pending": self.lang_manager.get_text("[待审核] ", "[Pending] "),
         }[self._state_for_index(index)]
         item.setText(f"{warning_prefix}{prefix}Q{index + 1}: {short}")
 

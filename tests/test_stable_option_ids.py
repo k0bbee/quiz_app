@@ -177,6 +177,9 @@ class StableOptionIdTests(unittest.TestCase):
 
         self.assertFalse(card.error_reason_label.isHidden())
         self.assertIn("概念没掌握", card.error_reason_label.text())
+        self.assertNotIn("✅", card.result_label.text())
+        self.assertNotIn("❌", card.result_label.text())
+        self.assertNotIn("💡", card.explanation_label.text())
 
 
 if __name__ == "__main__":
