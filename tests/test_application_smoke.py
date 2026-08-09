@@ -27,6 +27,35 @@ _APP = QApplication.instance() or QApplication([])
 
 @pytest.mark.full
 class ApplicationSmokeTests(unittest.TestCase):
+    def test_empty_application_example_course_reaches_first_question(self):
+        window = MainWindow()
+        self.addCleanup(window.deleteLater)
+
+        self.assertEqual(window.SCREEN_HOME, window.stack.currentIndex())
+        self.assertFalse(window.first_run_screen.example_btn.isHidden())
+
+        window.first_run_screen.example_btn.click()
+        _APP.processEvents()
+
+        self.assertEqual(
+            "example-study-skills",
+            window.course_context.current_course_id(),
+        )
+        self.assertEqual(
+            window.first_run_screen.state.stage.value,
+            "ready",
+        )
+        self.assertTrue(window.first_run_screen.primary_btn.isEnabled())
+
+        window.first_run_screen.primary_btn.click()
+        _APP.processEvents()
+
+        self.assertEqual(window.SCREEN_QUIZ, window.stack.currentIndex())
+        self.assertIsNotNone(window.quiz_screen.session.current_question)
+        self.assertTrue(
+            window.quiz_screen.session.current_question.metadata["source_refs"]
+        )
+
     def test_main_window_navigation_and_one_question_practice_close_the_loop(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
