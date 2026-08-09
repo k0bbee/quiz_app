@@ -43,6 +43,51 @@ class GenerationDialogUiTests(unittest.TestCase):
             self.assertTrue(dialog.config_group.isHidden())
             self.assertEqual(2000, dialog.generation_status_timer.interval())
 
+    def test_basic_generation_controls_fit_the_visible_config_pane(self):
+            dialog = AIGenerationDialog(
+                "course content",
+                {
+                    "ai_provider": "local_agent",
+                    "ai_base_url": "local-agent://auto",
+                    "ai_model": "codex",
+                },
+                available_topics=["io", "memory", "concurrency"],
+            )
+            self.addCleanup(dialog.close)
+            self.addCleanup(dialog.lang_manager.set_language, "zh")
+            dialog.lang_manager.set_language("en")
+            dialog.resize(900, 680)
+            dialog.show()
+            _APP.processEvents()
+
+            viewport_width = dialog.right_scroll.viewport().width()
+            self.assertLessEqual(dialog.right_content.width(), viewport_width + 2)
+
+    def test_advanced_generation_controls_remain_reachable_when_wider_than_pane(self):
+            dialog = AIGenerationDialog(
+                "course content",
+                {
+                    "ai_provider": "local_agent",
+                    "ai_base_url": "local-agent://auto",
+                    "ai_model": "codex",
+                },
+                available_topics=["io", "memory", "concurrency"],
+            )
+            self.addCleanup(dialog.close)
+            self.addCleanup(dialog.lang_manager.set_language, "zh")
+            dialog.lang_manager.set_language("en")
+            dialog.resize(900, 680)
+            dialog.show()
+            _APP.processEvents()
+            dialog.advanced_toggle_btn.click()
+            _APP.processEvents()
+
+            viewport_width = dialog.right_scroll.viewport().width()
+            self.assertTrue(
+                dialog.right_content.width() <= viewport_width + 2
+                or dialog.right_scroll.horizontalScrollBar().isVisible()
+            )
+
     def test_generation_goal_shows_current_selection_in_basic_summary(self):
             dialog = AIGenerationDialog(
                 "course content",

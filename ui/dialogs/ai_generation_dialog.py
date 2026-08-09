@@ -190,7 +190,7 @@ class AIGenerationDialog(QDialog):
         self.right_scroll.setWidgetResizable(True)
         self.right_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.right_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
         )
 
         self.right_content = QWidget()
@@ -201,7 +201,8 @@ class AIGenerationDialog(QDialog):
         self.goal_group = QGroupBox(
             self.lang_manager.get_text("生成目标", "Generation Goal")
         )
-        goal_layout = QHBoxLayout(self.goal_group)
+        goal_layout = QVBoxLayout(self.goal_group)
+        goal_layout.setSpacing(6)
         self.goal_button_group = QButtonGroup(self)
         self.goal_button_group.setExclusive(True)
         self.quick_review_goal_btn = QPushButton(
@@ -230,8 +231,8 @@ class AIGenerationDialog(QDialog):
 
         self.historical_profile_checkbox = QCheckBox(
             self.lang_manager.get_text(
-                "参考已导入真题结构（可选）",
-                "Use imported exam structure (optional)",
+                "参考真题结构",
+                "Use exam structure",
             )
         )
         self.historical_profile_checkbox.setObjectName("historicalExamProfileCheck")
@@ -249,19 +250,16 @@ class AIGenerationDialog(QDialog):
         self.basic_group = QGroupBox(
             self.lang_manager.get_text("练习设置", "Practice Settings")
         )
-        basic_layout = QFormLayout(self.basic_group)
-        basic_layout.setLabelAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
-        basic_layout.setHorizontalSpacing(16)
-        basic_layout.setVerticalSpacing(10)
+        basic_layout = QVBoxLayout(self.basic_group)
+        basic_layout.setSpacing(6)
 
         self.count_label = QLabel(self.lang_manager.get_text("数量:", "Count:"))
         self.count_spin = WheelSafeSpinBox()
         self.count_spin.setRange(3, 60)
         default_count = int(self.settings.get("default_question_count", 15) or 15)
         self.count_spin.setValue(max(self.count_spin.minimum(), min(self.count_spin.maximum(), default_count)))
-        basic_layout.addRow(self.count_label, self.count_spin)
+        basic_layout.addWidget(self.count_label)
+        basic_layout.addWidget(self.count_spin)
 
         self.diff_label = QLabel(self.lang_manager.get_text("整体难度:", "Overall difficulty:"))
         self.diff_combo = WheelSafeComboBox()
@@ -277,9 +275,10 @@ class AIGenerationDialog(QDialog):
             if self.diff_combo.itemData(i) == self.settings.get("default_difficulty", "medium"):
                 self.diff_combo.setCurrentIndex(i)
                 break
-        basic_layout.addRow(self.diff_label, self.diff_combo)
-        basic_layout.addRow("", self.goal_group)
-        basic_layout.addRow("", self.historical_profile_checkbox)
+        basic_layout.addWidget(self.diff_label)
+        basic_layout.addWidget(self.diff_combo)
+        basic_layout.addWidget(self.goal_group)
+        basic_layout.addWidget(self.historical_profile_checkbox)
         right_layout.addWidget(self.basic_group)
 
         self.config_group = QGroupBox(
@@ -967,8 +966,8 @@ class AIGenerationDialog(QDialog):
         )
         self.historical_profile_checkbox.setText(
             self.lang_manager.get_text(
-                "参考已导入真题结构（可选）",
-                "Use imported exam structure (optional)",
+                "参考真题结构",
+                "Use exam structure",
             )
         )
         if self._historical_exam_profile is None:
