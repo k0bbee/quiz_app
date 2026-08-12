@@ -110,9 +110,12 @@ class LibraryScreenTests(unittest.TestCase):
             screen.set_current_course("course-os")
             screen.refresh()
 
-            self.assertEqual(2, screen.workspace_tabs.count())
-            self.assertEqual("question_records", screen.workspace_tabs.widget(0).objectName())
-            self.assertEqual("question_sets", screen.workspace_tabs.widget(1).objectName())
+            self.assertFalse(screen.question_screen.isHidden())
+            self.assertTrue(screen.set_panel.isHidden())
+            screen.show_question_sets()
+            self.assertTrue(screen.question_screen.isHidden())
+            self.assertFalse(screen.set_panel.isHidden())
+            screen.show_questions()
             self.assertTrue(screen.question_screen.page_header.isHidden())
             margins = screen.question_screen.layout().contentsMargins()
             self.assertEqual(
@@ -138,6 +141,27 @@ class LibraryScreenTests(unittest.TestCase):
                 screen.set_panel.delete_btn,
             ):
                 self.assertIsNotNone(button)
+
+    def test_inactive_library_page_does_not_set_the_current_route_height(self):
+        from ui.screens.library_screen import LibraryScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            screen = LibraryScreen(
+                QuestionBank(str(root / "questions")),
+                set_manager=SetManager(str(root / "sets")),
+                course_manager=CourseProjectManager(str(root / "courses")),
+            )
+            self.addCleanup(screen.close)
+            screen.set_panel.setMinimumHeight(900)
+
+            screen.show_questions()
+            questions_height = screen.minimumSizeHint().height()
+            screen.show_question_sets()
+            sets_height = screen.minimumSizeHint().height()
+
+            self.assertLess(questions_height, 900)
+            self.assertGreaterEqual(sets_height, 900)
 
     def test_library_uses_current_course_as_the_only_visible_scope(self):
         from ui.screens.library_screen import LibraryScreen

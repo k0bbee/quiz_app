@@ -5,7 +5,6 @@ from __future__ import annotations
 from PyQt6.QtCore import pyqtSignal
 from PyQt6.QtWidgets import (
     QLabel,
-    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -57,8 +56,6 @@ class LibraryScreen(QWidget):
         self.scope_label.setWordWrap(True)
         layout.addWidget(self.scope_label)
 
-        self.workspace_tabs = QTabWidget()
-        self.workspace_tabs.setObjectName("libraryWorkspaceTabs")
         self.question_screen = QuestionBankScreen(
             question_bank,
             set_manager=set_manager,
@@ -72,10 +69,9 @@ class LibraryScreen(QWidget):
             progress_manager=progress_manager,
         )
         self.set_panel.setObjectName("question_sets")
-        self.workspace_tabs.addTab(self.question_screen, "")
-        self.workspace_tabs.addTab(self.set_panel, "")
-        self.workspace_tabs.tabBar().hide()
-        layout.addWidget(self.workspace_tabs, 1)
+        layout.addWidget(self.question_screen, 1)
+        layout.addWidget(self.set_panel, 1)
+        self.set_panel.hide()
 
         self.question_screen.question_bank_changed.connect(
             self.question_bank_changed.emit
@@ -94,14 +90,6 @@ class LibraryScreen(QWidget):
     def _on_language_changed(self, _lang=None) -> None:
         self.page_header.set_title(
             self.lang_manager.get_text("资料库", "Library")
-        )
-        self.workspace_tabs.setTabText(
-            0,
-            self.lang_manager.get_text("题目", "Questions"),
-        )
-        self.workspace_tabs.setTabText(
-            1,
-            self.lang_manager.get_text("题目集", "Question Sets"),
         )
         self._update_scope_label()
 
@@ -124,9 +112,10 @@ class LibraryScreen(QWidget):
         self._scope_course_id = project.course_id
         self._update_scope_label()
         self._apply_current_scope()
-        self.workspace_tabs.setCurrentWidget(
-            self.set_panel if question_sets else self.question_screen
-        )
+        if question_sets:
+            self.show_question_sets()
+        else:
+            self.show_questions()
 
     def _update_scope_label(self) -> None:
         project = (
@@ -163,7 +152,9 @@ class LibraryScreen(QWidget):
         self.set_panel.refresh()
 
     def show_question_sets(self) -> None:
-        self.workspace_tabs.setCurrentWidget(self.set_panel)
+        self.question_screen.hide()
+        self.set_panel.show()
 
     def show_questions(self) -> None:
-        self.workspace_tabs.setCurrentWidget(self.question_screen)
+        self.set_panel.hide()
+        self.question_screen.show()

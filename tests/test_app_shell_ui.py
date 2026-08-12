@@ -438,15 +438,10 @@ class AppShellUiTests(unittest.TestCase):
                 [button.text() for button in main_window.app_shell.context_tabs()],
             )
             self.assertTrue(main_window.bank_tab_btn.isChecked())
-            self.assertTrue(
-                main_window._question_bank_screen.workspace_tabs.tabBar().isHidden()
-            )
             main_window.sets_tab_btn.click()
             self.assertEqual(Route.library("sets"), main_window.current_route)
-            self.assertEqual(
-                main_window._question_bank_screen.set_panel,
-                main_window._question_bank_screen.workspace_tabs.currentWidget(),
-            )
+            self.assertTrue(main_window._question_bank_screen.question_screen.isHidden())
+            self.assertFalse(main_window._question_bank_screen.set_panel.isHidden())
             main_window.navigate_route(Route.study("practice"))
             self.assertTrue(main_window.topic_screen.today_mode_btn.isHidden())
             self.assertEqual(
