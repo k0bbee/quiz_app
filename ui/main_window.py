@@ -733,7 +733,7 @@ class MainWindow(QMainWindow):
                 gm("该主题下没有可练习的题目。", "No questions are available for this topic."),
             )
             return
-        selected = questions[:10]
+        selected = questions[:5]
         topic_name = MainWindow._progress_topic_label(self, topic_key, selected)
         MainWindow._start_progress_topic_quiz(
             self,

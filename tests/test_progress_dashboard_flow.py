@@ -510,7 +510,7 @@ class ProgressDashboardFlowTests(unittest.TestCase):
                         is_correct=False,
                         error_reason="concept_gap",
                     ),
-                    AnswerRecord(question_id=process.question_id, index_in_session=1, user_answer="A", is_correct=True),
+                    AnswerRecord(question_id=process.question_id, index_in_session=1, user_answer="B", is_correct=False),
                     AnswerRecord(question_id=other_course.question_id, index_in_session=2, user_answer="B", is_correct=False),
                 ]
                 record.summary = SessionSummary.compute(record.answers, total_questions=3, total_time=30)
@@ -522,13 +522,19 @@ class ProgressDashboardFlowTests(unittest.TestCase):
                 screen.set_current_course("course-a")
                 screen.refresh()
 
-                self.assertIn("建议复习", screen.recommendation_label.text())
+                self.assertIn("当前最值得复习", screen.recommendation_label.text())
                 self.assertIn("Cache", screen.recommendation_label.text())
+                self.assertIn("已答 1 题，答错 1 题", screen.recommendation_label.text())
                 self.assertIn("主要原因：概念错误", screen.recommendation_label.text())
                 self.assertNotIn("Process", screen.recommendation_label.text())
                 self.assertNotIn("Virtual Memory", screen.recommendation_label.text())
                 self.assertFalse(screen.recommendation_label.isHidden())
+                self.assertEqual(1, len(screen.focus_action_buttons))
                 self.assertFalse(screen.focus_action_buttons[0].isHidden())
+                self.assertEqual(
+                    "开始 5 题强化",
+                    screen.focus_action_buttons[0].text(),
+                )
                 self.assertEqual("", screen.source_refs_label.text())
                 self.assertTrue(screen.source_refs_label.isHidden())
 
@@ -973,7 +979,7 @@ class ProgressDashboardFlowTests(unittest.TestCase):
                     [q.question_id for q in started["questions"]],
                 )
 
-    def test_progress_topic_practice_starts_first_ten_questions_for_topic(self):
+    def test_progress_topic_practice_starts_first_five_questions_for_topic(self):
             from ui.main_window import MainWindow
 
             with tempfile.TemporaryDirectory() as tmpdir:
@@ -1026,7 +1032,7 @@ class ProgressDashboardFlowTests(unittest.TestCase):
 
                 MainWindow._on_practice_progress_topic(shell, "cache")
 
-                self.assertEqual(10, len(started["questions"]))
+                self.assertEqual(5, len(started["questions"]))
                 self.assertEqual({"cache"}, {topic_value(question.topic) for question in started["questions"]})
                 self.assertEqual("practice", started["submission_mode"])
                 self.assertEqual(2, started["screen"])

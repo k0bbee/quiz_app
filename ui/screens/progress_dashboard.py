@@ -87,7 +87,7 @@ class ProgressDashboard(QWidget):
 
         self.focus_action_layout = QHBoxLayout()
         self.focus_action_buttons = []
-        for index in range(3):
+        for index in range(1):
             button = QPushButton()
             button.setObjectName("secondaryButton")
             button.clicked.connect(
@@ -206,7 +206,7 @@ class ProgressDashboard(QWidget):
         self.refresh_btn.setText(self.lang_manager.get_text("刷新", "Refresh"))
         self._update_details_toggle_text()
         self.topic_action_hint.setText(self.lang_manager.get_text("选中主题后可继续练习：", "Select a topic to continue:"))
-        self.practice_topic_btn.setText(self.lang_manager.get_text("练 10 题", "Practice 10"))
+        self.practice_topic_btn.setText(self.lang_manager.get_text("练 5 题", "Practice 5"))
         self.review_topic_btn.setText(self.lang_manager.get_text("复习错题", "Review Incorrect"))
         self.more_topic_actions_btn.setText(self.lang_manager.get_text("更多操作", "More Actions"))
         self.view_topic_source_action.setText(self.lang_manager.get_text("查看来源", "View Sources"))
@@ -478,7 +478,7 @@ class ProgressDashboard(QWidget):
         self._update_mastery_action_state()
 
     def _update_recommendations(self):
-        """Show at most three diagnosis-first actions without auto-opening sources."""
+        """Show one diagnosis-first action without auto-opening sources."""
         topics = []
         for topic in self._learning_dashboard.focus_topics:
             if self.mastery_overrides.is_topic_mastered(
@@ -487,7 +487,7 @@ class ProgressDashboard(QWidget):
             ):
                 continue
             topics.append(topic)
-            if len(topics) >= 3:
+            if len(topics) >= 1:
                 break
 
         if not topics:
@@ -497,20 +497,18 @@ class ProgressDashboard(QWidget):
             self._set_source_refs([])
             return
 
-        zh_lines = [
-            f"{index}. {topic.title} · 正确率 {topic.accuracy:.0%}"
+        topic = topics[0]
+        zh_reason = (
+            f"已答 {topic.attempts} 题，答错 {topic.incorrect_count} 题"
             f"{self._focus_reason_suffix(topic, 'zh')}"
-            for index, topic in enumerate(topics, start=1)
-        ]
-        en_lines = [
-            f"{index}. {topic.title} · {topic.accuracy:.0%} accuracy"
+        )
+        en_reason = (
+            f"{topic.incorrect_count} incorrect in {topic.attempts} answered"
             f"{self._focus_reason_suffix(topic, 'en')}"
-            for index, topic in enumerate(topics, start=1)
-        ]
+        )
         self.recommendation_label.setText(self.lang_manager.get_text(
-            "最需要关注 · 建议复习\n" + "\n".join(zh_lines),
-            "Needs the most attention · Suggested review\n"
-            + "\n".join(en_lines),
+            f"当前最值得复习：{topic.title}\n因为{zh_reason}",
+            f"Best topic to review now: {topic.title}\nBecause {en_reason}",
         ))
         self.recommendation_label.show()
         self._show_focus_actions(topics)
@@ -538,10 +536,9 @@ class ProgressDashboard(QWidget):
         ]
         for index, button in enumerate(self.focus_action_buttons):
             if index < len(topics):
-                topic = topics[index]
                 button.setText(self.lang_manager.get_text(
-                    f"强化 {topic.title}",
-                    f"Practice {topic.title}",
+                    "开始 5 题强化",
+                    "Start 5-question practice",
                 ))
                 button.show()
             else:
