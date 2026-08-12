@@ -168,7 +168,12 @@ class CourseKnowledgePanel(QWidget):
         self.detail_action_btn.setObjectName("secondaryButton")
         self.detail_action_btn.clicked.connect(self._emit_detail_action)
         self.detail_action_btn.setEnabled(False)
+        self.explain_btn = QPushButton()
+        self.explain_btn.setObjectName("secondaryButton")
+        self.explain_btn.clicked.connect(self._emit_explain_action)
+        self.explain_btn.setEnabled(False)
         detail_layout.addWidget(self.detail_action_btn)
+        detail_layout.addWidget(self.explain_btn)
         detail_layout.addStretch(1)
         self.knowledge_splitter = QSplitter(Qt.Orientation.Horizontal)
         self.knowledge_splitter.setChildrenCollapsible(False)
@@ -247,6 +252,8 @@ class CourseKnowledgePanel(QWidget):
             in_exam_scope=topic.in_exam_scope,
         ))
         self.detail_action_btn.setEnabled(True)
+        self.explain_btn.setText(get_text("解释这个知识点", "Explain this topic"))
+        self.explain_btn.setEnabled(True)
 
     def _clear_detail(self) -> None:
         self._selected_topic = None
@@ -258,6 +265,12 @@ class CourseKnowledgePanel(QWidget):
             else ""
         )
         self.detail_action_btn.setEnabled(False)
+        self.explain_btn.setText(
+            self._get_text("解释这个知识点", "Explain this topic")
+            if self._get_text is not None
+            else ""
+        )
+        self.explain_btn.setEnabled(False)
 
     def _emit_detail_action(self) -> None:
         if self._selected_topic is None:
@@ -265,6 +278,14 @@ class CourseKnowledgePanel(QWidget):
         topic = self._selected_topic
         action = _topic_action(topic.status, in_exam_scope=topic.in_exam_scope)
         self.topic_action_requested.emit(self._selected_topic.topic_id, action)
+
+    def _emit_explain_action(self) -> None:
+        if self._selected_topic is None:
+            return
+        self.topic_action_requested.emit(
+            self._selected_topic.topic_id,
+            "explain",
+        )
 
 
 def _read_only_table(columns: int) -> QTableWidget:

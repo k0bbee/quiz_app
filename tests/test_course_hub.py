@@ -230,6 +230,21 @@ class CourseHubActionTests(unittest.TestCase):
 
         self.assertEqual([("input-output", "generate")], actions)
 
+    def test_knowledge_detail_can_request_a_grounded_explanation(self):
+        view = build_course_hub_view(_course())
+        panel = CourseKnowledgePanel()
+        self.addCleanup(panel.close)
+        actions = []
+        panel.topic_action_requested.connect(
+            lambda topic_id, action: actions.append((topic_id, action))
+        )
+        panel.render(view, lambda zh, _en: zh)
+
+        panel.table.selectRow(0)
+        panel.explain_btn.click()
+
+        self.assertEqual([("input-output", "explain")], actions)
+
 
 class CourseHubNavigationTests(unittest.TestCase):
     def setUp(self):
@@ -339,6 +354,31 @@ class CourseHubNavigationTests(unittest.TestCase):
         )
         self.assertIn("历史表现", screen.knowledge_panel.detail_summary.text())
         self.assertEqual("补齐题目", screen.knowledge_panel.detail_action_btn.text())
+
+    def test_knowledge_explanation_opens_contextual_qna_without_a_new_route(self):
+        self.assertTrue(
+            self.window.navigate_route(
+                Route.course(self.project.course_id, tab="knowledge"),
+                allow_first_run_redirect=False,
+            )
+        )
+        screen = self.window._course_screen
+        screen.knowledge_table.selectRow(0)
+
+        screen.knowledge_panel.explain_btn.click()
+
+        self.assertEqual(
+            Route.course(self.project.course_id, tab="knowledge"),
+            self.window.current_route,
+        )
+        self.assertTrue(self.window.course_knowledge_tab_btn.isChecked())
+        self.assertIs(screen.qa_panel, screen.content_stack.currentWidget())
+        self.assertIn("Input / Output", screen.qa_panel.input.toPlainText())
+
+        screen.qa_panel.close_btn.click()
+
+        self.assertIs(screen.knowledge_panel, screen.content_stack.currentWidget())
+        self.assertEqual(0, screen.knowledge_table.currentRow())
 
     def test_generation_route_initializes_selected_course_workspace(self):
         dialog = QDialog()

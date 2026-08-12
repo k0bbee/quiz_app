@@ -134,6 +134,7 @@ class CourseScreen(QWidget):
         self._init_present_result = True
         self._import_expanded = False
         self._course_scope = "active"
+        self._qa_return_topic_id = ""
         self._setup_ui()
         self.folder_input.textEdited.connect(self._on_folder_text_edited)
         self.folder_input.editingFinished.connect(self._refresh_checkpoint_action)
@@ -486,6 +487,7 @@ class CourseScreen(QWidget):
         )
         self.content_stack.addWidget(self.knowledge_panel)
         self.qa_panel = CourseQAPanel(self.qa_service_factory)
+        self.qa_panel.close_requested.connect(self._close_contextual_qa)
         self.content_stack.addWidget(self.qa_panel)
         right_layout.addWidget(self.content_stack, 1)
         splitter.addWidget(right)
@@ -563,7 +565,6 @@ class CourseScreen(QWidget):
             "overview": self.overview_panel,
             "sources": self.sources_panel,
             "knowledge": self.knowledge_panel,
-            "qa": self.qa_panel,
         }
         if normalized not in widgets:
             raise ValueError(f"unknown course section: {normalized}")
@@ -677,7 +678,43 @@ class CourseScreen(QWidget):
         course_id = self.selected_course_id()
         if not course_id:
             return
+        if action == "explain":
+            self._open_topic_explanation(topic_id)
+            return
         self.course_topic_action_requested.emit(course_id, topic_id, action)
+
+    def _open_topic_explanation(self, topic_id: str) -> None:
+        project = self.manager.get(self.selected_course_id())
+        if project is None:
+            return
+        topic = next(
+            (
+                item
+                for item in getattr(project, "topics", ())
+                if item.topic_id == topic_id
+            ),
+            None,
+        )
+        if topic is None:
+            return
+        title = topic.title or topic.topic_id
+        self._qa_return_topic_id = topic.topic_id
+        self.qa_panel.set_course(project)
+        self.qa_panel.prepare_question(self.lang_manager.get_text(
+            f"请根据课程资料解释知识点“{title}”，并说明核心概念和容易混淆之处。",
+            f"Explain “{title}” from the course materials, including its core ideas and common confusions.",
+        ))
+        self.content_stack.setCurrentWidget(self.qa_panel)
+        self.summary_label.setText(self.lang_manager.get_text(
+            f"解释知识点 · {title}",
+            f"Explain Topic · {title}",
+        ))
+
+    def _close_contextual_qa(self) -> None:
+        self.qa_panel.stop_request(show_status=False, restore_draft=True)
+        self.show_section("knowledge")
+        if self._qa_return_topic_id:
+            self.focus_knowledge_topic(self._qa_return_topic_id)
 
     def _update_course_primary_action_text(self) -> None:
         """Expose one context-aware next step without adding navigation."""
@@ -1912,7 +1949,6 @@ class CourseScreen(QWidget):
         section_labels = {
             "sources": ("资料", "Sources"),
             "knowledge": ("知识点", "Knowledge"),
-            "qa": ("问答巩固", "Q&A Review"),
         }
         labels = section_labels.get(self._active_section)
         if labels is None:

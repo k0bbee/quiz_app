@@ -79,6 +79,8 @@ class _CourseQARequest(QObject):
 class CourseQAPanel(QWidget):
     """A course-scoped conversation panel that never blocks the Qt event loop."""
 
+    close_requested = pyqtSignal()
+
     def __init__(self, service_factory, parent=None):
         super().__init__(parent)
         self.service_factory = service_factory
@@ -122,6 +124,10 @@ class CourseQAPanel(QWidget):
         layout.addWidget(self.input)
 
         actions = QHBoxLayout()
+        self.close_btn = QPushButton()
+        self.close_btn.setObjectName("secondaryButton")
+        self.close_btn.clicked.connect(self.close_requested.emit)
+        actions.addWidget(self.close_btn)
         self.clear_btn = QPushButton()
         self.clear_btn.setObjectName("secondaryButton")
         self.clear_btn.clicked.connect(self.clear_history)
@@ -168,6 +174,7 @@ class CourseQAPanel(QWidget):
             "Ask from the current exam scope. Enter to send; Shift+Enter for a new line.",
         ))
         self.input.setAccessibleName(gm("问答问题输入", "Course question input"))
+        self.close_btn.setText(gm("关闭问答", "Close Q&A"))
         self.clear_btn.setText(gm("清空对话", "Clear"))
         self.stop_btn.setText(gm("停止", "Stop"))
         self.send_btn.setText(gm("发送", "Send"))
@@ -175,6 +182,13 @@ class CourseQAPanel(QWidget):
         self._render_transcript()
         if not self.is_busy:
             self._set_idle_state()
+
+    def prepare_question(self, question: str) -> None:
+        """Prefill an editable contextual question without sending it."""
+        if self.course is None or self.is_busy:
+            return
+        self.input.setPlainText(str(question or "").strip())
+        self.input.setFocus()
 
     def clear_history(self) -> None:
         if self.course is None or self.is_busy:
