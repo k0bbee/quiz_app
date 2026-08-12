@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
 from core.course_initializer import CourseInitializer
+from core.answer_display import format_answer_for_display
 from core.document_parser import SUPPORTED_EXTENSIONS
 from core.course_hub_presenter import build_course_hub_view
 from core.course_parse_checkpoint import CourseParseCheckpointStore
@@ -90,6 +91,7 @@ class CourseScreen(QWidget):
     course_import_completed = pyqtSignal(object)
     course_import_failed = pyqtSignal(str)
     course_import_cancelled = pyqtSignal()
+    contextual_qa_closed = pyqtSignal()
 
     def __init__(
         self,
@@ -136,6 +138,7 @@ class CourseScreen(QWidget):
         self._course_scope = "active"
         self._qa_return_topic_id = ""
         self._qa_return_source_row = -1
+        self._qa_returns_to_previous_route = False
         self._setup_ui()
         self.folder_input.textEdited.connect(self._on_folder_text_edited)
         self.folder_input.editingFinished.connect(self._refresh_checkpoint_action)
@@ -705,6 +708,7 @@ class CourseScreen(QWidget):
         self._active_section = "knowledge"
         self._qa_return_topic_id = topic.topic_id
         self._qa_return_source_row = -1
+        self._qa_returns_to_previous_route = False
         self.qa_panel.set_course(project)
         self.qa_panel.prepare_question(self.lang_manager.get_text(
             f"请根据课程资料解释知识点“{title}”，并说明核心概念和容易混淆之处。",
@@ -723,6 +727,7 @@ class CourseScreen(QWidget):
         self._active_section = "sources"
         self._qa_return_source_row = self.sources_table.currentRow()
         self._qa_return_topic_id = ""
+        self._qa_returns_to_previous_route = False
         self.qa_panel.set_course(project)
         self.qa_panel.prepare_question(self.lang_manager.get_text(
             f"请根据课程资料解释“{title}”中的这段内容：{excerpt}",
@@ -734,10 +739,42 @@ class CourseScreen(QWidget):
             f"Ask about Source · {title}",
         ))
 
+    def open_question_explanation(self, question, user_answer) -> None:
+        """Prefill grounded Q&A from a wrong-answer review context."""
+        project = self.manager.get(self.selected_course_id())
+        if project is None or question is None:
+            return
+        language = self.lang_manager.current
+        stem = question.get_stem(language)
+        user = format_answer_for_display(question, user_answer, language)
+        correct = format_answer_for_display(
+            question,
+            question.correct_answer,
+            language,
+        )
+        self._active_section = "knowledge"
+        self._qa_return_topic_id = ""
+        self._qa_return_source_row = -1
+        self._qa_returns_to_previous_route = True
+        self.qa_panel.set_course(project)
+        self.qa_panel.prepare_question(self.lang_manager.get_text(
+            f"请根据课程资料解释我为什么答错这道题。题目：{stem}；我的答案：{user}；正确答案：{correct}。请指出概念误区并引用依据。",
+            f"Explain from the course materials why my answer was wrong. Question: {stem}; my answer: {user}; correct answer: {correct}. Identify the misconception and cite the evidence.",
+        ))
+        self.content_stack.setCurrentWidget(self.qa_panel)
+        self.summary_label.setText(self.lang_manager.get_text(
+            "错题解释",
+            "Mistake Explanation",
+        ))
+
     def _close_contextual_qa(self) -> None:
         self.qa_panel.stop_request(show_status=False, restore_draft=True)
         return_section = self._active_section
         self.show_section(return_section)
+        if self._qa_returns_to_previous_route:
+            self._qa_returns_to_previous_route = False
+            self.contextual_qa_closed.emit()
+            return
         if return_section == "knowledge" and self._qa_return_topic_id:
             self.focus_knowledge_topic(self._qa_return_topic_id)
         elif return_section == "sources" and self._qa_return_source_row >= 0:

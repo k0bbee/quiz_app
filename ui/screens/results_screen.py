@@ -27,6 +27,7 @@ class ResultsScreen(QWidget):
     retry_incorrect = pyqtSignal()
     reinforcement_requested = pyqtSignal()
     return_home_requested = pyqtSignal()
+    question_explanation_requested = pyqtSignal(str, object, object)
 
     def __init__(self, parent=None, *, course_manager: CourseProjectManager):
         super().__init__(parent)
@@ -286,6 +287,11 @@ class ResultsScreen(QWidget):
                 review_count += 1
             q = self._review_questions.get(answer.question_id)
             if q:
+                course_project = (
+                    self._historical_course_project
+                    if answer.question_id in self._snapshot_question_ids
+                    else self._live_course_project
+                )
                 card.set_result(
                     i,
                     q,
@@ -293,13 +299,18 @@ class ResultsScreen(QWidget):
                     answer.is_correct,
                     lang,
                     skipped=answer.skipped,
-                    course_project=(
-                        self._historical_course_project
-                        if answer.question_id in self._snapshot_question_ids
-                        else self._live_course_project
-                    ),
+                    course_project=course_project,
                     error_reason=getattr(answer, "error_reason", ""),
                 )
+                if course_project is not None:
+                    card.explanation_requested.connect(
+                        lambda item, user_answer, course_id=course_project.course_id:
+                        self.question_explanation_requested.emit(
+                            course_id,
+                            item,
+                            user_answer,
+                        )
+                    )
             else:
                 # Minimal card without question data
                 card.index_label.setText(f"Q{i + 1}")

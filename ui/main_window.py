@@ -242,6 +242,9 @@ class MainWindow(QMainWindow):
             self._course_screen.course_primary_action_requested.connect(
                 self._on_course_primary_action
             )
+            self._course_screen.contextual_qa_closed.connect(
+                self.navigate_back
+            )
             self._course_screen.view_course_library_requested.connect(
                 self._open_course_library
             )
@@ -487,6 +490,9 @@ class MainWindow(QMainWindow):
         )
         self.results_screen.reinforcement_requested.connect(
             self.result_flow.generate_reinforcement
+        )
+        self.results_screen.question_explanation_requested.connect(
+            self.result_flow.explain_question
         )
         self.results_screen.return_home_requested.connect(
             lambda: self.navigate_to(self.SCREEN_HOME, confirm_current=False)

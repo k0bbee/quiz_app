@@ -1,6 +1,7 @@
 """Question review card widget for the results screen."""
 
-from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton
 
 from models.question import Question
 from core.language_manager import LanguageManager
@@ -18,6 +19,8 @@ _ERROR_REASON_LABELS = {
 
 class QuestionReviewCard(QFrame):
     """Displays a single question result in the review list."""
+
+    explanation_requested = pyqtSignal(object, object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -79,7 +82,11 @@ class QuestionReviewCard(QFrame):
         self.source_panel = SourceRefsPanel()
         self.source_panel.setVisible(False)
         layout.addWidget(self.source_panel)
-
+        self.explain_btn = QPushButton()
+        self.explain_btn.setObjectName("secondaryButton")
+        self.explain_btn.hide()
+        self.explain_btn.clicked.connect(self._request_explanation)
+        layout.addWidget(self.explain_btn)
 
     def _on_language_changed(self, lang):
         """Re-render card text when language changes."""
@@ -170,6 +177,26 @@ class QuestionReviewCard(QFrame):
             status=metadata.get("source_ref_status"),
         )
         self.source_label.setVisible(bool(self.source_label.text()) and self.source_panel.isHidden())
+        can_explain = (
+            getattr(self, "_course_project", None) is not None
+            and not self._skipped
+            and not self._is_correct
+        )
+        self.explain_btn.setText(
+            self.lang_manager.get_text(
+                "解释这道错题",
+                "Explain this mistake",
+            )
+        )
+        self.explain_btn.setVisible(can_explain)
+        self.explain_btn.setEnabled(can_explain)
+
+    def _request_explanation(self) -> None:
+        if self._question is None or self._is_correct or self._skipped:
+            return
+        if getattr(self, "_course_project", None) is None:
+            return
+        self.explanation_requested.emit(self._question, self._user_answer)
 
     def _format_answer(self, question: Question, answer, lang: str) -> str:
         """Render answer letters with their option text when possible."""

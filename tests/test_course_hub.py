@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import QApplication, QDialog
 from core.course_hub_presenter import build_course_hub_view
 from models.course_project import CourseProject, CourseTopic
 from models.question import Question, QuestionBank
+from models.progress import AnswerRecord, ProgressRecord, SessionSummary
 from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.main_window import MainWindow
 from ui.navigation import Route
@@ -424,6 +425,63 @@ class CourseHubNavigationTests(unittest.TestCase):
 
         self.assertIs(screen.sources_panel, screen.content_stack.currentWidget())
         self.assertEqual(1, screen.sources_table.currentRow())
+
+    def test_wrong_question_explanation_closes_back_to_results(self):
+        question = Question(
+            question_id="q-wrong-explain",
+            type=QuestionType.MULTIPLE_CHOICE,
+            difficulty=Difficulty.MEDIUM,
+            bilingual={
+                "zh": {
+                    "stem": "DMA 的主要作用是什么？",
+                    "options": ["A. 直接传输数据", "B. 增加轮询"],
+                    "explanation": "DMA 负责批量传输。",
+                },
+                "en": {
+                    "stem": "What does DMA primarily do?",
+                    "options": ["A. Transfer data", "B. Increase polling"],
+                    "explanation": "DMA transfers blocks.",
+                },
+            },
+            correct_answer="A",
+            topic="input-output",
+            metadata={"course_id": self.project.course_id},
+        )
+        record = ProgressRecord.create_new("set-wrong-explain")
+        record.status = "completed"
+        record.course_id_snapshot = self.project.course_id
+        record.answers = [AnswerRecord(question.question_id, 0, "B", False)]
+        record.summary = SessionSummary.compute(record.answers, 1, 10)
+        self.window.results_screen.set_results(
+            record,
+            {question.question_id: question},
+            "zh",
+        )
+        self.assertTrue(
+            self.window.navigate_route(
+                Route.focus("results"),
+                allow_first_run_redirect=False,
+            )
+        )
+        card = self.window.results_screen.review_layout.itemAt(0).widget()
+
+        card.explain_btn.click()
+
+        screen = self.window._course_screen
+        self.assertEqual(
+            Route.course(self.project.course_id, tab="knowledge"),
+            self.window.current_route,
+        )
+        self.assertIs(screen.qa_panel, screen.content_stack.currentWidget())
+        self.assertIn("DMA 的主要作用是什么", screen.qa_panel.input.toPlainText())
+
+        screen.qa_panel.close_btn.click()
+
+        self.assertEqual(Route.focus("results"), self.window.current_route)
+        self.assertIs(
+            self.window.results_screen,
+            self.window.stack.currentWidget(),
+        )
 
     def test_generation_route_initializes_selected_course_workspace(self):
         dialog = QDialog()

@@ -3,7 +3,7 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -25,6 +25,7 @@ from ai.exam_plan import ExamGenerationPlan
 from ui.screens.progress_dashboard import ProgressDashboard
 from ui.screens.results_screen import ResultsScreen
 from ui.result_flow_controller import ResultFlowController
+from ui.navigation import Route
 from utils.constants import Difficulty, QuestionType
 
 
@@ -709,6 +710,60 @@ class ResultsFlowTests(unittest.TestCase):
             self.assertIn("页码/幻灯片 8", source_text)
             self.assertIn("source-0007", source_text)
             self.assertIn("Cache Address Breakdown", source_text)
+
+    def test_wrong_question_can_request_a_course_grounded_explanation(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+                course = self._make_course("course-review", "复盘课程")
+                self.assertTrue(manager.save(course, make_current=True))
+                question = self._make_question("q-explain")
+                question.metadata["course_id"] = course.course_id
+                record = ProgressRecord.create_new("set-review")
+                record.status = "completed"
+                record.course_id_snapshot = course.course_id
+                record.answers = [AnswerRecord("q-explain", 0, "B", False)]
+                record.summary = SessionSummary.compute(record.answers, 1, 10)
+                screen = ResultsScreen(course_manager=manager)
+                requested = []
+                screen.question_explanation_requested.connect(
+                    lambda course_id, item, answer: requested.append(
+                        (course_id, item, answer)
+                    )
+                )
+
+                screen.set_results(record, {question.question_id: question}, "zh")
+                card = screen.review_layout.itemAt(0).widget()
+                card.explain_btn.click()
+
+                self.assertEqual(1, len(requested))
+                self.assertEqual(course.course_id, requested[0][0])
+                self.assertIs(question, requested[0][1])
+                self.assertEqual("B", requested[0][2])
+
+    def test_result_flow_opens_wrong_question_in_existing_course_qna(self):
+            question = self._make_question("q-explain")
+            course_screen = types.SimpleNamespace(
+                open_question_explanation=Mock()
+            )
+            host = types.SimpleNamespace(
+                navigate_route=Mock(return_value=True),
+                _get_course_screen=Mock(return_value=course_screen),
+            )
+
+            ResultFlowController(host).explain_question(
+                "course-review",
+                question,
+                "B",
+            )
+
+            host.navigate_route.assert_called_once_with(
+                Route.course("course-review", tab="knowledge"),
+                allow_first_run_redirect=False,
+            )
+            course_screen.open_question_explanation.assert_called_once_with(
+                question,
+                "B",
+            )
 
     def test_clear_reviews_removes_all_widgets_and_keeps_only_stretch(self):
             record = ProgressRecord.create_new("set-1")

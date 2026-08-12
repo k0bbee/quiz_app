@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QMessageBox, QWidget
 from ai.exam_plan import ExamGenerationPlan
 from core.session_retry import session_retry_question_ids
 from core.study_intent import StudyAction, StudyIntent
+from ui.navigation import Route
 from utils.constants import topic_value
 
 
@@ -74,6 +75,22 @@ class ResultFlowController:
         )
         host.course_context.refresh_results_retry_availability()
         host.navigate_to(host.SCREEN_RESULTS)
+
+    def explain_question(self, course_id: str, question, user_answer) -> None:
+        """Open the existing course-grounded panel for one wrong answer."""
+        host = self.host
+        course_id = str(course_id or "").strip()
+        if not course_id or question is None:
+            return
+        if not host.navigate_route(
+            Route.course(course_id, tab="knowledge"),
+            allow_first_run_redirect=False,
+        ):
+            return
+        host._get_course_screen().open_question_explanation(
+            question,
+            user_answer,
+        )
 
     def retry_incorrect(self) -> None:
         """Start practice from incorrectly answered questions in this result."""
