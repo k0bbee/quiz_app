@@ -270,6 +270,11 @@ class QuizScreen(QWidget):
         self.explanation_label.setWordWrap(True)
         fb_layout.addWidget(self.explanation_label)
 
+        self.source_refs_panel = SourceRefsPanel()
+        self.source_refs_panel.setObjectName("quizFeedbackSourceEvidence")
+        self.source_refs_panel.hide()
+        fb_layout.addWidget(self.source_refs_panel)
+
         self.error_reason_combo = QComboBox()
         self.error_reason_combo.setObjectName("quizErrorReasonCombo")
         self.error_reason_combo.setMaximumWidth(280)
@@ -279,11 +284,6 @@ class QuizScreen(QWidget):
         fb_layout.addWidget(self.error_reason_combo, 0, Qt.AlignmentFlag.AlignCenter)
         self._refresh_error_reason_options()
         self.error_reason_combo.hide()
-
-        self.source_refs_panel = SourceRefsPanel()
-        self.source_refs_panel.setObjectName("quizFeedbackSourceEvidence")
-        self.source_refs_panel.hide()
-        fb_layout.addWidget(self.source_refs_panel)
 
         self.feedback_frame.hide()
 

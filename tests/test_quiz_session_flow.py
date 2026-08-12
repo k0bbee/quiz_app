@@ -1127,10 +1127,18 @@ class QuizSessionFlowTests(unittest.TestCase):
                     course_manager=course_manager,
                 )
                 screen.start_quiz(qset, [question], show_timer=False, submission_mode="practice")
+                screen.resize(900, 680)
+                screen.show()
                 screen.answer_area.choice_widget.buttons[1].setChecked(True)
                 screen._submit_answer()
+                _APP.processEvents()
 
                 self.assertFalse(screen.source_refs_panel.isHidden())
+                self.assertFalse(screen.error_reason_combo.isHidden())
+                self.assertLess(
+                    screen.source_refs_panel.geometry().top(),
+                    screen.error_reason_combo.geometry().top(),
+                )
                 self.assertTrue(screen.source_refs_panel.open_btn.isEnabled())
                 source_text = screen.source_refs_panel.text()
                 self.assertIn("第21讲 Cache.pdf", source_text)
