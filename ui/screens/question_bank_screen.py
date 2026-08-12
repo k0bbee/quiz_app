@@ -253,10 +253,12 @@ class QuestionBankScreen(QWidget):
         filter_row.addWidget(self.search_input, 2)
 
         self.set_filter = WheelSafeComboBox()
+        self.set_filter.setMinimumContentsLength(8)
         self.set_filter.currentIndexChanged.connect(self._reset_and_refresh)
         filter_row.addWidget(self.set_filter, 1)
 
         self.difficulty_filter = WheelSafeComboBox()
+        self.difficulty_filter.setMinimumContentsLength(8)
         self.difficulty_filter.addItem(self.lang_manager.get_text("全部难度", "All difficulty"), None)
         for difficulty in Difficulty:
             self.difficulty_filter.addItem(difficulty.value, difficulty.value)
@@ -264,6 +266,7 @@ class QuestionBankScreen(QWidget):
         filter_row.addWidget(self.difficulty_filter)
 
         self.quality_filter = WheelSafeComboBox()
+        self.quality_filter.setMinimumContentsLength(8)
         self._populate_quality_filter()
         self.quality_filter.currentIndexChanged.connect(self._reset_and_refresh)
         filter_row.addWidget(self.quality_filter)

@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
 )
 
 from core.background_task_center import BackgroundTaskCenter
@@ -89,6 +90,50 @@ class AppShellUiTests(unittest.TestCase):
                 window.progress_screen.minimumSizeHint().width(),
                 500,
             )
+
+    def test_english_library_does_not_expand_the_default_window(self):
+            language = LanguageManager.instance()
+            previous_language = language.current
+            self.addCleanup(language.set_language, previous_language)
+            language.set_language("zh")
+
+            window = MainWindow()
+            self.addCleanup(window.close)
+            self.assertEqual(
+                QSizePolicy.Policy.Ignored,
+                window.stack.sizePolicy().horizontalPolicy(),
+            )
+            window.resize(900, 680)
+            window.show()
+            window._get_course_screen().setMinimumWidth(836)
+            self.assertTrue(window.navigate_route(
+                Route.course(tab="overview"),
+                allow_first_run_redirect=False,
+            ))
+            _APP.processEvents()
+            language.set_language("en")
+            self.assertTrue(window.navigate_route(
+                Route.library("questions"),
+                allow_first_run_redirect=False,
+            ))
+            _APP.processEvents()
+
+            window.resize(900, 680)
+            _APP.processEvents()
+
+            self.assertLessEqual(window.width(), 900)
+            self.assertLessEqual(
+                window._question_bank_screen.question_screen.minimumSizeHint().width(),
+                window._question_bank_screen.question_screen.width(),
+            )
+
+            self.assertTrue(window.navigate_route(
+                Route.library("sets"),
+                allow_first_run_redirect=False,
+            ))
+            window.resize(900, 680)
+            _APP.processEvents()
+            self.assertLessEqual(window.width(), 900)
 
     def test_study_setup_keeps_the_only_saved_set_optional(self):
             with tempfile.TemporaryDirectory() as tmpdir:

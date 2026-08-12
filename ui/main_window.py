@@ -2,7 +2,7 @@
 
 from PyQt6.QtWidgets import (
     QMainWindow, QStackedWidget,
-    QMessageBox, QWidget,
+    QMessageBox, QSizePolicy, QWidget,
 )
 from PyQt6.QtCore import QTimer, Qt
 
@@ -112,6 +112,10 @@ class MainWindow(QMainWindow):
 
         # Central stacked widget
         self.stack = QStackedWidget()
+        self.stack.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
         self.navigation_router = NavigationRouter(
             self.stack,
             skip_history_from={self.SCREEN_QUIZ},
