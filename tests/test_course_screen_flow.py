@@ -918,3 +918,33 @@ class CourseScreenFlowTests(unittest.TestCase):
                     screen.show_section("qa")
 
                 self.assertIsNot(screen.content_stack.currentWidget(), screen.qa_panel)
+
+    def test_leaving_contextual_qna_stops_the_hidden_request(self):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                manager = CourseProjectManager(str(Path(tmpdir) / "courses"))
+                project = CourseProject(
+                    course_id="course-qa-leave",
+                    title="Systems",
+                    source_folder="",
+                    summary_markdown="# I/O",
+                    summary_path="",
+                    topics=[CourseTopic("io", "I/O")],
+                    documents=[],
+                    created_at="2026-07-05T00:00:00+00:00",
+                    updated_at="2026-07-05T00:00:00+00:00",
+                )
+                manager.save(project)
+                screen = CourseScreen(manager)
+                screen._open_topic_explanation("io")
+                screen.qa_panel.stop_request = Mock()
+
+                screen.show_section("sources")
+
+                screen.qa_panel.stop_request.assert_called_once_with(
+                    show_status=False,
+                    restore_draft=True,
+                )
+                self.assertIs(
+                    screen.sources_panel,
+                    screen.content_stack.currentWidget(),
+                )

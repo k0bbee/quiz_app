@@ -575,6 +575,11 @@ class CourseScreen(QWidget):
         }
         if normalized not in widgets:
             raise ValueError(f"unknown course section: {normalized}")
+        if self.content_stack.currentWidget() is self.qa_panel:
+            self.qa_panel.stop_request(
+                show_status=False,
+                restore_draft=True,
+            )
         self._active_section = normalized
         self.content_stack.setCurrentWidget(widgets[normalized])
         is_overview = normalized == "overview"
