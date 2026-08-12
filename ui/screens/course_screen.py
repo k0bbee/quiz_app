@@ -135,6 +135,7 @@ class CourseScreen(QWidget):
         self._import_expanded = False
         self._course_scope = "active"
         self._qa_return_topic_id = ""
+        self._qa_return_source_row = -1
         self._setup_ui()
         self.folder_input.textEdited.connect(self._on_folder_text_edited)
         self.folder_input.editingFinished.connect(self._refresh_checkpoint_action)
@@ -479,6 +480,9 @@ class CourseScreen(QWidget):
         self.content_stack.addWidget(self.overview_panel)
         self.sources_panel = CourseSourcesPanel()
         self.sources_table = self.sources_panel.table
+        self.sources_panel.source_question_requested.connect(
+            self._open_source_question
+        )
         self.content_stack.addWidget(self.sources_panel)
         self.knowledge_panel = CourseKnowledgePanel()
         self.knowledge_table = self.knowledge_panel.table
@@ -698,7 +702,9 @@ class CourseScreen(QWidget):
         if topic is None:
             return
         title = topic.title or topic.topic_id
+        self._active_section = "knowledge"
         self._qa_return_topic_id = topic.topic_id
+        self._qa_return_source_row = -1
         self.qa_panel.set_course(project)
         self.qa_panel.prepare_question(self.lang_manager.get_text(
             f"请根据课程资料解释知识点“{title}”，并说明核心概念和容易混淆之处。",
@@ -710,11 +716,32 @@ class CourseScreen(QWidget):
             f"Explain Topic · {title}",
         ))
 
+    def _open_source_question(self, title: str, excerpt: str) -> None:
+        project = self.manager.get(self.selected_course_id())
+        if project is None:
+            return
+        self._active_section = "sources"
+        self._qa_return_source_row = self.sources_table.currentRow()
+        self._qa_return_topic_id = ""
+        self.qa_panel.set_course(project)
+        self.qa_panel.prepare_question(self.lang_manager.get_text(
+            f"请根据课程资料解释“{title}”中的这段内容：{excerpt}",
+            f"Explain this excerpt from “{title}” using the course materials: {excerpt}",
+        ))
+        self.content_stack.setCurrentWidget(self.qa_panel)
+        self.summary_label.setText(self.lang_manager.get_text(
+            f"资料提问 · {title}",
+            f"Ask about Source · {title}",
+        ))
+
     def _close_contextual_qa(self) -> None:
         self.qa_panel.stop_request(show_status=False, restore_draft=True)
-        self.show_section("knowledge")
-        if self._qa_return_topic_id:
+        return_section = self._active_section
+        self.show_section(return_section)
+        if return_section == "knowledge" and self._qa_return_topic_id:
             self.focus_knowledge_topic(self._qa_return_topic_id)
+        elif return_section == "sources" and self._qa_return_source_row >= 0:
+            self.sources_table.selectRow(self._qa_return_source_row)
 
     def _update_course_primary_action_text(self) -> None:
         """Expose one context-aware next step without adding navigation."""

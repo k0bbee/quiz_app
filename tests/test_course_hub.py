@@ -16,7 +16,7 @@ from models.question import Question, QuestionBank
 from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.main_window import MainWindow
 from ui.navigation import Route
-from ui.widgets.course_hub_panels import CourseKnowledgePanel
+from ui.widgets.course_hub_panels import CourseKnowledgePanel, CourseSourcesPanel
 from utils.constants import Difficulty, QuestionType
 
 
@@ -215,6 +215,24 @@ class CourseHubPresenterTests(unittest.TestCase):
 
 
 class CourseHubActionTests(unittest.TestCase):
+    def test_source_excerpt_can_request_a_grounded_question(self):
+        view = build_course_hub_view(_course())
+        panel = CourseSourcesPanel()
+        self.addCleanup(panel.close)
+        questions = []
+        panel.source_question_requested.connect(
+            lambda title, excerpt: questions.append((title, excerpt))
+        )
+        panel.render(view, lambda zh, _en: zh)
+
+        panel.table.selectRow(1)
+        panel.ask_btn.click()
+
+        self.assertEqual(
+            [("Memory Lecture", "Address translation")],
+            questions,
+        )
+
     def test_knowledge_detail_action_emits_topic_action(self):
         view = build_course_hub_view(_course())
         panel = CourseKnowledgePanel()
@@ -379,6 +397,33 @@ class CourseHubNavigationTests(unittest.TestCase):
 
         self.assertIs(screen.knowledge_panel, screen.content_stack.currentWidget())
         self.assertEqual(0, screen.knowledge_table.currentRow())
+
+    def test_source_question_returns_to_the_same_source_row(self):
+        self.assertTrue(
+            self.window.navigate_route(
+                Route.course(self.project.course_id, tab="sources"),
+                allow_first_run_redirect=False,
+            )
+        )
+        screen = self.window._course_screen
+        screen.sources_table.selectRow(1)
+
+        screen.sources_panel.ask_btn.click()
+
+        self.assertEqual(
+            Route.course(self.project.course_id, tab="sources"),
+            self.window.current_route,
+        )
+        self.assertTrue(self.window.course_sources_tab_btn.isChecked())
+        self.assertIs(screen.qa_panel, screen.content_stack.currentWidget())
+        prompt = screen.qa_panel.input.toPlainText()
+        self.assertIn("Memory Lecture", prompt)
+        self.assertIn("Address translation", prompt)
+
+        screen.qa_panel.close_btn.click()
+
+        self.assertIs(screen.sources_panel, screen.content_stack.currentWidget())
+        self.assertEqual(1, screen.sources_table.currentRow())
 
     def test_generation_route_initializes_selected_course_workspace(self):
         dialog = QDialog()

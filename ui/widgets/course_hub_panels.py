@@ -18,6 +18,8 @@ from PyQt6.QtWidgets import (
 
 
 class CourseSourcesPanel(QWidget):
+    source_question_requested = pyqtSignal(str, str)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
@@ -51,13 +53,18 @@ class CourseSourcesPanel(QWidget):
         self.excerpt.setMaximumHeight(140)
         self.excerpt.setOpenExternalLinks(False)
         layout.addWidget(self.excerpt)
+        self.ask_btn = QPushButton()
+        self.ask_btn.setObjectName("secondaryButton")
+        self.ask_btn.setEnabled(False)
+        self.ask_btn.clicked.connect(self._emit_source_question)
+        layout.addWidget(self.ask_btn)
         self._view = None
         self._get_text = None
 
     def render(self, view, get_text) -> None:
         self._view = view
         self._get_text = get_text
-        self._get_text = get_text
+        self.ask_btn.setText(get_text("针对这段资料提问", "Ask about this source"))
         self.table.setHorizontalHeaderLabels([
             get_text("资料", "Source"),
             get_text("类型", "Type"),
@@ -95,6 +102,7 @@ class CourseSourcesPanel(QWidget):
         else:
             self.detail_label.clear()
             self.excerpt.clear()
+            self.ask_btn.setEnabled(False)
 
     def _render_selection(self) -> None:
         if self._view is None or self._get_text is None:
@@ -103,6 +111,7 @@ class CourseSourcesPanel(QWidget):
         if not 0 <= row < len(self._view.sources):
             self.detail_label.clear()
             self.excerpt.clear()
+            self.ask_btn.setEnabled(False)
             return
         source = self._view.sources[row]
         get_text = self._get_text
@@ -123,6 +132,18 @@ class CourseSourcesPanel(QWidget):
                 "No extracted text is available for preview.",
             )
         )
+        self.ask_btn.setEnabled(bool(source.excerpt))
+
+    def _emit_source_question(self) -> None:
+        if self._view is None:
+            return
+        row = self.table.currentRow()
+        if not 0 <= row < len(self._view.sources):
+            return
+        source = self._view.sources[row]
+        if not source.excerpt:
+            return
+        self.source_question_requested.emit(source.name, source.excerpt)
 
 
 class CourseKnowledgePanel(QWidget):
