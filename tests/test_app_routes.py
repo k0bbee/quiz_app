@@ -20,10 +20,8 @@ class AppRouteTests(unittest.TestCase):
             ScreenKey.GENERATION,
             Route.course("course-1", tab="generation").screen,
         )
-        self.assertEqual(
-            ScreenKey.COURSES,
-            Route.course("course-1", tab="qa").screen,
-        )
+        with self.assertRaises(ValueError):
+            Route.course("course-1", tab="qa")
         self.assertEqual(ScreenKey.QUESTION_BANK, Route.library("sets").screen)
         with self.assertRaises(ValueError):
             Route.library("past_exams")
@@ -48,7 +46,7 @@ class AppRouteTests(unittest.TestCase):
             [tab.route.tab for tab in workspace_tabs(Workspace.STUDY)],
         )
         self.assertEqual(
-            ["overview", "sources", "knowledge", "generation", "qa"],
+            ["overview", "sources", "knowledge", "generation"],
             [tab.route.tab for tab in workspace_tabs(Workspace.COURSE)],
         )
 

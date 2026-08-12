@@ -496,7 +496,7 @@ class AppShellUiTests(unittest.TestCase):
                 )
             )
             self.assertEqual(
-                ["Overview", "Sources", "Knowledge", "Generate and Review", "Q&A Review"],
+                ["Overview", "Sources", "Knowledge", "Generate and Review"],
                 [button.text() for button in main_window.app_shell.context_tabs()],
             )
             self.assertTrue(
@@ -527,10 +527,11 @@ class AppShellUiTests(unittest.TestCase):
                 )
             )
 
-            self.assertNotIn(
-                "Q&A",
+            self.assertEqual(
+                ["概览", "资料", "知识点", "生成与审核"],
                 [button.text() for button in main_window.app_shell.context_tabs()],
             )
+            self.assertFalse(hasattr(main_window, "course_qa_tab_btn"))
 
     def test_library_context_does_not_promote_historical_exam_workspace(self):
             main_window = MainWindow()
