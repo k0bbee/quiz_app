@@ -117,6 +117,73 @@ class LearningDashboardTests(unittest.TestCase):
             dashboard.focus_topics[0].error_reason_counts,
         )
 
+    def test_focus_topic_diagnosis_uses_only_the_five_most_recent_answers(self):
+        dashboard = build_learning_dashboard(
+            {"cache-1": ("cache", "高速缓存")},
+            records=[
+                self._record(
+                    self._answer("cache-1", False, error_reason="misread"),
+                    started_at="2026-07-01T09:00:00+08:00",
+                ),
+                self._record(
+                    self._answer("cache-1", False, error_reason="misread"),
+                    started_at="2026-07-02T09:00:00+08:00",
+                ),
+                self._record(
+                    self._answer("cache-1", False, error_reason="misread"),
+                    started_at="2026-07-03T09:00:00+08:00",
+                ),
+                self._record(
+                    self._answer("cache-1", True),
+                    started_at="2026-07-04T09:00:00+08:00",
+                ),
+                self._record(
+                    self._answer("cache-1", False, error_reason="concept_gap"),
+                    started_at="2026-07-05T09:00:00+08:00",
+                ),
+                self._record(
+                    self._answer("cache-1", True),
+                    started_at="2026-07-06T09:00:00+08:00",
+                ),
+                self._record(
+                    self._answer("cache-1", False, error_reason="concept_gap"),
+                    started_at="2026-07-07T09:00:00+08:00",
+                ),
+                self._record(
+                    self._answer("cache-1", False, error_reason="concept_gap"),
+                    started_at="2026-07-08T09:00:00+08:00",
+                ),
+            ],
+        )
+
+        focus = dashboard.focus_topics[0]
+        self.assertEqual(5, focus.attempts)
+        self.assertEqual(2, focus.correct_count)
+        self.assertEqual(3, focus.incorrect_count)
+        self.assertEqual((("concept_gap", 3),), focus.error_reason_counts)
+
+    def test_historical_mistakes_stop_driving_focus_after_five_correct_answers(self):
+        records = [
+            self._record(
+                self._answer("cache-1", False, error_reason="concept_gap"),
+                started_at="2026-07-01T09:00:00+08:00",
+            )
+        ]
+        records.extend(
+            self._record(
+                self._answer("cache-1", True),
+                started_at=f"2026-07-{day:02d}T09:00:00+08:00",
+            )
+            for day in range(2, 7)
+        )
+
+        dashboard = build_learning_dashboard(
+            {"cache-1": ("cache", "高速缓存")},
+            records=records,
+        )
+
+        self.assertEqual((), dashboard.focus_topics)
+
     def test_learning_views_do_not_retain_removed_persistent_plan_state(self):
         self.assertNotIn("daily_plan", signature(build_learning_dashboard).parameters)
         self.assertNotIn("daily_plan", {field.name for field in fields(LearningDashboardViewModel)})

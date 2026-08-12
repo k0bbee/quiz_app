@@ -499,11 +499,12 @@ class ProgressDashboard(QWidget):
 
         topic = topics[0]
         zh_reason = (
-            f"已答 {topic.attempts} 题，答错 {topic.incorrect_count} 题"
+            f"最近 {topic.attempts} 题，错 {topic.incorrect_count} 题"
             f"{self._focus_reason_suffix(topic, 'zh')}"
         )
         en_reason = (
-            f"{topic.incorrect_count} incorrect in {topic.attempts} answered"
+            f"{topic.incorrect_count} incorrect in the latest "
+            f"{topic.attempts} question{'s' if topic.attempts != 1 else ''}"
             f"{self._focus_reason_suffix(topic, 'en')}"
         )
         self.recommendation_label.setText(self.lang_manager.get_text(
@@ -528,7 +529,11 @@ class ProgressDashboard(QWidget):
         label = labels.get(str(counts[0][0]))
         if not label:
             return ""
-        return f" · {'主要原因：' + label[0] if lang == 'zh' else 'main reason: ' + label[1]}"
+        count = int(counts[0][1])
+        if lang == "zh":
+            return f"，其中 {count} 次为{label[0]}"
+        suffix = "time" if count == 1 else "times"
+        return f", including {count} {suffix} due to {label[1].lower()}"
 
     def _show_focus_actions(self, topics) -> None:
         self._recommended_topic_ids = [

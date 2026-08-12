@@ -510,10 +510,50 @@ class ProgressDashboardFlowTests(unittest.TestCase):
                         is_correct=False,
                         error_reason="concept_gap",
                     ),
-                    AnswerRecord(question_id=process.question_id, index_in_session=1, user_answer="B", is_correct=False),
-                    AnswerRecord(question_id=other_course.question_id, index_in_session=2, user_answer="B", is_correct=False),
+                    AnswerRecord(
+                        question_id=cache.question_id,
+                        index_in_session=1,
+                        user_answer="B",
+                        is_correct=False,
+                        error_reason="concept_gap",
+                    ),
+                    AnswerRecord(
+                        question_id=cache.question_id,
+                        index_in_session=2,
+                        user_answer="B",
+                        is_correct=False,
+                        error_reason="misread",
+                    ),
+                    AnswerRecord(
+                        question_id=cache.question_id,
+                        index_in_session=3,
+                        user_answer="A",
+                        is_correct=True,
+                    ),
+                    AnswerRecord(
+                        question_id=cache.question_id,
+                        index_in_session=4,
+                        user_answer="A",
+                        is_correct=True,
+                    ),
+                    AnswerRecord(
+                        question_id=process.question_id,
+                        index_in_session=5,
+                        user_answer="B",
+                        is_correct=False,
+                    ),
+                    AnswerRecord(
+                        question_id=other_course.question_id,
+                        index_in_session=6,
+                        user_answer="B",
+                        is_correct=False,
+                    ),
                 ]
-                record.summary = SessionSummary.compute(record.answers, total_questions=3, total_time=30)
+                record.summary = SessionSummary.compute(
+                    record.answers,
+                    total_questions=7,
+                    total_time=70,
+                )
                 progress_manager.save(record)
 
                 screen = self._make_progress_dashboard(
@@ -524,8 +564,8 @@ class ProgressDashboardFlowTests(unittest.TestCase):
 
                 self.assertIn("当前最值得复习", screen.recommendation_label.text())
                 self.assertIn("Cache", screen.recommendation_label.text())
-                self.assertIn("已答 1 题，答错 1 题", screen.recommendation_label.text())
-                self.assertIn("主要原因：概念错误", screen.recommendation_label.text())
+                self.assertIn("最近 5 题，错 3 题", screen.recommendation_label.text())
+                self.assertIn("其中 2 次为概念错误", screen.recommendation_label.text())
                 self.assertNotIn("Process", screen.recommendation_label.text())
                 self.assertNotIn("Virtual Memory", screen.recommendation_label.text())
                 self.assertFalse(screen.recommendation_label.isHidden())

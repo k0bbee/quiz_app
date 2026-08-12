@@ -54,7 +54,7 @@ python scripts/check_environment.py --json
 | Question bank | Search and filter by set, topic, difficulty, and quality; create or edit every question type; import TXT/Markdown/PDF/DOCX/PPTX exam or OCR text for review before saving, with safe cancellation; multi-select and batch-delete questions |
 | Question sets | Rename sets, select multiple topics, create random practice sets, regenerate questions, and export one or more mock exams as UTF-8 Markdown |
 | Quiz sessions | Practice/exam modes, free previous/next navigation, paper preview on demand, uncertain/review markers, keyboard controls, and complete draft recovery |
-| Progress | Course-scoped statistics, mastery overrides, prioritized review, topic actions, and full progress reset |
+| Progress | Course-scoped statistics, mastery overrides, prioritized review, and one recommended 5-question reinforcement based on the topic's latest five answers |
 | Data portability | Export/import `.quizdata` packages containing courses, question banks, question sets, drafts, progress, mastery overrides, and non-sensitive settings |
 | Settings | Open the utility entry at the bottom of the sidebar in a separate window without replacing the current study workspace |
 | Localization | Live Chinese/English UI switching with bilingual question content and explanations |
