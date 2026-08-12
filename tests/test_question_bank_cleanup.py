@@ -194,6 +194,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
         set_manager: SetManager | None = None,
         course_manager: CourseProjectManager | None = None,
         task_center=None,
+        embedded: bool = False,
     ) -> QuestionBankScreen:
         return QuestionBankScreen(
             question_bank,
@@ -201,6 +202,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             course_manager=course_manager
             or CourseProjectManager(str(Path(root) / "courses")),
             task_center=task_center,
+            embedded=embedded,
         )
 
     def _question(self, qid: str, topic: str = "cache") -> Question:
@@ -249,7 +251,61 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertFalse(screen.question_list_panel.isHidden())
             self.assertTrue(screen.inspector_panel.isHidden())
 
-    def test_question_bank_toolbar_stacks_when_narrow(self):
+    def test_question_bank_keeps_primary_actions_compact_at_900_width(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bank = QuestionBank(str(root / "questions"))
+            bank.save(self._question("q-1"))
+            screen = self._screen(
+                root,
+                bank,
+                set_manager=SetManager(str(root / "sets")),
+                embedded=True,
+            )
+            self.addCleanup(screen.close)
+            screen.resize(900, 680)
+            screen.show()
+            _APP.processEvents()
+
+            self.assertEqual(900, screen.width())
+            self.assertEqual(
+                QBoxLayout.Direction.LeftToRight,
+                screen.filter_layout.direction(),
+            )
+            self.assertLessEqual(screen.content_splitter.geometry().top(), 120)
+            self.assertTrue(screen.new_btn.isVisible())
+            self.assertTrue(screen.more_btn.isVisible())
+
+    def test_question_bank_shows_set_action_only_for_a_selection(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            bank = QuestionBank(str(root / "questions"))
+            bank.save(self._question("q-1"))
+            screen = self._screen(
+                root,
+                bank,
+                set_manager=SetManager(str(root / "sets")),
+            )
+            self.addCleanup(screen.close)
+            self.addCleanup(screen.lang_manager.set_language, "zh")
+            screen.lang_manager.set_language("zh")
+            screen.resize(900, 680)
+            screen.show()
+            _APP.processEvents()
+
+            screen.question_table.clearSelection()
+            _APP.processEvents()
+            self.assertFalse(screen.add_to_set_btn.isVisible())
+            screen.question_table.selectRow(0)
+            _APP.processEvents()
+
+            self.assertTrue(screen.add_to_set_btn.isVisible())
+            self.assertEqual(
+                ["导入历史题目", "关联课程原文", "检查全部题目"],
+                [action.text() for action in screen.more_actions_menu.actions()],
+            )
+
+    def test_question_bank_filters_stack_only_when_they_no_longer_fit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             screen = self._screen(root, QuestionBank(str(root / "questions")))
@@ -265,10 +321,6 @@ class QuestionBankCleanupTests(unittest.TestCase):
             self.assertEqual(
                 QBoxLayout.Direction.TopToBottom,
                 screen.filter_layout.direction(),
-            )
-            self.assertEqual(
-                QBoxLayout.Direction.TopToBottom,
-                screen.list_actions_layout.direction(),
             )
 
             screen.resize(1200, 680)
@@ -421,7 +473,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             screen.question_table.selectRow(0)
 
             with patch("ui.screens.question_bank_screen.QMessageBox.information") as info:
-                screen.backfill_source_refs_btn.click()
+                screen.link_course_source_action.trigger()
 
             saved = question_bank.get("q-ui-source")
             self.assertEqual(index[0]["chunk_id"], saved.metadata["source_refs"][0]["chunk_id"])
@@ -436,7 +488,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
             screen = QuestionBankScreen(question_bank, course_manager=course_manager)
 
             with patch("ui.screens.question_bank_screen.QMessageBox.warning") as warning:
-                screen.backfill_source_refs_btn.click()
+                screen.link_course_source_action.trigger()
 
             warning.assert_called_once()
             self.assertIn("课程", warning.call_args.args[2])
@@ -841,13 +893,13 @@ class QuestionBankCleanupTests(unittest.TestCase):
             )
 
             lang_manager.set_language("zh")
-            self.assertNotIn("补全", screen.backfill_source_refs_btn.text())
-            self.assertNotIn("来源证据", screen.backfill_source_refs_btn.text())
-            self.assertIn("关联课程原文", screen.backfill_source_refs_btn.text())
+            self.assertNotIn("补全", screen.link_course_source_action.text())
+            self.assertNotIn("来源证据", screen.link_course_source_action.text())
+            self.assertIn("关联课程原文", screen.link_course_source_action.text())
 
             lang_manager.set_language("en")
-            self.assertNotIn("Backfill", screen.backfill_source_refs_btn.text())
-            self.assertIn("Link to Course Materials", screen.backfill_source_refs_btn.text())
+            self.assertNotIn("Backfill", screen.link_course_source_action.text())
+            self.assertIn("Link to Course Materials", screen.link_course_source_action.text())
 
     def test_question_bank_screen_displays_source_refs_in_detail_panel(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -927,7 +979,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 "ui.screens.question_bank_screen.QuestionQualityScanWorker",
                 return_value=worker,
             ):
-                screen.scan_quality_btn.click()
+                screen.scan_quality_action.trigger()
 
                 snapshot = center.snapshots()[0]
                 self.assertEqual("question_bank_validation", snapshot.kind)
@@ -965,7 +1017,7 @@ class QuestionBankCleanupTests(unittest.TestCase):
                 "ui.screens.question_bank_screen.QuestionQualityScanWorker",
                 return_value=worker,
             ):
-                screen.scan_quality_btn.click()
+                screen.scan_quality_action.trigger()
                 worker.completed.emit(report)
 
             warning_index = screen.quality_filter.findData("quality_warnings")

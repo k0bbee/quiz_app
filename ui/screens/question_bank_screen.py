@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QTextEdit, QMessageBox, QSplitter, QAbstractItemView, QStackedWidget,
     QHeaderView, QTableView, QFileDialog, QDialog, QBoxLayout,
-    QInputDialog,
+    QInputDialog, QMenu,
 )
 from PyQt6.QtCore import (
     Qt,
@@ -268,40 +268,52 @@ class QuestionBankScreen(QWidget):
         self.quality_filter.currentIndexChanged.connect(self._reset_and_refresh)
         filter_row.addWidget(self.quality_filter)
 
-        self.backfill_source_refs_btn = QPushButton(
-            self.lang_manager.get_text("关联课程原文", "Link to Course Materials")
-        )
-        self.backfill_source_refs_btn.setObjectName("secondaryButton")
-        self.backfill_source_refs_btn.setToolTip(
-            self.lang_manager.get_text(
-                "用当前课程资料补全题目来源片段",
-                "Enrich question source snippets from the current course",
-            )
-        )
-        self.backfill_source_refs_btn.clicked.connect(self._backfill_source_refs)
-        filter_row.addWidget(self.backfill_source_refs_btn)
-        layout.addLayout(filter_row)
-
-        list_actions_row = QHBoxLayout()
-        self.list_actions_layout = list_actions_row
         self.new_btn = QPushButton(
             self.lang_manager.get_text("新建题目", "New Question")
         )
-        self.new_btn.setObjectName("secondaryButton")
+        self.new_btn.setObjectName("primaryButton")
         self.new_btn.clicked.connect(self._new_question)
-        list_actions_row.addWidget(self.new_btn)
-        self.import_text_btn = QPushButton(
-            self.lang_manager.get_text("导入题目文本", "Import Question Text")
+        filter_row.addWidget(self.new_btn)
+
+        self.more_actions_menu = QMenu(self)
+        self.import_historical_action = self.more_actions_menu.addAction(
+            self.lang_manager.get_text("导入历史题目", "Import Past Questions")
         )
-        self.import_text_btn.setObjectName("secondaryButton")
-        self.import_text_btn.setToolTip(
+        self.import_historical_action.setToolTip(
             self.lang_manager.get_text(
                 "导入文本、PDF、DOCX 或 PPTX，先审核再保存",
                 "Import text, PDF, DOCX, or PPTX for review before saving",
             )
         )
-        self.import_text_btn.clicked.connect(self._import_historical_text)
-        list_actions_row.addWidget(self.import_text_btn)
+        self.import_historical_action.triggered.connect(
+            self._import_historical_text
+        )
+        self.link_course_source_action = self.more_actions_menu.addAction(
+            self.lang_manager.get_text("关联课程原文", "Link to Course Materials")
+        )
+        self.link_course_source_action.setToolTip(
+            self.lang_manager.get_text(
+                "用当前课程资料补全题目来源片段",
+                "Enrich question source snippets from the current course",
+            )
+        )
+        self.link_course_source_action.triggered.connect(
+            self._backfill_source_refs
+        )
+        self.scan_quality_action = self.more_actions_menu.addAction(
+            self.lang_manager.get_text("检查全部题目", "Check All Questions")
+        )
+        self.scan_quality_action.triggered.connect(self._start_quality_scan)
+        self.more_btn = QPushButton(
+            self.lang_manager.get_text("更多", "More")
+        )
+        self.more_btn.setObjectName("secondaryButton")
+        self.more_btn.setMenu(self.more_actions_menu)
+        filter_row.addWidget(self.more_btn)
+        layout.addLayout(filter_row)
+
+        selection_actions_row = QHBoxLayout()
+        self.list_actions_layout = selection_actions_row
         self.add_to_set_btn = QPushButton(
             self.lang_manager.get_text("加入题目集", "Add to Question Set")
         )
@@ -314,7 +326,8 @@ class QuestionBankScreen(QWidget):
         )
         self.add_to_set_btn.clicked.connect(self._add_selected_to_question_set)
         self.add_to_set_btn.setEnabled(False)
-        list_actions_row.addWidget(self.add_to_set_btn)
+        self.add_to_set_btn.hide()
+        selection_actions_row.addWidget(self.add_to_set_btn)
         self.remove_from_set_btn = QPushButton(
             self.lang_manager.get_text("从当前题集移除", "Remove from Current Set")
         )
@@ -328,9 +341,9 @@ class QuestionBankScreen(QWidget):
         self.remove_from_set_btn.clicked.connect(self._remove_selected_from_question_set)
         self.remove_from_set_btn.setVisible(False)
         self.remove_from_set_btn.setEnabled(False)
-        list_actions_row.addWidget(self.remove_from_set_btn)
-        list_actions_row.addStretch(1)
-        layout.addLayout(list_actions_row)
+        selection_actions_row.addWidget(self.remove_from_set_btn)
+        selection_actions_row.addStretch(1)
+        layout.addLayout(selection_actions_row)
 
         historical_import_row = QHBoxLayout()
         self.historical_import_status_label = QLabel()
@@ -355,12 +368,6 @@ class QuestionBankScreen(QWidget):
         self.quality_scan_status_label.setWordWrap(True)
         self.quality_scan_status_label.hide()
         quality_scan_row.addWidget(self.quality_scan_status_label, 1)
-        self.scan_quality_btn = QPushButton(
-            self.lang_manager.get_text("检查全部题目", "Check All Questions")
-        )
-        self.scan_quality_btn.setObjectName("secondaryButton")
-        self.scan_quality_btn.clicked.connect(self._start_quality_scan)
-        quality_scan_row.addWidget(self.scan_quality_btn)
         self.cancel_quality_scan_btn = QPushButton(
             self.lang_manager.get_text("停止", "Stop")
         )
@@ -518,13 +525,13 @@ class QuestionBankScreen(QWidget):
 
     def _apply_responsive_layout(self) -> None:
         narrow = self.width() < 1100
+        compact_toolbar = self.width() < 820
         direction = (
             QBoxLayout.Direction.TopToBottom
-            if narrow
+            if compact_toolbar
             else QBoxLayout.Direction.LeftToRight
         )
         self.filter_layout.setDirection(direction)
-        self.list_actions_layout.setDirection(direction)
         if not narrow:
             self.question_list_panel.show()
             self.inspector_panel.show()
@@ -582,10 +589,13 @@ class QuestionBankScreen(QWidget):
         self.new_btn.setText(
             self.lang_manager.get_text("新建题目", "New Question")
         )
-        self.import_text_btn.setText(
-            self.lang_manager.get_text("导入题目文本", "Import Question Text")
+        self.more_btn.setText(
+            self.lang_manager.get_text("更多", "More")
         )
-        self.import_text_btn.setToolTip(
+        self.import_historical_action.setText(
+            self.lang_manager.get_text("导入历史题目", "Import Past Questions")
+        )
+        self.import_historical_action.setToolTip(
             self.lang_manager.get_text(
                 "导入文本、PDF、DOCX 或 PPTX，先审核再保存",
                 "Import text, PDF, DOCX, or PPTX for review before saving",
@@ -623,16 +633,16 @@ class QuestionBankScreen(QWidget):
         )
         self.save_btn.setText(self.lang_manager.get_text("保存", "Save"))
         self.delete_btn.setText(self.lang_manager.get_text("删除", "Delete"))
-        self.backfill_source_refs_btn.setText(
+        self.link_course_source_action.setText(
             self.lang_manager.get_text("关联课程原文", "Link to Course Materials")
         )
-        self.backfill_source_refs_btn.setToolTip(
+        self.link_course_source_action.setToolTip(
             self.lang_manager.get_text(
                 "用当前课程资料补全题目来源片段",
                 "Enrich question source snippets from the current course",
             )
         )
-        self.scan_quality_btn.setText(
+        self.scan_quality_action.setText(
             self.lang_manager.get_text("检查全部题目", "Check All Questions")
         )
         self.cancel_quality_scan_btn.setText(
@@ -1001,6 +1011,7 @@ class QuestionBankScreen(QWidget):
         selected = bool(self._selected_question_ids())
         has_sets = self.set_manager is not None
         current_set = bool(self._selected_set_id())
+        self.add_to_set_btn.setVisible(selected and has_sets)
         self.add_to_set_btn.setEnabled(selected and has_sets)
         self.remove_from_set_btn.setVisible(current_set and has_sets)
         self.remove_from_set_btn.setEnabled(selected and current_set and has_sets)
@@ -1165,7 +1176,7 @@ class QuestionBankScreen(QWidget):
         return str(course_by_label.get(selected, "")).strip()
 
     def _set_historical_import_busy(self, busy: bool):
-        self.import_text_btn.setEnabled(not busy)
+        self.import_historical_action.setEnabled(not busy)
         self.add_to_set_btn.setEnabled(not busy and bool(self._selected_question_ids()))
         self.remove_from_set_btn.setEnabled(
             not busy and bool(self._selected_question_ids()) and bool(self._selected_set_id())
@@ -1664,7 +1675,6 @@ class QuestionBankScreen(QWidget):
             self.set_filter,
             self.difficulty_filter,
             self.quality_filter,
-            self.backfill_source_refs_btn,
             self.question_table,
             self.prev_btn,
             self.next_btn,
@@ -1675,7 +1685,7 @@ class QuestionBankScreen(QWidget):
             self.delete_btn,
         ):
             widget.setEnabled(not busy)
-        self.scan_quality_btn.setEnabled(not busy)
+        self.more_btn.setEnabled(not busy)
         self.cancel_quality_scan_btn.setVisible(busy)
         self.cancel_quality_scan_btn.setEnabled(busy)
         self.quality_scan_status_label.setVisible(True)
