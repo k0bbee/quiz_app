@@ -257,8 +257,9 @@ class UiStyleContractTests(unittest.TestCase):
                     self.assertEqual("secondaryButton", button.objectName())
 
                 self.assertEqual("primaryButton", bank.save_btn.objectName())
+                self.assertEqual("primaryButton", bank.new_btn.objectName())
                 self.assertEqual("dangerButton", bank.delete_btn.objectName())
-                for button in (bank.new_btn, bank.prev_btn, bank.next_btn):
+                for button in (bank.prev_btn, bank.next_btn):
                     self.assertEqual("secondaryButton", button.objectName())
 
                 self.assertEqual("primaryButton", dialog.generate_btn.objectName())
