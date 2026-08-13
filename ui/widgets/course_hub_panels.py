@@ -149,6 +149,8 @@ class CourseSourcesPanel(QWidget):
 class CourseKnowledgePanel(QWidget):
     topic_action_requested = pyqtSignal(str, str)
 
+    _COMPACT_SPLITTER_WIDTH = 700
+
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QVBoxLayout(self)
@@ -207,6 +209,24 @@ class CourseKnowledgePanel(QWidget):
         self._view = None
         self._selected_topic = None
         self._get_text = None
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(self) -> None:
+        desired = (
+            Qt.Orientation.Vertical
+            if 0 < self.width() < self._COMPACT_SPLITTER_WIDTH
+            else Qt.Orientation.Horizontal
+        )
+        if self.knowledge_splitter.orientation() == desired:
+            return
+        self.knowledge_splitter.setOrientation(desired)
+        if desired is Qt.Orientation.Vertical:
+            self.knowledge_splitter.setSizes([320, 190])
+        else:
+            self.knowledge_splitter.setSizes([360, 240])
 
     def render(self, view, get_text) -> None:
         self._view = view

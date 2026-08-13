@@ -79,6 +79,7 @@ class _StagedFilesList(QListWidget):
 
 class CourseScreen(QWidget):
     _NARROW_SPLITTER_WIDTH = 700
+    _COMPACT_MASTER_DETAIL_WIDTH = 820
 
     """Import folders of course files and choose the active course project."""
 
@@ -136,6 +137,7 @@ class CourseScreen(QWidget):
         self._init_present_result = True
         self._import_expanded = False
         self._course_scope = "active"
+        self._compact_course_list_visible = False
         self._qa_return_topic_id = ""
         self._qa_return_source_row = -1
         self._qa_returns_to_previous_route = False
@@ -171,6 +173,7 @@ class CourseScreen(QWidget):
         )
         self.init_btn.setText(self.lang_manager.get_text("解析并生成总结", "Parse and generate summary"))
         self._update_import_toggle_text()
+        self._update_compact_course_switch_text()
         self.list_label.setText(self.lang_manager.get_text("课程", "Courses"))
         self.active_scope_btn.setText(
             self.lang_manager.get_text("进行中的课程", "Active")
@@ -217,6 +220,13 @@ class CourseScreen(QWidget):
         self.import_toggle_btn = QPushButton()
         self.import_toggle_btn.setObjectName("secondaryButton")
         self.import_toggle_btn.clicked.connect(self._toggle_import_panel)
+        self.compact_course_switch_btn = QPushButton()
+        self.compact_course_switch_btn.setObjectName("secondaryButton")
+        self.compact_course_switch_btn.clicked.connect(
+            self._toggle_compact_course_pane
+        )
+        self.compact_course_switch_btn.hide()
+        title_layout.addWidget(self.compact_course_switch_btn)
         title_layout.addWidget(self.import_toggle_btn)
         layout.addLayout(title_layout)
 
@@ -295,8 +305,8 @@ class CourseScreen(QWidget):
         self.course_splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter = self.course_splitter
 
-        left = QWidget()
-        self.left_layout = QVBoxLayout(left)
+        self.course_list_pane = QWidget()
+        self.left_layout = QVBoxLayout(self.course_list_pane)
         self.left_layout.setContentsMargins(0, 0, 0, 0)
         self.list_label = QLabel(self.lang_manager.get_text("课程", "Courses"))
         self.left_layout.addWidget(self.list_label)
@@ -407,10 +417,10 @@ class CourseScreen(QWidget):
         self.more_actions_btn.clicked.connect(self._show_more_actions_menu)
         self.course_action_layout.addWidget(self.more_actions_btn)
         self.left_layout.addLayout(self.course_action_layout)
-        splitter.addWidget(left)
+        splitter.addWidget(self.course_list_pane)
 
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
+        self.course_detail_pane = QWidget()
+        right_layout = QVBoxLayout(self.course_detail_pane)
         right_layout.setContentsMargins(0, 0, 0, 0)
         self.summary_header = QHBoxLayout()
         self.summary_label = QLabel(self.lang_manager.get_text("摘要预览", "Summary preview"))
@@ -497,7 +507,7 @@ class CourseScreen(QWidget):
         self.qa_panel.close_requested.connect(self._close_contextual_qa)
         self.content_stack.addWidget(self.qa_panel)
         right_layout.addWidget(self.content_stack, 1)
-        splitter.addWidget(right)
+        splitter.addWidget(self.course_detail_pane)
         splitter.setSizes([280, 620])
 
         layout.addWidget(splitter, 1)
@@ -509,18 +519,51 @@ class CourseScreen(QWidget):
         self._update_responsive_layout()
 
     def _update_responsive_layout(self) -> None:
+        compact = 0 < self.width() < self._COMPACT_MASTER_DETAIL_WIDTH
         desired = (
             Qt.Orientation.Vertical
             if self.width() < self._NARROW_SPLITTER_WIDTH
             else Qt.Orientation.Horizontal
         )
-        if self.course_splitter.orientation() == desired:
-            return
-        self.course_splitter.setOrientation(desired)
-        if desired is Qt.Orientation.Vertical:
-            self.course_splitter.setSizes([300, 420])
+        if self.course_splitter.orientation() != desired:
+            self.course_splitter.setOrientation(desired)
+            if desired is Qt.Orientation.Vertical:
+                self.course_splitter.setSizes([300, 420])
+            else:
+                self.course_splitter.setSizes([280, 620])
+        if compact:
+            show_list = self._compact_course_list_visible
+            self.course_list_pane.setVisible(show_list)
+            self.course_detail_pane.setVisible(not show_list)
+            self.compact_course_switch_btn.setVisible(
+                self.project_list.count() > 0
+            )
         else:
-            self.course_splitter.setSizes([280, 620])
+            self.course_list_pane.show()
+            self.course_detail_pane.show()
+            self.compact_course_switch_btn.hide()
+        self._update_compact_course_switch_text()
+
+    def _toggle_compact_course_pane(self) -> None:
+        """Switch between course selection and content in compact workspaces."""
+        if not 0 < self.width() < self._COMPACT_MASTER_DETAIL_WIDTH:
+            return
+        self._compact_course_list_visible = not self._compact_course_list_visible
+        self._update_responsive_layout()
+
+    def _show_compact_course_detail(self) -> None:
+        if not 0 < self.width() < self._COMPACT_MASTER_DETAIL_WIDTH:
+            return
+        self._compact_course_list_visible = False
+        self._update_responsive_layout()
+
+    def _update_compact_course_switch_text(self) -> None:
+        if not hasattr(self, "compact_course_switch_btn"):
+            return
+        self.compact_course_switch_btn.setText(self.lang_manager.get_text(
+            "返回课程" if self._compact_course_list_visible else "切换课程",
+            "Back to Course" if self._compact_course_list_visible else "Switch Course",
+        ))
 
     def _all_projects(self) -> list:
         try:
@@ -943,6 +986,7 @@ class CourseScreen(QWidget):
             self.summary_label.setText(self.lang_manager.get_text("摘要预览", "Summary preview"))
             self._clear_course_hub()
             self._clear_summary()
+        self._update_responsive_layout()
 
     def restore_task_context(self, snapshot) -> None:
         """Restore safe local inputs for a persisted course task without starting it."""
@@ -1492,6 +1536,7 @@ class CourseScreen(QWidget):
         self._render_course_hub(project)
         self._show_summary(project.summary_markdown)
         self.show_section(self._active_section)
+        self._show_compact_course_detail()
 
     def _edit_exam_scope(self):
         current = self.project_list.currentItem()

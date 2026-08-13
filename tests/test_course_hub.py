@@ -287,6 +287,45 @@ class CourseHubNavigationTests(unittest.TestCase):
         self.assertIs(screen.overview_panel, screen.content_stack.currentWidget())
         self.assertFalse(hasattr(screen, "exam_goal_btn"))
 
+    def test_default_window_uses_compact_course_master_detail_layout(self):
+        self.assertTrue(
+            self.window.navigate_route(
+                Route.course(self.project.course_id, tab="knowledge"),
+                allow_first_run_redirect=False,
+            )
+        )
+        self.window.resize(900, 680)
+        self.window.show()
+        _APP.processEvents()
+        screen = self.window._course_screen
+
+        self.assertLess(screen.width(), self.window.width())
+        self.assertTrue(screen.course_list_pane.isHidden())
+        self.assertTrue(screen.course_detail_pane.isVisibleTo(screen))
+        self.assertTrue(screen.compact_course_switch_btn.isVisibleTo(screen))
+        self.assertEqual(
+            Qt.Orientation.Vertical,
+            screen.knowledge_panel.knowledge_splitter.orientation(),
+        )
+
+        screen.compact_course_switch_btn.click()
+        _APP.processEvents()
+
+        self.assertTrue(screen.course_list_pane.isVisibleTo(screen))
+        self.assertTrue(screen.course_detail_pane.isHidden())
+
+        screen.compact_course_switch_btn.click()
+        self.window.resize(1280, 800)
+        _APP.processEvents()
+
+        self.assertTrue(screen.course_list_pane.isVisibleTo(screen))
+        self.assertTrue(screen.course_detail_pane.isVisibleTo(screen))
+        self.assertTrue(screen.compact_course_switch_btn.isHidden())
+        self.assertEqual(
+            Qt.Orientation.Horizontal,
+            screen.knowledge_panel.knowledge_splitter.orientation(),
+        )
+
     def test_course_overview_exposes_one_contextual_primary_action(self):
         self.assertTrue(
             self.window.navigate_route(

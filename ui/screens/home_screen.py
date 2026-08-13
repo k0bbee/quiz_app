@@ -20,6 +20,8 @@ from ui.components import PageHeader
 class HomeScreen(QWidget):
     """Welcome screen with navigation to main features."""
 
+    _COMPACT_VIEWPORT_WIDTH = 820
+
     study_requested = pyqtSignal(object)
 
     def __init__(
@@ -148,7 +150,7 @@ class HomeScreen(QWidget):
 
     def _update_responsive_layout(self) -> None:
         """Stack the home focus panels before they force a wide window."""
-        narrow = 0 < self.width() < 720
+        narrow = 0 < self.width() < self._COMPACT_VIEWPORT_WIDTH
         direction = (
             QHBoxLayout.Direction.TopToBottom
             if narrow

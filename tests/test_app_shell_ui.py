@@ -40,6 +40,25 @@ from utils.constants import Difficulty, QuestionType
 _APP = QApplication.instance() or QApplication([])
 
 class AppShellUiTests(unittest.TestCase):
+    def test_home_uses_its_real_shell_viewport_at_default_window_size(self):
+            window = MainWindow()
+            self.addCleanup(window.close)
+            window.home_workspace.setCurrentWidget(window.home_screen)
+            window.resize(900, 680)
+            window.show()
+            _APP.processEvents()
+
+            self.assertTrue(window.home_screen.isVisibleTo(window))
+            self.assertLess(window.home_screen.width(), window.width())
+            self.assertEqual(
+                QBoxLayout.Direction.TopToBottom,
+                window.home_screen.hero_layout.direction(),
+            )
+            self.assertEqual(
+                QBoxLayout.Direction.TopToBottom,
+                window.home_screen.quick_links.direction(),
+            )
+
     def test_home_stacks_focus_and_scope_on_narrow_windows(self):
             language = LanguageManager.instance()
             language.set_language("en")
