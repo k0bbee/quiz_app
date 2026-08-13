@@ -59,6 +59,8 @@ def _compact_label_text(text: str, limit: int = 34) -> str:
 class AIGenerationDialog(QDialog):
     """Dialog for generating questions via AI."""
 
+    _COMPACT_SPLITTER_WIDTH = 760
+
     draft_changed = pyqtSignal()
 
     def __init__(
@@ -603,6 +605,29 @@ class AIGenerationDialog(QDialog):
         bottom_layout.addLayout(self.footer_action_layout)
         outer.addWidget(bottom)
         self._update_footer_summary(self._get_selected_topics())
+        self._update_responsive_layout()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(self) -> None:
+        """Use one column when the embedded generation viewport is compact."""
+        if not hasattr(self, "content_splitter"):
+            return
+        compact = 0 < self.width() < self._COMPACT_SPLITTER_WIDTH
+        desired = (
+            Qt.Orientation.Vertical
+            if compact
+            else Qt.Orientation.Horizontal
+        )
+        if self.content_splitter.orientation() == desired:
+            return
+        self.content_splitter.setOrientation(desired)
+        if compact:
+            self.content_splitter.setSizes([300, 360])
+        else:
+            self.content_splitter.setSizes([540, 440])
 
     def _make_slider(self, value: int) -> QSlider:
         slider = WheelSafeSlider(Qt.Orientation.Horizontal)

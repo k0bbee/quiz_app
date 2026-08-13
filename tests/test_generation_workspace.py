@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import QApplication, QDialog, QLabel
 from core.generation_session_state import GenerationStage
 from models.course_project import CourseProject, CourseTopic
 from ui.main_window import MainWindow
+from ui.dialogs.ai_generation_dialog import AIGenerationDialog
 from ui.generation_workspace_controller import GenerationWorkspaceController
 from ui.screens.generation_workspace import GenerationWorkspace
 
@@ -19,6 +20,43 @@ _APP = QApplication.instance() or QApplication([])
 
 
 class GenerationWorkspaceTests(unittest.TestCase):
+
+    def test_embedded_generation_surface_stacks_for_compact_viewport(self):
+        workspace = GenerationWorkspace()
+        self.addCleanup(workspace.close)
+        dialog = AIGenerationDialog(
+            "# Course\nCache content",
+            {
+                "ai_provider": "local_agent",
+                "ai_base_url": "local-agent://auto",
+                "ai_model": "codex",
+            },
+            available_topics=["cache", "process"],
+        )
+        workspace.show_generation_widget(
+            dialog,
+            course_id="course-os",
+            course_title="操作系统",
+        )
+        workspace.resize(732, 597)
+        workspace.show()
+        _APP.processEvents()
+
+        self.assertLess(dialog.width(), 760)
+        self.assertEqual(
+            Qt.Orientation.Vertical,
+            dialog.content_splitter.orientation(),
+        )
+        self.assertEqual(0, dialog.right_scroll.horizontalScrollBar().maximum())
+
+        workspace.resize(1112, 717)
+        _APP.processEvents()
+
+        self.assertGreaterEqual(dialog.width(), 760)
+        self.assertEqual(
+            Qt.Orientation.Horizontal,
+            dialog.content_splitter.orientation(),
+        )
 
     def test_main_window_delegates_generation_opening_to_workspace_controller(self):
         window = MainWindow()
