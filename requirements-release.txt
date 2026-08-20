@@ -2,7 +2,7 @@
 # Resolved from requirements.txt on 2026-07-23 for win_amd64.
 # Regenerate and re-audit this file before each tagged release.
 certifi==2026.7.22
-charset-normalizer==3.4.9
+charset-normalizer==3.5.1
 idna==3.18
 jaraco.classes==3.4.0
 jaraco.context==6.1.2
