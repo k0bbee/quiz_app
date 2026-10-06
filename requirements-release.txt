@@ -18,4 +18,4 @@ PyQt6-sip==13.11.1
 pytesseract==0.3.13
 pywin32-ctypes==0.2.3; sys_platform == "win32"
 requests==2.34.2
-urllib3==2.7.0
+urllib3==2.8.0
