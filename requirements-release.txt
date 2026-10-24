@@ -10,7 +10,7 @@ jaraco.functools==4.6.0
 keyring==25.7.0
 more-itertools==11.1.0
 packaging==26.2
-Pillow==12.3.0
+Pillow==13.0.0
 pypdfium2==5.12.1
 PyQt6==6.11.0
 PyQt6-Qt6==6.11.1
