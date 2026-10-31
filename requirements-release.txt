@@ -1,7 +1,7 @@
 # Reproducible Windows release environment for CPython 3.12.
 # Resolved from requirements.txt on 2026-07-23 for win_amd64.
 # Regenerate and re-audit this file before each tagged release.
-certifi==2026.7.22
+certifi==2026.10.18
 charset-normalizer==3.4.9
 idna==3.18
 jaraco.classes==3.4.0
